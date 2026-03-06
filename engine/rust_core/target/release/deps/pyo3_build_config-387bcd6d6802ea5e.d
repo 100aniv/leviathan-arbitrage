@@ -1,0 +1,14 @@
+/Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/deps/pyo3_build_config-387bcd6d6802ea5e.d: /Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/lib.rs /Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/errors.rs /Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/impl_.rs /Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/build/pyo3-build-config-b957d40eb0545690/out/pyo3-build-config-file.txt /Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/build/pyo3-build-config-b957d40eb0545690/out/pyo3-build-config.txt
+
+/Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/deps/libpyo3_build_config-387bcd6d6802ea5e.rlib: /Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/lib.rs /Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/errors.rs /Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/impl_.rs /Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/build/pyo3-build-config-b957d40eb0545690/out/pyo3-build-config-file.txt /Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/build/pyo3-build-config-b957d40eb0545690/out/pyo3-build-config.txt
+
+/Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/deps/libpyo3_build_config-387bcd6d6802ea5e.rmeta: /Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/lib.rs /Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/errors.rs /Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/impl_.rs /Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/build/pyo3-build-config-b957d40eb0545690/out/pyo3-build-config-file.txt /Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/build/pyo3-build-config-b957d40eb0545690/out/pyo3-build-config.txt
+
+/Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/lib.rs:
+/Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/errors.rs:
+/Users/100aniv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.21.2/src/impl_.rs:
+/Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/build/pyo3-build-config-b957d40eb0545690/out/pyo3-build-config-file.txt:
+/Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/build/pyo3-build-config-b957d40eb0545690/out/pyo3-build-config.txt:
+
+# env-dep:CARGO_PKG_VERSION=0.21.2
+# env-dep:OUT_DIR=/Users/100aniv/Development/arbitrage_OMC/engine/rust_core/target/release/build/pyo3-build-config-b957d40eb0545690/out

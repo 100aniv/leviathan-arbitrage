@@ -1,0 +1,160 @@
+"""Total friction cost aggregator (Amendment 3D).
+
+Net_Profit = Gross_Spread
+           - Fee_Buy - Fee_Sell
+           - Slippage_Buy - Slippage_Sell
+           - Network_Cost - Funding_Cost - Opportunity_Cost
+           - E[Rollback_Cost]
+
+E[Rollback_Cost] = P(rollback) * Avg_Rollback_Cost
+P(rollback) from rolling 30-trade window; cold-start default = 5%.
+"""
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass, field
+from decimal import Decimal
+
+from src.core.order_book import OrderBook
+from src.friction.fee_model import FeeModel
+from src.friction.slippage_model import CEXOrderbookSlippage
+
+
+@dataclass
+class TradeOutcome:
+    rolled_back: bool
+    rollback_cost: Decimal = Decimal("0")
+
+
+@dataclass
+class FrictionCost:
+    fee_buy: Decimal
+    fee_sell: Decimal
+    slippage_buy: Decimal
+    slippage_sell: Decimal
+    network_cost: Decimal
+    funding_cost: Decimal
+    opportunity_cost: Decimal
+    rollback_cost_expected: Decimal
+    gross_spread: Decimal
+
+    @property
+    def total_cost(self) -> Decimal:
+        return (
+            self.fee_buy
+            + self.fee_sell
+            + self.slippage_buy
+            + self.slippage_sell
+            + self.network_cost
+            + self.funding_cost
+            + self.opportunity_cost
+            + self.rollback_cost_expected
+        )
+
+    @property
+    def net_profit(self) -> Decimal:
+        return self.gross_spread - self.total_cost
+
+
+class CostCalculator:
+    """
+    Complete friction cost calculator for cross-exchange arbitrage.
+
+    Net_Profit = Gross_Spread - Fee_Buy - Fee_Sell - Slippage_Buy - Slippage_Sell
+                 - Network_Cost - Funding_Cost - Opportunity_Cost - E[Rollback_Cost]
+    """
+
+    ROLLBACK_WINDOW = 30
+    COLD_START_ROLLBACK_PROB = Decimal("0.05")
+
+    def __init__(
+        self,
+        fee_model: FeeModel,
+        slippage_model: CEXOrderbookSlippage | None = None,
+        network_cost: Decimal = Decimal("0"),
+        funding_cost: Decimal = Decimal("0"),
+        opportunity_cost: Decimal = Decimal("0"),
+    ) -> None:
+        self._fee_model = fee_model
+        self._slippage_model = slippage_model or CEXOrderbookSlippage()
+        self._network_cost = network_cost
+        self._funding_cost = funding_cost
+        self._opportunity_cost = opportunity_cost
+        self._trade_history: deque[TradeOutcome] = deque(maxlen=self.ROLLBACK_WINDOW)
+
+    def record_trade(self, outcome: TradeOutcome) -> None:
+        """Record trade outcome to update rolling rollback probability."""
+        self._trade_history.append(outcome)
+
+    def rollback_probability(self) -> Decimal:
+        """P(rollback) from rolling 30-trade window. Returns 5% cold-start if no history."""
+        if not self._trade_history:
+            return self.COLD_START_ROLLBACK_PROB
+        rolled_back = sum(1 for t in self._trade_history if t.rolled_back)
+        return Decimal(rolled_back) / Decimal(len(self._trade_history))
+
+    def avg_rollback_cost_from_history(self) -> Decimal:
+        """Compute average rollback cost from recorded rolled-back trades."""
+        costs = [t.rollback_cost for t in self._trade_history if t.rolled_back]
+        if not costs:
+            return Decimal("0")
+        return sum(costs) / Decimal(len(costs))
+
+    def expected_rollback_cost(self, avg_rollback_cost: Decimal) -> Decimal:
+        """E[Rollback_Cost] = P(rollback) * Avg_Rollback_Cost."""
+        return self.rollback_probability() * avg_rollback_cost
+
+    def calculate(
+        self,
+        buy_exchange: str,
+        sell_exchange: str,
+        buy_book: OrderBook,
+        sell_book: OrderBook,
+        size: Decimal,
+        buy_price: Decimal,
+        sell_price: Decimal,
+        adv: Decimal = Decimal("1000"),
+        sigma: Decimal = Decimal("0.001"),
+        avg_rollback_cost: Decimal | None = None,
+    ) -> FrictionCost:
+        """
+        Compute complete friction cost for one arbitrage trade leg.
+
+        Args:
+            buy_exchange:      Exchange where we buy (taker).
+            sell_exchange:     Exchange where we sell (taker).
+            buy_book:          Orderbook for buy exchange (for slippage).
+            sell_book:         Orderbook for sell exchange (for slippage).
+            size:              Trade size in base asset.
+            buy_price:         Expected buy execution price.
+            sell_price:        Expected sell execution price.
+            adv:               Average daily volume (base asset units).
+            sigma:             Price volatility fraction.
+            avg_rollback_cost: Average cost per rollback event (USD).
+        """
+        if avg_rollback_cost is None:
+            avg_rollback_cost = self.avg_rollback_cost_from_history()
+
+        buy_notional = buy_price * size
+        sell_notional = sell_price * size
+        gross_spread = sell_notional - buy_notional
+
+        fee_buy = self._fee_model.taker_fee(buy_exchange, buy_notional)
+        fee_sell = self._fee_model.taker_fee(sell_exchange, sell_notional)
+
+        slip_buy = self._slippage_model.predict(buy_book, size, adv, sigma)
+        slip_sell = self._slippage_model.predict(sell_book, size, adv, sigma)
+
+        rollback_cost_exp = self.expected_rollback_cost(avg_rollback_cost)
+
+        return FrictionCost(
+            fee_buy=fee_buy,
+            fee_sell=fee_sell,
+            slippage_buy=slip_buy.expected,
+            slippage_sell=slip_sell.expected,
+            network_cost=self._network_cost,
+            funding_cost=self._funding_cost,
+            opportunity_cost=self._opportunity_cost,
+            rollback_cost_expected=rollback_cost_exp,
+            gross_spread=gross_spread,
+        )

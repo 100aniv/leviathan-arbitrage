@@ -1,0 +1,42 @@
+# =============================================================================
+# Grafana Datasource Provisioning
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  # ---------------------------------------------------------------------------
+  # Prometheus — primary metrics source
+  # ---------------------------------------------------------------------------
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    uid: prometheus-leviathan
+    jsonData:
+      httpMethod: POST
+      timeInterval: 5s
+      queryTimeout: 60s
+    editable: false
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL / TimescaleDB — trade history, position WAL
+  # ---------------------------------------------------------------------------
+  - name: TimescaleDB
+    type: postgres
+    access: proxy
+    url: timescaledb:5432
+    uid: timescaledb-leviathan
+    user: leviathan
+    secureJsonData:
+      password: leviathan
+    jsonData:
+      database: leviathan
+      sslmode: disable
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1600
+      timescaledb: true
+    editable: false

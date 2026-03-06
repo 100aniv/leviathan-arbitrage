@@ -1,0 +1,150 @@
+"""Spot-Futures Basis Trade strategy (same exchange).
+
+Exploits the basis premium/discount between spot and perpetual futures
+on the SAME exchange. Both legs execute atomically on one exchange.
+
+- Contango (basis > 0): futures > spot -> sell futures, buy spot
+- Backwardation (basis < 0): futures < spot -> buy futures, sell spot
+"""
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+from src.core.models import OrderSide, OrderType, Signal, Trade
+from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeRequest
+
+
+class SpotFuturesConfig(BaseModel):
+    """Configuration for SpotFuturesStrategy."""
+
+    min_basis_bps: Decimal = Field(default=Decimal("15"), ge=Decimal("0"))
+    max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
+    max_holding_hours: float = Field(default=8.0, gt=0.0)
+    funding_rate_threshold: Decimal = Field(default=Decimal("0.001"), ge=Decimal("0"))
+
+
+class SpotFuturesStrategy(BaseStrategy):
+    """
+    Spot-Futures Basis Trade.
+
+    Uses signal.buy_exchange == signal.sell_exchange (same exchange).
+    signal.metadata must contain:
+      - 'basis_bps': float  (futures_price - spot_price) / spot_price * 10000
+      - 'spot_symbol': str  e.g. 'BTC/USDT'
+      - 'futures_symbol': str  e.g. 'BTC/USDT:USDT'
+      - 'funding_rate': float  (current funding rate, skip if too adverse)
+    """
+
+    STRATEGY_TYPE = "spot_futures_basis"
+
+    def __init__(
+        self,
+        strategy_id: str,
+        cost_calculator: CostCalculator,
+        config: SpotFuturesConfig | None = None,
+    ) -> None:
+        super().__init__(strategy_id, cost_calculator)
+        self.config = config or SpotFuturesConfig()
+
+    async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
+        self._metrics.signals_received += 1
+
+        if not self._is_active:
+            self._metrics.signals_filtered += 1
+            return None
+
+        # Both legs must be on the same exchange
+        if signal.buy_exchange != signal.sell_exchange:
+            self._metrics.signals_filtered += 1
+            return None
+
+        exchange_id = signal.buy_exchange
+        basis_bps = Decimal(str(signal.metadata.get("basis_bps", "0")))
+        abs_basis_bps = abs(basis_bps)
+
+        if abs_basis_bps < self.config.min_basis_bps:
+            self._metrics.signals_filtered += 1
+            return None
+
+        # Skip if funding rate would erode the basis profit
+        funding_rate = Decimal(str(signal.metadata.get("funding_rate", "0")))
+        if abs(funding_rate) > self.config.funding_rate_threshold:
+            self._metrics.signals_filtered += 1
+            return None
+
+        spot_symbol = str(signal.metadata.get("spot_symbol", signal.symbol))
+        futures_symbol = str(signal.metadata.get("futures_symbol", signal.symbol))
+        size = min(signal.volume, self.config.max_position_size)
+
+        # Contango: sell futures (expensive), buy spot (cheap)
+        # Backwardation: buy futures (cheap), sell spot (expensive)
+        if basis_bps > 0:
+            # Contango: futures expensive -> sell futures, buy spot
+            spot_side = OrderSide.BUY
+            futures_side = OrderSide.SELL
+            spot_price = signal.buy_price
+            futures_price = signal.sell_price
+        else:
+            # Backwardation: futures cheap -> buy futures, sell spot
+            spot_side = OrderSide.SELL
+            futures_side = OrderSide.BUY
+            spot_price = signal.sell_price
+            futures_price = signal.buy_price
+
+        spot_cost = self._cost_calculator.estimate_cost(
+            exchange_id=exchange_id,
+            symbol=spot_symbol,
+            side=spot_side,
+            size=size,
+            price=spot_price,
+        )
+        futures_cost = self._cost_calculator.estimate_cost(
+            exchange_id=exchange_id,
+            symbol=futures_symbol,
+            side=futures_side,
+            size=size,
+            price=futures_price,
+        )
+        total_cost = spot_cost + futures_cost
+        gross_profit = abs(signal.sell_price - signal.buy_price) * size
+        net_profit = gross_profit - total_cost
+
+        if net_profit <= Decimal("0"):
+            self._metrics.signals_filtered += 1
+            return None
+
+        self._metrics.trade_requests_generated += 1
+        return TradeRequest(
+            strategy_id=self.strategy_id,
+            legs=[
+                TradeLeg(
+                    exchange_id=exchange_id,
+                    symbol=spot_symbol,
+                    side=spot_side,
+                    size=size,
+                    order_type=OrderType.MARKET,
+                    metadata={"leg_type": "spot"},
+                ),
+                TradeLeg(
+                    exchange_id=exchange_id,
+                    symbol=futures_symbol,
+                    side=futures_side,
+                    size=size,
+                    order_type=OrderType.MARKET,
+                    metadata={"leg_type": "futures"},
+                ),
+            ],
+            expected_profit_usdt=net_profit,
+            confidence=signal.confidence,
+            metadata={
+                "basis_bps": str(basis_bps),
+                "gross_profit": str(gross_profit),
+                "total_cost": str(total_cost),
+            },
+        )
+
+    async def on_fill(self, trade: Trade) -> None:
+        await super().on_fill(trade)

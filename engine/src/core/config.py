@@ -1,0 +1,170 @@
+"""LEVIATHAN Engine Configuration.
+
+Loads all settings from environment variables using Pydantic Settings v2.
+Supports dev/staging/prod environment switching.
+"""
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Literal
+
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class RedisSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="REDIS_")
+
+    url: str = Field(default="redis://localhost:6379/0", description="Redis connection URL")
+    max_connections: int = Field(default=50, ge=1, description="Connection pool max size")
+    socket_timeout: float = Field(default=2.0, ge=0.1, description="Socket timeout in seconds")
+    socket_connect_timeout: float = Field(default=2.0, ge=0.1)
+
+
+class DatabaseSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="", populate_by_name=True)
+
+    url: str = Field(
+        default="postgresql+asyncpg://leviathan:leviathan@localhost:5432/leviathan",
+        alias="DATABASE_URL",
+    )
+    pool_size: int = Field(default=20, ge=1)
+    pool_timeout: float = Field(default=5.0, ge=0.1)
+    pool_max_overflow: int = Field(default=10, ge=0)
+
+
+class ExchangeSettings(BaseSettings):
+    """Per-exchange configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="", populate_by_name=True)
+
+    # Binance
+    binance_api_key: str = Field(default="", alias="BINANCE_API_KEY")
+    binance_api_secret: str = Field(default="", alias="BINANCE_API_SECRET")
+    binance_testnet: bool = Field(default=False, alias="BINANCE_TESTNET")
+    binance_rate_limit: int = Field(default=1200, alias="BINANCE_RATE_LIMIT")  # req/min
+
+    # OKX
+    okx_api_key: str = Field(default="", alias="OKX_API_KEY")
+    okx_api_secret: str = Field(default="", alias="OKX_API_SECRET")
+    okx_passphrase: str = Field(default="", alias="OKX_PASSPHRASE")
+    okx_testnet: bool = Field(default=False, alias="OKX_TESTNET")
+    okx_rate_limit: int = Field(default=600, alias="OKX_RATE_LIMIT")
+
+    # Bybit
+    bybit_api_key: str = Field(default="", alias="BYBIT_API_KEY")
+    bybit_api_secret: str = Field(default="", alias="BYBIT_API_SECRET")
+    bybit_testnet: bool = Field(default=False, alias="BYBIT_TESTNET")
+    bybit_rate_limit: int = Field(default=600, alias="BYBIT_RATE_LIMIT")
+
+
+class RiskSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="RISK_")
+
+    max_position_pct: Decimal = Field(
+        default=Decimal("0.10"),
+        description="Max % of capital per position (0.10 = 10%)",
+    )
+    max_drawdown_pct: Decimal = Field(
+        default=Decimal("0.02"),
+        description="Max drawdown before circuit breaker triggers (0.02 = 2%)",
+    )
+    max_single_trade_pct: Decimal = Field(
+        default=Decimal("0.05"),
+        description="Max single trade size as % of capital",
+    )
+    max_exposure_pct: Decimal = Field(
+        default=Decimal("0.30"),
+        description="Max total exposure across all positions",
+    )
+    kill_switch_enabled: bool = Field(default=True)
+    circuit_breaker_cooldown_seconds: int = Field(default=300, ge=1)
+    circuit_breaker_consecutive_losses: int = Field(default=5, ge=1)
+    circuit_breaker_api_error_rate: Decimal = Field(default=Decimal("0.20"))
+    exchange_health_threshold: Decimal = Field(default=Decimal("0.9"))
+    max_volatility_multiple: Decimal = Field(
+        default=Decimal("2.0"),
+        description="Skip trade if 1-min vol > N * 24h avg vol",
+    )
+    max_rollback_threshold: Decimal = Field(
+        default=Decimal("0.02"),
+        description="Reject if max_rollback_cost > threshold * position_value (Amendment 3C)",
+    )
+
+    @field_validator(
+        "max_position_pct",
+        "max_drawdown_pct",
+        "max_single_trade_pct",
+        "max_exposure_pct",
+        mode="before",
+    )
+    @classmethod
+    def validate_pct(cls, v: str | Decimal) -> Decimal:
+        d = Decimal(str(v))
+        if not (Decimal("0") < d <= Decimal("1")):
+            msg = f"Percentage must be between 0 and 1 (exclusive), got {d}"
+            raise ValueError(msg)
+        return d
+
+
+class MonitoringSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="MONITORING_")
+
+    prometheus_port: int = Field(default=8000, ge=1024, le=65535)
+    log_level: str = Field(default="INFO")
+    log_format: Literal["json", "console"] = Field(default="json")
+
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
+        valid = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        upper = v.upper()
+        if upper not in valid:
+            msg = f"log_level must be one of {valid}, got {v!r}"
+            raise ValueError(msg)
+        return upper
+
+
+class Settings(BaseSettings):
+    """Top-level settings — loads all sub-settings from environment."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+    engine_env: Literal["dev", "staging", "prod", "test"] = Field(
+        default="dev", alias="ENGINE_ENV"
+    )
+
+    redis: RedisSettings = Field(default_factory=RedisSettings)
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    exchange: ExchangeSettings = Field(default_factory=ExchangeSettings)
+    risk: RiskSettings = Field(default_factory=RiskSettings)
+    monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
+
+    @model_validator(mode="after")
+    def validate_prod_keys(self) -> "Settings":
+        if self.engine_env == "prod":
+            missing = []
+            if not self.exchange.binance_api_key:
+                missing.append("BINANCE_API_KEY")
+            if not self.exchange.okx_api_key:
+                missing.append("OKX_API_KEY")
+            if missing:
+                msg = f"Production requires exchange API keys: {missing}"
+                raise ValueError(msg)
+        return self
+
+
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """Return cached settings singleton."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings

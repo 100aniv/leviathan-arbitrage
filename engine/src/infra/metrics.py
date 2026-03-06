@@ -1,0 +1,121 @@
+"""LEVIATHAN Prometheus Metrics.
+
+All metric definitions for the engine.
+Exposed at /metrics by the API server via start_metrics_server().
+"""
+from __future__ import annotations
+
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
+
+# ---------------------------------------------------------------------------
+# Histograms — latency measurements
+# ---------------------------------------------------------------------------
+
+ORDER_LATENCY = Histogram(
+    "leviathan_order_latency_seconds",
+    "Time from order submission to fill confirmation",
+    ["exchange", "symbol", "side", "order_type"],
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0],
+)
+
+SIGNAL_PROCESSING_TIME = Histogram(
+    "leviathan_signal_processing_seconds",
+    "Time to process a signal from raw spread to emit decision",
+    ["strategy"],
+    buckets=[0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1],
+)
+
+KILL_SWITCH_LATENCY = Histogram(
+    "leviathan_kill_switch_latency_seconds",
+    "Kill switch execution latency per tier",
+    ["tier"],
+    buckets=[0.0001, 0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0],
+)
+
+# ---------------------------------------------------------------------------
+# Counters — monotonically increasing totals
+# ---------------------------------------------------------------------------
+
+TRADES_TOTAL = Counter(
+    "leviathan_trades_total",
+    "Total completed round-trip trades",
+    ["strategy", "exchange_pair", "result"],  # result: win/loss/breakeven
+)
+
+ORDERS_TOTAL = Counter(
+    "leviathan_orders_total",
+    "Total orders submitted",
+    ["exchange", "side", "order_type", "status"],  # status: filled/cancelled/rejected
+)
+
+SIGNALS_TOTAL = Counter(
+    "leviathan_signals_total",
+    "Total signals evaluated",
+    ["strategy", "decision"],  # decision: emit/filtered/rejected
+)
+
+ERRORS_TOTAL = Counter(
+    "leviathan_errors_total",
+    "Total errors by component and type",
+    ["component", "error_type"],
+)
+
+KILL_SWITCH_TRIGGERS_TOTAL = Counter(
+    "leviathan_kill_switch_triggers_total",
+    "Total kill switch activations",
+    ["trigger_source"],  # manual/automated/mdd/consecutive_loss
+)
+
+RISK_REJECTIONS_TOTAL = Counter(
+    "leviathan_risk_rejections_total",
+    "Total trades rejected by risk guardian",
+    ["check_number", "reason"],
+)
+
+# ---------------------------------------------------------------------------
+# Gauges — current point-in-time values
+# ---------------------------------------------------------------------------
+
+OPEN_POSITIONS = Gauge(
+    "leviathan_open_positions",
+    "Number of currently open positions",
+    ["strategy", "exchange"],
+)
+
+PNL_TOTAL = Gauge(
+    "leviathan_pnl_total_usd",
+    "Total realized PnL in USD",
+    ["strategy"],
+)
+
+DRAWDOWN_CURRENT = Gauge(
+    "leviathan_drawdown_current_pct",
+    "Current drawdown as percentage of peak capital (0-1)",
+    ["strategy"],
+)
+
+EXCHANGE_HEALTH_SCORE = Gauge(
+    "leviathan_exchange_health_score",
+    "Exchange health score (0=unhealthy, 1=fully healthy)",
+    ["exchange"],
+)
+
+CIRCUIT_BREAKER_STATE = Gauge(
+    "leviathan_circuit_breaker_state",
+    "Circuit breaker state (0=CLOSED, 1=OPEN, 2=HALF_OPEN)",
+)
+
+CAPITAL_TOTAL = Gauge(
+    "leviathan_capital_total_usd",
+    "Total capital under management in USD",
+)
+
+CAPITAL_AVAILABLE = Gauge(
+    "leviathan_capital_available_usd",
+    "Available (free) capital in USD",
+)
+
+
+def start_metrics_server(port: int = 8000) -> None:
+    """Start Prometheus metrics HTTP server on the given port."""
+    start_http_server(port)

@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg:       #0a0c0f;
+  --surface:  #111419;
+  --border:   #1e2329;
+  --muted:    #2a303a;
+  --text:     #c9d1d9;
+  --subtle:   #6e7681;
+  --profit:   #00ff88;
+  --loss:     #ff4d4d;
+  --accent:   #3b82f6;
+  --warn:     #f59e0b;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--subtle); }
+
+@layer components {
+  .card {
+    @apply bg-terminal-surface border border-terminal-border rounded-lg p-4;
+  }
+  .card-header {
+    @apply text-xs font-mono text-terminal-subtle uppercase tracking-widest mb-3;
+  }
+  .stat-value {
+    @apply text-2xl font-mono font-semibold tabular-nums;
+  }
+  .badge-profit {
+    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-profit border border-profit/30;
+    background: rgba(0,255,136,0.1);
+  }
+  .badge-loss {
+    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-loss border border-loss/30;
+    background: rgba(255,77,77,0.1);
+  }
+  .badge-accent {
+    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-accent border border-accent/30;
+    background: rgba(59,130,246,0.1);
+  }
+  .badge-warn {
+    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-warn border border-warn/30;
+    background: rgba(245,158,11,0.1);
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+}

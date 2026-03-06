@@ -1,0 +1,63 @@
+# =============================================================================
+# LEVIATHAN Prometheus Configuration
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    cluster: leviathan
+    environment: development
+
+# Alertmanager (configure when available)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# Load alert rules
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  # ---------------------------------------------------------------------------
+  # Prometheus self-monitoring
+  # ---------------------------------------------------------------------------
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # ---------------------------------------------------------------------------
+  # LEVIATHAN Engine — REST API metrics at /metrics
+  # ---------------------------------------------------------------------------
+  - job_name: leviathan_engine
+    static_configs:
+      - targets: ['engine:8000']
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: engine
+
+  # ---------------------------------------------------------------------------
+  # Redis — via redis_exporter (Amendment 1C)
+  # ---------------------------------------------------------------------------
+  - job_name: redis
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 15s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: redis
+
+  # ---------------------------------------------------------------------------
+  # TimescaleDB / PostgreSQL — via postgres_exporter (add when configured)
+  # ---------------------------------------------------------------------------
+  # - job_name: postgresql
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+  #   scrape_interval: 15s

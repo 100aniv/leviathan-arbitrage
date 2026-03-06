@@ -1,0 +1,225 @@
+# =============================================================================
+# LEVIATHAN Prometheus Alert Rules
+# Amendment 1C: Redis critical alerts — eviction, memory pressure, down
+# =============================================================================
+
+groups:
+  # ---------------------------------------------------------------------------
+  # Redis Critical Alerts (Amendment 1C)
+  # ---------------------------------------------------------------------------
+  - name: redis_critical
+    rules:
+      # CRITICAL: Any key eviction means position data may be silently lost.
+      # With noeviction policy this should NEVER fire — if it does, it indicates
+      # the Redis config has been overridden or a different Redis instance is running.
+      - alert: RedisEvictionDetected
+        expr: increase(redis_evicted_keys_total[1m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis evicted keys — position state may be lost"
+          description: >
+            Redis has evicted {{ $value }} keys in the last minute.
+            This should NEVER happen with noeviction policy.
+            Engine HALT flag should be set. Immediate investigation required.
+          runbook: "Check redis.conf maxmemory-policy=noeviction. Verify Redis container config."
+
+      # WARNING: Memory pressure approaching limit — pre-alert before potential OOM.
+      - alert: RedisMemoryPressure
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.80
+        for: 30s
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis memory usage > 80%"
+          description: "Redis memory usage exceeds 80% of maxmemory (8gb). At 100%, writes will fail and the engine will HALT."
+          runbook: "Review stream retention policies. Trim old XADD entries. Consider increasing maxmemory."
+
+      # CRITICAL: Redis memory over 95% — imminent write failure.
+      - alert: RedisMemoryCritical
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.95
+        for: 10s
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis memory usage > 95% — write failures imminent"
+          description: "Redis memory exceeds 95%. With noeviction policy, next write will fail. Engine should halt new trades."
+          runbook: "Immediate action required. XDEL old stream entries. Restart with increased maxmemory if needed."
+
+      # CRITICAL: Redis unreachable — engine must be in HALT state.
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 5s
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis is unreachable — engine must be in HALT state"
+          description: >
+            Redis exporter cannot reach Redis at redis:6379.
+            The engine's in-process HALT flag (Amendment 1D) should have fired within 1ms.
+            No new orders should be possible. Recovery protocol will run on reconnection.
+          runbook: "1) Check Redis container: docker compose ps redis. 2) Check logs: docker compose logs redis. 3) After restart, verify engine recovery completes before clearing HALT."
+
+      # WARNING: Redis connection saturation.
+      - alert: RedisConnectionSaturation
+        expr: redis_connected_clients / redis_config_maxclients > 0.80
+        for: 60s
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis connections > 80% of maxclients"
+          description: "Redis has {{ $value }} connected clients approaching the maxclients limit."
+
+      # WARNING: Redis replication lag (if replica is configured).
+      - alert: RedisReplicationLag
+        expr: redis_connected_slaves < 1 and redis_server_slave_read_only == 0
+        for: 30s
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis master has no connected replicas"
+          description: "Redis master has lost all replica connections."
+
+  # ---------------------------------------------------------------------------
+  # Engine Alerts
+  # ---------------------------------------------------------------------------
+  - name: engine_critical
+    rules:
+      # CRITICAL: Engine process down.
+      - alert: EngineDown
+        expr: up{job="leviathan_engine"} == 0
+        for: 10s
+        labels:
+          severity: critical
+          component: engine
+        annotations:
+          summary: "LEVIATHAN engine is unreachable"
+          description: "Engine health endpoint is not responding. Check container status."
+
+      # CRITICAL: Kill switch activated.
+      - alert: KillSwitchActivated
+        expr: leviathan_kill_switch_active == 1
+        for: 0s
+        labels:
+          severity: critical
+          component: engine
+        annotations:
+          summary: "LEVIATHAN kill switch is ACTIVE — no new orders"
+          description: "The kill switch has been triggered. Engine is in HALT state. Manual review required before resuming."
+
+      # WARNING: High trade rejection rate.
+      - alert: HighTradeRejectionRate
+        expr: rate(leviathan_trades_rejected_total[5m]) / (rate(leviathan_trades_attempted_total[5m]) + 0.001) > 0.50
+        for: 60s
+        labels:
+          severity: warning
+          component: engine
+        annotations:
+          summary: "Trade rejection rate > 50%"
+          description: "More than 50% of attempted trades are being rejected. Check risk guardian logs."
+
+      # WARNING: Rollback rate elevated.
+      - alert: ElevatedRollbackRate
+        expr: rate(leviathan_rollbacks_total[5m]) > 0.1
+        for: 120s
+        labels:
+          severity: warning
+          component: execution
+        annotations:
+          summary: "Elevated rollback rate (>0.1/s over 2 minutes)"
+          description: "High rollback frequency may indicate adverse market conditions or execution issues."
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure Alerts
+  # ---------------------------------------------------------------------------
+  - name: infrastructure
+    rules:
+      - alert: TimescaleDBDown
+        expr: up{job="postgresql"} == 0
+        for: 10s
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "TimescaleDB is unreachable"
+          description: "PostgreSQL/TimescaleDB health check failed. Position WAL dual-writes will fail — engine should reject all trades."
+
+  # ---------------------------------------------------------------------------
+  # LEVIATHAN Engine — core trading risk alerts (Step 2.4)
+  # ---------------------------------------------------------------------------
+  - name: leviathan.engine
+    interval: 15s
+    rules:
+
+      # CRITICAL: Circuit breaker opened — trading halted on an exchange
+      - alert: circuit_breaker_opened
+        expr: engine_circuit_breaker_state == 1
+        for: 0m
+        labels:
+          severity: critical
+          component: engine
+        annotations:
+          summary: "Circuit breaker opened on {{ $labels.exchange }}"
+          description: "Circuit breaker for {{ $labels.exchange }} has opened. Trading is halted. Value: {{ $value }}"
+
+      # WARNING: Exchange WebSocket disconnected for > 30s
+      - alert: exchange_disconnected
+        expr: engine_exchange_connected == 0
+        for: 30s
+        labels:
+          severity: warning
+          component: engine
+        annotations:
+          summary: "Exchange {{ $labels.exchange }} disconnected"
+          description: "Exchange {{ $labels.exchange }} has been disconnected for more than 30 seconds."
+
+      # WARNING: API latency p99 exceeds 500ms
+      - alert: api_latency_high
+        expr: histogram_quantile(0.99, rate(engine_api_latency_seconds_bucket[5m])) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          component: engine
+        annotations:
+          summary: "API latency p99 is high ({{ $value | humanizeDuration }})"
+          description: "API p99 latency exceeded 500ms for 2 minutes. Current: {{ $value | humanizeDuration }}"
+
+      # WARNING: Max drawdown approaching the 2% hard limit
+      - alert: mdd_approaching
+        expr: engine_max_drawdown_percent > 1.5
+        for: 1m
+        labels:
+          severity: warning
+          component: risk
+        annotations:
+          summary: "Max drawdown approaching limit ({{ $value }}%)"
+          description: "Engine max drawdown is {{ $value }}%, approaching the 2% hard limit. Review positions immediately."
+
+      # CRITICAL: Kill switch activated — all trading suspended
+      - alert: kill_switch_activated
+        expr: engine_kill_switch_active == 1
+        for: 0m
+        labels:
+          severity: critical
+          component: engine
+        annotations:
+          summary: "Kill switch ACTIVATED — trading suspended"
+          description: "The engine kill switch has been activated. All trading is suspended. Immediate investigation required."
+
+      # WARNING: Strategy error rate > 0.1 errors/s
+      - alert: strategy_error_rate
+        expr: rate(engine_strategy_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          component: strategy
+        annotations:
+          summary: "Strategy {{ $labels.strategy }} error rate elevated ({{ $value | humanize }}/s)"
+          description: "Strategy {{ $labels.strategy }} is producing > 0.1 errors/s over 5 minutes. Rate: {{ $value | humanize }}/s"
