@@ -6,10 +6,29 @@ Supports dev/staging/prod environment switching.
 from __future__ import annotations
 
 from decimal import Decimal
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class ExecutionMode(StrEnum):
+    """Engine execution mode."""
+    PAPER = "paper"       # No API keys, synthetic data, InMemoryEventBus
+    SANDBOX = "sandbox"   # Testnet API keys, real data, paper execution
+    LIVE = "live"         # Real API keys, real data, real execution
+
+
+class CapitalTierConfig(BaseSettings):
+    """Capital tier settings for phased deployment."""
+    model_config = SettingsConfigDict(env_prefix="CAPITAL_")
+
+    tier: str = Field(default="alpha", description="alpha|beta|production")
+    initial_capital: Decimal = Field(
+        default=Decimal("70"),
+        description="Initial capital per exchange in USD",
+    )
 
 
 class RedisSettings(BaseSettings):
@@ -138,6 +157,10 @@ class Settings(BaseSettings):
     engine_env: Literal["dev", "staging", "prod", "test"] = Field(
         default="dev", alias="ENGINE_ENV"
     )
+    execution_mode: ExecutionMode = Field(
+        default=ExecutionMode.PAPER, alias="EXECUTION_MODE"
+    )
+    capital: CapitalTierConfig = Field(default_factory=CapitalTierConfig)
 
     redis: RedisSettings = Field(default_factory=RedisSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)

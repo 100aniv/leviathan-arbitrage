@@ -27,11 +27,18 @@ class EngineContext:
     running: bool = False
     kill_switch_active: bool = False
     environment: str = "unknown"
+    execution_mode: str = "paper"
     strategies: dict[str, Any] = field(default_factory=dict)
     positions: list[dict[str, Any]] = field(default_factory=list)
     realized_pnl: Decimal = field(default_factory=lambda: Decimal("0"))
     unrealized_pnl: Decimal = field(default_factory=lambda: Decimal("0"))
     ws_manager: Optional[ConnectionManager] = None
+    # Real subsystem references (set during engine init)
+    engine: Any = None
+    strategy_manager: Any = None
+    risk_guardian: Any = None
+    position_manager: Any = None
+    trade_consumer: Any = None
 
 
 class KillBody(BaseModel):
