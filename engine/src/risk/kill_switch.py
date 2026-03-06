@@ -93,13 +93,12 @@ def clear_halt() -> None:
     Clears both Python and Rust flags.
     """
     _HALT_FLAG.clear()
-    try:
-        from src.core.rust_bridge import get_rust_kill_switch_functions
-        rust_ks = get_rust_kill_switch_functions()
-        if rust_ks is not None:
+    rust_ks = _get_rust_ks()
+    if rust_ks is not None:
+        try:
             rust_ks["clear_halt"]()
-    except Exception:
-        pass
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------

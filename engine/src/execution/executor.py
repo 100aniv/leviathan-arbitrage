@@ -92,7 +92,6 @@ class AtomicExecutor:
         self._config = config or ExecutionConfig()
         # Per-exchange capital locks (asyncio.Lock prevents concurrent executions)
         self._locks: dict[str, asyncio.Lock] = {}
-        self._locked: set[str] = set()
 
     def _get_lock(self, exchange_id: str) -> asyncio.Lock:
         return self._locks.setdefault(exchange_id, asyncio.Lock())
