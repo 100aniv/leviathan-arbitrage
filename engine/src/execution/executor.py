@@ -405,12 +405,26 @@ class AtomicExecutor:
             leg1_ratio = leg1_result.fill_ratio(leg1_order.amount)
 
             if leg1_ratio <= self._config.partial_fill_threshold:
-                # Partial ≤80% or zero fill → cancel leg1 + rollback
+                # Partial ≤80% or zero fill → unwind if filled, cancel if not
                 logger.warning(
                     "leg1_partial_below_threshold ratio=%s strategy=%s",
                     leg1_ratio, strategy_id
                 )
-                await self._rollback_order(ex_a_id, leg1_order)
+                leg1_filled = leg1_result.trade is not None and leg1_result.filled_amount > 0
+                rb_ok = await self._rollback_order(ex_a_id, leg1_order, filled=leg1_filled)
+                if not rb_ok:
+                    halt_local()
+                    logger.critical(
+                        "leg1_partial_rollback_failed HALT_SET exchange=%s strategy=%s",
+                        ex_a_id, strategy_id
+                    )
+                    return ExecutionResult(
+                        status=ExecutionStatus.ROLLBACK_FAILED,
+                        leg1=leg1_result,
+                        leg2=None,
+                        error=f"Leg 1 partial rollback failed — engine halted",
+                        strategy_id=strategy_id,
+                    )
                 return ExecutionResult(
                     status=ExecutionStatus.ROLLED_BACK,
                     leg1=leg1_result,

@@ -609,3 +609,56 @@ async def test_same_exchange_filled_leg_uses_unwind_rollback(
     assert unwind_call.side == OrderSide.SELL  # opposite of leg1 BUY
     assert unwind_call.order_type == OrderType.MARKET
     assert unwind_call.price is None
+
+
+@pytest.mark.asyncio
+async def test_cross_exchange_leg1_partial_below_threshold_unwinds_filled(
+    executor: AtomicExecutor, exchange_a: MagicMock, exchange_b: MagicMock
+) -> None:
+    """Cross-exchange leg1 partial fill <=80% uses market unwind, not cancel."""
+    # leg1 returns 50% fill (below 80% threshold)
+    partial_trade = make_trade("binance", amount=Decimal("0.5"), side=OrderSide.BUY)
+    # First call: leg1 place (partial fill). Second call: unwind (succeeds).
+    unwind_trade = make_trade("binance", amount=Decimal("0.5"), side=OrderSide.SELL)
+    exchange_a.place_order = AsyncMock(side_effect=[partial_trade, unwind_trade])
+
+    leg1 = make_order("binance", OrderSide.BUY, amount=Decimal("1.0"))
+    leg2 = make_order("okx", OrderSide.SELL, amount=Decimal("1.0"))
+    result = await executor.execute_cross_exchange(
+        leg1_order=leg1, leg2_order=leg2,
+        strategy_id="strat_1", min_edge=Decimal("0.001"),
+    )
+
+    assert result.status == ExecutionStatus.ROLLED_BACK
+    # Leg2 never placed
+    exchange_b.place_order.assert_not_called()
+    # Second place_order is the MARKET unwind
+    assert exchange_a.place_order.call_count == 2
+    unwind_call = exchange_a.place_order.call_args_list[1][0][0]
+    assert unwind_call.order_type == OrderType.MARKET
+    assert unwind_call.price is None
+    assert unwind_call.side == OrderSide.SELL
+
+
+@pytest.mark.asyncio
+async def test_cross_exchange_leg1_partial_unwind_failure_halts(
+    executor: AtomicExecutor, exchange_a: MagicMock, exchange_b: MagicMock
+) -> None:
+    """Cross-exchange leg1 partial fill unwind failure triggers halt."""
+    from src.risk.kill_switch import is_halted
+
+    partial_trade = make_trade("binance", amount=Decimal("0.5"), side=OrderSide.BUY)
+    # First call: leg1 (partial fill). Second call: unwind fails.
+    exchange_a.place_order = AsyncMock(
+        side_effect=[partial_trade, RuntimeError("unwind refused")]
+    )
+
+    leg1 = make_order("binance", OrderSide.BUY, amount=Decimal("1.0"))
+    leg2 = make_order("okx", OrderSide.SELL, amount=Decimal("1.0"))
+    result = await executor.execute_cross_exchange(
+        leg1_order=leg1, leg2_order=leg2,
+        strategy_id="strat_1", min_edge=Decimal("0.001"),
+    )
+
+    assert result.status == ExecutionStatus.ROLLBACK_FAILED
+    assert is_halted()
