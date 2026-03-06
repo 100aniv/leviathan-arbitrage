@@ -20,6 +20,7 @@ Confidence intervals based on extrapolation distance (size / ADV):
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
@@ -61,15 +62,23 @@ class CEXOrderbookSlippage:
 
     Uses square-root impact model with power-law decay.
     Cold-start: apply 1.5x conservative multiplier until calibrated.
+
+    GAMMA and k are configurable via environment variables:
+      - SLIPPAGE_GAMMA (default 0.5)
+      - SLIPPAGE_K_DEFAULT (default 1.0)
+      - SLIPPAGE_CONSERVATIVE_MULTIPLIER (default 1.5)
     """
 
-    COLD_START_MULTIPLIER = Decimal("1.5")
-    GAMMA = 0.5
+    COLD_START_MULTIPLIER = Decimal(os.getenv("SLIPPAGE_CONSERVATIVE_MULTIPLIER", "1.5"))
+    GAMMA = float(os.getenv("SLIPPAGE_GAMMA", "0.5"))
     T_0 = 60.0  # seconds
+
+    # Flag indicating whether GAMMA has been calibrated against live data.
+    GAMMA_CALIBRATED: bool = os.getenv("SLIPPAGE_GAMMA_CALIBRATED", "false").lower() == "true"
 
     def __init__(
         self,
-        k: Decimal = Decimal("1.0"),
+        k: Decimal = Decimal(os.getenv("SLIPPAGE_K_DEFAULT", "1.0")),
         cold_start: bool = True,
     ) -> None:
         self.k = k
