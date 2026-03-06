@@ -59,12 +59,16 @@ class NativeAdapter(abc.ABC):
         sandbox: bool = False,
         rate_limits: dict[str, RateLimitConfig] | None = None,
         stale_threshold_seconds: float = 5.0,
+        slippage_k: Decimal = Decimal("1.0"),
+        slippage_gamma: Decimal = Decimal("0.5"),
     ) -> None:
         self.exchange_id = exchange_id
         self._api_key = api_key
         self._api_secret = api_secret
         self._passphrase = passphrase
         self._sandbox = sandbox
+        self._slippage_k = slippage_k
+        self._slippage_gamma = slippage_gamma
 
         self._health = HealthChecker(exchange_id, stale_threshold_seconds)
         limits = rate_limits or DEFAULT_RATE_LIMITS.get(
@@ -453,12 +457,11 @@ class NativeAdapter(abc.ABC):
 
         Uses PowerLaw model from QUANT_MANIFESTO §8.1:
             slippage = base_slippage * k * size^gamma
-        with k=1.0, gamma=0.5, base_slippage=0.0001 (1bp).
+        with configurable k and gamma (defaults: k=1.0, gamma=0.5),
+        base_slippage=0.0001 (1bp).
         """
-        k = Decimal("1.0")
-        gamma = Decimal("0.5")
         base_slippage = Decimal("0.0001")
-        slippage = base_slippage * k * (size ** gamma)
+        slippage = base_slippage * self._slippage_k * (size ** self._slippage_gamma)
         return slippage
 
     # ------------------------------------------------------------------
@@ -466,8 +469,11 @@ class NativeAdapter(abc.ABC):
     # ------------------------------------------------------------------
 
     def _ws_ticker_url(self, symbol: str) -> str:
-        """Return WS URL for ticker stream. Defaults to orderbook URL."""
-        return self._ws_orderbook_url(symbol)
+        """Return WS URL for ticker stream. Subclasses must override."""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement _ws_ticker_url. "
+            "Override this method to subscribe to ticker streams."
+        )
 
     def _ws_ticker_subscribe_message(self, symbol: str) -> dict | str | None:
         """Return WS subscribe message for ticker. Defaults to None."""

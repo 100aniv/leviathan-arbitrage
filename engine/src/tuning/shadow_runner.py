@@ -146,34 +146,21 @@ class ShadowRunner:
         return decision, result
 
     def print_report(self, result: ShadowResult) -> None:
-        """Print human-readable shadow evaluation report."""
+        """Log human-readable shadow evaluation report."""
         br = result.baseline_result
         sr = result.shadow_result
         ev = result.evaluation
 
-        print(f"\n{'=' * 60}")
-        print(f"Shadow Mode Evaluation: {result.strategy_id}")
-        print(f"{'=' * 60}")
-        print(f"\nBaseline Performance:")
-        print(f"  PnL:        ${br.total_pnl:.4f}")
-        print(f"  Sharpe:     {br.sharpe_ratio:.4f}")
-        print(f"  Win Rate:   {br.win_rate * 100:.1f}%")
-        print(f"  Trades:     {br.num_trades}")
-        print(f"  MDD:        {br.max_drawdown * 100:.2f}%")
-        print(f"\nShadow (Optimized) Performance:")
-        print(f"  PnL:        ${sr.total_pnl:.4f}")
-        print(f"  Sharpe:     {sr.sharpe_ratio:.4f}")
-        print(f"  Win Rate:   {sr.win_rate * 100:.1f}%")
-        print(f"  Trades:     {sr.num_trades}")
-        print(f"  MDD:        {sr.max_drawdown * 100:.2f}%")
-        print(f"\nEvaluation:")
-        print(f"  Sim-Real Variance: {ev.sim_real_variance_pct:.1f}%")
-        print(f"  T-statistic:       {ev.t_statistic:.4f}")
-        print(f"  P-value:           {ev.p_value:.4f}")
-        print(f"  Significant:       {ev.is_significant}")
-        print(f"  Variance OK:       {ev.passes_variance_check}")
-        print(f"\n  >>> {ev.recommendation}")
-        print(f"\n  Sharpe improved: {sr.sharpe_ratio > br.sharpe_ratio}")
-        print(f"  PnL improved:    {sr.total_pnl > br.total_pnl}")
-        print(f"  Time: {result.elapsed_seconds:.2f}s")
-        print(f"{'=' * 60}")
+        lines = [
+            f"Shadow Mode Evaluation: {result.strategy_id}",
+            f"Baseline: PnL=${br.total_pnl:.4f} Sharpe={br.sharpe_ratio:.4f} "
+            f"WinRate={br.win_rate * 100:.1f}% Trades={br.num_trades} MDD={br.max_drawdown * 100:.2f}%",
+            f"Shadow:   PnL=${sr.total_pnl:.4f} Sharpe={sr.sharpe_ratio:.4f} "
+            f"WinRate={sr.win_rate * 100:.1f}% Trades={sr.num_trades} MDD={sr.max_drawdown * 100:.2f}%",
+            f"Eval: Variance={ev.sim_real_variance_pct:.1f}% T={ev.t_statistic:.4f} "
+            f"P={ev.p_value:.4f} Significant={ev.is_significant} VarianceOK={ev.passes_variance_check}",
+            f">>> {ev.recommendation}",
+            f"Sharpe improved={sr.sharpe_ratio > br.sharpe_ratio} "
+            f"PnL improved={sr.total_pnl > br.total_pnl} Time={result.elapsed_seconds:.2f}s",
+        ]
+        logger.info("shadow_report\n%s", "\n".join(lines))
