@@ -235,6 +235,35 @@ class TestCheckExchanges:
         check = await checker._check_exchanges()
         assert check.passed is False
 
+    @pytest.mark.asyncio
+    async def test_exchanges_check_uses_health_score_fallback_when_no_connected_attr(
+        self,
+    ) -> None:
+        """When _connected is None, adapter falls back to health_score > 0."""
+        adapter = MagicMock()
+        adapter.exchange_id = "binance"
+        del adapter._connected  # Remove _connected so getattr returns None via spec
+        adapter._connected = None  # Explicit None triggers health_score fallback
+        adapter.health_score = 0.99  # > 0.0, so connected
+        adapter.get_balances = AsyncMock(return_value={"USDT": MagicMock(free=500.0)})
+        checker = make_checker(exchanges={"binance": adapter})
+        check = await checker._check_exchanges()
+        assert check.passed is True
+
+    @pytest.mark.asyncio
+    async def test_exchanges_check_marks_disconnected_when_health_score_zero(
+        self,
+    ) -> None:
+        """health_score=0.0 with no _connected attr → disconnected."""
+        adapter = MagicMock()
+        adapter.exchange_id = "binance"
+        adapter._connected = None  # force health_score fallback
+        adapter.health_score = 0.0
+        adapter.get_balances = AsyncMock(return_value={})
+        checker = make_checker(exchanges={"binance": adapter})
+        check = await checker._check_exchanges()
+        assert check.passed is False
+
 
 # ---------------------------------------------------------------------------
 # Check 3: API Key Permissions
@@ -307,6 +336,45 @@ class TestCheckBalanceMinimum:
         check = await checker._check_balance_minimum()
         assert check.passed is False
         assert "200.00" in check.threshold
+
+    @pytest.mark.asyncio
+    async def test_balance_check_accepts_raw_float_balance(self) -> None:
+        """Balance as a plain float (not an object with .free) is handled correctly."""
+        adapter = make_mock_adapter(
+            "binance", balances={"USDT": 500.0}  # plain float, no .free attribute
+        )
+        checker = make_checker(
+            exchanges={"binance": adapter},
+            settings=make_settings(initial_capital=70.0),
+        )
+        check = await checker._check_balance_minimum()
+        assert check.passed is True
+
+    @pytest.mark.asyncio
+    async def test_balance_check_accepts_usd_currency_key(self) -> None:
+        """USD (not USDT) is also accepted as a valid balance key."""
+        adapter = make_mock_adapter(
+            "binance", balances={"USD": MagicMock(free=200.0)}
+        )
+        checker = make_checker(
+            exchanges={"binance": adapter},
+            settings=make_settings(initial_capital=70.0),
+        )
+        check = await checker._check_balance_minimum()
+        assert check.passed is True
+
+    @pytest.mark.asyncio
+    async def test_balance_check_fails_when_get_balances_raises(self) -> None:
+        """If get_balances raises, exchange is counted as below minimum."""
+        adapter = make_mock_adapter("binance")
+        adapter.get_balances = AsyncMock(side_effect=Exception("network error"))
+        checker = make_checker(
+            exchanges={"binance": adapter},
+            settings=make_settings(initial_capital=70.0),
+        )
+        check = await checker._check_balance_minimum()
+        assert check.passed is False
+        assert "error" in check.detail
 
 
 # ---------------------------------------------------------------------------
@@ -506,6 +574,59 @@ class TestCheckShadowVerification:
         checker = make_checker(db_pool=pool)
         check = await checker._check_shadow_verification()
         assert check.passed is False
+
+    @pytest.mark.asyncio
+    async def test_shadow_check_fails_when_insufficient_hours(self) -> None:
+        """Shadow data exists but only 24h elapsed — need 72h."""
+        from datetime import timedelta
+
+        # first_shadow is 24h ago (48h short of required 72h)
+        recent_start = datetime.now(timezone.utc) - timedelta(hours=24)
+        pool = make_db_pool(
+            query_results={
+                "MIN(recorded_at)": recent_start,
+                "incident": 0,
+            }
+        )
+        checker = make_checker(db_pool=pool)
+        check = await checker._check_shadow_verification()
+        assert check.passed is False
+        assert "elapsed" in check.detail or "24." in check.value
+
+    @pytest.mark.asyncio
+    async def test_shadow_check_fails_when_incidents_found(self) -> None:
+        """Shadow ran 80h but has 3 incidents — should fail."""
+        from datetime import timedelta
+
+        old_start = datetime.now(timezone.utc) - timedelta(hours=80)
+        pool = make_db_pool(
+            query_results={
+                "MIN(recorded_at)": old_start,
+                "incident": 3,
+            }
+        )
+        checker = make_checker(db_pool=pool)
+        check = await checker._check_shadow_verification()
+        assert check.passed is False
+        assert "incident" in check.detail
+
+    @pytest.mark.asyncio
+    async def test_shadow_check_passes_with_sufficient_hours_and_no_incidents(
+        self,
+    ) -> None:
+        """Shadow ran 80h with 0 incidents — check should pass."""
+        from datetime import timedelta
+
+        old_start = datetime.now(timezone.utc) - timedelta(hours=80)
+        pool = make_db_pool(
+            query_results={
+                "MIN(recorded_at)": old_start,
+                "incident": 0,
+            }
+        )
+        checker = make_checker(db_pool=pool)
+        check = await checker._check_shadow_verification()
+        assert check.passed is True
 
 
 # ---------------------------------------------------------------------------

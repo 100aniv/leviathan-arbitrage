@@ -677,6 +677,36 @@ class TestSubscribeOrderbook:
 
 
 # ---------------------------------------------------------------------------
+# estimate_slippage
+# ---------------------------------------------------------------------------
+
+class TestEstimateSlippage:
+    @pytest.mark.asyncio
+    async def test_returns_decimal(self, adapter):
+        result = await adapter.estimate_slippage(OrderSide.BUY, Decimal("1.0"), "BTC/USDT")
+        assert isinstance(result, Decimal)
+
+    @pytest.mark.asyncio
+    async def test_larger_size_returns_larger_slippage(self, adapter):
+        small = await adapter.estimate_slippage(OrderSide.BUY, Decimal("1.0"), "BTC/USDT")
+        large = await adapter.estimate_slippage(OrderSide.BUY, Decimal("100.0"), "BTC/USDT")
+        assert large > small
+
+    @pytest.mark.asyncio
+    async def test_slippage_always_positive(self, adapter):
+        result = await adapter.estimate_slippage(OrderSide.SELL, Decimal("0.01"), "ETH/USDT")
+        assert result > Decimal("0")
+
+    @pytest.mark.asyncio
+    async def test_slippage_formula_correctness(self, adapter):
+        # slippage = 0.0001 * 1.0 * size^0.5
+        size = Decimal("4.0")
+        expected = Decimal("0.0001") * Decimal("1.0") * (size ** Decimal("0.5"))
+        result = await adapter.estimate_slippage(OrderSide.BUY, size, "BTC/USDT")
+        assert result == expected
+
+
+# ---------------------------------------------------------------------------
 # NativeAdapter constructor and attributes
 # ---------------------------------------------------------------------------
 

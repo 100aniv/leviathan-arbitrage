@@ -593,3 +593,158 @@ class TestExecuteShadowTrade:
         await sm._execute_shadow_trade(make_signal())
 
         market_recorder.record_execution.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# ShadowMode._on_orderbook — market recorder orderbook recording
+# ---------------------------------------------------------------------------
+
+
+class TestOnOrderbookMarketRecorder:
+    @pytest.mark.asyncio
+    async def test_on_orderbook_records_orderbook_when_recorder_provided(self) -> None:
+        """_on_orderbook calls market_recorder.record_orderbook when best bid/ask exist."""
+        market_recorder = MagicMock()
+        market_recorder.record_orderbook = MagicMock()
+
+        sm = make_shadow_mode(market_recorder=market_recorder)
+        sm._running = True
+
+        bids = [["50000", "1.0"], ["49999", "0.5"]]
+        asks = [["50001", "1.0"], ["50002", "0.5"]]
+        await sm._on_orderbook("binance", "BTC/USDT", bids, asks)
+
+        market_recorder.record_orderbook.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_on_orderbook_skips_recording_when_no_recorder(self) -> None:
+        """_on_orderbook does not error when market_recorder is None."""
+        sm = make_shadow_mode(market_recorder=None)
+        sm._running = True
+
+        bids = [["50000", "1.0"]]
+        asks = [["50001", "1.0"]]
+        # Should not raise even with no recorder
+        await sm._on_orderbook("binance", "BTC/USDT", bids, asks)
+
+    @pytest.mark.asyncio
+    async def test_on_orderbook_notifies_telegram_on_signal(self) -> None:
+        """When a signal is emitted, Telegram is notified."""
+        signal = make_signal()
+        signal_generator = MagicMock()
+        signal_generator.on_orderbook_update = AsyncMock(return_value=signal)
+
+        buy_trade = make_trade(side=OrderSide.BUY, price=Decimal("50010"), fee=Decimal("5"))
+        sell_trade = make_trade(side=OrderSide.SELL, price=Decimal("50090"), fee=Decimal("5"))
+        paper_executor = MagicMock()
+        paper_executor.execute = AsyncMock(side_effect=[buy_trade, sell_trade])
+
+        telegram = MagicMock()
+        telegram.send_signal_found = AsyncMock()
+
+        sm = make_shadow_mode(
+            signal_generator=signal_generator,
+            paper_executor=paper_executor,
+            telegram=telegram,
+        )
+        sm._running = True
+
+        await sm._on_orderbook("binance", "BTC/USDT", [["50000", "1.0"]], [["50001", "1.0"]])
+
+        telegram.send_signal_found.assert_awaited_once_with(signal)
+
+
+# ---------------------------------------------------------------------------
+# ShadowMode._send_summary
+# ---------------------------------------------------------------------------
+
+
+class TestSendSummary:
+    @pytest.mark.asyncio
+    async def test_send_summary_without_telegram_does_not_raise(self) -> None:
+        """_send_summary completes without error when telegram is None."""
+        sm = make_shadow_mode(telegram=None)
+        sm._stats.trades_executed = 5
+        sm._stats.trades_won = 3
+        sm._stats.total_pnl = 15.0
+        # Should not raise
+        await sm._send_summary()
+
+    @pytest.mark.asyncio
+    async def test_send_summary_calls_telegram_send_daily_summary(self) -> None:
+        """_send_summary calls telegram.send_daily_summary with correct fields."""
+        telegram = MagicMock()
+        telegram.send_daily_summary = AsyncMock()
+
+        sm = make_shadow_mode(telegram=telegram)
+        sm._stats.trades_executed = 10
+        sm._stats.trades_won = 7
+        sm._stats.total_pnl = 42.5
+        sm._stats.max_drawdown = 0.05
+
+        await sm._send_summary()
+
+        telegram.send_daily_summary.assert_awaited_once()
+        call_kwargs = telegram.send_daily_summary.call_args[0][0]
+        assert call_kwargs["trades"] == 10
+        assert abs(call_kwargs["win_rate"] - 0.7) < 1e-9
+        assert call_kwargs["total_pnl"] == 42.5
+
+    @pytest.mark.asyncio
+    async def test_send_summary_win_rate_zero_when_no_trades(self) -> None:
+        """_send_summary computes win_rate=0 when no trades executed."""
+        telegram = MagicMock()
+        telegram.send_daily_summary = AsyncMock()
+
+        sm = make_shadow_mode(telegram=telegram)
+        sm._stats.trades_executed = 0
+
+        await sm._send_summary()
+
+        call_kwargs = telegram.send_daily_summary.call_args[0][0]
+        assert call_kwargs["win_rate"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_send_summary_updates_last_daily_summary_timestamp(self) -> None:
+        """_send_summary sets stats.last_daily_summary after successful send."""
+        telegram = MagicMock()
+        telegram.send_daily_summary = AsyncMock()
+
+        sm = make_shadow_mode(telegram=telegram)
+        assert sm._stats.last_daily_summary is None
+
+        await sm._send_summary()
+
+        assert sm._stats.last_daily_summary is not None
+
+
+# ---------------------------------------------------------------------------
+# ShadowMode.stop — Telegram final summary
+# ---------------------------------------------------------------------------
+
+
+class TestShadowModeStopSendsFinalSummary:
+    @pytest.mark.asyncio
+    async def test_stop_sends_final_summary_via_telegram(self) -> None:
+        """stop() triggers a final Telegram summary when telegram is configured."""
+        telegram = MagicMock()
+        telegram.send_alert = AsyncMock()
+        telegram.send_daily_summary = AsyncMock()
+
+        sm = make_shadow_mode(telegram=telegram)
+        await sm.start()
+        await sm.stop()
+
+        telegram.send_daily_summary.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_does_not_raise_when_telegram_send_fails(self) -> None:
+        """stop() swallows Telegram errors in the final summary."""
+        telegram = MagicMock()
+        telegram.send_alert = AsyncMock()
+        telegram.send_daily_summary = AsyncMock(side_effect=RuntimeError("network down"))
+
+        sm = make_shadow_mode(telegram=telegram)
+        await sm.start()
+        # Must not raise
+        await sm.stop()

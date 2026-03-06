@@ -1001,6 +1001,9 @@ where:
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2026-03-06 | Initial manifesto: 3 slippage models, 6-check live gate, 14-step execution, formula reference |
+| 1.1 | 2026-03-07 | Phase 4 complete: 6 native exchange adapters (ccxt-free), compliance 100%, configurable GAMMA/k via env vars |
+| 1.2 | 2026-03-07 | Architect verification fixes: cancel_order symbol propagation for Binance rollback, DB credential parameterization |
+| 1.3 | 2026-03-07 | estimate_slippage interface added to NativeAdapter, auto-tuner validation, pre-flight dry run tests, coverage boost |
 
 ---
 

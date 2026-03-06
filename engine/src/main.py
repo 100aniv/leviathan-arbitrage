@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -956,9 +957,10 @@ async def main() -> None:
     app = create_app(context)
     engine = Engine(context=context)
 
+    host = os.getenv("API_HOST", "0.0.0.0")
     server_config = uvicorn.Config(
         app=app,
-        host="0.0.0.0",
+        host=host,
         port=8000,
         log_level="info",
     )

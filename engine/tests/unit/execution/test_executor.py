@@ -428,3 +428,128 @@ async def test_capital_lock_released_on_rollback(
     )
     assert not executor.is_locked("binance")
     assert not executor.is_locked("okx")
+
+
+# ---------------------------------------------------------------------------
+# _rollback_order — symbol propagation (newly fixed path)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rollback_order_passes_symbol_to_cancel_order(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """_rollback_order passes order.symbol as kwarg to cancel_order (Binance fix)."""
+    order = make_order("binance", OrderSide.BUY)
+    order.order_id = "ord_abc"
+    await executor._rollback_order("binance", order)
+    exchange_a.cancel_order.assert_called_once_with("ord_abc", symbol=order.symbol)
+
+
+@pytest.mark.asyncio
+async def test_rollback_order_falls_back_when_symbol_kwarg_raises_type_error(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """_rollback_order falls back to cancel_order(id) when symbol kwarg causes TypeError."""
+
+    async def cancel_no_symbol(order_id: str) -> bool:
+        return True
+
+    # Simulates an adapter that doesn't accept the symbol kwarg
+    async def cancel_raise_on_symbol(order_id: str, **kwargs: object) -> bool:
+        if "symbol" in kwargs:
+            raise TypeError("unexpected keyword argument 'symbol'")
+        return True
+
+    exchange_a.cancel_order = AsyncMock(side_effect=cancel_raise_on_symbol)
+    order = make_order("binance", OrderSide.BUY)
+    order.order_id = "ord_xyz"
+    result = await executor._rollback_order("binance", order)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_rollback_order_returns_false_when_cancel_raises_runtime_error(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """_rollback_order returns False when cancel_order raises a non-TypeError exception."""
+    exchange_a.cancel_order = AsyncMock(side_effect=RuntimeError("exchange error"))
+    order = make_order("binance", OrderSide.BUY)
+    order.order_id = "ord_fail"
+    result = await executor._rollback_order("binance", order)
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_rollback_order_returns_true_when_order_id_is_none(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """_rollback_order returns True without calling cancel_order when order_id is None."""
+    order = make_order("binance", OrderSide.BUY)
+    order.order_id = ""  # Empty string — no cancel needed
+    result = await executor._rollback_order("binance", order)
+    assert result is True
+    exchange_a.cancel_order.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_rollback_order_uses_overridden_order_id(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """_rollback_order uses the provided order_id override instead of order.order_id."""
+    order = make_order("binance", OrderSide.BUY)
+    order.order_id = "original_id"
+    await executor._rollback_order("binance", order, order_id="trade_fill_id")
+    # Must cancel using the override id, not order.order_id
+    call_args = exchange_a.cancel_order.call_args
+    assert call_args[0][0] == "trade_fill_id"
+
+
+@pytest.mark.asyncio
+async def test_rollback_order_returns_false_for_unknown_exchange(
+    executor: AtomicExecutor,
+) -> None:
+    """_rollback_order returns False immediately when exchange is not found."""
+    order = make_order("unknown_exchange", OrderSide.BUY)
+    order.order_id = "ord_001"
+    result = await executor._rollback_order("unknown_exchange", order)
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_do_rollback_cross_halts_engine_when_cancel_fails(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """_do_rollback_cross triggers halt when rollback fails on Exchange A."""
+    from src.risk.kill_switch import is_halted
+
+    exchange_a.cancel_order = AsyncMock(side_effect=RuntimeError("cancel refused"))
+    leg1_order = make_order("binance", OrderSide.BUY)
+    leg1_order.order_id = "ord_001"
+    leg1_trade = make_trade("binance")
+    leg1_result = LegResult(order=leg1_order, trade=leg1_trade)
+    leg2_result = LegResult(order=make_order("okx", OrderSide.SELL), error="timeout")
+
+    result = await executor._do_rollback_cross(
+        "binance", leg1_order, leg1_result, leg2_result, "strat_1", "Leg 2 timeout"
+    )
+    assert result.status == ExecutionStatus.ROLLBACK_FAILED
+    assert is_halted()
+
+
+@pytest.mark.asyncio
+async def test_same_exchange_health_check_fails_below_threshold(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """Same-exchange rejects when exchange health_score is below threshold."""
+    exchange_a.health_score = 0.5
+    leg1 = make_order("binance", OrderSide.BUY)
+    leg2 = make_order("binance", OrderSide.SELL)
+    result = await executor.execute_same_exchange(
+        exchange_id="binance",
+        leg1_order=leg1,
+        leg2_order=leg2,
+        strategy_id="strat_1",
+    )
+    assert result.status == ExecutionStatus.REJECTED
+    assert "health" in result.error.lower()

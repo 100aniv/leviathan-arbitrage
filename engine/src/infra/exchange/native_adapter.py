@@ -445,6 +445,23 @@ class NativeAdapter(abc.ABC):
         ...
 
     # ------------------------------------------------------------------
+    # Slippage estimation
+    # ------------------------------------------------------------------
+
+    async def estimate_slippage(self, side: OrderSide, size: Decimal, symbol: str) -> Decimal:
+        """Return expected slippage as a fraction (e.g., 0.001 = 0.1%).
+
+        Uses PowerLaw model from QUANT_MANIFESTO §8.1:
+            slippage = base_slippage * k * size^gamma
+        with k=1.0, gamma=0.5, base_slippage=0.0001 (1bp).
+        """
+        k = Decimal("1.0")
+        gamma = Decimal("0.5")
+        base_slippage = Decimal("0.0001")
+        slippage = base_slippage * k * (size ** gamma)
+        return slippage
+
+    # ------------------------------------------------------------------
     # Optional overrides
     # ------------------------------------------------------------------
 
