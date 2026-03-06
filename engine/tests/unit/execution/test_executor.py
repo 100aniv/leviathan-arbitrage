@@ -567,7 +567,10 @@ async def test_rollback_order_filled_places_market_unwind(
     exchange_a.place_order = AsyncMock(return_value=unwind_trade)
 
     order = make_order("binance", OrderSide.BUY, amount=Decimal("2.5"))
-    result = await executor._rollback_order("binance", order, filled=True)
+    # filled_amount < order.amount to prove unwind uses filled_amount
+    result = await executor._rollback_order(
+        "binance", order, filled=True, filled_amount=Decimal("1.8")
+    )
 
     assert result is True
     exchange_a.place_order.assert_called_once()
@@ -575,7 +578,7 @@ async def test_rollback_order_filled_places_market_unwind(
     assert placed.side == OrderSide.SELL  # opposite of BUY
     assert placed.order_type == OrderType.MARKET
     assert placed.price is None
-    assert placed.amount == Decimal("2.5")
+    assert placed.amount == Decimal("1.8")  # uses filled_amount, not order.amount
     assert placed.order_id.startswith("unwind-")
     # cancel_order should NOT have been called
     exchange_a.cancel_order.assert_not_called()

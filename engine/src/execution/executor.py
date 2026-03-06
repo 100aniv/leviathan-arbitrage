@@ -130,14 +130,15 @@ class AtomicExecutor:
 
     async def _rollback_order(
         self, exchange_id: str, order: Order, order_id: str | None = None,
-        filled: bool = False,
+        filled: bool = False, filled_amount: Decimal | None = None,
     ) -> bool:
         """
         Attempt to cancel/close an order as part of rollback.
 
         For unfilled/partially-filled orders: cancel via cancel_order().
         For filled orders (filled=True): place an opposing market order to unwind.
-        Passes order.symbol to cancel_order for exchanges that require it (e.g. Binance).
+        When filled_amount is provided, unwinds only the actual filled quantity
+        (not the original order amount) to avoid over-unwinding on partial fills.
         Returns True if rollback succeeded.
         """
         adapter = self._exchanges.get(exchange_id)
@@ -148,6 +149,7 @@ class AtomicExecutor:
             if filled:
                 # Filled orders can't be cancelled — place opposing market order
                 opposite_side = OrderSide.SELL if order.side == OrderSide.BUY else OrderSide.BUY
+                unwind_qty = filled_amount if filled_amount is not None else order.amount
                 unwind_order = Order(
                     order_id=f"unwind-{order.order_id}",
                     exchange_id=exchange_id,
@@ -155,7 +157,7 @@ class AtomicExecutor:
                     side=opposite_side,
                     order_type=OrderType.MARKET,
                     price=None,
-                    amount=order.amount,
+                    amount=unwind_qty,
                 )
                 logger.info(
                     "rollback_unwind exchange=%s side=%s amount=%s symbol=%s",
@@ -260,8 +262,8 @@ class AtomicExecutor:
                 # Rollback: cancel unfilled, unwind filled
                 leg1_filled = leg1_trade is not None and leg1_result.filled_amount > 0
                 leg2_filled = leg2_trade is not None and leg2_result.filled_amount > 0
-                rb1 = await self._rollback_order(exchange_id, leg1_order, filled=leg1_filled) if leg1_trade else True
-                rb2 = await self._rollback_order(exchange_id, leg2_order, filled=leg2_filled) if leg2_trade else True
+                rb1 = await self._rollback_order(exchange_id, leg1_order, filled=leg1_filled, filled_amount=leg1_result.filled_amount) if leg1_trade else True
+                rb2 = await self._rollback_order(exchange_id, leg2_order, filled=leg2_filled, filled_amount=leg2_result.filled_amount) if leg2_trade else True
 
                 if not rb1 or not rb2:
                     halt_local()
@@ -411,7 +413,7 @@ class AtomicExecutor:
                     leg1_ratio, strategy_id
                 )
                 leg1_filled = leg1_result.trade is not None and leg1_result.filled_amount > 0
-                rb_ok = await self._rollback_order(ex_a_id, leg1_order, filled=leg1_filled)
+                rb_ok = await self._rollback_order(ex_a_id, leg1_order, filled=leg1_filled, filled_amount=leg1_result.filled_amount)
                 if not rb_ok:
                     halt_local()
                     logger.critical(
@@ -520,7 +522,8 @@ class AtomicExecutor:
         leg1_filled = leg1_result.trade is not None and leg1_result.filled_amount > 0
         trade_order_id = leg1_result.trade.order_id if leg1_result.trade else None
         rb_ok = await self._rollback_order(
-            ex_a_id, leg1_order, order_id=trade_order_id, filled=leg1_filled
+            ex_a_id, leg1_order, order_id=trade_order_id, filled=leg1_filled,
+            filled_amount=leg1_result.filled_amount
         )
 
         if not rb_ok:
