@@ -181,7 +181,13 @@ class StrategyManager:
                 try:
                     result: Optional[TradeRequest] = await strategy.on_signal(signal)
                     if result is not None:
-                        await self._emit_trade_request(result)
+                        if getattr(strategy, "shadow_mode", False):
+                            logger.debug(
+                                "Shadow strategy %s generated TradeRequest (not emitting)",
+                                strategy.strategy_id,
+                            )
+                        else:
+                            await self._emit_trade_request(result)
                 except Exception as exc:
                     logger.error(
                         "Strategy %s raised on signal: %s",

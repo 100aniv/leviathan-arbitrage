@@ -65,10 +65,12 @@ class BaseStrategy(ABC):
         self,
         strategy_id: str,
         cost_calculator: CostCalculator,
+        shadow_mode: bool = False,
     ) -> None:
         self._strategy_id = strategy_id
         self._cost_calculator = cost_calculator
         self._is_active = False
+        self._shadow_mode = shadow_mode
         self._metrics = StrategyMetrics()
 
     @property
@@ -78,6 +80,14 @@ class BaseStrategy(ABC):
     @property
     def is_active(self) -> bool:
         return self._is_active
+
+    @property
+    def shadow_mode(self) -> bool:
+        return self._shadow_mode
+
+    @shadow_mode.setter
+    def shadow_mode(self, value: bool) -> None:
+        self._shadow_mode = value
 
     @property
     def metrics(self) -> StrategyMetrics:

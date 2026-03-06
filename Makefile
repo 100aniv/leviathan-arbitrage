@@ -98,4 +98,10 @@ paper-trade: ## Run 5-minute paper trading session
 paper-trade-quick: ## Run 1-minute paper trading session
 	cd $(ENGINE_DIR) && $(PYTHON) -m src.cli.paper_runner --duration 60 --report --verbose
 
+tune: ## Run auto-tuning with shadow evaluation
+	cd $(ENGINE_DIR) && $(PYTHON) -m src.cli.tune_cli --data synthetic --trials 50 --shadow
+
+tune-quick: ## Run quick auto-tuning (20 trials)
+	cd $(ENGINE_DIR) && $(PYTHON) -m src.cli.tune_cli --data synthetic --trials 20
+
 .DEFAULT_GOAL := help
