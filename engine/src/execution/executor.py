@@ -99,13 +99,19 @@ class AtomicExecutor:
 
     def is_locked(self, exchange_id: str) -> bool:
         """Return True if capital lock is currently held for this exchange."""
-        return exchange_id in self._locked
+        lock = self._locks.get(exchange_id)
+        return lock is not None and lock.locked()
 
-    def _acquire_lock(self, exchange_id: str) -> None:
-        self._locked.add(exchange_id)
+    async def _acquire_lock(self, exchange_id: str) -> None:
+        """Acquire the asyncio.Lock for mutual exclusion on this exchange."""
+        lock = self._get_lock(exchange_id)
+        await lock.acquire()
 
     def _release_lock(self, exchange_id: str) -> None:
-        self._locked.discard(exchange_id)
+        """Release the asyncio.Lock for this exchange."""
+        lock = self._locks.get(exchange_id)
+        if lock is not None and lock.locked():
+            lock.release()
 
     def _check_halt(self) -> bool:
         """Return True if engine is halted."""
@@ -198,7 +204,7 @@ class AtomicExecutor:
             )
 
         adapter = self._exchanges[exchange_id]
-        self._acquire_lock(exchange_id)
+        await self._acquire_lock(exchange_id)
 
         try:
             # Submit both legs in parallel
@@ -336,9 +342,10 @@ class AtomicExecutor:
             # Non-fatal: proceed with stale data
 
         # Step 5: max_rollback_cost check (Amendment 3C) — delegated to guardian
-        # Step 6-7: Acquire execution locks on BOTH exchanges
-        self._acquire_lock(ex_a_id)
-        self._acquire_lock(ex_b_id)
+        # Step 6-7: Acquire execution locks on BOTH exchanges (sorted to prevent deadlock)
+        first_id, second_id = sorted([ex_a_id, ex_b_id])
+        await self._acquire_lock(first_id)
+        await self._acquire_lock(second_id)
 
         leg1_result: LegResult | None = None
         leg2_result: LegResult | None = None

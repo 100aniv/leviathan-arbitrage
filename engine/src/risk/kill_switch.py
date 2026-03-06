@@ -40,14 +40,30 @@ def halt_local() -> None:
     sub-microsecond halt propagation to Rust hot-path code.
     """
     _HALT_FLAG.set()
-    # Also set Rust AtomicBool if available (Phase 2.3)
-    try:
-        from src.core.rust_bridge import get_rust_kill_switch_functions
-        rust_ks = get_rust_kill_switch_functions()
-        if rust_ks is not None:
+    # Also set Rust AtomicBool if available (Phase 2.3) — cached reference
+    rust_ks = _get_rust_ks()
+    if rust_ks is not None:
+        try:
             rust_ks["halt_local"]()
-    except Exception:
-        pass  # Rust unavailable — Python flag is sufficient
+        except Exception:
+            pass  # Rust unavailable — Python flag is sufficient
+
+
+_RUST_KS_CACHE: dict | None = None
+_RUST_KS_LOADED: bool = False
+
+
+def _get_rust_ks() -> dict | None:
+    """Lazy-load and cache Rust kill switch functions (avoids re-import on every call)."""
+    global _RUST_KS_CACHE, _RUST_KS_LOADED
+    if not _RUST_KS_LOADED:
+        try:
+            from src.core.rust_bridge import get_rust_kill_switch_functions
+            _RUST_KS_CACHE = get_rust_kill_switch_functions()
+        except Exception:
+            _RUST_KS_CACHE = None
+        _RUST_KS_LOADED = True
+    return _RUST_KS_CACHE
 
 
 def is_halted() -> bool:
@@ -59,14 +75,14 @@ def is_halted() -> bool:
     """
     if _HALT_FLAG.is_set():
         return True
-    # Also check Rust AtomicBool if available (Phase 2.3)
-    try:
-        from src.core.rust_bridge import get_rust_kill_switch_functions
-        rust_ks = get_rust_kill_switch_functions()
-        if rust_ks is not None and rust_ks["is_halted"]():
-            return True
-    except Exception:
-        pass
+    # Also check Rust AtomicBool if available (Phase 2.3) — cached reference
+    rust_ks = _get_rust_ks()
+    if rust_ks is not None:
+        try:
+            if rust_ks["is_halted"]():
+                return True
+        except Exception:
+            pass
     return False
 
 
