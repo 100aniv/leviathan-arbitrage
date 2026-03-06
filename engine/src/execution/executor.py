@@ -14,7 +14,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from src.core.models import Order, OrderSide, Trade
+from src.core.models import Order, OrderSide, OrderType, Trade
 from src.infra.exchange.base import ExchangeAdapter
 from src.risk.kill_switch import halt_local, is_halted
 
@@ -153,8 +153,8 @@ class AtomicExecutor:
                     exchange_id=exchange_id,
                     symbol=order.symbol,
                     side=opposite_side,
-                    order_type=order.order_type,
-                    price=order.price,
+                    order_type=OrderType.MARKET,
+                    price=None,
                     amount=order.amount,
                 )
                 logger.info(
@@ -257,9 +257,11 @@ class AtomicExecutor:
             )
 
             if has_failure or partial_below:
-                # Rollback: cancel both
-                rb1 = await self._rollback_order(exchange_id, leg1_order) if leg1_trade else True
-                rb2 = await self._rollback_order(exchange_id, leg2_order) if leg2_trade else True
+                # Rollback: cancel unfilled, unwind filled
+                leg1_filled = leg1_trade is not None and leg1_result.filled_amount > 0
+                leg2_filled = leg2_trade is not None and leg2_result.filled_amount > 0
+                rb1 = await self._rollback_order(exchange_id, leg1_order, filled=leg1_filled) if leg1_trade else True
+                rb2 = await self._rollback_order(exchange_id, leg2_order, filled=leg2_filled) if leg2_trade else True
 
                 if not rb1 or not rb2:
                     halt_local()

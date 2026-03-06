@@ -556,3 +556,56 @@ async def test_same_exchange_health_check_fails_below_threshold(
     )
     assert result.status == ExecutionStatus.REJECTED
     assert "health" in result.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_rollback_order_filled_places_market_unwind(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """_rollback_order(filled=True) places opposing MARKET order, not cancel."""
+    unwind_trade = make_trade("binance", side=OrderSide.SELL)
+    exchange_a.place_order = AsyncMock(return_value=unwind_trade)
+
+    order = make_order("binance", OrderSide.BUY, amount=Decimal("2.5"))
+    result = await executor._rollback_order("binance", order, filled=True)
+
+    assert result is True
+    exchange_a.place_order.assert_called_once()
+    placed = exchange_a.place_order.call_args[0][0]
+    assert placed.side == OrderSide.SELL  # opposite of BUY
+    assert placed.order_type == OrderType.MARKET
+    assert placed.price is None
+    assert placed.amount == Decimal("2.5")
+    assert placed.order_id.startswith("unwind-")
+    # cancel_order should NOT have been called
+    exchange_a.cancel_order.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_same_exchange_filled_leg_uses_unwind_rollback(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """Same-exchange rollback detects filled legs and uses opposing market order."""
+    leg1_trade = make_trade("binance", side=OrderSide.BUY, amount=Decimal("1.0"))
+    # leg2 fails — triggers rollback of filled leg1
+    exchange_a.place_order = AsyncMock(
+        side_effect=[leg1_trade, RuntimeError("leg2 rejected"), leg1_trade]
+    )
+
+    leg1 = make_order("binance", OrderSide.BUY)
+    leg2 = make_order("binance", OrderSide.SELL)
+
+    result = await executor.execute_same_exchange(
+        exchange_id="binance",
+        leg1_order=leg1,
+        leg2_order=leg2,
+        strategy_id="strat_1",
+    )
+
+    assert result.status == ExecutionStatus.ROLLED_BACK
+    # Third place_order call is the unwind for filled leg1
+    assert exchange_a.place_order.call_count >= 3
+    unwind_call = exchange_a.place_order.call_args_list[2][0][0]
+    assert unwind_call.side == OrderSide.SELL  # opposite of leg1 BUY
+    assert unwind_call.order_type == OrderType.MARKET
+    assert unwind_call.price is None
