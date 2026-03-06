@@ -129,27 +129,49 @@ class AtomicExecutor:
         return await asyncio.wait_for(adapter.place_order(order), timeout=timeout_s)
 
     async def _rollback_order(
-        self, exchange_id: str, order: Order, order_id: str | None = None
+        self, exchange_id: str, order: Order, order_id: str | None = None,
+        filled: bool = False,
     ) -> bool:
         """
         Attempt to cancel/close an order as part of rollback.
-        order_id overrides order.order_id (use trade.order_id for filled orders).
+
+        For unfilled/partially-filled orders: cancel via cancel_order().
+        For filled orders (filled=True): place an opposing market order to unwind.
         Passes order.symbol to cancel_order for exchanges that require it (e.g. Binance).
         Returns True if rollback succeeded.
         """
         adapter = self._exchanges.get(exchange_id)
         if adapter is None:
             return False
-        effective_id = order_id or order.order_id
+
         try:
-            if effective_id:
-                # Pass symbol for native adapters that require it (Binance)
-                try:
-                    await adapter.cancel_order(effective_id, symbol=order.symbol)
-                except TypeError:
-                    # Fallback for adapters that don't accept symbol kwarg
-                    await adapter.cancel_order(effective_id)
-            # else: order was never submitted — nothing to cancel
+            if filled:
+                # Filled orders can't be cancelled — place opposing market order
+                opposite_side = OrderSide.SELL if order.side == OrderSide.BUY else OrderSide.BUY
+                unwind_order = Order(
+                    order_id=f"unwind-{order.order_id}",
+                    exchange_id=exchange_id,
+                    symbol=order.symbol,
+                    side=opposite_side,
+                    order_type=order.order_type,
+                    price=order.price,
+                    amount=order.amount,
+                )
+                logger.info(
+                    "rollback_unwind exchange=%s side=%s amount=%s symbol=%s",
+                    exchange_id, opposite_side, order.amount, order.symbol,
+                )
+                await self._place_with_timeout(adapter, unwind_order)
+            else:
+                effective_id = order_id or order.order_id
+                if effective_id:
+                    # Pass symbol for native adapters that require it (Binance)
+                    try:
+                        await adapter.cancel_order(effective_id, symbol=order.symbol)
+                    except TypeError:
+                        # Fallback for adapters that don't accept symbol kwarg
+                        await adapter.cancel_order(effective_id)
+                # else: order was never submitted — nothing to cancel
             return True
         except Exception as exc:
             logger.error("rollback_failed exchange=%s error=%s", exchange_id, exc)
@@ -435,12 +457,15 @@ class AtomicExecutor:
                 )
 
             # ── PHASE RECONCILIATION (step 13 — async, non-blocking) ──────
-            asyncio.ensure_future(
+            reconcile_task = asyncio.ensure_future(
                 self._post_execution_reconcile(
                     ex_a_id, ex_b_id, strategy_id,
-                    delay_s=self._config.post_reconcile_delay_s
+                    leg1_result=leg1_result,
+                    leg2_result=leg2_result,
+                    delay_s=self._config.post_reconcile_delay_s,
                 )
             )
+            reconcile_task.add_done_callback(self._reconcile_done_callback)
 
             logger.info(
                 "cross_exchange_success leg1=%s leg2=%s strategy=%s",
@@ -475,9 +500,12 @@ class AtomicExecutor:
             "cross_exchange_rollback reason=%s strategy=%s",
             reason, strategy_id
         )
-        # Use trade's order_id if available (order was filled, use that ID)
+        # If leg1 was filled, place opposing order to unwind; otherwise cancel
+        leg1_filled = leg1_result.trade is not None and leg1_result.filled_amount > 0
         trade_order_id = leg1_result.trade.order_id if leg1_result.trade else None
-        rb_ok = await self._rollback_order(ex_a_id, leg1_order, order_id=trade_order_id)
+        rb_ok = await self._rollback_order(
+            ex_a_id, leg1_order, order_id=trade_order_id, filled=leg1_filled
+        )
 
         if not rb_ok:
             halt_local()
@@ -501,28 +529,58 @@ class AtomicExecutor:
             strategy_id=strategy_id,
         )
 
+    @staticmethod
+    def _reconcile_done_callback(task: asyncio.Task[None]) -> None:
+        """Log errors from fire-and-forget reconciliation tasks."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("post_execution_reconcile_unhandled error=%s", exc)
+
     async def _post_execution_reconcile(
-        self, ex_a_id: str, ex_b_id: str, strategy_id: str, delay_s: float = 5.0
+        self,
+        ex_a_id: str,
+        ex_b_id: str,
+        strategy_id: str,
+        leg1_result: LegResult | None = None,
+        leg2_result: LegResult | None = None,
+        delay_s: float = 5.0,
     ) -> None:
         """
-        Amendment 4 Step 13: After delay_s, verify fills via REST on BOTH exchanges.
-        Logs any discrepancies found.
+        Amendment 4 Steps 13-14: After delay_s, verify fills via REST on BOTH exchanges.
+        Compares expected fills (from leg results) against actual positions.
+        Logs discrepancies and alerts on mismatch.
         """
         await asyncio.sleep(delay_s)
         logger.info(
             "post_execution_reconcile start ex_a=%s ex_b=%s strategy=%s",
             ex_a_id, ex_b_id, strategy_id
         )
+
+        expected_fills = {}
+        if leg1_result and leg1_result.trade:
+            expected_fills[ex_a_id] = leg1_result.trade.amount
+        if leg2_result and leg2_result.trade:
+            expected_fills[ex_b_id] = leg2_result.trade.amount
+
         for ex_id in (ex_a_id, ex_b_id):
             adapter = self._exchanges.get(ex_id)
             if adapter is None:
                 continue
             try:
                 positions = await adapter.get_positions()
+                expected = expected_fills.get(ex_id, Decimal("0"))
                 logger.info(
-                    "post_execution_reconcile ex=%s positions=%d",
-                    ex_id, len(positions)
+                    "post_execution_reconcile ex=%s positions=%d expected_fill=%s",
+                    ex_id, len(positions), expected
                 )
+                # Step 14: Flag mismatch if position count is unexpected
+                if expected > 0 and len(positions) == 0:
+                    logger.warning(
+                        "reconcile_mismatch ex=%s expected_fill=%s but_no_positions strategy=%s",
+                        ex_id, expected, strategy_id
+                    )
             except Exception as exc:
                 logger.error(
                     "post_execution_reconcile_error ex=%s error=%s", ex_id, exc

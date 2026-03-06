@@ -311,7 +311,7 @@ async def test_cross_exchange_leg1_failure_no_leg2(
 async def test_cross_exchange_leg2_failure_rollback_leg1(
     executor: AtomicExecutor, exchange_a: MagicMock, exchange_b: MagicMock
 ) -> None:
-    """Leg 1 is rolled back if Leg 2 fails."""
+    """Leg 1 is rolled back (via opposing unwind order) if Leg 2 fails."""
     exchange_b.place_order = AsyncMock(side_effect=Exception("leg2 failed"))
     leg1 = make_order("binance", OrderSide.BUY)
     leg2 = make_order("okx", OrderSide.SELL)
@@ -321,7 +321,9 @@ async def test_cross_exchange_leg2_failure_rollback_leg1(
         strategy_id="strat_1",
         min_edge=Decimal("0.001"),
     )
-    exchange_a.cancel_order.assert_called()
+    # Filled leg1 is unwound via opposing market order (place_order called twice:
+    # once for leg1 fill, once for unwind)
+    assert exchange_a.place_order.call_count >= 2
     assert result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.ROLLBACK_FAILED)
 
 
@@ -517,13 +519,14 @@ async def test_rollback_order_returns_false_for_unknown_exchange(
 
 
 @pytest.mark.asyncio
-async def test_do_rollback_cross_halts_engine_when_cancel_fails(
+async def test_do_rollback_cross_halts_engine_when_unwind_fails(
     executor: AtomicExecutor, exchange_a: MagicMock
 ) -> None:
-    """_do_rollback_cross triggers halt when rollback fails on Exchange A."""
+    """_do_rollback_cross triggers halt when unwind order fails on Exchange A."""
     from src.risk.kill_switch import is_halted
 
-    exchange_a.cancel_order = AsyncMock(side_effect=RuntimeError("cancel refused"))
+    # Filled leg → rollback uses opposing market order (place_order), not cancel
+    exchange_a.place_order = AsyncMock(side_effect=RuntimeError("unwind refused"))
     leg1_order = make_order("binance", OrderSide.BUY)
     leg1_order.order_id = "ord_001"
     leg1_trade = make_trade("binance")
