@@ -129,6 +129,7 @@ class AtomicExecutor:
         """
         Attempt to cancel/close an order as part of rollback.
         order_id overrides order.order_id (use trade.order_id for filled orders).
+        Passes order.symbol to cancel_order for exchanges that require it (e.g. Binance).
         Returns True if rollback succeeded.
         """
         adapter = self._exchanges.get(exchange_id)
@@ -137,7 +138,12 @@ class AtomicExecutor:
         effective_id = order_id or order.order_id
         try:
             if effective_id:
-                await adapter.cancel_order(effective_id)
+                # Pass symbol for native adapters that require it (Binance)
+                try:
+                    await adapter.cancel_order(effective_id, symbol=order.symbol)
+                except TypeError:
+                    # Fallback for adapters that don't accept symbol kwarg
+                    await adapter.cancel_order(effective_id)
             # else: order was never submitted — nothing to cancel
             return True
         except Exception as exc:

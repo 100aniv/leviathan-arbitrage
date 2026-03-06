@@ -257,10 +257,10 @@ class Engine:
     async def _init_database(self) -> None:
         """Initialize TimescaleDB connection pool, run schema migration, start MarketRecorder."""
         import os
-        dsn = os.getenv(
-            "DATABASE_URL",
-            "postgresql://leviathan:leviathan@localhost:5432/leviathan",
-        )
+        dsn = os.getenv("DATABASE_URL", "")
+        if not dsn:
+            logger.warning("DATABASE_URL not set — using default dev credentials")
+            dsn = "postgresql://leviathan:leviathan@localhost:5432/leviathan"
         # asyncpg needs raw postgres:// DSN (not postgresql+asyncpg://)
         asyncpg_dsn = dsn.replace("postgresql+asyncpg://", "postgresql://")
 
