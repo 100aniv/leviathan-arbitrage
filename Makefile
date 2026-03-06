@@ -86,4 +86,16 @@ migrate: ## Run database migrations
 migrate-new: ## Create a new migration
 	cd $(ENGINE_DIR) && alembic revision --autogenerate -m "$(name)"
 
+backtest: ## Run backtest with synthetic data
+	cd $(ENGINE_DIR) && $(PYTHON) -m src.cli.backtest_cli --data synthetic --candles 2000
+
+backtest-optimize: ## Run backtest with walk-forward optimization
+	cd $(ENGINE_DIR) && $(PYTHON) -m src.cli.backtest_cli --data synthetic --optimize --trials 50
+
+paper-trade: ## Run 5-minute paper trading session
+	cd $(ENGINE_DIR) && $(PYTHON) -m src.cli.paper_runner --duration 300 --report
+
+paper-trade-quick: ## Run 1-minute paper trading session
+	cd $(ENGINE_DIR) && $(PYTHON) -m src.cli.paper_runner --duration 60 --report --verbose
+
 .DEFAULT_GOAL := help
