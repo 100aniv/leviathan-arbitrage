@@ -28,6 +28,12 @@ services:
     container_name: leviathan-engine
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Override .env localhost values with Docker service hostnames
+      DB_HOST: timescaledb
+      REDIS_HOST: redis
+      DATABASE_URL: postgresql+asyncpg://leviathan:leviathan@timescaledb:5432/leviathan
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"   # REST API + Prometheus metrics
       - "8001:8001"   # WebSocket

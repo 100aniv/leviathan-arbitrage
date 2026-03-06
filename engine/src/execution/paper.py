@@ -32,12 +32,19 @@ class SlippageModel:
         self.base_slippage_pct = base_slippage_pct
         self.volatility_factor = volatility_factor
 
-    def apply(self, base_price: Decimal, side: OrderSide) -> Decimal:
+    def apply(
+        self, base_price: Decimal, side: OrderSide, size: Decimal = Decimal("1")
+    ) -> Decimal:
         """
         Return fill price with adverse slippage applied.
 
         Buy → price increases. Sell → price decreases.
         Includes a small random component for realism.
+
+        Args:
+            base_price: Reference price before slippage.
+            side: BUY or SELL.
+            size: Order size (used by subclasses like PowerLawSlippage).
         """
         random_component = Decimal(str(random.uniform(0.0, 0.5))) * self.volatility_factor
         total_slippage = self.base_slippage_pct * (Decimal("1") + random_component)
@@ -109,9 +116,9 @@ class PaperExecutor:
             partial_pct = Decimal(str(random.uniform(0.5, 0.99)))
             fill_amount = order.amount * partial_pct
 
-        # Apply slippage to price
+        # Apply slippage to price (pass size for power-law models)
         base_price = order.price or Decimal("0")
-        fill_price = self.slippage_model.apply(base_price, order.side) if base_price > 0 else Decimal("0")
+        fill_price = self.slippage_model.apply(base_price, order.side, fill_amount) if base_price > 0 else Decimal("0")
 
         # Compute slippage percentage for recording
         if base_price > 0:

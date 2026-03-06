@@ -30,6 +30,14 @@ from src.core.config import ExecutionMode, Settings, get_settings
 logger = logging.getLogger(__name__)
 
 
+class DataMode:
+    """Data source mode for the engine."""
+    SYNTHETIC = "synthetic"          # GBM paper data (default for PAPER mode)
+    REAL_PUBLIC = "real_public"      # Real public WebSocket data (no API keys)
+    REAL_AUTHENTICATED = "real_authenticated"  # Real data + trading API keys
+    SHADOW = "shadow"                # Shadow mode: real data + paper execution + full metrics
+
+
 @dataclass
 class EngineState:
     """Internal engine lifecycle state."""
@@ -71,6 +79,13 @@ class Engine:
         self._executor: Any = None
         self._trade_consumer: Any = None
         self._position_manager: Any = None
+        self._db_pool: Any = None
+        self._market_recorder: Any = None
+        self._telegram: Any = None
+        self._collector_manager: Any = None
+        self._shadow_mode: Any = None
+        self._live_gate: Any = None
+        self._data_mode: str = DataMode.SYNTHETIC
 
     # ------------------------------------------------------------------
     # Public API
@@ -132,6 +147,34 @@ class Engine:
                 await adapter.disconnect()
             except Exception as exc:
                 logger.warning("Exchange %s disconnect error: %s", eid, exc)
+
+        # Stop Shadow Mode
+        if self._shadow_mode:
+            try:
+                await self._shadow_mode.stop()
+            except Exception as exc:
+                logger.warning("ShadowMode stop error: %s", exc)
+
+        # Stop LiveGate
+        if self._live_gate:
+            try:
+                await self._live_gate.stop_auto_evaluation()
+            except Exception as exc:
+                logger.warning("LiveGate stop error: %s", exc)
+
+        # Stop MarketRecorder
+        if self._market_recorder:
+            try:
+                await self._market_recorder.stop()
+            except Exception as exc:
+                logger.warning("MarketRecorder stop error: %s", exc)
+
+        # Close DB pool
+        if self._db_pool:
+            try:
+                await self._db_pool.close()
+            except Exception as exc:
+                logger.warning("DB pool close error: %s", exc)
 
         # Cancel background tasks
         for task in self.state.background_tasks:
@@ -202,6 +245,81 @@ class Engine:
                 from src.infra.redis.memory_bus import InMemoryEventBus
                 self._event_bus = InMemoryEventBus()
 
+        # --- TimescaleDB + MarketRecorder ---
+        await self._init_database()
+
+        # --- Telegram Alerter ---
+        self._init_telegram()
+
+        # --- Rust PyO3 Bridge (log feature flags) ---
+        self._init_rust_bridge()
+
+    async def _init_database(self) -> None:
+        """Initialize TimescaleDB connection pool, run schema migration, start MarketRecorder."""
+        import os
+        dsn = os.getenv(
+            "DATABASE_URL",
+            "postgresql://leviathan:leviathan@localhost:5432/leviathan",
+        )
+        # asyncpg needs raw postgres:// DSN (not postgresql+asyncpg://)
+        asyncpg_dsn = dsn.replace("postgresql+asyncpg://", "postgresql://")
+
+        try:
+            from src.infra.db.connection import DatabasePool
+            self._db_pool = DatabasePool(dsn=asyncpg_dsn, min_size=2, max_size=10)
+            await self._db_pool.initialize()
+            logger.info("TimescaleDB connection pool initialized")
+
+            # Run schema migration
+            try:
+                import pathlib
+                migration_path = (
+                    pathlib.Path(__file__).parent / "infra" / "db" / "migrations"
+                    / "001_init_schema.sql"
+                )
+                if migration_path.exists():
+                    sql = migration_path.read_text()
+                    async with self._db_pool.pool.acquire() as conn:
+                        await conn.execute(sql)
+                    logger.info("TimescaleDB schema migration applied")
+                else:
+                    logger.warning("Schema migration file not found: %s", migration_path)
+            except Exception as exc:
+                logger.warning("Schema migration failed (non-fatal): %s", exc)
+
+            # Start MarketRecorder
+            try:
+                from src.infra.db.market_recorder import MarketRecorder
+                self._market_recorder = MarketRecorder(pool=self._db_pool.pool)
+                await self._market_recorder.start()
+                logger.info("MarketRecorder started (flush=%dms, buffer=%d)",
+                            MarketRecorder.FLUSH_INTERVAL_MS, MarketRecorder.MAX_BUFFER_SIZE)
+            except Exception as exc:
+                logger.warning("MarketRecorder init failed (non-fatal): %s", exc)
+        except Exception as exc:
+            logger.warning("TimescaleDB init failed (non-fatal, paper mode ok): %s", exc)
+
+    def _init_telegram(self) -> None:
+        """Initialize Telegram alerter from environment variables."""
+        try:
+            from src.infra.telegram import get_telegram_alerter
+            self._telegram = get_telegram_alerter()
+            if self._telegram._enabled:
+                logger.info("Telegram alerter enabled")
+            else:
+                logger.info("Telegram alerter disabled (set TELEGRAM_ENABLED=true to enable)")
+        except Exception as exc:
+            logger.warning("Telegram alerter init failed (non-fatal): %s", exc)
+
+    def _init_rust_bridge(self) -> None:
+        """Log Rust PyO3 feature flag status."""
+        try:
+            from src.core.rust_bridge import get_feature_flags
+            flags = get_feature_flags()
+            logger.info("Rust bridge flags: %s", flags)
+        except Exception as exc:
+            logger.warning("Rust bridge init failed (non-fatal): %s", exc)
+
     # ------------------------------------------------------------------
     # Step 3: Exchange Adapters
     # ------------------------------------------------------------------
@@ -256,12 +374,57 @@ class Engine:
             self._exchanges[cfg["exchange_id"]] = adapter
 
     async def _init_sandbox_exchanges(self) -> None:
-        logger.info("Sandbox exchange initialization — placeholder for testnet adapters")
-        # TODO: Phase 6 — create CCXTAdapters with sandbox=True
+        use_native = (
+            self._settings.trading.use_native_adapters if self._settings else False
+        )
+        exchanges = (
+            self._settings.trading.active_exchanges if self._settings
+            else ["binance", "bybit", "okx", "bitget"]
+        )
+        if use_native:
+            await self._init_native_exchanges(exchanges, sandbox=True)
+        else:
+            logger.info("Sandbox exchange initialization — CCXTAdapter (sandbox=True)")
+            # TODO: Phase 6 — create CCXTAdapters with sandbox=True
 
     async def _init_live_exchanges(self) -> None:
-        logger.info("Live exchange initialization — placeholder for production adapters")
-        # TODO: create CCXTAdapters with real credentials
+        use_native = (
+            self._settings.trading.use_native_adapters if self._settings else False
+        )
+        exchanges = (
+            self._settings.trading.active_exchanges if self._settings
+            else ["binance", "bybit", "okx", "bitget"]
+        )
+        if use_native:
+            await self._init_native_exchanges(exchanges, sandbox=False)
+        else:
+            logger.info("Live exchange initialization — CCXTAdapter")
+            # TODO: create CCXTAdapters with real credentials
+
+    async def _init_native_exchanges(self, exchanges: list[str], sandbox: bool) -> None:
+        """Create and connect native (ccxt-free) adapters for each exchange."""
+        from src.infra.exchange import create_native_adapter
+
+        ex_cfg = self._settings.exchange if self._settings else None
+        for eid in exchanges:
+            try:
+                api_key = getattr(ex_cfg, f"{eid}_api_key", "") if ex_cfg else ""
+                api_secret = getattr(ex_cfg, f"{eid}_api_secret", "") if ex_cfg else ""
+                passphrase = getattr(ex_cfg, f"{eid}_passphrase", "") if ex_cfg else ""
+                adapter = create_native_adapter(
+                    exchange_id=eid,
+                    api_key=api_key,
+                    api_secret=api_secret,
+                    passphrase=passphrase,
+                    sandbox=sandbox,
+                )
+                await adapter.connect()
+                self._exchanges[eid] = adapter
+                logger.info("Native adapter connected: %s (sandbox=%s)", eid, sandbox)
+            except ValueError as exc:
+                logger.warning("Native adapter not available for %s: %s", eid, exc)
+            except Exception as exc:
+                logger.warning("Native adapter connect failed for %s: %s", eid, exc)
 
     # ------------------------------------------------------------------
     # Step 4: Signal Pipeline
@@ -343,7 +506,21 @@ class Engine:
     async def _init_risk(self) -> None:
         try:
             from src.risk.circuit_breaker import CircuitBreaker
-            self._circuit_breaker = CircuitBreaker()
+
+            # Wire Telegram into CircuitBreaker state changes
+            cb_state_callback = None
+            if self._telegram and self._telegram._enabled:
+                def cb_state_callback(state, reason):
+                    import asyncio
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(
+                            self._telegram.send_circuit_breaker_event(state.value, reason)
+                        )
+                    except RuntimeError:
+                        pass
+
+            self._circuit_breaker = CircuitBreaker(on_state_change=cb_state_callback)
             logger.info("CircuitBreaker initialized")
         except Exception as exc:
             logger.warning("CircuitBreaker init failed: %s", exc)
@@ -447,6 +624,9 @@ class Engine:
     # ------------------------------------------------------------------
 
     async def _start_background_tasks(self) -> None:
+        import os
+        self._data_mode = os.getenv("DATA_MODE", DataMode.SYNTHETIC).lower()
+
         tasks = [
             asyncio.create_task(self._strategy_manager_loop(), name="strategy_mgr"),
             asyncio.create_task(self._trade_consumer_loop(), name="trade_consumer"),
@@ -455,12 +635,26 @@ class Engine:
             asyncio.create_task(self._heartbeat_loop(), name="ws_heartbeat"),
         ]
 
-        # Start orderbook subscription feeds for paper/sandbox mode
-        mode = self._settings.execution_mode if self._settings else ExecutionMode.PAPER
-        if mode in (ExecutionMode.PAPER, ExecutionMode.SANDBOX):
+        if self._data_mode == DataMode.SHADOW:
+            # Shadow mode: real data + paper execution + full metrics
             tasks.append(
-                asyncio.create_task(self._orderbook_feed_loop(), name="orderbook_feed")
+                asyncio.create_task(self._shadow_mode_loop(), name="shadow_mode")
             )
+            logger.info("Data mode: SHADOW — starting Shadow Mode orchestrator")
+        elif self._data_mode == DataMode.REAL_PUBLIC:
+            # Real public WebSocket data — no API keys, observation mode
+            tasks.append(
+                asyncio.create_task(self._real_data_feed_loop(), name="real_data_feed")
+            )
+            logger.info("Data mode: REAL_PUBLIC — starting WebSocket collectors")
+        else:
+            # Synthetic paper mode — use PaperExchangeAdapter orderbook feed
+            mode = self._settings.execution_mode if self._settings else ExecutionMode.PAPER
+            if mode in (ExecutionMode.PAPER, ExecutionMode.SANDBOX):
+                tasks.append(
+                    asyncio.create_task(self._orderbook_feed_loop(), name="orderbook_feed")
+                )
+            logger.info("Data mode: %s", self._data_mode)
 
         self.state.background_tasks.extend(tasks)
         logger.info("Started %d background tasks", len(tasks))
@@ -485,9 +679,11 @@ class Engine:
 
     async def _orderbook_feed_loop(self) -> None:
         """Subscribe to orderbook feeds from all exchanges and feed SignalGenerator."""
-        from src.core.order_book import OrderBook as CoreOrderBook
+        from src.core.rust_bridge import get_orderbook_class
 
-        symbols = ["BTC/USDT"]  # Default symbols for paper mode
+        CoreOrderBook = get_orderbook_class()
+
+        symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
 
         all_books: dict[str, CoreOrderBook] = {}
 
@@ -522,6 +718,163 @@ class Engine:
         try:
             while self.state.running:
                 await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            pass
+
+    async def _real_data_feed_loop(self) -> None:
+        """Start real public WebSocket collectors and feed SignalGenerator.
+
+        Collectors deliver raw orderbook data (no API keys needed).
+        Data flows: WS → CoreOrderBook → SignalGenerator → PaperExecutor (observation).
+        Optionally records to MarketRecorder (TimescaleDB).
+
+        When USE_RUST_ORDERBOOK=true, uses Rust BTreeMap orderbook (<5μs updates).
+        """
+        from src.collectors.manager import CollectorManager
+        from src.core.rust_bridge import get_orderbook_class
+
+        CoreOrderBook = get_orderbook_class()
+
+        all_books: dict[str, CoreOrderBook] = {}
+
+        async def on_orderbook(exchange_id: str, symbol: str, bids: list, asks: list) -> None:
+            """Callback from collectors: convert raw data → CoreOrderBook → SignalGenerator."""
+            core_book = CoreOrderBook(symbol=symbol, exchange=exchange_id)
+            # bids/asks are [[price_str, qty_str], ...]
+            core_book.apply_snapshot(
+                [(b[0], b[1]) for b in bids],
+                [(a[0], a[1]) for a in asks],
+            )
+            all_books[exchange_id] = core_book
+
+            # Record to TimescaleDB if available
+            if self._market_recorder:
+                best_bid = core_book.best_bid()
+                best_ask = core_book.best_ask()
+                if best_bid and best_ask:
+                    self._market_recorder.record_orderbook(
+                        exchange=exchange_id,
+                        symbol=symbol,
+                        bids=bids[:20],
+                        asks=asks[:20],
+                        best_bid=best_bid,
+                        best_ask=best_ask,
+                    )
+
+            # Feed to SignalGenerator when we have data from 2+ exchanges
+            if self._signal_generator and len(all_books) >= 2:
+                try:
+                    sig = await self._signal_generator.on_orderbook_update(
+                        book=core_book,
+                        books=all_books,
+                    )
+                    if sig and self._telegram and self._telegram._enabled:
+                        await self._telegram.send_signal_found(sig)
+                except Exception as exc:
+                    logger.warning("Signal generation error: %s", exc)
+
+            # Update Prometheus metrics
+            try:
+                from src.infra.metrics import SIGNALS_TOTAL, EXCHANGE_HEALTH_SCORE
+                EXCHANGE_HEALTH_SCORE.labels(exchange=exchange_id).set(1.0)
+            except Exception:
+                pass
+
+        symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
+        exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
+
+        self._collector_manager = CollectorManager(
+            symbols=symbols,
+            exchanges=exchanges,
+            on_orderbook=on_orderbook,
+        )
+        await self._collector_manager.start()
+        logger.info("Real data collectors started: %s for %s", exchanges, symbols)
+
+        # Send Telegram notification
+        if self._telegram and self._telegram._enabled:
+            await self._telegram.send_alert(
+                f"Real data collection started\n"
+                f"Exchanges: {', '.join(exchanges)}\n"
+                f"Symbols: {', '.join(symbols)}",
+                level="INFO",
+            )
+
+        # Keep alive until cancelled
+        try:
+            while self.state.running:
+                await asyncio.sleep(5.0)
+                # Log collector stats periodically
+                if self._collector_manager:
+                    stats = self._collector_manager.stats
+                    connected = self._collector_manager.connected_count
+                    logger.debug("Collector stats: connected=%d/%d", connected, len(stats))
+        except asyncio.CancelledError:
+            pass
+        finally:
+            if self._collector_manager:
+                await self._collector_manager.stop()
+
+    async def _shadow_mode_loop(self) -> None:
+        """Start Shadow Mode: real data + paper execution + full metrics.
+
+        Creates a ShadowMode orchestrator wired to the engine's signal pipeline,
+        paper executor (power-law slippage), market recorder, and telegram alerter.
+        Optionally starts a LiveGate auto-evaluation loop.
+        """
+        from src.modes.shadow import ShadowMode
+
+        symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
+        exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
+
+        self._shadow_mode = ShadowMode(
+            signal_generator=self._signal_generator,
+            paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
+            collector_manager=None,  # auto-creates CollectorManager
+            market_recorder=self._market_recorder,
+            telegram=self._telegram,
+            symbols=symbols,
+            exchanges=exchanges,
+        )
+
+        await self._shadow_mode.start()
+        logger.info("Shadow Mode started: %s for %s", exchanges, symbols)
+
+        # Start LiveGate auto-evaluation if DB is available
+        if self._db_pool is not None:
+            try:
+                from src.modes.live_gate import LiveGate
+                from src.risk.kill_switch import KillSwitch
+
+                kill_switch = KillSwitch()  # uses module-level halt flag
+                self._live_gate = LiveGate(
+                    pool=self._db_pool.pool,
+                    telegram=self._telegram,
+                    kill_switch=kill_switch,
+                    circuit_breaker=self._circuit_breaker,
+                    settings=self._settings,
+                )
+                await self._live_gate.start_auto_evaluation()
+                logger.info("LiveGate auto-evaluation started (24h cycle)")
+            except Exception as exc:
+                logger.warning("LiveGate init failed (non-fatal): %s", exc)
+
+        # Send Telegram notification
+        if self._telegram and self._telegram._enabled:
+            await self._telegram.send_alert(
+                f"Shadow Mode active\n"
+                f"Exchanges: {', '.join(exchanges)}\n"
+                f"Symbols: {', '.join(symbols)}\n"
+                f"LiveGate: {'enabled' if self._live_gate else 'disabled'}",
+                level="INFO",
+            )
+
+        # Keep alive until cancelled
+        # NOTE: Cleanup is handled exclusively by Engine.stop() to avoid
+        # double-cleanup race conditions. Do NOT add cleanup here.
+        try:
+            while self.state.running:
+                await asyncio.sleep(5.0)
         except asyncio.CancelledError:
             pass
 

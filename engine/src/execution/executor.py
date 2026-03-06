@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 _HEALTH_THRESHOLD = 0.9
 # Partial fill acceptance threshold
 _PARTIAL_FILL_THRESHOLD = Decimal("0.80")
+# Blueprint compliance: LEG_TIMEOUT_MS from environment (.env or system)
+import os as _os
+_LEG_TIMEOUT_MS = int(_os.getenv("LEG_TIMEOUT_MS", "500"))
+_ROLLBACK_TIMEOUT_MS = int(_os.getenv("ROLLBACK_TIMEOUT_MS", "2000"))
+_RECONCILIATION_INTERVAL_S = int(_os.getenv("RECONCILIATION_INTERVAL_S", "5"))
 
 
 class ExecutionStatus(StrEnum):
@@ -64,9 +69,9 @@ class ExecutionResult:
 
 @dataclass
 class ExecutionConfig:
-    timeout_ms: int = 500
+    timeout_ms: int = _LEG_TIMEOUT_MS
     partial_fill_threshold: Decimal = Decimal("0.80")
-    post_reconcile_delay_s: float = 5.0
+    post_reconcile_delay_s: float = float(_RECONCILIATION_INTERVAL_S)
     health_threshold: float = _HEALTH_THRESHOLD
 
 
@@ -90,9 +95,7 @@ class AtomicExecutor:
         self._locked: set[str] = set()
 
     def _get_lock(self, exchange_id: str) -> asyncio.Lock:
-        if exchange_id not in self._locks:
-            self._locks[exchange_id] = asyncio.Lock()
-        return self._locks[exchange_id]
+        return self._locks.setdefault(exchange_id, asyncio.Lock())
 
     def is_locked(self, exchange_id: str) -> bool:
         """Return True if capital lock is currently held for this exchange."""

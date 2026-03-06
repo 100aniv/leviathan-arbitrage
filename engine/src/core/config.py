@@ -126,6 +126,80 @@ class RiskSettings(BaseSettings):
         return d
 
 
+class TradingSettings(BaseSettings):
+    """Trading pair and exchange configuration."""
+    model_config = SettingsConfigDict(env_prefix="TRADING_")
+
+    symbols: list[str] = Field(
+        default=["BTC/USDT"],
+        description="Trading pairs to monitor/trade",
+    )
+    active_exchanges: list[str] = Field(
+        default=["binance", "bybit", "okx", "bitget"],
+        description="Exchange IDs to connect to",
+    )
+    shadow_strategy_id: str = Field(
+        default="shadow_arb_v1",
+        description="Strategy ID for shadow mode",
+    )
+    use_native_adapters: bool = Field(
+        default=False,
+        alias="USE_NATIVE_ADAPTERS",
+        description="Use native (ccxt-free) exchange adapters when True",
+    )
+
+
+class LiveGateSettings(BaseSettings):
+    """Live gate evaluation thresholds."""
+    model_config = SettingsConfigDict(env_prefix="LIVE_GATE_")
+
+    sharpe_threshold: Decimal = Field(
+        default=Decimal("2.5"),
+        description="Minimum 7-day rolling Sharpe ratio",
+    )
+    mdd_threshold: Decimal = Field(
+        default=Decimal("0.05"),
+        description="Maximum drawdown fraction (0.05 = 5%)",
+    )
+    min_signals_per_day: int = Field(
+        default=100,
+        description="Minimum signals per day for live eligibility",
+    )
+    evaluation_days: int = Field(
+        default=7,
+        description="Number of days for walk-forward evaluation",
+    )
+    min_exchange_health: Decimal = Field(
+        default=Decimal("0.95"),
+        description="Minimum exchange health score",
+    )
+    reevaluation_interval_hours: int = Field(
+        default=24,
+        description="Hours between auto-evaluations",
+    )
+
+
+class ExecutionSettings(BaseSettings):
+    """Atomic executor timing configuration."""
+    model_config = SettingsConfigDict(env_prefix="", populate_by_name=True)
+
+    leg_timeout_ms: int = Field(
+        default=1000,
+        alias="LEG_TIMEOUT_MS",
+        description="Timeout for each leg fill confirmation (ms)",
+    )
+    rollback_timeout_ms: int = Field(
+        default=2000,
+        alias="ROLLBACK_TIMEOUT_MS",
+        description="Timeout for rollback market order (ms)",
+    )
+    reconciliation_interval_s: int = Field(
+        default=5,
+        alias="RECONCILIATION_INTERVAL_S",
+        description="Post-trade reconciliation delay (seconds)",
+    )
+
+
 class MonitoringSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MONITORING_")
 
@@ -166,6 +240,9 @@ class Settings(BaseSettings):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     exchange: ExchangeSettings = Field(default_factory=ExchangeSettings)
     risk: RiskSettings = Field(default_factory=RiskSettings)
+    trading: TradingSettings = Field(default_factory=TradingSettings)
+    live_gate: LiveGateSettings = Field(default_factory=LiveGateSettings)
+    execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
 
     @model_validator(mode="after")

@@ -34,24 +34,56 @@ _HALT_FLAG = threading.Event()  # set() = halted, clear() = normal
 
 
 def halt_local() -> None:
-    """Set local halt flag. < 0.01ms. No external dependency."""
+    """Set local halt flag. < 0.01ms. No external dependency.
+
+    When USE_RUST_KILLSWITCH=true, also sets Rust AtomicBool for
+    sub-microsecond halt propagation to Rust hot-path code.
+    """
     _HALT_FLAG.set()
+    # Also set Rust AtomicBool if available (Phase 2.3)
+    try:
+        from src.core.rust_bridge import get_rust_kill_switch_functions
+        rust_ks = get_rust_kill_switch_functions()
+        if rust_ks is not None:
+            rust_ks["halt_local"]()
+    except Exception:
+        pass  # Rust unavailable — Python flag is sufficient
 
 
 def is_halted() -> bool:
     """
     Check halt state. Every order submission path MUST call this.
     Uses threading.Event — works WITHOUT Redis.
+
+    When USE_RUST_KILLSWITCH=true, checks both Python AND Rust flags (OR logic).
     """
-    return _HALT_FLAG.is_set()
+    if _HALT_FLAG.is_set():
+        return True
+    # Also check Rust AtomicBool if available (Phase 2.3)
+    try:
+        from src.core.rust_bridge import get_rust_kill_switch_functions
+        rust_ks = get_rust_kill_switch_functions()
+        if rust_ks is not None and rust_ks["is_halted"]():
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def clear_halt() -> None:
     """
     Clear halt flag. Only callable after full reconciliation passes.
     Both in-process flag AND Redis HALT key must agree before resuming.
+    Clears both Python and Rust flags.
     """
     _HALT_FLAG.clear()
+    try:
+        from src.core.rust_bridge import get_rust_kill_switch_functions
+        rust_ks = get_rust_kill_switch_functions()
+        if rust_ks is not None:
+            rust_ks["clear_halt"]()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -59,8 +91,15 @@ def clear_halt() -> None:
 # ---------------------------------------------------------------------------
 
 
-class ExchangeAdapter(Protocol):
-    """Minimal interface required by kill switch."""
+class KillSwitchTarget(Protocol):
+    """Minimal interface required by kill switch for emergency stop.
+
+    Separate from ExchangeAdapter to avoid protocol signature conflicts.
+    ExchangeAdapter.cancel_all_orders(symbol) -> int  (normal trading)
+    KillSwitchTarget.cancel_all_orders(timeout_ms) -> list[str]  (emergency)
+
+    Adapters should implement BOTH protocols.
+    """
 
     @property
     def exchange_id(self) -> str: ...
@@ -114,11 +153,11 @@ class KillSwitch:
     def __init__(
         self,
         redis_client: Any | None = None,
-        exchanges: list[Any] | None = None,
+        exchanges: list[KillSwitchTarget] | None = None,
         tier3_enabled: bool = True,
     ) -> None:
         self._redis = redis_client
-        self._exchanges: list[Any] = exchanges or []
+        self._exchanges: list[KillSwitchTarget] = exchanges or []
         self._tier3_enabled = tier3_enabled
         self._lock = asyncio.Lock()
         self._triggered = False

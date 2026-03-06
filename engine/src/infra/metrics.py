@@ -115,6 +115,36 @@ CAPITAL_AVAILABLE = Gauge(
     "Available (free) capital in USD",
 )
 
+# ---------------------------------------------------------------------------
+# Phase 2: Rust hot-path observability
+# ---------------------------------------------------------------------------
+
+ORDERBOOK_UPDATE_TIME = Histogram(
+    "leviathan_orderbook_update_seconds",
+    "Time to apply orderbook snapshot/delta update",
+    ["backend"],  # backend: rust/python
+    buckets=[0.000001, 0.000005, 0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005],
+)
+
+SIGNAL_COUNT = Counter(
+    "leviathan_signal_count",
+    "Total arbitrage signals detected (Phase 1 real data)",
+    ["exchange_pair"],
+)
+
+SPREAD_BPS = Histogram(
+    "leviathan_spread_bps",
+    "Observed spread in basis points",
+    ["exchange_pair"],
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0],
+)
+
+COLLECTOR_MESSAGES = Counter(
+    "leviathan_collector_messages_total",
+    "Total WebSocket messages received by collectors",
+    ["exchange"],
+)
+
 
 def start_metrics_server(port: int = 8000) -> None:
     """Start Prometheus metrics HTTP server on the given port."""
