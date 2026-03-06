@@ -256,7 +256,7 @@ class RiskGuardian:
         # (3x multiplier: rollbacks occur during adverse conditions)
         worst_case_slippage = Decimal("3") * proposal.predicted_slippage_pct
         round_trip_fees = proposal.fee_open + proposal.fee_close
-        max_rollback_cost = proposal.position_value * worst_case_slippage + round_trip_fees
+        max_rollback_cost = proposal.position_value * (worst_case_slippage + round_trip_fees)
         rollback_threshold_value = proposal.position_value * self._max_rollback_threshold
 
         if max_rollback_cost > rollback_threshold_value:

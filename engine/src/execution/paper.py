@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import random
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -89,11 +90,11 @@ class PaperExecutor:
         self.partial_fill_rate = partial_fill_rate
         self.rejection_rate = rejection_rate
         self.on_trade = on_trade
-        self._history: list[SimulatedTrade] = []
+        self._history: deque[SimulatedTrade] = deque(maxlen=10_000)
 
     @property
     def trade_history(self) -> list[Trade]:
-        return [r.trade for r in self._history]
+        return list(r.trade for r in self._history)
 
     async def execute(self, order: Order) -> Trade:
         """

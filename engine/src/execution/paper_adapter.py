@@ -11,7 +11,7 @@ import logging
 import math
 import random
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Callable
 
@@ -328,7 +328,7 @@ class PaperExchangeAdapter:
             symbol=symbol,
             bids=bids,  # Already sorted descending (highest first)
             asks=asks,  # Already sorted ascending (lowest first)
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             sequence=None,
         )
 

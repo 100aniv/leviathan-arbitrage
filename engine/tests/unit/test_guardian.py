@@ -42,8 +42,8 @@ def make_proposal(**kwargs) -> TradeProposal:
         price=Decimal("50000"),
         position_value=Decimal("5000"),
         predicted_slippage_pct=Decimal("0.001"),
-        fee_open=Decimal("5"),
-        fee_close=Decimal("5"),
+        fee_open=Decimal("0.0005"),
+        fee_close=Decimal("0.0005"),
     )
     defaults.update(kwargs)
     return TradeProposal(**defaults)
@@ -312,14 +312,15 @@ class TestCheck8RollbackCostGate:
         guardian = make_guardian(max_rollback_threshold=Decimal("0.02"))
         # position_value=1000, predicted_slippage=0.02
         # worst_case_slippage = 3 * 0.02 = 0.06
-        # max_rollback_cost = 1000 * 0.06 + 10 + 10 = 80
+        # round_trip_fees = 0.01 + 0.01 = 0.02 (percentage rates)
+        # max_rollback_cost = 1000 * (0.06 + 0.02) = 80
         # threshold = 1000 * 0.02 = 20
         # 80 > 20 → REJECT
         proposal = make_proposal(
             position_value=Decimal("1000"),
             predicted_slippage_pct=Decimal("0.02"),
-            fee_open=Decimal("10"),
-            fee_close=Decimal("10"),
+            fee_open=Decimal("0.01"),
+            fee_close=Decimal("0.01"),
         )
         result = guardian.check(proposal, make_portfolio())
         assert not result.approved
@@ -330,15 +331,16 @@ class TestCheck8RollbackCostGate:
         guardian = make_guardian(max_rollback_threshold=Decimal("0.02"))
         # position_value=10000, predicted_slippage=0.001
         # worst_case_slippage = 3 * 0.001 = 0.003
-        # max_rollback_cost = 10000 * 0.003 + 5 + 5 = 40
+        # round_trip_fees = 0.0005 + 0.0005 = 0.001 (percentage rates)
+        # max_rollback_cost = 10000 * (0.003 + 0.001) = 40
         # threshold = 10000 * 0.02 = 200
         # 40 < 200 → APPROVE
         # Use total_capital=500k so check #6 (5% = 25k) passes for 10k trade
         proposal = make_proposal(
             position_value=Decimal("10000"),
             predicted_slippage_pct=Decimal("0.001"),
-            fee_open=Decimal("5"),
-            fee_close=Decimal("5"),
+            fee_open=Decimal("0.0005"),
+            fee_close=Decimal("0.0005"),
         )
         portfolio = make_portfolio(total_capital=Decimal("500000"))
         result = guardian.check(proposal, portfolio)
@@ -349,14 +351,15 @@ class TestCheck8RollbackCostGate:
         guardian = make_guardian(max_rollback_threshold=Decimal("0.01"))
         # position_value=10000, predicted_slippage=0.002
         # worst_case_slippage = 3 * 0.002 = 0.006
-        # max_rollback_cost = 10000 * 0.006 + 5 + 5 = 70
+        # round_trip_fees = 0.0005 + 0.0005 = 0.001 (percentage rates)
+        # max_rollback_cost = 10000 * (0.006 + 0.001) = 70
         # threshold at 1% = 10000 * 0.01 = 100. 70 < 100 → passes
         # Use total_capital=500k so check #6 passes
         proposal = make_proposal(
             position_value=Decimal("10000"),
             predicted_slippage_pct=Decimal("0.002"),
-            fee_open=Decimal("5"),
-            fee_close=Decimal("5"),
+            fee_open=Decimal("0.0005"),
+            fee_close=Decimal("0.0005"),
         )
         portfolio = make_portfolio(total_capital=Decimal("500000"))
         result = guardian.check(proposal, portfolio)
@@ -374,8 +377,8 @@ class TestAllChecksPassing:
         proposal = make_proposal(
             position_value=Decimal("5000"),
             predicted_slippage_pct=Decimal("0.001"),
-            fee_open=Decimal("5"),
-            fee_close=Decimal("5"),
+            fee_open=Decimal("0.0005"),
+            fee_close=Decimal("0.0005"),
         )
         result = guardian.check(proposal, make_portfolio())
         assert result.approved
@@ -521,8 +524,8 @@ class TestPrometheusCounters:
         proposal = make_proposal(
             position_value=Decimal("1000"),
             predicted_slippage_pct=Decimal("0.02"),
-            fee_open=Decimal("10"),
-            fee_close=Decimal("10"),
+            fee_open=Decimal("0.01"),
+            fee_close=Decimal("0.01"),
         )
         before = self._get_count("8", "rollback_cost_exceeded")
         guardian.check(proposal, make_portfolio())
@@ -545,8 +548,6 @@ class TestPrometheusCounters:
         proposal = make_proposal(
             position_value=Decimal("5000"),
             predicted_slippage_pct=Decimal("0.001"),
-            fee_open=Decimal("5"),
-            fee_close=Decimal("5"),
         )
         # Record all relevant counters before
         checks = [

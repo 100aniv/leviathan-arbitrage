@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -167,7 +167,7 @@ class SignalGenerator:
             spread_pct=gross_spread_pct,
             confidence=float(min(net_edge * 100, Decimal("1"))),
             volume=trade_size,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             metadata={
                 "net_profit": str(friction.net_profit),
                 "net_edge_pct": str(net_edge * 100),

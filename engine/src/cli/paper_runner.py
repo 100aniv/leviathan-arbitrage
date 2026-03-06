@@ -14,7 +14,7 @@ import logging
 import signal
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -98,7 +98,7 @@ class PaperTradingRunner:
 
             self._metrics.record_trade(trade_req.strategy_id, pnl)
             self._trade_log.append({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "strategy_id": trade_req.strategy_id,
                 "status": result.status.value,
                 "pnl": pnl,
