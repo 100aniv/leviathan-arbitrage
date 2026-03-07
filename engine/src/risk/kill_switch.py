@@ -60,7 +60,7 @@ def _get_rust_ks() -> dict | None:
         try:
             from src.core.rust_bridge import get_rust_kill_switch_functions
             _RUST_KS_CACHE = get_rust_kill_switch_functions()
-        except Exception:
+        except (ImportError, AttributeError):
             _RUST_KS_CACHE = None
         _RUST_KS_LOADED = True
     return _RUST_KS_CACHE

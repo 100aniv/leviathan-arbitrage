@@ -151,7 +151,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
         try:
             from src.risk.kill_switch import halt_local
             halt_local()
-        except Exception:
+        except ImportError:
             pass
         return JSONResponse({"status": "halted", "reason": body.reason})
 

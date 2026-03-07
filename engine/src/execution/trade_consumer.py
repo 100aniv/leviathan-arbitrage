@@ -197,7 +197,7 @@ class TradeRequestConsumer:
         try:
             # Deserialize TradeRequest from event data
             trade_request = TradeRequest.model_validate(msg)
-        except Exception:
+        except (ValueError, TypeError):
             self.error_count += 1
             logger.exception(
                 "TradeRequestConsumer: failed to deserialize TradeRequest"

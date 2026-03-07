@@ -193,7 +193,7 @@ def _try_import(module_path: str) -> tuple[bool, Any]:
     try:
         mod = importlib.import_module(module_path)
         return True, mod
-    except Exception:
+    except (ImportError, ValueError):
         return False, None
 
 
@@ -683,7 +683,7 @@ class ComplianceChecker:
                             detail="is_halted() found but OR logic for Rust flag not detected",
                             recommendation="Ensure is_halted() checks Rust AtomicBool when USE_RUST_KILLSWITCH=true",
                         ))
-                except Exception:
+                except (TypeError, OSError):
                     items.append(ComplianceItem(
                         category="kill_switch",
                         name="OR-Logic-Rust",
@@ -886,7 +886,7 @@ class ComplianceChecker:
                     try:
                         src = inspect.getsource(ks_cls.__init__)
                         has_lock = "asyncio.Lock()" in src and "_lock" in src
-                    except Exception:
+                    except (TypeError, OSError):
                         has_lock = False
 
                 if has_lock:
@@ -936,7 +936,7 @@ class ComplianceChecker:
                     try:
                         src = inspect.getsource(cb_cls.__init__)
                         has_lock = "asyncio.Lock()" in src and "_lock" in src
-                    except Exception:
+                    except (TypeError, OSError):
                         has_lock = False
 
                 if has_lock:
@@ -1048,7 +1048,7 @@ class ComplianceChecker:
                             detail="LEG_TIMEOUT_MS not set and not referenced in executor",
                             recommendation="Add LEG_TIMEOUT_MS support to executor and set in deployment config",
                         ))
-                except Exception:
+                except (ImportError, TypeError, OSError):
                     items.append(ComplianceItem(
                         category="race_condition",
                         name="Leg-Timeout-Config",

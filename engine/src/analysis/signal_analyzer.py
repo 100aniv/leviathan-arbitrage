@@ -86,7 +86,7 @@ class SignalAnalyzer:
             fee_model = FeeModel()
             slippage_model = CEXOrderbookSlippage()
             calc = CostCalculator(fee_model=fee_model, slippage_model=slippage_model)
-        except Exception:
+        except (ImportError, ValueError, TypeError):
             calc = None
 
         gen = SignalGenerator(
