@@ -28,6 +28,9 @@ class CollectorManager:
     # Default exchanges to collect from
     DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone"]
 
+    # Korean exchanges that trade primarily in KRW (not USDT)
+    KOREAN_EXCHANGES = {"upbit", "bithumb", "coinone"}
+
     def __init__(
         self,
         symbols: list[str] | None = None,
@@ -46,6 +49,12 @@ class CollectorManager:
         self._collectors: dict[str, BaseCollector] = {}
         self._tasks: dict[str, asyncio.Task] = {}
 
+    def _get_exchange_symbols(self, exchange_id: str) -> list[str]:
+        """Map trading symbols for exchange. Korean exchanges use KRW pairs."""
+        if exchange_id in self.KOREAN_EXCHANGES:
+            return [s.replace("/USDT", "/KRW") for s in self.symbols]
+        return self.symbols
+
     def _create_collector(self, exchange_id: str) -> BaseCollector | None:
         """Factory method to create a collector for the given exchange."""
         factory = {
@@ -61,8 +70,9 @@ class CollectorManager:
         if cls is None:
             logger.warning("unknown_exchange", exchange=exchange_id)
             return None
+        symbols = self._get_exchange_symbols(exchange_id)
         return cls(
-            symbols=self.symbols,
+            symbols=symbols,
             on_orderbook=self._on_orderbook,
         )
 

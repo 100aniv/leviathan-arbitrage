@@ -12,6 +12,7 @@ Shadow mode is the final validation before live trading.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -19,6 +20,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
+import httpx
 import structlog
 
 from src.core.models import Order, OrderSide, OrderType, Signal
@@ -173,6 +175,10 @@ class ShadowMode:
         # Resolve orderbook class (Rust or Python)
         self._orderbook_cls = get_orderbook_class()
 
+        # KRW/USDT dynamic rate (fetched from Upbit every 60s)
+        self._krw_rate: float = float(os.getenv("KRW_USDT_RATE", "1380"))
+        self._krw_rate_task: asyncio.Task[None] | None = None
+
         # Build collector manager if not supplied
         if collector_manager is not None:
             self._collector_manager = collector_manager
@@ -232,6 +238,11 @@ class ShadowMode:
             self._running = False
             raise
 
+        # Start KRW/USDT rate updater (fetches from Upbit every 60s)
+        self._krw_rate_task = asyncio.create_task(
+            self._krw_rate_loop(), name="shadow_krw_rate"
+        )
+
         # Start daily summary background task
         self._daily_task = asyncio.create_task(
             self._daily_summary_loop(), name="shadow_daily_summary"
@@ -247,6 +258,15 @@ class ShadowMode:
 
         self._running = False
         logger.info("shadow_mode.stopping")
+
+        # Cancel KRW rate task
+        if self._krw_rate_task is not None and not self._krw_rate_task.done():
+            self._krw_rate_task.cancel()
+            try:
+                await self._krw_rate_task
+            except asyncio.CancelledError:
+                pass
+            self._krw_rate_task = None
 
         # Cancel daily summary task
         if self._daily_task is not None and not self._daily_task.done():
@@ -299,6 +319,13 @@ class ShadowMode:
         """
         if not self._running:
             return
+
+        # Normalize KRW prices to USDT for cross-exchange comparison
+        # Korean exchanges (upbit, bithumb, coinone) quote in KRW
+        if "/KRW" in symbol and self._krw_rate > 0:
+            symbol = symbol.replace("/KRW", "/USDT")
+            bids = [[str(float(b[0]) / self._krw_rate), str(b[1])] for b in bids]
+            asks = [[str(float(a[0]) / self._krw_rate), str(a[1])] for a in asks]
 
         try:
             # Build or update local orderbook
@@ -545,6 +572,44 @@ class ShadowMode:
             max_drawdown=f"{self._stats.max_drawdown:.4f}",
             elapsed_ms=f"{elapsed_ms:.2f}",
         )
+
+    # -----------------------------------------------------------------------
+    # KRW/USDT dynamic rate loop
+    # -----------------------------------------------------------------------
+
+    async def _krw_rate_loop(self) -> None:
+        """Fetch KRW/USDT rate from Upbit every 60 seconds.
+
+        Falls back to env var KRW_USDT_RATE if API is unreachable.
+        Never raises — exceptions are caught and logged.
+        """
+        try:
+            while self._running:
+                try:
+                    async with httpx.AsyncClient(timeout=5.0) as client:
+                        resp = await client.get(
+                            "https://api.upbit.com/v1/ticker",
+                            params={"markets": "KRW-USDT"},
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            if data and len(data) > 0:
+                                trade_price = float(data[0].get("trade_price", 0))
+                                if trade_price > 0:
+                                    old_rate = self._krw_rate
+                                    self._krw_rate = trade_price
+                                    if abs(old_rate - trade_price) > 1:
+                                        logger.info(
+                                            "shadow_mode.krw_rate_updated",
+                                            old_rate=old_rate,
+                                            new_rate=trade_price,
+                                        )
+                except Exception as exc:
+                    logger.debug("shadow_mode.krw_rate_fetch_failed", error=str(exc))
+
+                await asyncio.sleep(60.0)
+        except asyncio.CancelledError:
+            pass
 
     # -----------------------------------------------------------------------
     # Daily summary loop
