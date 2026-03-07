@@ -175,9 +175,10 @@ class ShadowMode:
         # Resolve orderbook class (Rust or Python)
         self._orderbook_cls = get_orderbook_class()
 
-        # KRW/USDT dynamic rate (fetched from Upbit every 60s)
+        # KRW/USDT dynamic rate (fetched from Upbit+Bithumb every 30s)
         self._krw_rate: float = float(os.getenv("KRW_USDT_RATE", "1380"))
         self._krw_rate_task: asyncio.Task[None] | None = None
+        self._krw_rate_updated_at: float = time.monotonic()
 
         # Build collector manager if not supplied
         if collector_manager is not None:
@@ -578,15 +579,20 @@ class ShadowMode:
     # -----------------------------------------------------------------------
 
     async def _krw_rate_loop(self) -> None:
-        """Fetch KRW/USDT rate from Upbit every 60 seconds.
+        """Fetch KRW/USDT rate from Upbit + Bithumb every 30 seconds.
 
-        Falls back to env var KRW_USDT_RATE if API is unreachable.
+        Uses median (average) of valid sources. Falls back to env var
+        KRW_USDT_RATE if both APIs are unreachable. Detects staleness
+        after 120 seconds and rejects >10% sanity-bound changes.
         Never raises — exceptions are caught and logged.
         """
         try:
             while self._running:
-                try:
-                    async with httpx.AsyncClient(timeout=5.0) as client:
+                rates: list[float] = []
+
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    # Upbit source
+                    try:
                         resp = await client.get(
                             "https://api.upbit.com/v1/ticker",
                             params={"markets": "KRW-USDT"},
@@ -594,20 +600,60 @@ class ShadowMode:
                         if resp.status_code == 200:
                             data = resp.json()
                             if data and len(data) > 0:
-                                trade_price = float(data[0].get("trade_price", 0))
-                                if trade_price > 0:
-                                    old_rate = self._krw_rate
-                                    self._krw_rate = trade_price
-                                    if abs(old_rate - trade_price) > 1:
-                                        logger.info(
-                                            "shadow_mode.krw_rate_updated",
-                                            old_rate=old_rate,
-                                            new_rate=trade_price,
-                                        )
-                except Exception as exc:
-                    logger.debug("shadow_mode.krw_rate_fetch_failed", error=str(exc))
+                                price = float(data[0].get("trade_price", 0))
+                                if price > 0:
+                                    rates.append(price)
+                    except Exception as exc:
+                        logger.debug("shadow_mode.krw_upbit_failed", error=str(exc))
 
-                await asyncio.sleep(60.0)
+                    # Bithumb source
+                    try:
+                        resp = await client.get(
+                            "https://api.bithumb.com/public/ticker/USDT_KRW",
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            closing = float(
+                                data.get("data", {}).get("closing_price", 0)
+                            )
+                            if closing > 0:
+                                rates.append(closing)
+                    except Exception as exc:
+                        logger.debug("shadow_mode.krw_bithumb_failed", error=str(exc))
+
+                if rates:
+                    new_rate = sum(rates) / len(rates)  # avg == median for ≤2 values
+                    # Sanity bound: reject >10% change from current rate
+                    if (
+                        self._krw_rate > 0
+                        and abs(new_rate - self._krw_rate) / self._krw_rate > 0.10
+                    ):
+                        logger.warning(
+                            "shadow_mode.krw_rate_sanity_rejected",
+                            new_rate=new_rate,
+                            current_rate=self._krw_rate,
+                        )
+                    else:
+                        old_rate = self._krw_rate
+                        self._krw_rate = new_rate
+                        self._krw_rate_updated_at = time.monotonic()
+                        if abs(old_rate - new_rate) > 1:
+                            logger.info(
+                                "shadow_mode.krw_rate_updated",
+                                old_rate=old_rate,
+                                new_rate=new_rate,
+                                sources=len(rates),
+                            )
+
+                # Staleness check
+                elapsed = time.monotonic() - self._krw_rate_updated_at
+                if elapsed > 120:
+                    logger.warning(
+                        "shadow_mode.krw_rate_stale",
+                        seconds_since_update=elapsed,
+                    )
+
+                await asyncio.sleep(30.0)
         except asyncio.CancelledError:
             pass
 

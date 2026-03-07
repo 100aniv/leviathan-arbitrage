@@ -31,6 +31,7 @@ class SignalConfig:
     max_rollback_cost_usd: Decimal = Decimal("50")
     default_adv: Decimal = Decimal("1000")
     default_sigma: Decimal = Decimal("0.001")
+    min_price_usd: Decimal = Decimal("0.10")
 
 
 class SignalGenerator:
@@ -113,6 +114,10 @@ class SignalGenerator:
 
         # Raw spread gate
         if sell_price <= buy_price:
+            return None
+
+        # Min price gate — filter out penny coins (e.g. QKC at $0.003)
+        if buy_price < self._config.min_price_usd:
             return None
 
         # Max spread gate — reject data anomalies (e.g. stale/incremental orderbooks)

@@ -24,7 +24,7 @@ os.environ["EXECUTION_MODE"] = "paper"
 async def _discover_symbols() -> list[str]:
     """Auto-discover common symbols across configured exchanges."""
     from src.collectors.symbol_discovery import discover_common_symbols
-    exchanges = json.loads(os.environ.get("TRADING_ACTIVE_EXCHANGES", '["binance","upbit","bithumb"]'))
+    exchanges = json.loads(os.environ.get("TRADING_ACTIVE_EXCHANGES", '["binance","bybit","okx","bitget","upbit","bithumb","coinone"]'))
     symbols = await discover_common_symbols(exchanges=exchanges, min_exchanges=len(exchanges))
     return symbols
 

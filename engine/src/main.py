@@ -458,13 +458,15 @@ class Engine:
             logger.warning("CostCalculator init failed, using stub: %s", exc)
             self._cost_calculator = None
 
-        min_edge_bps = int(os.environ.get("MIN_EDGE_BPS", "5"))
+        min_edge_bps = int(os.environ.get("MIN_EDGE_BPS", "40"))
         max_spread_pct = float(os.environ.get("MAX_SPREAD_PCT", "0.05"))
         cooldown_sec = float(os.environ.get("SIGNAL_COOLDOWN_SEC", "2.0"))
+        min_price_usd = Decimal(os.environ.get("MIN_PRICE_USD", "0.10"))
         signal_config = SignalConfig(
             min_edge=Decimal(str(min_edge_bps)) / Decimal("10000"),  # bps → fraction
             max_spread_pct=Decimal(str(max_spread_pct)),
             cooldown_seconds=cooldown_sec,
+            min_price_usd=min_price_usd,
         )
         self._signal_generator = SignalGenerator(
             price_hub=self._price_hub,

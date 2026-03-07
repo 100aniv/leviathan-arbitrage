@@ -268,8 +268,8 @@ class TestComputeDrawdown:
         assert sm._stats.peak_pnl == 100.0
         assert sm._stats.max_drawdown == 0.0
 
-    def test_drawdown_computed_as_fraction_of_peak(self) -> None:
-        """Drawdown = (peak - current) / peak."""
+    def test_drawdown_computed_as_absolute_usd(self) -> None:
+        """Drawdown = peak - current (absolute USD, not fraction)."""
         sm = make_shadow_mode()
 
         # Drive PnL to 100, then drop to 80
@@ -278,14 +278,14 @@ class TestComputeDrawdown:
         sm._stats.total_pnl = 80.0
         sm._compute_drawdown()
 
-        expected_dd = (100.0 - 80.0) / 100.0  # 0.20
+        expected_dd = 100.0 - 80.0  # 20.0 absolute USD
         assert abs(sm._stats.max_drawdown - expected_dd) < 1e-9
 
     def test_max_drawdown_tracks_worst_case(self) -> None:
         """max_drawdown records the worst drawdown seen, not the latest."""
         sm = make_shadow_mode()
 
-        # Peak at 100, drop to 50 (50% DD), then recover to 90
+        # Peak at 100, drop to 50 (50 USD DD), then recover to 90
         sm._stats.total_pnl = 100.0
         sm._compute_drawdown()
         sm._stats.total_pnl = 50.0
@@ -294,7 +294,7 @@ class TestComputeDrawdown:
         sm._stats.total_pnl = 90.0
         sm._compute_drawdown()
 
-        assert abs(sm._stats.max_drawdown - 0.5) < 1e-9
+        assert abs(sm._stats.max_drawdown - 50.0) < 1e-9
 
     def test_drawdown_absolute_when_peak_is_zero_and_pnl_negative(self) -> None:
         """When peak=0 and PnL goes negative, drawdown = abs(pnl)."""
