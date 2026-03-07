@@ -232,6 +232,97 @@ class TestSignalRedisPublish:
         assert signal is not None  # signal still returned despite publish failure
 
 
+class TestMinPriceFilter:
+    """Tests for the min_price_usd gate — filters out penny coins."""
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_buy_price_below_threshold(self, hub, calculator):
+        """buy_price (0.05) < min_price_usd (0.10) returns None."""
+        config = SignalConfig(
+            min_edge=Decimal("0.0001"),
+            cooldown_seconds=0.0,
+            min_price_usd=Decimal("0.10"),
+        )
+        gen = SignalGenerator(hub, calculator, config)
+        book_b = OrderBook(symbol="PENNY/USDT", exchange="binance")
+        book_b.apply_snapshot(bids=[("0.04", "1000.0")], asks=[("0.05", "1000.0")])
+        book_o = OrderBook(symbol="PENNY/USDT", exchange="okx")
+        book_o.apply_snapshot(bids=[("0.06", "1000.0")], asks=[("0.07", "1000.0")])
+        hub.update(book_b)
+        books = {"binance": book_b, "okx": book_o}
+        signal = await gen.on_orderbook_update(book_o, books, Decimal("100.0"))
+        assert signal is None
+
+    @pytest.mark.asyncio
+    async def test_passes_gate_when_buy_price_equals_threshold(self, hub, calculator):
+        """buy_price == min_price_usd uses strict < so equals-case passes the gate."""
+        config = SignalConfig(
+            min_edge=Decimal("0.0001"),
+            cooldown_seconds=0.0,
+            min_price_usd=Decimal("50001"),  # exactly equal to buy_price from fixture
+        )
+        gen = SignalGenerator(hub, calculator, config)
+        book_b = OrderBook(symbol="BTC/USDT", exchange="binance")
+        book_b.apply_snapshot(bids=[("50000.00", "10.0")], asks=[("50001.00", "10.0")])
+        book_o = OrderBook(symbol="BTC/USDT", exchange="okx")
+        book_o.apply_snapshot(bids=[("50500.00", "10.0")], asks=[("50501.00", "10.0")])
+        hub.update(book_b)
+        books = {"binance": book_b, "okx": book_o}
+        signal = await gen.on_orderbook_update(book_o, books, Decimal("1.0"))
+        # 50001 < 50001 is False — price gate does NOT block
+        assert signal is not None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_buy_price_is_zero(self, hub, calculator):
+        """buy_price = Decimal('0') returns None (0 < 0.10 threshold)."""
+        config = SignalConfig(
+            min_edge=Decimal("0.0001"),
+            cooldown_seconds=0.0,
+            min_price_usd=Decimal("0.10"),
+        )
+        gen = SignalGenerator(hub, calculator, config)
+        book_b = OrderBook(symbol="ZERO/USDT", exchange="binance")
+        book_b.apply_snapshot(bids=[("0.00", "1000.0")], asks=[("0.00", "1000.0")])
+        book_o = OrderBook(symbol="ZERO/USDT", exchange="okx")
+        book_o.apply_snapshot(bids=[("0.01", "1000.0")], asks=[("0.02", "1000.0")])
+        hub.update(book_b)
+        books = {"binance": book_b, "okx": book_o}
+        signal = await gen.on_orderbook_update(book_o, books, Decimal("100.0"))
+        assert signal is None
+
+    @pytest.mark.asyncio
+    async def test_passes_gate_when_buy_price_above_threshold(
+        self, buy_book, sell_book, hub, calculator
+    ):
+        """buy_price (BTC ~50k) >> min_price_usd (0.10) — gate does not block."""
+        config = SignalConfig(
+            min_edge=Decimal("0.0001"),
+            cooldown_seconds=0.0,
+            min_price_usd=Decimal("0.10"),
+        )
+        gen = SignalGenerator(hub, calculator, config)
+        hub.update(buy_book)
+        books = {"binance": buy_book, "okx": sell_book}
+        signal = await gen.on_orderbook_update(sell_book, books, Decimal("1.0"))
+        assert signal is not None
+
+    @pytest.mark.asyncio
+    async def test_all_prices_pass_when_min_price_usd_is_zero(
+        self, buy_book, sell_book, hub, calculator
+    ):
+        """min_price_usd=0 disables the filter; any price passes the gate."""
+        config = SignalConfig(
+            min_edge=Decimal("0.0001"),
+            cooldown_seconds=0.0,
+            min_price_usd=Decimal("0"),  # filter disabled
+        )
+        gen = SignalGenerator(hub, calculator, config)
+        hub.update(buy_book)
+        books = {"binance": buy_book, "okx": sell_book}
+        signal = await gen.on_orderbook_update(sell_book, books, Decimal("1.0"))
+        assert signal is not None
+
+
 class TestMaxRollbackGate:
     @pytest.mark.asyncio
     async def test_signal_blocked_by_max_rollback_cost(self, buy_book, sell_book, hub, calculator):

@@ -474,8 +474,10 @@ class Engine:
             config=signal_config,
             event_bus=self._event_bus,
         )
-        logger.info("Signal pipeline initialized",
-                     min_edge_bps=min_edge_bps, max_spread_pct=max_spread_pct)
+        logger.info(
+            "Signal pipeline initialized min_edge_bps=%s max_spread_pct=%s",
+            min_edge_bps, max_spread_pct,
+        )
 
     # ------------------------------------------------------------------
     # Step 5: Strategies

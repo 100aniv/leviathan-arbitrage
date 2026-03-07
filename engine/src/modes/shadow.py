@@ -176,9 +176,17 @@ class ShadowMode:
         self._orderbook_cls = get_orderbook_class()
 
         # KRW/USDT dynamic rate (fetched from Upbit+Bithumb every 30s)
-        self._krw_rate: float = float(os.getenv("KRW_USDT_RATE", "1380"))
+        _raw_krw_rate = float(os.getenv("KRW_USDT_RATE", "1380"))
+        if _raw_krw_rate <= 0:
+            logger.warning(
+                "shadow_mode.invalid_krw_rate", raw=_raw_krw_rate, fallback=1380.0
+            )
+            _raw_krw_rate = 1380.0
+        self._krw_rate: float = _raw_krw_rate
         self._krw_rate_task: asyncio.Task[None] | None = None
         self._krw_rate_updated_at: float = time.monotonic()
+        self._sanity_reject_count: int = 0
+        self._http_client: httpx.AsyncClient = httpx.AsyncClient(timeout=5.0)
 
         # Build collector manager if not supplied
         if collector_manager is not None:
@@ -278,6 +286,12 @@ class ShadowMode:
                 pass
             self._daily_task = None
 
+        # Close persistent HTTP client
+        try:
+            await self._http_client.aclose()
+        except Exception as exc:
+            logger.warning("shadow_mode.http_client_close_failed", error=str(exc))
+
         # Stop collectors
         try:
             await self._collector_manager.stop()
@@ -327,6 +341,13 @@ class ShadowMode:
             symbol = symbol.replace("/KRW", "/USDT")
             bids = [[str(float(b[0]) / self._krw_rate), str(b[1])] for b in bids]
             asks = [[str(float(a[0]) / self._krw_rate), str(a[1])] for a in asks]
+        elif "/KRW" in symbol:
+            logger.warning(
+                "shadow_mode.krw_rate_zero_skip",
+                exchange=exchange_id,
+                symbol=symbol,
+            )
+            return
 
         try:
             # Build or update local orderbook
@@ -581,59 +602,72 @@ class ShadowMode:
     async def _krw_rate_loop(self) -> None:
         """Fetch KRW/USDT rate from Upbit + Bithumb every 30 seconds.
 
-        Uses median (average) of valid sources. Falls back to env var
+        Uses average of valid sources. Falls back to env var
         KRW_USDT_RATE if both APIs are unreachable. Detects staleness
         after 120 seconds and rejects >10% sanity-bound changes.
+        After 5 consecutive rejections, forces acceptance to escape lockout.
         Never raises — exceptions are caught and logged.
         """
         try:
             while self._running:
                 rates: list[float] = []
 
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    # Upbit source
-                    try:
-                        resp = await client.get(
-                            "https://api.upbit.com/v1/ticker",
-                            params={"markets": "KRW-USDT"},
-                        )
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            if data and len(data) > 0:
-                                price = float(data[0].get("trade_price", 0))
-                                if price > 0:
-                                    rates.append(price)
-                    except Exception as exc:
-                        logger.debug("shadow_mode.krw_upbit_failed", error=str(exc))
+                # Upbit source
+                try:
+                    resp = await self._http_client.get(
+                        "https://api.upbit.com/v1/ticker",
+                        params={"markets": "KRW-USDT"},
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data and len(data) > 0:
+                            price = float(data[0].get("trade_price", 0))
+                            if price > 0:
+                                rates.append(price)
+                except Exception as exc:
+                    logger.debug("shadow_mode.krw_upbit_failed", error=str(exc))
 
-                    # Bithumb source
-                    try:
-                        resp = await client.get(
-                            "https://api.bithumb.com/public/ticker/USDT_KRW",
+                # Bithumb source
+                try:
+                    resp = await self._http_client.get(
+                        "https://api.bithumb.com/public/ticker/USDT_KRW",
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        closing = float(
+                            data.get("data", {}).get("closing_price", 0)
                         )
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            closing = float(
-                                data.get("data", {}).get("closing_price", 0)
-                            )
-                            if closing > 0:
-                                rates.append(closing)
-                    except Exception as exc:
-                        logger.debug("shadow_mode.krw_bithumb_failed", error=str(exc))
+                        if closing > 0:
+                            rates.append(closing)
+                except Exception as exc:
+                    logger.debug("shadow_mode.krw_bithumb_failed", error=str(exc))
 
                 if rates:
-                    new_rate = sum(rates) / len(rates)  # avg == median for ≤2 values
+                    new_rate = sum(rates) / len(rates)  # average of valid sources
                     # Sanity bound: reject >10% change from current rate
                     if (
                         self._krw_rate > 0
                         and abs(new_rate - self._krw_rate) / self._krw_rate > 0.10
                     ):
+                        self._sanity_reject_count += 1
                         logger.warning(
                             "shadow_mode.krw_rate_sanity_rejected",
                             new_rate=new_rate,
                             current_rate=self._krw_rate,
+                            reject_count=self._sanity_reject_count,
                         )
+                        # Lockout escape: force-accept after 5 consecutive rejections
+                        if self._sanity_reject_count >= 5:
+                            logger.warning(
+                                "shadow_mode.krw_rate_lockout_override",
+                                new_rate=new_rate,
+                                reject_count=self._sanity_reject_count,
+                            )
+                            self._krw_rate = new_rate
+                            self._krw_rate_updated_at = time.monotonic()
+                            self._sanity_reject_count = 0
                     else:
+                        self._sanity_reject_count = 0
                         old_rate = self._krw_rate
                         self._krw_rate = new_rate
                         self._krw_rate_updated_at = time.monotonic()

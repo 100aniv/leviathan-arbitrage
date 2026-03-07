@@ -748,3 +748,142 @@ class TestShadowModeStopSendsFinalSummary:
         await sm.start()
         # Must not raise
         await sm.stop()
+
+
+# ---------------------------------------------------------------------------
+# ShadowMode._krw_rate_loop — KRW/USDT dynamic rate fetching
+# ---------------------------------------------------------------------------
+
+
+class TestKrwRateLoop:
+    """Tests for ShadowMode._krw_rate_loop().
+
+    Patches httpx.AsyncClient and asyncio.sleep so the loop runs exactly
+    one iteration per test without real network calls or 30-second waits.
+    """
+
+    # --- response helpers ---------------------------------------------------
+
+    @staticmethod
+    def _upbit_ok(price: float) -> MagicMock:
+        """200 OK Upbit response with the given trade_price."""
+        r = MagicMock()
+        r.status_code = 200
+        r.json.return_value = [{"trade_price": price}]
+        return r
+
+    @staticmethod
+    def _bithumb_ok(price: float) -> MagicMock:
+        """200 OK Bithumb response with the given closing_price."""
+        r = MagicMock()
+        r.status_code = 200
+        r.json.return_value = {"data": {"closing_price": str(price)}}
+        return r
+
+    @staticmethod
+    def _fail() -> MagicMock:
+        """Non-200 response simulating API failure."""
+        r = MagicMock()
+        r.status_code = 500
+        return r
+
+    # --- loop control -------------------------------------------------------
+
+    @staticmethod
+    def _one_shot(sm: ShadowMode):
+        """Return an async sleep replacement that stops the loop after one pass."""
+        async def _sleep(_d: float) -> None:
+            sm._running = False
+        return _sleep
+
+    # --- ShadowMode factory -------------------------------------------------
+
+    @staticmethod
+    def _make_sm(responses: list, krw_rate: float = 1380.0) -> ShadowMode:
+        """Create a ShadowMode with _http_client replaced by an AsyncMock.
+
+        Worker-1 refactored _krw_rate_loop to use self._http_client (a
+        persistent shared client created in __init__) instead of an ephemeral
+        ``async with httpx.AsyncClient(...)`` per iteration.  We therefore
+        inject the mock directly on the instance attribute.
+        """
+        sm = make_shadow_mode()
+        sm._running = True
+        sm._krw_rate = krw_rate
+        mock_http = AsyncMock()
+        mock_http.get = AsyncMock(side_effect=responses)
+        sm._http_client = mock_http
+        return sm
+
+    # --- tests --------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_upbit_only_success_uses_upbit_rate(self) -> None:
+        """When Upbit returns a valid price and Bithumb fails, rate = Upbit price."""
+        sm = self._make_sm([self._upbit_ok(1390.0), self._fail()])
+        with patch("asyncio.sleep", side_effect=self._one_shot(sm)):
+            await sm._krw_rate_loop()
+        assert sm._krw_rate == pytest.approx(1390.0)
+
+    @pytest.mark.asyncio
+    async def test_bithumb_only_success_uses_bithumb_rate(self) -> None:
+        """When Bithumb returns a valid price and Upbit fails, rate = Bithumb price."""
+        sm = self._make_sm([self._fail(), self._bithumb_ok(1400.0)])
+        with patch("asyncio.sleep", side_effect=self._one_shot(sm)):
+            await sm._krw_rate_loop()
+        assert sm._krw_rate == pytest.approx(1400.0)
+
+    @pytest.mark.asyncio
+    async def test_both_succeed_rate_is_average(self) -> None:
+        """When both Upbit and Bithumb succeed, rate = (upbit + bithumb) / 2."""
+        sm = self._make_sm([self._upbit_ok(1380.0), self._bithumb_ok(1400.0)])
+        with patch("asyncio.sleep", side_effect=self._one_shot(sm)):
+            await sm._krw_rate_loop()
+        assert sm._krw_rate == pytest.approx(1390.0)  # (1380 + 1400) / 2
+
+    @pytest.mark.asyncio
+    async def test_both_fail_rate_unchanged(self) -> None:
+        """When both sources return non-200, the existing rate is preserved."""
+        sm = self._make_sm([self._fail(), self._fail()])
+        with patch("asyncio.sleep", side_effect=self._one_shot(sm)):
+            await sm._krw_rate_loop()
+        assert sm._krw_rate == pytest.approx(1380.0)
+
+    @pytest.mark.asyncio
+    async def test_more_than_10pct_change_rejected(self) -> None:
+        """A new rate >10% from the current rate is rejected; rate stays unchanged."""
+        # 15% above current rate → must be rejected by sanity bound
+        extreme_rate = 1380.0 * 1.15
+        sm = self._make_sm([self._upbit_ok(extreme_rate), self._fail()])
+        with patch("asyncio.sleep", side_effect=self._one_shot(sm)):
+            await sm._krw_rate_loop()
+        assert sm._krw_rate == pytest.approx(1380.0)
+
+    @pytest.mark.asyncio
+    async def test_staleness_warning_logged_after_120s(self) -> None:
+        """logger.warning('shadow_mode.krw_rate_stale', ...) is emitted when
+        the rate has not been refreshed for more than 120 seconds."""
+        sm = self._make_sm([self._fail(), self._fail()])
+        sm._krw_rate_updated_at = time.monotonic() - 200.0  # 200 s stale
+
+        with patch("asyncio.sleep", side_effect=self._one_shot(sm)), \
+             patch("src.modes.shadow.logger") as mock_logger:
+            await sm._krw_rate_loop()
+
+        warning_events = [
+            c.args[0]
+            for c in mock_logger.warning.call_args_list
+            if c.args
+        ]
+        assert "shadow_mode.krw_rate_stale" in warning_events
+
+    @pytest.mark.asyncio
+    async def test_zero_initial_rate_accepts_first_valid_rate(self) -> None:
+        """When _krw_rate=0 the sanity-bound division is skipped (no ZeroDivisionError)
+        and the first valid rate is accepted."""
+        sm = self._make_sm([self._upbit_ok(1380.0), self._fail()], krw_rate=0.0)
+        with patch("asyncio.sleep", side_effect=self._one_shot(sm)):
+            # Must not raise ZeroDivisionError
+            await sm._krw_rate_loop()
+        # Sanity bound bypassed when _krw_rate == 0; first valid rate accepted
+        assert sm._krw_rate == pytest.approx(1380.0)

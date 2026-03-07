@@ -40,11 +40,11 @@
 
 ```
 테스트:       2,986 passed, 0 failed
-커버리지:     92% (목표 80% 초과 달성)
+커버리지:     91% (목표 80% 초과 달성)
 컴플라이언스: 100% (23/23 PASS)
 아키텍트 승인: GO (Phase 7.2.1 이후 6회 검증)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    405e6d5 (Phase 7.3b: symbol discovery + spread filter)
+최신 커밋:    1751098 (Phase 7.3d: Exchange expansion 7개, quant tuning 40bps, KRW dual-source)
 ```
 
 ### Mode Validation 결과 (Phase 8 기준, 모두 PASS)
@@ -81,7 +81,11 @@
 | 7.2.6 | Generic except → 구체적 예외 타입 (10개) | 완료 | `6356737` |
 | 8 | Mode Validation Pipeline (4-stage E2E) | 완료 | `3832fa1` |
 | 8.1 | Upbit + Bithumb WebSocket collectors (6/6 coverage) | 완료 | `8e3aa3f` |
-| **7.3** | **Shadow Runtime & Tuning (72h + re-tuning)** | **진행 중** | `405e6d5` |
+| 7.3a | KRW/USDT 정규화 + 배치 WS 구독 수정 | 완료 | `c183c6a` |
+| 7.3b | Symbol Auto-Discovery + Max Spread Anomaly Filter | 완료 | `405e6d5` |
+| 7.3c | Shadow params 튜닝 (env-wired, drawdown calc 수정) | 완료 | `918c645` |
+| 7.3d | 거래소 확장(7), quant tuning (40bps), KRW dual-source | 완료 | `1751098` |
+| **7.3e** | **검증 (tests, code review, strategy verification)** | **완료** | — |
 
 ---
 
@@ -130,6 +134,48 @@
   - 스프레드가 5% 초과인 신호는 즉시 필터링 (이상값으로 간주)
 - **수정**: `engine/src/main.py`
   - `MIN_EDGE_BPS`, `MAX_SPREAD_PCT` env var에서 읽도록 변경 (기존 하드코딩 제거)
+
+#### (f) Shadow Params 튜닝 (Phase 7.3c — `918c645`)
+- env-wired MIN_EDGE_BPS/cooldown: 환경 변수로 런타임 조정 가능
+- drawdown calc 버그 수정: 누적 drawdown 계산 로직 수정
+
+#### (g) 거래소 확장 + Quant 튜닝 + KRW Dual-Source (Phase 7.3d — `1751098`)
+- **거래소 확장**: 7개 거래소 전체 활성화 (Bybit, OKX, Bitget 포함)
+- **Quant 튜닝**: MIN_EDGE_BPS=40 (기존 3 → 40) — 마찰 비용 ~20bps 고려 후 순 edge 20bps 확보 목표
+- **KRW dual-source**: Upbit USDT/KRW 마켓에서 실시간 환율 조회 구현 (정적 1380 → 동적)
+- **MIN_PRICE_USD=0.10**: 소액 코인 필터링으로 슬리피지 리스크 감소
+
+---
+
+### 4.3 Phase 7.3e 검증 결과 (2026-03-08, team-verify)
+
+#### 테스트 결과 (Task #1)
+- **2,986 passed, 0 failed, 91% coverage**
+- `logger.info()` kwargs 버그 수정 확인 (`main.py:477`)
+- `test_init_signal_pipeline_success` 정상 통과 확인
+
+#### 코드 리뷰 결과 (Task #2)
+**HIGH (3건)**:
+1. `min_price_usd` 필터링 테스트 없음 — 회귀 위험
+2. KRW rate loop(실시간 갱신) 테스트 없음 — 커버리지 공백
+3. `_krw_rate=0` 시 ZeroDivisionError 미처리 — 런타임 크래시 위험
+
+**MEDIUM (5건)**:
+- sanity bound lock-out 로직 검토 필요
+- float 정밀도 이슈 (BPS 계산 시 int() 캐스팅)
+- httpx 클라이언트 매 요청 재생성 (성능)
+- docstring과 실제 동작 혼동
+
+**LOW (2건)**: 마이너 코드 스타일
+
+#### 전략 검증 결과 (Task #3)
+- **8개 전략 등록 확인** (startup log)
+- **실질 활성**: 7개 (cex_dex는 `_build_dex_adapter()` 항상 None 반환 → 미구현)
+- **전용 신호 경로 보유**: `cross_exchange`, `spot_futures`, `funding_rate`, `triangular` (4개)
+- **주의 필요**:
+  - `statistical_arb`: `NOT_READY` 상태 플래그
+  - `latency_arb`: 파라미터 누락
+  - `futures_futures`: 신호 소스 없음
 
 ---
 
@@ -186,28 +232,31 @@ Rollback 비용:  —                              = 약 1–2 bps
 
 ### 6.1 즉시 실행 가능 (인프라 불필요)
 
-- [ ] **MIN_EDGE_BPS 최적값 탐색** — 현재 3bps 테스트 중
-  - 목표: 승률 55%+, 일관된 양의 PnL, 거래 건수 통계적 유의성 확보
-  - 후보값: 3bps, 5bps, 8bps, 10bps 순차 비교
+- [x] **MIN_EDGE_BPS 최적값 탐색 완료** (Phase 7.3d — `1751098`)
+  - 결정: 40bps (마찰 ~20bps + 순 edge 20bps 확보 목표)
+  - 근거: 3bps~10bps 테스트 결과 friction 대비 순 edge 부족 확인
 
 - [ ] **Bithumb Orderbook 데이터 품질 수정**
   - 현재 문제: 스냅샷 없이 증분 업데이트만 수신 → 허위 스프레드
   - 해결책: Bithumb REST API로 초기 스냅샷 취득 후 증분 적용
   - 파일: `engine/src/collectors/bithumb_collector.py`
 
-- [ ] **KRW/USDT 환율 동적 조회** — 현재 정적 값(1380) 사용
-  - 해결책: Upbit USDT/KRW 마켓에서 실시간 환율 조회
+- [x] **KRW/USDT 환율 동적 조회 구현 완료** (Phase 7.3d — `1751098`)
+  - Upbit USDT/KRW 마켓에서 실시간 환율 조회 구현 (KRW dual-source)
   - 파일: `engine/src/modes/shadow.py`
-  - 연관 파일: `engine/src/collectors/manager.py`
 
 - [x] **1시간 연속 Shadow 실행 완료** (2026-03-08, 622 trades)
   - 달성: 622건 거래, 79.9% 승률, +0.02128 USDT, 0.128% max drawdown
-  - 다음: 계속 실행 중 — 추가 통계 수집 및 안정성 검증
 
 - [ ] **Maker Order 구현 검토** (마찰 비용 절감)
   - 현재: Taker fee ~20bps (왕복)
   - 목표: Maker fee ~4–10bps (왕복)
   - 트레이드오프: 체결 불확실성 증가, 구현 복잡도 상승
+
+- [ ] **Phase 7.3e 발견 이슈 수정** (코드 리뷰 HIGH 3건)
+  - `_krw_rate=0` ZeroDivisionError 가드 추가
+  - `min_price_usd` 필터 단위 테스트 추가
+  - KRW rate loop 단위 테스트 추가
 
 ### 6.2 전략 확장
 
@@ -410,8 +459,34 @@ engine/
 
 - **현황**: 대부분 알트코인 gross spread 2–25bps, friction ~20bps
 - **결론**: 실질적 기회는 스프레드 > 20bps인 심볼에 한정
-- **리스크**: 현 friction 수준에서 전략 수익성 제한적
-- **가능한 해결책**: (a) Maker order 전환, (b) 더 높은 MIN_EDGE_BPS 설정, (c) 고스프레드 심볼 집중
+- **현재 대응**: MIN_EDGE_BPS=40으로 상향 (Phase 7.3d)
+- **가능한 해결책**: (a) Maker order 전환, (b) 고스프레드 심볼 집중
+
+### 이슈 6: MIN_EDGE_BPS=40 신호 빈도 리스크 [MEDIUM]
+
+- **증상**: 40bps threshold로 신호 발생 빈도 대폭 감소 예상
+- **리스크**: 통계적으로 유의미한 거래 수 확보 어려울 수 있음 (72h 내 100건 미달 가능)
+- **모니터링**: Shadow 실행 중 거래 건수 추적 필요
+- **완화책**: 심볼 풀 확장 (175개) + MIN_PRICE_USD=0.10 필터로 노이즈 감소
+
+### 이슈 7: _krw_rate=0 ZeroDivisionError [HIGH - 코드 버그]
+
+- **발견**: Phase 7.3e 코드 리뷰 (Task #2)
+- **원인**: KRW dual-source 실시간 조회 실패 시 `_krw_rate=0` → 나눗셈 오류
+- **영향**: 실시간 조회 실패 시 엔진 크래시 가능
+- **수정 필요**: `engine/src/modes/shadow.py` — 0 가드 추가 (fallback to 1380)
+
+### 이슈 8: cex_dex 전략 미구현 [LOW]
+
+- **증상**: `_build_dex_adapter()` 항상 None 반환 → cex_dex 전략 사실상 비활성
+- **영향**: DEX_RPC_URL 설정해도 실제 전략 미동작
+- **현재 상태**: 8번째 전략으로 등록만 된 상태
+
+### 이슈 9: 전략 3개 미완성 [MEDIUM]
+
+- `statistical_arb`: NOT_READY 상태 플래그 — 실전 투입 불가
+- `latency_arb`: 파라미터 누락 — 런타임 초기화 오류 가능
+- `futures_futures`: 신호 소스 없음 — 거래 발생 불가
 
 ---
 
@@ -425,14 +500,16 @@ DATA_MODE=shadow                    # synthetic | real_public | shadow
 EXECUTION_MODE=paper                # paper | live
 
 # 신호 필터링
-MIN_EDGE_BPS=3                      # 최소 순 edge (bps), 현재 3 테스트 중
+MIN_EDGE_BPS=40                     # 최소 순 edge (bps) — Phase 7.3d 튜닝 결과
 MAX_SPREAD_PCT=5.0                  # 최대 스프레드 (%), 이상값 필터
+MIN_PRICE_USD=0.10                  # 최소 코인 가격 (USD), 소액 코인 슬리피지 방지
 
 # 한국 거래소 FX
-KRW_USDT_RATE=1380                  # ⚠ 임시 정적 값 (실제: ~1477)
+KRW_USDT_RATE=1380                  # fallback 정적 값 (실시간 조회 실패 시 사용)
+# ※ KRW dual-source: Upbit USDT/KRW 마켓 실시간 조회 우선 (Phase 7.3d)
 
 # 거래소 설정
-TRADING_ACTIVE_EXCHANGES=binance,upbit,bithumb
+TRADING_ACTIVE_EXCHANGES=binance,bybit,okx,bitget,upbit,bithumb,coinone  # 7개 전체
 
 # Telegram 알림
 TELEGRAM_BOT_TOKEN=<token>
@@ -478,6 +555,7 @@ cd engine && python -m pytest tests/ --cov=src    # 커버리지 포함
 
 | 날짜 | 변경자 | 내용 |
 |------|--------|------|
+| 2026-03-08 | worker-4 | Phase 7.3e 검증 결과 반영 (커밋 1751098, MIN_EDGE_BPS=40, Phase 7.3c/7.3d 완료, 이슈 6~9 추가) |
 | 2026-03-08 | worker-4 | 1시간 Shadow 실행 결과 추가 (622 trades, 79.9% W/L, +0.02128 PnL) |
 | 2026-03-08 | architect | 최초 생성 — Phase 7.3 진행 현황 반영, Shadow 테스트 결과 통합 |
 
