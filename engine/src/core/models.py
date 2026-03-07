@@ -1,12 +1,16 @@
 """Domain models for LEVIATHAN arbitrage engine."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class OrderSide(StrEnum):
@@ -39,7 +43,7 @@ class OrderBook(BaseModel):
     symbol: str
     bids: list[OrderBookLevel]  # sorted descending by price
     asks: list[OrderBookLevel]  # sorted ascending by price
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utcnow)
     sequence: int | None = None
 
     @property
@@ -75,8 +79,8 @@ class Order(BaseModel):
     filled: Decimal = Decimal("0")
     remaining: Decimal | None = None
     status: OrderStatus = OrderStatus.PENDING
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -90,7 +94,7 @@ class Trade(BaseModel):
     amount: Decimal
     fee: Decimal = Decimal("0")
     fee_currency: str | None = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utcnow)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -102,7 +106,7 @@ class Position(BaseModel):
     mark_price: Decimal | None = None
     unrealized_pnl: Decimal = Decimal("0")
     leverage: int = 1
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class Signal(BaseModel):
@@ -115,7 +119,7 @@ class Signal(BaseModel):
     spread_pct: Decimal
     confidence: float = Field(ge=0.0, le=1.0)
     volume: Decimal
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utcnow)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -126,7 +130,7 @@ class Ticker(BaseModel):
     ask: Decimal
     last: Decimal
     volume: Decimal
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utcnow)
 
 
 class Balance(BaseModel):

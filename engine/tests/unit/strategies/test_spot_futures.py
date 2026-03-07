@@ -1,7 +1,7 @@
 """Tests for SpotFuturesStrategy."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -39,7 +39,7 @@ def make_signal(
         spread_pct=abs(sell_price - buy_price) / buy_price,
         confidence=0.9,
         volume=volume,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         metadata={
             "basis_bps": str(basis_bps),
             "spot_symbol": spot_symbol,

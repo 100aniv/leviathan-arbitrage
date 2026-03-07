@@ -1,7 +1,7 @@
 """Tests for FuturesFuturesStrategy."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -38,7 +38,7 @@ def make_signal(
         spread_pct=spread_pct,
         confidence=0.9,
         volume=volume,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         metadata=metadata,
     )
 

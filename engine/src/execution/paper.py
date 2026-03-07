@@ -5,7 +5,7 @@ import random
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Callable
 
@@ -63,7 +63,7 @@ class SimulatedTrade:
     trade: Trade
     order: Order
     slippage_pct: Decimal
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class PaperExecutor:

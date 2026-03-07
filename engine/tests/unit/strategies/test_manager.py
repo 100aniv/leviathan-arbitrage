@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -59,12 +59,12 @@ def make_signal_event_dict(
         spread_pct=spread_pct,
         confidence=0.9,
         volume=Decimal("0.5"),
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
     )
     return {
         "event_type": "signal",
         "event_id": "test-event-001",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "source": "price_hub",
         "signal": signal.model_dump(mode="json"),
     }

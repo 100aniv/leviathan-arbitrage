@@ -1,7 +1,7 @@
 """Tests for TriangularStrategy — 3-leg same-exchange arbitrage."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -43,7 +43,7 @@ def make_triangle_signal(
         spread_pct=spread_pct,
         confidence=0.90,
         volume=volume,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         metadata={
             "path": path or ["USDT", "BTC", "ETH"],
             "pairs": pairs or ["BTC/USDT", "ETH/BTC", "ETH/USDT"],
@@ -122,7 +122,7 @@ class TestTriangularStrategyFiltering:
             spread_pct=Decimal("0.01"),
             confidence=0.9,
             volume=Decimal("1000"),
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             metadata={},  # no triangle info
         )
         result = await strategy.on_signal(signal)

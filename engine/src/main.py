@@ -31,6 +31,10 @@ from src.core.config import ExecutionMode, Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
+# Dynamic BTC reference price — read from env var, used for USDT→BTC position size conversion.
+# Defaults to $50,000. Override via BTC_REFERENCE_PRICE env var for live/testnet.
+_BTC_REFERENCE_PRICE = Decimal(os.environ.get("BTC_REFERENCE_PRICE", "50000"))
+
 
 class DataMode:
     """Data source mode for the engine."""
@@ -529,25 +533,25 @@ class Engine:
         sf_p = tuned.get("spot_futures", {})
         sf_config = SpotFuturesConfig(
             min_basis_bps=Decimal(str(sf_p.get("min_basis_bps", 15))),
-            max_position_size=Decimal(str(sf_p.get("max_position_size_usdt", 5484))) / Decimal("50000"),
+            max_position_size=Decimal(str(sf_p.get("max_position_size_usdt", 5484))) / _BTC_REFERENCE_PRICE,
         ) if sf_p.get("status") in ("READY", "MONITOR") else None
 
         fr_p = tuned.get("funding_rate", {})
         fr_config = FundingRateConfig(
             min_funding_diff_bps=Decimal(str(fr_p.get("min_funding_diff_bps", 5))),
-            max_position_size=Decimal(str(fr_p.get("max_position_size_usdt", 8928))) / Decimal("50000"),
+            max_position_size=Decimal(str(fr_p.get("max_position_size_usdt", 8928))) / _BTC_REFERENCE_PRICE,
         ) if fr_p.get("status") in ("READY", "MONITOR") else None
 
         ce_p = tuned.get("cross_exchange", {})
         ce_config = CrossExchangeConfig(
             min_spread_bps=Decimal(str(ce_p.get("min_spread_bps", 10))),
-            max_position_size=Decimal(str(ce_p.get("max_position_size_usdt", 9767))) / Decimal("50000"),
+            max_position_size=Decimal(str(ce_p.get("max_position_size_usdt", 9767))) / _BTC_REFERENCE_PRICE,
         ) if ce_p.get("status") in ("READY", "MONITOR") else None
 
         ff_p = tuned.get("futures_futures", {})
         ff_config = FuturesFuturesConfig(
             min_spread_bps=Decimal(str(ff_p.get("min_spread_bps", 8))),
-            max_position_size=Decimal(str(ff_p.get("max_position_size_usdt", 1738))) / Decimal("50000"),
+            max_position_size=Decimal(str(ff_p.get("max_position_size_usdt", 1738))) / _BTC_REFERENCE_PRICE,
         ) if ff_p.get("status") in ("READY", "MONITOR") else None
 
         tri_p = tuned.get("triangular", {})
@@ -672,7 +676,7 @@ class Engine:
             )
             # Check each leg
             for leg in trade_request.legs:
-                price = leg.price or Decimal("50000")
+                price = leg.price or _BTC_REFERENCE_PRICE
                 proposal = TradeProposal(
                     strategy_id=trade_request.strategy_id,
                     exchange_id=leg.exchange_id,

@@ -1,7 +1,7 @@
 """Tests for FundingRateStrategy."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -35,7 +35,7 @@ def make_signal(
         spread_pct=(sell_price - buy_price) / buy_price,
         confidence=0.85,
         volume=volume,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         metadata={
             "funding_rate_sell": str(funding_rate_sell),
             "funding_rate_buy": str(funding_rate_buy),

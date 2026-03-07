@@ -586,7 +586,7 @@ class StrategyBacktestEngine:
         signals = gen(closes, params, rng)
 
         # Run event loop to call async on_signal; pass rng for execution noise
-        trade_pnls, equity_curve = asyncio.get_event_loop().run_until_complete(
+        trade_pnls, equity_curve = asyncio.run(
             self._replay(strategy, signals, params, dex_adapter, rng)
         )
 
