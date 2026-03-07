@@ -95,15 +95,25 @@ class BaseCollector(abc.ABC):
             self._reconnect_delay = self.INITIAL_RECONNECT_DELAY
             logger.info("collector_connected", exchange=self.exchange_id)
 
-            # Subscribe to channels
-            for symbol in self.symbols:
-                msg = self._subscribe_message(symbol)
-                if isinstance(msg, dict):
-                    import json
-                    await ws.send(json.dumps(msg))
-                else:
-                    await ws.send(str(msg))
-                logger.info("collector_subscribed", exchange=self.exchange_id, symbol=symbol)
+            # Subscribe to channels (batch or per-symbol)
+            import json as _json
+            batch = self._subscribe_all_messages()
+            if batch is not None:
+                for msg in batch:
+                    if isinstance(msg, dict):
+                        await ws.send(_json.dumps(msg))
+                    else:
+                        await ws.send(str(msg))
+                for symbol in self.symbols:
+                    logger.info("collector_subscribed", exchange=self.exchange_id, symbol=symbol)
+            else:
+                for symbol in self.symbols:
+                    msg = self._subscribe_message(symbol)
+                    if isinstance(msg, dict):
+                        await ws.send(_json.dumps(msg))
+                    else:
+                        await ws.send(str(msg))
+                    logger.info("collector_subscribed", exchange=self.exchange_id, symbol=symbol)
 
             # Listen for messages
             async for raw in ws:
@@ -156,6 +166,15 @@ class BaseCollector(abc.ABC):
     def _ws_url(self) -> str:
         """Return the WebSocket endpoint URL."""
         ...
+
+    def _subscribe_all_messages(self) -> list[str | dict] | None:
+        """Return batch subscription messages for all symbols at once.
+
+        Override in subclasses where the exchange requires a single message
+        containing all symbols (e.g. Upbit, Bithumb). Return None to use
+        the default per-symbol _subscribe_message() fallback.
+        """
+        return None
 
     @abc.abstractmethod
     def _subscribe_message(self, symbol: str) -> str | dict:

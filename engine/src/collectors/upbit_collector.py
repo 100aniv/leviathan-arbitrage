@@ -48,11 +48,16 @@ class UpbitCollector(BaseCollector):
     def _ws_url(self) -> str:
         return self._WS_URL
 
-    def _subscribe_message(self, symbol: str) -> str | dict:
-        """Upbit requires a JSON array: [ticket, type+codes].
+    def _subscribe_all_messages(self) -> list[str | dict] | None:
+        """Upbit requires all codes in a single subscription message."""
+        codes = [_normalize_symbol(s) for s in self.symbols]
+        return [json.dumps([
+            {"ticket": f"leviathan-{uuid.uuid4().hex[:8]}"},
+            {"type": "orderbook", "codes": codes},
+        ])]
 
-        Only called once per symbol; we batch all symbols in one message.
-        """
+    def _subscribe_message(self, symbol: str) -> str | dict:
+        """Fallback per-symbol subscription (not used when batch is available)."""
         code = _normalize_symbol(symbol)
         return json.dumps([
             {"ticket": f"leviathan-{uuid.uuid4().hex[:8]}"},

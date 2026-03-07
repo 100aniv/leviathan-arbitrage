@@ -41,8 +41,13 @@ class BithumbCollector(BaseCollector):
     def _ws_url(self) -> str:
         return self._WS_URL
 
+    def _subscribe_all_messages(self) -> list[str | dict] | None:
+        """Bithumb requires all symbols in a single subscription message."""
+        syms = [_normalize_symbol(s) for s in self.symbols]
+        return [{"type": "orderbookdepth", "symbols": syms, "tickTypes": ["1H"]}]
+
     def _subscribe_message(self, symbol: str) -> str | dict:
-        """Bithumb subscription message."""
+        """Fallback per-symbol subscription (not used when batch is available)."""
         bithumb_sym = _normalize_symbol(symbol)
         return {
             "type": "orderbookdepth",
