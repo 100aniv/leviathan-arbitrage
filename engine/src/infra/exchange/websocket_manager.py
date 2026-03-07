@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time as _time
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Callable
@@ -61,7 +62,7 @@ class WebSocketConnection:
             await self._connect_fn()
             self._state = ConnectionState.CONNECTED
             self._reconnect_attempts = 0
-            self._last_message_time = asyncio.get_event_loop().time()
+            self._last_message_time = _time.monotonic()
             self._start_monitoring()
         except Exception:
             self._set_state(ConnectionState.DISCONNECTED)
@@ -74,10 +75,10 @@ class WebSocketConnection:
 
     def record_message(self) -> None:
         """Call this whenever a message is received to reset staleness timer."""
-        self._last_message_time = asyncio.get_event_loop().time()
+        self._last_message_time = _time.monotonic()
 
     def _start_monitoring(self) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         self._heartbeat_task = loop.create_task(self._heartbeat_loop())
         self._stale_check_task = loop.create_task(self._stale_check_loop())
 
@@ -97,7 +98,7 @@ class WebSocketConnection:
         while self._state == ConnectionState.CONNECTED:
             await asyncio.sleep(1.0)
             if self._last_message_time > 0:
-                staleness = asyncio.get_event_loop().time() - self._last_message_time
+                staleness = _time.monotonic() - self._last_message_time
                 if staleness > self.config.stale_threshold_seconds:
                     logger.warning(
                         "Stale data for %s: %.1fs since last message",
