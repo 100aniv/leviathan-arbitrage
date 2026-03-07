@@ -1163,7 +1163,7 @@ async def main() -> None:
     server_config = uvicorn.Config(
         app=app,
         host=host,
-        port=8000,
+        port=int(os.getenv("PORT", "8000")),
         log_level="info",
     )
     server = uvicorn.Server(server_config)

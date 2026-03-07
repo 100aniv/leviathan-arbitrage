@@ -5,11 +5,11 @@ import random
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Callable
 
-from src.core.models import Order, OrderSide, Trade
+from src.core.models import Order, OrderSide, Trade, _utcnow
 
 
 class OrderRejectedError(Exception):
@@ -63,7 +63,7 @@ class SimulatedTrade:
     trade: Trade
     order: Order
     slippage_pct: Decimal
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=_utcnow)
 
 
 class PaperExecutor:

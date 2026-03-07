@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from decimal import Decimal
 from datetime import datetime, timezone
 from typing import Any
@@ -63,8 +64,8 @@ class MarketRecorder:
         await recorder.stop()
     """
 
-    FLUSH_INTERVAL_MS: int = 100   # flush every 100 ms
-    MAX_BUFFER_SIZE: int = 1_000   # also flush when buffer exceeds this size
+    FLUSH_INTERVAL_MS: int = int(os.getenv("MARKET_FLUSH_INTERVAL_MS", "100"))
+    MAX_BUFFER_SIZE: int = int(os.getenv("MARKET_BUFFER_SIZE", "1000"))
 
     # ------------------------------------------------------------------
     # Construction

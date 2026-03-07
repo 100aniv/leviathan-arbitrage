@@ -71,7 +71,7 @@ class CEXOrderbookSlippage:
 
     COLD_START_MULTIPLIER = Decimal(os.getenv("SLIPPAGE_CONSERVATIVE_MULTIPLIER", "1.5"))
     GAMMA = float(os.getenv("SLIPPAGE_GAMMA", "0.5"))
-    T_0 = 60.0  # seconds
+    T_0 = float(os.getenv("SLIPPAGE_T0", "60.0"))  # seconds
 
     # Flag indicating whether GAMMA has been calibrated against live data.
     GAMMA_CALIBRATED: bool = os.getenv("SLIPPAGE_GAMMA_CALIBRATED", "false").lower() == "true"

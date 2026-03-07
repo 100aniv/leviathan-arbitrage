@@ -34,6 +34,8 @@ class BaseCollector(abc.ABC):
         exchange_id: str,
         symbols: list[str],
         on_orderbook: Callable[[str, str, list, list], Awaitable[None]] | None = None,
+        ping_interval: int = 20,
+        ping_timeout: int = 10,
     ) -> None:
         """
         Args:
@@ -41,10 +43,14 @@ class BaseCollector(abc.ABC):
             symbols: List of trading pairs (e.g. ["BTC/USDT"])
             on_orderbook: Async callback(exchange_id, symbol, bids, asks)
                          bids/asks are list of [price_str, qty_str]
+            ping_interval: WebSocket ping interval in seconds (default 20)
+            ping_timeout: WebSocket ping timeout in seconds (default 10)
         """
         self.exchange_id = exchange_id
         self.symbols = symbols
         self._on_orderbook = on_orderbook
+        self.ping_interval = ping_interval
+        self.ping_timeout = ping_timeout
         self._running = False
         self._ws = None
         self._reconnect_delay = self.INITIAL_RECONNECT_DELAY
@@ -83,7 +89,7 @@ class BaseCollector(abc.ABC):
         url = self._ws_url()
         logger.info("collector_connecting", exchange=self.exchange_id, url=url)
 
-        async with websockets.connect(url, ping_interval=20, ping_timeout=10) as ws:
+        async with websockets.connect(url, ping_interval=self.ping_interval, ping_timeout=self.ping_timeout) as ws:
             self._ws = ws
             self._connected = True
             self._reconnect_delay = self.INITIAL_RECONNECT_DELAY

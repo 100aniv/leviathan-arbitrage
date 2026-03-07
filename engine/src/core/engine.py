@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -38,10 +39,10 @@ class EngineStatus(StrEnum):
 
 @dataclass
 class EngineConfig:
-    reconcile_interval: int = 60    # seconds between position reconciliation
-    health_check_interval: int = 10  # seconds between health checks
-    heartbeat_interval: int = 5      # seconds between WebSocket heartbeats
-    shutdown_timeout: int = 10       # max seconds for graceful shutdown
+    reconcile_interval: int = int(os.getenv("ENGINE_RECONCILE_INTERVAL", "60"))
+    health_check_interval: int = int(os.getenv("ENGINE_HEALTH_CHECK_INTERVAL", "10"))
+    heartbeat_interval: int = int(os.getenv("ENGINE_HEARTBEAT_INTERVAL", "5"))
+    shutdown_timeout: int = int(os.getenv("ENGINE_SHUTDOWN_TIMEOUT", "10"))
 
 
 # ---------------------------------------------------------------------------

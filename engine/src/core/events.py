@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from src.core.models import Order, OrderBook, Signal, Trade
+from src.core.models import Order, OrderBook, Signal, Trade, _utcnow
 
 
 class EventType(StrEnum):
@@ -22,7 +22,7 @@ class EventType(StrEnum):
 class BaseEvent(BaseModel):
     event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     event_type: EventType
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=_utcnow)
     source: str | None = None
 
 
