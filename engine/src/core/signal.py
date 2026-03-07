@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 class SignalConfig:
     strategy_id: str = "cross_exchange_spot"
     min_edge: Decimal = Decimal("0.0001")     # minimum net profit as fraction of notional (1 bps)
+    max_spread_pct: Decimal = Decimal("0.05") # max gross spread as fraction (5%) — reject data anomalies
     cooldown_seconds: float = 1.0              # dedup suppression window
     max_rollback_cost_usd: Decimal = Decimal("50")
     default_adv: Decimal = Decimal("1000")
@@ -112,6 +113,14 @@ class SignalGenerator:
 
         # Raw spread gate
         if sell_price <= buy_price:
+            return None
+
+        # Max spread gate — reject data anomalies (e.g. stale/incremental orderbooks)
+        raw_spread_frac = (sell_price - buy_price) / buy_price
+        if raw_spread_frac > self._config.max_spread_pct:
+            logger.debug("spread_anomaly_rejected", symbol=symbol,
+                         spread_pct=f"{float(raw_spread_frac)*100:.2f}%",
+                         buy_ex=best_ask.exchange, sell_ex=best_bid.exchange)
             return None
 
         # Need both orderbooks for friction calculation

@@ -1,5 +1,12 @@
-"""Timed Shadow Runtime — runs for N minutes then gracefully stops."""
+"""Timed Shadow Runtime — runs for N minutes then gracefully stops.
+
+Usage:
+    python run_shadow_timed.py [minutes] [--auto-symbols]
+
+    --auto-symbols  Auto-discover all common symbols across exchanges (default: use .env)
+"""
 import asyncio
+import json
 import os
 import sys
 import time
@@ -13,17 +20,27 @@ load_dotenv("../.env")
 os.environ["DATA_MODE"] = "shadow"
 os.environ["EXECUTION_MODE"] = "paper"
 
+
+async def _discover_symbols() -> list[str]:
+    """Auto-discover common symbols across configured exchanges."""
+    from src.collectors.symbol_discovery import discover_common_symbols
+    exchanges = json.loads(os.environ.get("TRADING_ACTIVE_EXCHANGES", '["binance","upbit","bithumb"]'))
+    symbols = await discover_common_symbols(exchanges=exchanges, min_exchanges=len(exchanges))
+    return symbols
+
+
 from src.main import Engine
 
 
 def _print_spread_report(shadow) -> None:
-    """Print cross-exchange spread analysis from PriceHub."""
+    """Print cross-exchange spread analysis — only symbols with positive spread."""
     hub = shadow._signal_generator._hub
     books = shadow._books
     krw_rate = shadow._krw_rate
 
     print(f"  KRW/USDT rate: {krw_rate:.1f}")
 
+    spreads = []
     for symbol in sorted(books.keys()):
         exchanges = sorted(books[symbol].keys())
         if len(exchanges) < 2:
@@ -34,25 +51,25 @@ def _print_spread_report(shadow) -> None:
         if best_bid is None or best_ask is None:
             continue
 
-        # Raw spread (before friction)
-        if best_bid.exchange != best_ask.exchange and best_bid.price > best_ask.price:
-            spread_pct = float((best_bid.price - best_ask.price) / best_ask.price * 100)
-            status = f"SPREAD +{spread_pct:.3f}%"
-        else:
-            spread_pct = float((best_bid.price - best_ask.price) / best_ask.price * 100) if best_ask.price > 0 else 0
-            status = f"no-arb {spread_pct:+.3f}%"
+        if best_bid.exchange == best_ask.exchange:
+            continue
 
-        prices = []
-        for ex in exchanges:
-            book = books[symbol].get(ex)
-            if book:
-                b = book.best_bid()
-                a = book.best_ask()
-                if b and a:
-                    prices.append(f"{ex}={float(b):.4f}/{float(a):.4f}")
+        if best_ask.price <= 0:
+            continue
 
-        print(f"  {symbol}: {status} | best_bid={best_bid.exchange}@{float(best_bid.price):.4f} "
-              f"best_ask={best_ask.exchange}@{float(best_ask.price):.4f} | {' '.join(prices)}")
+        spread_pct = float((best_bid.price - best_ask.price) / best_ask.price * 100)
+        if spread_pct <= 0:
+            continue
+
+        spreads.append((spread_pct, symbol, best_bid, best_ask))
+
+    # Sort by spread descending — show top opportunities
+    spreads.sort(reverse=True)
+    print(f"  Positive spreads: {len(spreads)} symbols")
+    for spread_pct, symbol, best_bid, best_ask in spreads[:20]:
+        print(f"  {symbol}: +{spread_pct:.3f}% | "
+              f"bid={best_bid.exchange}@{float(best_bid.price):.6g} "
+              f"ask={best_ask.exchange}@{float(best_ask.price):.6g}")
 
 
 async def _timer(engine: Engine, duration_minutes: float):
@@ -110,7 +127,13 @@ async def _timer(engine: Engine, duration_minutes: float):
     await engine.stop()
 
 
-async def run(duration_minutes: float):
+async def run(duration_minutes: float, auto_symbols: bool = False):
+    if auto_symbols:
+        print("Discovering common symbols across exchanges...")
+        symbols = await _discover_symbols()
+        print(f"Found {len(symbols)} common symbols")
+        os.environ["TRADING_SYMBOLS"] = json.dumps(symbols)
+
     engine = Engine()
     # engine.run() blocks until _shutdown_event; _timer stops it after deadline
     await asyncio.gather(
@@ -120,5 +143,8 @@ async def run(duration_minutes: float):
 
 
 if __name__ == "__main__":
-    minutes = float(sys.argv[1]) if len(sys.argv) > 1 else 10
-    asyncio.run(run(minutes))
+    args = sys.argv[1:]
+    auto_sym = "--auto-symbols" in args
+    args = [a for a in args if not a.startswith("--")]
+    minutes = float(args[0]) if args else 10
+    asyncio.run(run(minutes, auto_symbols=auto_sym))
