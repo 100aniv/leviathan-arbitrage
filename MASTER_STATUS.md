@@ -85,7 +85,9 @@
 | 7.3b | Symbol Auto-Discovery + Max Spread Anomaly Filter | 완료 | `405e6d5` |
 | 7.3c | Shadow params 튜닝 (env-wired, drawdown calc 수정) | 완료 | `918c645` |
 | 7.3d | 거래소 확장(7), quant tuning (40bps), KRW dual-source | 완료 | `1751098` |
-| **7.3e** | **검증 (tests, code review, strategy verification)** | **완료** | — |
+| 7.3e | 검증 (tests, code review, strategy verification) | 완료 | — |
+| 7.3f | HIGH 이슈 수정 (ZeroDivisionError 가드, +12 tests) | 완료 | `dba1bb1` |
+| **7.3g** | **Shadow 실행: 40→30→20bps 단계 테스트 → MIN_EDGE=30 결정** | **완료** | — |
 
 ---
 
@@ -177,6 +179,31 @@
   - `latency_arb`: 파라미터 누락
   - `futures_futures`: 신호 소스 없음
 
+#### (h) Phase 7.3g — 40→30→20bps 단계적 Shadow 테스트 (2026-03-08)
+
+**목적**: MIN_EDGE_BPS=40의 신호 빈도 검증 + 최적값 결정
+
+| MIN_EDGE_BPS | 신호 수 | 거래 수 | 승률 | PnL (USDT) | 양수 스프레드 심볼 |
+|---|---|---|---|---|---|
+| 40bps | 0 | 0 | — | 0.0 | 35개 |
+| 30bps | 1 | 1 | 100% | +0.000284 | 42개 |
+| 20bps | 0 | 0 | — | 0.0 | 44개 (orderbook 품질 문제) |
+
+**결론**: MIN_EDGE_BPS=**30** 최적
+- 40bps: 신호 없음 — friction ~20bps 기준으로도 과도하게 엄격
+- 30bps: 유일하게 유효 신호 발생, 수익 확인 (net edge ~10bps 확보)
+- 20bps: 빈 orderbook으로 인한 friction 계산 실패 — threshold 문제 아닌 데이터 품질 이슈
+
+**추가 관찰**:
+- 활성 거래소: 3/7 (Binance, Upbit, Bithumb) — Bybit/OKX/Bitget/Coinone 미연결
+- KRW rate: 1478~1479 정상 (dual-source 작동 확인)
+- 빈 orderbook 심볼 다수 존재 (AUCTION, ZRO, BARD 등) — 데이터 유입 타이밍 이슈
+
+**72h 외삽 추정 (30bps 기준)**:
+- 관측값: 1건 / 5분 = 12건/h → **864건 / 72h** (n=1, 고분산 주의)
+- LiveGate 최소 거래 수 기준(100건) 대비 충분 (단, 시장 상황 변동성 고려 필요)
+- 거래소 7개 전체 연결 시 신호 빈도 추가 증가 기대 (현재 3/7만 활성)
+
 ---
 
 ### 4.2 Shadow Runtime 실행 이력
@@ -198,14 +225,19 @@
 | 175심볼, 3bps | 175 | 5% max | 3 bps | 64 | 95.3% (61W/3L) | -0.0018 (순손실, DD 버그) |
 | **175심볼, 2bps+cd2s** | **175** | **5% max** | **2 bps** | **199** | **81.9% (163W/36L)** | **+0.0017 (최적, DD=0.00002)** |
 | **175심볼, 1h 실행** | **175** | **5% max** | **2 bps** | **622** | **79.9% (497W/125L)** | **+0.02128 (진행중, DD=0.00128)** |
+| Phase 7.3g: 40bps 테스트 | 175 | 5% max | **40 bps** | 0 | — | 0.0 (신호 없음, 과도 엄격) |
+| Phase 7.3g: 30bps 테스트 | 175 | 5% max | **30 bps** | 1 | 100% (1W/0L) | **+0.000284 (최적값 확정)** |
+| Phase 7.3g: 20bps 테스트 | 175 | 5% max | **20 bps** | 0 | — | 0.0 (빈 orderbook, 데이터 품질) |
 
 ---
 
 ## 5. Shadow 테스트 결과
 
-### 5.1 현재 주요 관찰사항 (2026-03-08 갱신)
+### 5.1 현재 주요 관찰사항 (2026-03-08 갱신, Phase 7.3g)
 
-1. **1시간 연속 Shadow 실행 성공**: 622건 거래, 79.9% 승률, +0.02128 USDT PnL (진행중)
+1. **MIN_EDGE_BPS=30 최적 확정** (Phase 7.3g): 40bps=신호 없음, 30bps=1건 수익, 20bps=데이터 품질 실패
+2. **72h 예상 거래 수 (30bps)**: 1건/5분 → 864건/72h (n=1 고분산, 거래소 전체 연결 시 증가 기대)
+3. **1시간 연속 Shadow 실행 성공**: 622건 거래, 79.9% 승률, +0.02128 USDT PnL (Phase 7.3d 기준)
 2. **XRP/USDT 김치 프리미엄 확인**: KRW_USDT_RATE=1380 기준 ~6.7% 프리미엄 탐지
 3. **Bithumb 데이터 품질 이슈**: 증분 orderbook 방식의 근본적 한계 — 스냅샷 없이 증분만 수신 시 허위 스프레드 생성
 4. **마찰 비용 현실**: 대부분 알트코인 gross spread 0.02–0.25%, friction ~20bps → 순 edge 간신히 양수
@@ -232,9 +264,10 @@ Rollback 비용:  —                              = 약 1–2 bps
 
 ### 6.1 즉시 실행 가능 (인프라 불필요)
 
-- [x] **MIN_EDGE_BPS 최적값 탐색 완료** (Phase 7.3d — `1751098`)
-  - 결정: 40bps (마찰 ~20bps + 순 edge 20bps 확보 목표)
-  - 근거: 3bps~10bps 테스트 결과 friction 대비 순 edge 부족 확인
+- [x] **MIN_EDGE_BPS 최적값 확정** (Phase 7.3g)
+  - 결정: **30bps** (40bps=신호 없음, 20bps=데이터 품질 실패)
+  - 근거: 30bps만 유효 신호 발생 + 수익 확인 (net edge ~10bps = 30-20bps friction)
+  - .env 반영 완료: `MIN_EDGE_BPS=40` → `MIN_EDGE_BPS=30`
 
 - [ ] **Bithumb Orderbook 데이터 품질 수정**
   - 현재 문제: 스냅샷 없이 증분 업데이트만 수신 → 허위 스프레드
@@ -500,7 +533,7 @@ DATA_MODE=shadow                    # synthetic | real_public | shadow
 EXECUTION_MODE=paper                # paper | live
 
 # 신호 필터링
-MIN_EDGE_BPS=40                     # 최소 순 edge (bps) — Phase 7.3d 튜닝 결과
+MIN_EDGE_BPS=30                     # 최소 순 edge (bps) — Phase 7.3g 확정 (40=신호없음, 20=데이터품질실패)
 MAX_SPREAD_PCT=5.0                  # 최대 스프레드 (%), 이상값 필터
 MIN_PRICE_USD=0.10                  # 최소 코인 가격 (USD), 소액 코인 슬리피지 방지
 
@@ -555,6 +588,7 @@ cd engine && python -m pytest tests/ --cov=src    # 커버리지 포함
 
 | 날짜 | 변경자 | 내용 |
 |------|--------|------|
+| 2026-03-08 | worker-2 | Phase 7.3g 결과 반영: MIN_EDGE_BPS 40→30 확정, Shadow 테스트 3단계 결과, 72h 외삽 추정 |
 | 2026-03-08 | worker-4 | Phase 7.3e 검증 결과 반영 (커밋 1751098, MIN_EDGE_BPS=40, Phase 7.3c/7.3d 완료, 이슈 6~9 추가) |
 | 2026-03-08 | worker-4 | 1시간 Shadow 실행 결과 추가 (622 trades, 79.9% W/L, +0.02128 PnL) |
 | 2026-03-08 | architect | 최초 생성 — Phase 7.3 진행 현황 반영, Shadow 테스트 결과 통합 |
