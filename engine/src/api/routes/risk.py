@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse, JSONResponse
 from pydantic import BaseModel
+
+from src.api.auth import require_auth
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ class KillSwitchRequest(BaseModel):
     reason: str = "manual"
 
 
-@router.post("/kill-switch")
+@router.post("/kill-switch", dependencies=[Depends(require_auth)])
 async def trigger_kill_switch(body: KillSwitchRequest, request: Request) -> JSONResponse:
     """
     Trigger emergency kill switch.
@@ -37,6 +39,59 @@ async def trigger_kill_switch(body: KillSwitchRequest, request: Request) -> JSON
 
     logger.critical("KILL SWITCH TRIGGERED via API — reason: %s", body.reason)
     return JSONResponse({"status": "halted", "reason": body.reason})
+
+
+@router.get("/mode")
+async def engine_mode(request: Request) -> JSONResponse:
+    """Return current engine execution mode — public endpoint for dashboard status bar."""
+    ctx = request.app.state.engine_context
+    return JSONResponse({
+        "mode": ctx.execution_mode,
+        "data_mode": getattr(ctx, "data_mode", "synthetic"),
+        "shadow_active": getattr(ctx, "shadow_active", False),
+        "live_gate_eligible": getattr(ctx, "live_gate_eligible", False),
+    })
+
+
+@router.get("/risk/metrics")
+async def risk_metrics(request: Request) -> JSONResponse:
+    """Return current risk metrics — public endpoint for dashboard status bar."""
+    ctx = request.app.state.engine_context
+
+    kill_switch_active = ctx.kill_switch_active
+    circuit_breaker_state = "CLOSED"
+    max_drawdown_pct = 0.0
+    daily_loss_pct = 0.0
+    position_count = 0
+    correlation_alert = False
+
+    rg = ctx.risk_guardian
+    if rg is not None:
+        try:
+            kill_switch_active = getattr(rg, "kill_switch_active", kill_switch_active)
+            circuit_breaker_state = getattr(rg, "circuit_breaker_state", circuit_breaker_state)
+            max_drawdown_pct = float(getattr(rg, "max_drawdown_pct", max_drawdown_pct))
+            daily_loss_pct = float(getattr(rg, "daily_loss_pct", daily_loss_pct))
+            correlation_alert = getattr(rg, "correlation_alert", correlation_alert)
+        except Exception as exc:
+            logger.warning("Failed to read risk_guardian attributes: %s", exc)
+
+    if ctx.position_manager is not None:
+        try:
+            position_count = len(ctx.position_manager.get_all_positions())
+        except Exception as exc:
+            logger.warning("Failed to read position count: %s", exc)
+    else:
+        position_count = len(ctx.positions)
+
+    return JSONResponse({
+        "kill_switch_active": kill_switch_active,
+        "circuit_breaker_state": circuit_breaker_state,
+        "max_drawdown_pct": max_drawdown_pct,
+        "daily_loss_pct": daily_loss_pct,
+        "position_count": position_count,
+        "correlation_alert": correlation_alert,
+    })
 
 
 @router.get("/metrics")

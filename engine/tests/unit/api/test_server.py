@@ -2,6 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from src.api.auth import create_token
 from src.api.server import EngineContext, create_app
 
 
@@ -14,6 +15,12 @@ def context():
 def client(context):
     app = create_app(context)
     return TestClient(app)
+
+
+@pytest.fixture
+def auth_headers():
+    """Authorization headers with a valid JWT for protected endpoints."""
+    return {"Authorization": f"Bearer {create_token('test')}"}
 
 
 class TestHealthRoute:
@@ -56,18 +63,18 @@ class TestStatusRoute:
 
 
 class TestPositionsRoute:
-    def test_positions_returns_200(self, client):
-        assert client.get("/api/v1/positions").status_code == 200
+    def test_positions_returns_200(self, client, auth_headers):
+        assert client.get("/api/v1/positions", headers=auth_headers).status_code == 200
 
-    def test_positions_returns_list(self, client):
-        assert isinstance(client.get("/api/v1/positions").json(), list)
+    def test_positions_returns_list(self, client, auth_headers):
+        assert isinstance(client.get("/api/v1/positions", headers=auth_headers).json(), list)
 
-    def test_positions_empty_by_default(self, client):
-        assert client.get("/api/v1/positions").json() == []
+    def test_positions_empty_by_default(self, client, auth_headers):
+        assert client.get("/api/v1/positions", headers=auth_headers).json() == []
 
-    def test_positions_returns_context_data(self, client, context):
+    def test_positions_returns_context_data(self, client, context, auth_headers):
         context.positions = [{"symbol": "BTC/USDT", "side": "LONG", "qty": "1.0"}]
-        data = client.get("/api/v1/positions").json()
+        data = client.get("/api/v1/positions", headers=auth_headers).json()
         assert len(data) == 1
         assert data[0]["symbol"] == "BTC/USDT"
 
@@ -112,33 +119,33 @@ class TestStrategiesRoute:
 
 
 class TestKillSwitchRoute:
-    def test_kill_switch_returns_200(self, client):
-        response = client.post("/api/v1/kill-switch", json={"reason": "test"})
+    def test_kill_switch_returns_200(self, client, auth_headers):
+        response = client.post("/api/v1/kill-switch", json={"reason": "test"}, headers=auth_headers)
         assert response.status_code == 200
 
-    def test_kill_switch_sets_context_flag(self, client, context):
-        client.post("/api/v1/kill-switch", json={"reason": "manual_test"})
+    def test_kill_switch_sets_context_flag(self, client, context, auth_headers):
+        client.post("/api/v1/kill-switch", json={"reason": "manual_test"}, headers=auth_headers)
         assert context.kill_switch_active is True
 
-    def test_kill_switch_response_includes_reason(self, client):
-        data = client.post("/api/v1/kill-switch", json={"reason": "emergency"}).json()
+    def test_kill_switch_response_includes_reason(self, client, auth_headers):
+        data = client.post("/api/v1/kill-switch", json={"reason": "emergency"}, headers=auth_headers).json()
         assert "reason" in data or "status" in data
 
 
 class TestPnLRoute:
-    def test_pnl_returns_200(self, client):
-        assert client.get("/api/v1/pnl").status_code == 200
+    def test_pnl_returns_200(self, client, auth_headers):
+        assert client.get("/api/v1/pnl", headers=auth_headers).status_code == 200
 
-    def test_pnl_includes_fields(self, client):
-        data = client.get("/api/v1/pnl").json()
+    def test_pnl_includes_fields(self, client, auth_headers):
+        data = client.get("/api/v1/pnl", headers=auth_headers).json()
         assert "realized_pnl" in data
         assert "unrealized_pnl" in data
         assert "total_pnl" in data
 
-    def test_pnl_reflects_context(self, client, context):
+    def test_pnl_reflects_context(self, client, context, auth_headers):
         from decimal import Decimal
         context.realized_pnl = Decimal("123.45")
-        data = client.get("/api/v1/pnl").json()
+        data = client.get("/api/v1/pnl", headers=auth_headers).json()
         assert float(data["realized_pnl"]) == pytest.approx(123.45)
 
 

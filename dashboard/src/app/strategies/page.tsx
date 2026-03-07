@@ -1,3 +1,7 @@
+'use client';
+
+import { StrategyPanel } from '@/components/StrategyPanel';
+
 export default function StrategiesPage() {
   return (
     <div className="space-y-6">
@@ -6,13 +10,7 @@ export default function StrategiesPage() {
         <p className="text-xs font-mono text-terminal-subtle mt-1">Manage and monitor active arbitrage strategies</p>
       </div>
 
-      {/* Strategy list placeholder */}
-      <div className="card">
-        <p className="card-header">Active Strategies</p>
-        <div className="flex items-center justify-center py-16">
-          <p className="text-xs font-mono text-terminal-subtle">Strategy components loading…</p>
-        </div>
-      </div>
+      <StrategyPanel />
     </div>
   );
 }

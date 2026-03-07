@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Optional
@@ -11,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from src.api.auth import DASHBOARD_USER, DASHBOARD_PASSWORD, create_token
 from src.api.websocket import ConnectionManager
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,11 @@ class KillBody(BaseModel):
     reason: str = "manual"
 
 
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
 def create_app(context: EngineContext | None = None) -> FastAPI:
     """
     Create and configure the FastAPI application.
@@ -65,9 +72,12 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
         description="Cross-exchange arbitrage engine REST API",
     )
 
+    _cors_origins = os.environ.get(
+        "CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+    ).split(",")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -75,6 +85,17 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
 
     # Attach shared context to app state
     app.state.engine_context = context
+
+    # ---------------------------------------------------------------------------
+    # Auth endpoints (public)
+    # ---------------------------------------------------------------------------
+
+    @app.post("/api/auth/login")
+    async def login(body: LoginBody):  # type: ignore[return]
+        if body.username != DASHBOARD_USER or body.password != DASHBOARD_PASSWORD:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        token = create_token(body.username)
+        return JSONResponse({"access_token": token, "token_type": "bearer"})
 
     # Mount route modules
     from src.api.routes.health import router as health_router
@@ -86,6 +107,25 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     app.include_router(strategies_router)
     app.include_router(trading_router)
     app.include_router(risk_router)
+
+    # ---------------------------------------------------------------------------
+    # Prometheus short-path alias
+    # ---------------------------------------------------------------------------
+
+    @app.get("/metrics")
+    async def short_metrics():  # type: ignore[return]
+        """Alias so Prometheus scraper at /metrics works alongside /api/v1/metrics."""
+        try:
+            from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+            from fastapi.responses import PlainTextResponse
+            data = generate_latest()
+            return PlainTextResponse(
+                content=data.decode() if isinstance(data, bytes) else data,
+                media_type=CONTENT_TYPE_LATEST,
+            )
+        except Exception:
+            from fastapi.responses import PlainTextResponse
+            return PlainTextResponse("# metrics unavailable\n", media_type="text/plain")
 
     # ---------------------------------------------------------------------------
     # Short-path aliases (integration-layer convenience routes)

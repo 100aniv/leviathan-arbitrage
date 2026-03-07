@@ -12,9 +12,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from src.api.auth import create_token
 from src.api.server import EngineContext, create_app
 from src.core.models import OrderSide
 from src.risk.kill_switch import clear_halt
+
+# Pre-built auth header for tests that hit JWT-protected endpoints
+_AUTH_HEADERS = {"Authorization": f"Bearer {create_token('test')}"}
 
 
 @pytest.fixture(autouse=True)
@@ -85,7 +89,7 @@ class TestPositionsEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/positions")
+        resp = client.get("/api/v1/positions", headers=_AUTH_HEADERS)
         assert resp.status_code == 200
         assert resp.json() == []
 
@@ -107,7 +111,7 @@ class TestPositionsEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/positions")
+        resp = client.get("/api/v1/positions", headers=_AUTH_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
@@ -121,7 +125,7 @@ class TestPositionsEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/positions")
+        resp = client.get("/api/v1/positions", headers=_AUTH_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
@@ -135,7 +139,7 @@ class TestPnLEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/pnl")
+        resp = client.get("/api/v1/pnl", headers=_AUTH_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert data["realized_pnl"] == 0.0
@@ -153,7 +157,7 @@ class TestPnLEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/pnl")
+        resp = client.get("/api/v1/pnl", headers=_AUTH_HEADERS)
         data = resp.json()
         assert data["realized_pnl"] == 25.5
         assert data["unrealized_pnl"] == 10.3
@@ -226,6 +230,130 @@ class TestStrategiesEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["config"]["min_spread_bps"] == 15.0
+
+
+class TestModeEndpoint:
+    """Test /api/v1/mode endpoint."""
+
+    def test_mode_returns_defaults(self):
+        ctx = _make_context(execution_mode="paper")
+        app = _make_app(ctx)
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/mode")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["mode"] == "paper"
+        assert data["data_mode"] == "synthetic"
+        assert data["shadow_active"] is False
+        assert data["live_gate_eligible"] is False
+
+    def test_mode_reflects_live_execution_mode(self):
+        ctx = _make_context(execution_mode="live")
+        app = _make_app(ctx)
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/mode")
+        assert resp.status_code == 200
+        assert resp.json()["mode"] == "live"
+
+    def test_mode_is_public_no_auth_required(self):
+        ctx = _make_context()
+        app = _make_app(ctx)
+        client = TestClient(app)
+
+        # No auth header — must still return 200
+        resp = client.get("/api/v1/mode")
+        assert resp.status_code == 200
+
+
+class TestRiskMetricsEndpoint:
+    """Test /api/v1/risk/metrics endpoint."""
+
+    def test_risk_metrics_defaults(self):
+        ctx = _make_context()
+        app = _make_app(ctx)
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/risk/metrics")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["kill_switch_active"] is False
+        assert data["circuit_breaker_state"] == "CLOSED"
+        assert data["max_drawdown_pct"] == 0.0
+        assert data["daily_loss_pct"] == 0.0
+        assert data["position_count"] == 0
+        assert data["correlation_alert"] is False
+
+    def test_risk_metrics_reads_from_risk_guardian(self):
+        mock_rg = MagicMock()
+        mock_rg.kill_switch_active = True
+        mock_rg.circuit_breaker_state = "OPEN"
+        mock_rg.max_drawdown_pct = 5.5
+        mock_rg.daily_loss_pct = 2.1
+        mock_rg.correlation_alert = True
+
+        ctx = _make_context(risk_guardian=mock_rg)
+        app = _make_app(ctx)
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/risk/metrics")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["kill_switch_active"] is True
+        assert data["circuit_breaker_state"] == "OPEN"
+        assert data["max_drawdown_pct"] == 5.5
+        assert data["daily_loss_pct"] == 2.1
+        assert data["correlation_alert"] is True
+
+    def test_risk_metrics_position_count_from_position_manager(self):
+        mock_pm = MagicMock()
+        mock_pm.get_all_positions.return_value = [MagicMock(), MagicMock()]
+
+        ctx = _make_context(position_manager=mock_pm)
+        app = _make_app(ctx)
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/risk/metrics")
+        assert resp.status_code == 200
+        assert resp.json()["position_count"] == 2
+
+    def test_risk_metrics_position_count_from_context_list(self):
+        ctx = _make_context(positions=[{"symbol": "BTC/USDT"}, {"symbol": "ETH/USDT"}])
+        app = _make_app(ctx)
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/risk/metrics")
+        assert resp.status_code == 200
+        assert resp.json()["position_count"] == 2
+
+    def test_risk_metrics_is_public_no_auth_required(self):
+        ctx = _make_context()
+        app = _make_app(ctx)
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/risk/metrics")
+        assert resp.status_code == 200
+
+    def test_risk_metrics_kill_switch_active_reflected(self):
+        ctx = _make_context(kill_switch_active=True)
+        app = _make_app(ctx)
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/risk/metrics")
+        assert resp.json()["kill_switch_active"] is True
+
+
+class TestPrometheusAliasEndpoint:
+    """Test /metrics short-path alias."""
+
+    def test_metrics_alias_returns_200(self):
+        ctx = _make_context()
+        app = _make_app(ctx)
+        client = TestClient(app)
+
+        resp = client.get("/metrics")
+        assert resp.status_code == 200
 
 
 class TestMetricsCollector:

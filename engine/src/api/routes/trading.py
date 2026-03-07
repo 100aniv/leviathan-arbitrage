@@ -4,8 +4,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+
+from src.api.auth import require_auth
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +63,14 @@ def _get_pnl(ctx: Any) -> dict[str, float]:
     }
 
 
-@router.get("/positions")
+@router.get("/positions", dependencies=[Depends(require_auth)])
 async def list_positions(request: Request) -> JSONResponse:
     """Return all open positions."""
     ctx = request.app.state.engine_context
     return JSONResponse(_get_positions(ctx))
 
 
-@router.get("/pnl")
+@router.get("/pnl", dependencies=[Depends(require_auth)])
 async def get_pnl(request: Request) -> JSONResponse:
     """Return PnL summary (realized, unrealized, total)."""
     ctx = request.app.state.engine_context

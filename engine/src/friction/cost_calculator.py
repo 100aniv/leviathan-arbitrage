@@ -139,8 +139,12 @@ class CostCalculator:
         sell_notional = sell_price * size
         gross_spread = sell_notional - buy_notional
 
-        fee_buy = self._fee_model.taker_fee(buy_exchange, buy_notional)
-        fee_sell = self._fee_model.taker_fee(sell_exchange, sell_notional)
+        # Normalize exchange IDs — strip paper_/sandbox_ prefixes for fee lookup
+        buy_ex = buy_exchange.removeprefix("paper_").removeprefix("sandbox_")
+        sell_ex = sell_exchange.removeprefix("paper_").removeprefix("sandbox_")
+
+        fee_buy = self._fee_model.taker_fee(buy_ex, buy_notional)
+        fee_sell = self._fee_model.taker_fee(sell_ex, sell_notional)
 
         slip_buy = self._slippage_model.predict(buy_book, size, adv, sigma)
         slip_sell = self._slippage_model.predict(sell_book, size, adv, sigma)

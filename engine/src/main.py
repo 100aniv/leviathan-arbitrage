@@ -19,6 +19,7 @@ import asyncio
 import logging
 import os
 import signal
+import time
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
@@ -340,7 +341,7 @@ class Engine:
                      len(self._exchanges), list(self._exchanges.keys()))
 
     async def _init_paper_exchanges(self, capital: Decimal) -> None:
-        from src.execution.paper import PaperExecutor
+        from src.execution.paper import PaperExecutor, SlippageModel
         from src.execution.paper_adapter import PaperExchangeAdapter
 
         # Create 2+ paper exchanges with different spread injection profiles
@@ -361,7 +362,7 @@ class Engine:
         for cfg in configs:
             executor = PaperExecutor(
                 fee_rate=Decimal("0.001"),
-                base_slippage_pct=Decimal("0.0005"),
+                slippage_model=SlippageModel(base_slippage_pct=Decimal("0.0005")),
             )
             adapter = PaperExchangeAdapter(
                 exchange_id=cfg["exchange_id"],
@@ -486,19 +487,30 @@ class Engine:
                      len(self._strategy_manager._strategies))
 
     async def _register_default_strategies(self) -> None:
-        """Register strategies with a stub cost calculator if the real one failed."""
+        """Register all available strategies."""
         from src.strategies.cross_exchange import CrossExchangeStrategy
+        from src.strategies.spot_futures import SpotFuturesStrategy
+        from src.strategies.futures_futures import FuturesFuturesStrategy
+        from src.strategies.triangular import TriangularStrategy
+        from src.strategies.funding_rate import FundingRateStrategy
+        from src.strategies.statistical_arb import StatisticalArbStrategy
 
         # Use a simple stub if CostCalculator didn't initialize
         cost_calc = self._cost_calculator
         if cost_calc is None:
             cost_calc = _StubCostCalculator()
 
-        cross_ex = CrossExchangeStrategy(
-            strategy_id="cross_exchange_v1",
-            cost_calculator=cost_calc,
-        )
-        self._strategy_manager.register(cross_ex)
+        strategies = [
+            CrossExchangeStrategy("cross_exchange_v1", cost_calc),
+            SpotFuturesStrategy("spot_futures_v1", cost_calc),
+            FuturesFuturesStrategy("futures_futures_v1", cost_calc),
+            TriangularStrategy("triangular_v1", cost_calc),
+            FundingRateStrategy("funding_rate_v1", cost_calc),
+            StatisticalArbStrategy("statistical_arb_v1", cost_calc),
+        ]
+        for strategy in strategies:
+            self._strategy_manager.register(strategy)
+        logger.info("Registered %d strategies", len(strategies))
 
     # ------------------------------------------------------------------
     # Step 6: Risk Management
@@ -634,6 +646,7 @@ class Engine:
             asyncio.create_task(self._health_check_loop(), name="health_check"),
             asyncio.create_task(self._reconcile_loop(), name="reconcile"),
             asyncio.create_task(self._heartbeat_loop(), name="ws_heartbeat"),
+            asyncio.create_task(self._dashboard_feed_loop(), name="dashboard_feed"),
         ]
 
         if self._data_mode == DataMode.SHADOW:
@@ -928,6 +941,68 @@ class Engine:
                 break
             except Exception as exc:
                 logger.warning("Heartbeat error: %s", exc)
+
+
+    async def _dashboard_feed_loop(self) -> None:
+        """Broadcast engine state to all WebSocket clients every second."""
+        FEED_INTERVAL = 1.0
+        while self.state.running:
+            try:
+                await asyncio.sleep(FEED_INTERVAL)
+                ws = self.context.ws_manager
+                if not ws or ws.connection_count == 0:
+                    continue
+
+                # Strategy status
+                strategies = []
+                for sid, info in self.context.strategies.items():
+                    strategies.append({
+                        "id": sid,
+                        "enabled": info.get("enabled", False),
+                        "type": info.get("type", "unknown"),
+                    })
+
+                # PnL
+                realized = float(self.context.realized_pnl)
+                unrealized = float(self.context.unrealized_pnl)
+
+                # Positions
+                positions = []
+                if self.context.position_manager:
+                    try:
+                        for p in self.context.position_manager.get_all_positions():
+                            positions.append({
+                                "strategy_id": p.strategy_id,
+                                "exchange_id": p.exchange_id,
+                                "symbol": p.symbol,
+                                "side": p.side,
+                                "pnl": float(p.unrealized_pnl),
+                            })
+                    except Exception:
+                        pass
+
+                await ws.broadcast({
+                    "type": "state_update",
+                    "data": {
+                        "running": self.context.running,
+                        "kill_switch": self.context.kill_switch_active,
+                        "mode": self.context.execution_mode,
+                        "strategy_count": len(strategies),
+                        "strategies": strategies,
+                        "pnl": {
+                            "realized": realized,
+                            "unrealized": unrealized,
+                            "total": realized + unrealized,
+                        },
+                        "positions": positions,
+                        "position_count": len(positions),
+                    },
+                    "ts": time.time(),
+                })
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.warning("Dashboard feed error: %s", exc)
 
 
 class _StubCostCalculator:

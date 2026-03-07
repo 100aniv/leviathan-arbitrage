@@ -23,7 +23,11 @@ def _get_strategy_list(ctx: Any) -> list[dict[str, Any]]:
                     "id": sid,
                     "type": getattr(s, "STRATEGY_TYPE", "unknown"),
                     "enabled": s.is_active if s else False,
-                    "metrics": s.metrics.model_dump() if s and hasattr(s, "metrics") else {},
+                    "metrics": (
+                        {k: float(v) if hasattr(v, "as_tuple") else v
+                         for k, v in s.metrics.model_dump().items()}
+                        if s and hasattr(s, "metrics") else {}
+                    ),
                 })
             return strategies
         except Exception as exc:
