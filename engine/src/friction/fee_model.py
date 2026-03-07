@@ -34,6 +34,16 @@ DEFAULT_FEES: dict[str, list[FeeConfig]] = {
         FeeConfig("bybit", 0, Decimal("0.0001"), Decimal("0.0006")),
         FeeConfig("bybit", 1, Decimal("0.0000"), Decimal("0.0005")),
     ],
+    "bitget": [
+        FeeConfig("bitget", 0, Decimal("0.0010"), Decimal("0.0010")),  # VIP0
+        FeeConfig("bitget", 1, Decimal("0.0008"), Decimal("0.0008")),  # VIP1
+    ],
+    "upbit": [
+        FeeConfig("upbit", 0, Decimal("0.0025"), Decimal("0.0025")),  # KRW market
+    ],
+    "bithumb": [
+        FeeConfig("bithumb", 0, Decimal("0.0025"), Decimal("0.0025")),  # KRW market
+    ],
 }
 
 

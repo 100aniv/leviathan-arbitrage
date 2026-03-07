@@ -111,6 +111,70 @@ class TestFeeModelRates:
         assert rate == Decimal("0.0006")
 
 
+class TestFeeModelNewExchanges:
+    """Tests for newly added Bitget, Upbit, Bithumb fee configs."""
+
+    def test_bitget_taker_fee_tier0(self):
+        model = FeeModel()
+        fee = model.taker_fee("bitget", Decimal("10000"))
+        assert fee == Decimal("10")  # 0.10%
+
+    def test_bitget_maker_fee_tier0(self):
+        model = FeeModel()
+        fee = model.maker_fee("bitget", Decimal("10000"))
+        assert fee == Decimal("10")  # 0.10%
+
+    def test_bitget_tier1_lower_fees(self):
+        model = FeeModel()
+        model.set_tier("bitget", 1)
+        fee = model.taker_fee("bitget", Decimal("10000"))
+        assert fee == Decimal("8")  # 0.08% VIP1
+
+    def test_upbit_taker_fee_tier0(self):
+        model = FeeModel()
+        fee = model.taker_fee("upbit", Decimal("10000"))
+        assert fee == Decimal("25")  # 0.25% KRW market
+
+    def test_upbit_maker_fee_tier0(self):
+        model = FeeModel()
+        fee = model.maker_fee("upbit", Decimal("10000"))
+        assert fee == Decimal("25")  # 0.25%
+
+    def test_bithumb_taker_fee_tier0(self):
+        model = FeeModel()
+        fee = model.taker_fee("bithumb", Decimal("10000"))
+        assert fee == Decimal("25")  # 0.25% KRW market
+
+    def test_bithumb_maker_fee_tier0(self):
+        model = FeeModel()
+        fee = model.maker_fee("bithumb", Decimal("10000"))
+        assert fee == Decimal("25")  # 0.25%
+
+    def test_all_six_exchanges_accessible(self):
+        model = FeeModel()
+        for ex in ["binance", "okx", "bybit", "bitget", "upbit", "bithumb"]:
+            rate = model.taker_rate(ex)
+            assert rate > 0, f"{ex} taker rate should be positive"
+
+    def test_krw_exchanges_higher_fees_than_global(self):
+        model = FeeModel()
+        upbit_rate = model.taker_rate("upbit")
+        binance_rate = model.taker_rate("binance")
+        assert upbit_rate > binance_rate, "KRW exchanges have higher fees"
+
+    def test_bitget_maker_rate(self):
+        model = FeeModel()
+        assert model.maker_rate("bitget") == Decimal("0.0010")
+
+    def test_upbit_taker_rate(self):
+        model = FeeModel()
+        assert model.taker_rate("upbit") == Decimal("0.0025")
+
+    def test_bithumb_taker_rate(self):
+        model = FeeModel()
+        assert model.taker_rate("bithumb") == Decimal("0.0025")
+
+
 class TestFeeModelCustom:
     def test_custom_fee_config(self):
         custom = {
