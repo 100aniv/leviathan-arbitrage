@@ -56,10 +56,11 @@ class Engine:
     """
     LEVIATHAN engine orchestrator.
 
-    Wires all subsystems together based on execution mode:
-    - PAPER:   InMemoryEventBus + PaperExchangeAdapters + synthetic data
-    - SANDBOX: Redis EventBus + CCXTAdapters(sandbox=True) + real testnet data
-    - LIVE:    Redis EventBus + CCXTAdapters + real exchange data
+    Wires all subsystems together based on execution mode and data mode:
+    - PAPER + SYNTHETIC:        InMemoryEventBus + PaperAdapters + GBM data
+    - PAPER + REAL_PUBLIC:      InMemoryEventBus + PaperAdapters + real WebSocket data (no API keys)
+    - PAPER + SHADOW:           InMemoryEventBus + PaperAdapters + real WS + ShadowMode + LiveGate
+    - LIVE + REAL_AUTHENTICATED: Redis EventBus + NativeAdapters + real exchange data + API keys
     """
 
     RECONCILE_INTERVAL = 60
