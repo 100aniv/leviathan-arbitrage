@@ -10,7 +10,6 @@ import asyncio
 import logging
 import math
 import random
-import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Callable

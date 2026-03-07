@@ -5,7 +5,6 @@ and produces signal distribution statistics.
 """
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal

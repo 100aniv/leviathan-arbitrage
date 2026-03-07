@@ -18,7 +18,7 @@ import signal
 import sys
 import time
 from decimal import Decimal
-from statistics import mean, median, stdev
+from statistics import mean, median
 
 logger = logging.getLogger(__name__)
 

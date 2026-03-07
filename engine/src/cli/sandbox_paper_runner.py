@@ -15,7 +15,6 @@ import json
 import logging
 import os
 import signal
-import sys
 import time
 from decimal import Decimal
 from pathlib import Path

@@ -12,7 +12,6 @@ Supports:
 from __future__ import annotations
 
 import asyncio
-import math
 from decimal import Decimal
 from typing import Any
 

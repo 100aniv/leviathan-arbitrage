@@ -10,7 +10,6 @@ import urllib.parse
 from decimal import Decimal
 from typing import Any
 
-import httpx
 
 from src.core.models import Balance, FeeRate, Order, OrderBook, OrderSide, Position, Trade
 from src.infra.exchange.native_adapter import NativeAdapter

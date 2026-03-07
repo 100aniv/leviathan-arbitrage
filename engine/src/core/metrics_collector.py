@@ -9,7 +9,6 @@ import math
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from decimal import Decimal
 
 
 @dataclass

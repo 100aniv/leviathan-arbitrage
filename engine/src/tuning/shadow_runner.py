@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from src.tuning.backtest import BacktestEngine, BacktestResult, StrategyParams
 from src.tuning.evaluator import EvaluationReport, OutOfSampleEvaluator

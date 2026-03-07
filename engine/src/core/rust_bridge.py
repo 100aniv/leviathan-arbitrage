@@ -9,7 +9,6 @@ If enabled but rust_core unavailable, falls back to Python with WARNING log.
 """
 from __future__ import annotations
 
-import logging
 import os
 import types
 from typing import TYPE_CHECKING, Any

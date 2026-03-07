@@ -7,7 +7,6 @@ from typing import Any
 
 from src.core.models import OrderBook
 from src.infra.exchange.ccxt_adapter import CCXTAdapter
-from src.infra.exchange.rate_limiter import RateLimitConfig
 
 logger = logging.getLogger(__name__)
 

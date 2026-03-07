@@ -14,7 +14,7 @@ Recovery sequence on Redis restart:
 import logging
 from decimal import Decimal
 
-from src.risk.kill_switch import halt_local, clear_halt, is_halted
+from src.risk.kill_switch import halt_local, clear_halt
 
 logger = logging.getLogger(__name__)
 
