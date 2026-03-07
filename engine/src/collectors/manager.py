@@ -13,6 +13,7 @@ from src.collectors.okx_collector import OKXCollector
 from src.collectors.bitget_collector import BitgetCollector
 from src.collectors.upbit_collector import UpbitCollector
 from src.collectors.bithumb_collector import BithumbCollector
+from src.collectors.coinone_collector import CoinoneCollector
 
 logger = structlog.get_logger(__name__)
 
@@ -25,7 +26,7 @@ class CollectorManager:
     """
 
     # Default exchanges to collect from
-    DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget", "upbit", "bithumb"]
+    DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone"]
 
     def __init__(
         self,
@@ -36,7 +37,7 @@ class CollectorManager:
         """
         Args:
             symbols: Trading pairs to collect (default ["BTC/USDT"])
-            exchanges: Exchange IDs to enable (default all 4)
+            exchanges: Exchange IDs to enable (default all 7)
             on_orderbook: Async callback(exchange_id, symbol, bids, asks)
         """
         self.symbols = symbols or ["BTC/USDT"]
@@ -54,6 +55,7 @@ class CollectorManager:
             "bitget": BitgetCollector,
             "upbit": UpbitCollector,
             "bithumb": BithumbCollector,
+            "coinone": CoinoneCollector,
         }
         cls = factory.get(exchange_id)
         if cls is None:

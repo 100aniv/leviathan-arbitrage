@@ -49,6 +49,11 @@ from src.collectors.bithumb_collector import (
     _denormalize_symbol as bithumb_denorm,
     _normalize_symbol as bithumb_norm,
 )
+from src.collectors.coinone_collector import (
+    CoinoneCollector,
+    _denormalize_symbol as coinone_denorm,
+    _normalize_symbol as coinone_norm,
+)
 
 
 # ===========================================================================
@@ -874,5 +879,181 @@ class TestBithumbCollectorHandleMessage:
         callback = AsyncMock()
         c = BithumbCollector(symbols=["BTC/KRW"], on_orderbook=callback)
         raw = json.dumps({"type": "connected"})
+        await c._handle_message(raw)
+        callback.assert_not_called()
+
+
+# ===========================================================================
+# CoinoneCollector
+# ===========================================================================
+
+
+class TestCoinoneNormalizeSymbol:
+    def test_btc_krw_returns_krw_and_btc(self):
+        quote, target = coinone_norm("BTC/KRW")
+        assert quote == "KRW"
+        assert target == "BTC"
+
+    def test_eth_krw_returns_krw_and_eth(self):
+        quote, target = coinone_norm("ETH/KRW")
+        assert quote == "KRW"
+        assert target == "ETH"
+
+    def test_no_slash_returns_krw_and_original(self):
+        quote, target = coinone_norm("BTC")
+        assert quote == "KRW"
+        assert target == "BTC"
+
+
+class TestCoinoneDenormalizeSymbol:
+    def test_krw_btc_becomes_btc_krw(self):
+        assert coinone_denorm("KRW", "BTC") == "BTC/KRW"
+
+    def test_krw_eth_becomes_eth_krw(self):
+        assert coinone_denorm("KRW", "ETH") == "ETH/KRW"
+
+    def test_usdt_btc_becomes_btc_usdt(self):
+        assert coinone_denorm("USDT", "BTC") == "BTC/USDT"
+
+
+class TestCoinoneCollectorWsUrl:
+    def test_ws_url_is_coinone_stream_endpoint(self):
+        c = CoinoneCollector(symbols=["BTC/KRW"])
+        assert c._ws_url() == "wss://stream.coinone.co.kr"
+
+
+class TestCoinoneCollectorSubscribeMessage:
+    def test_subscribe_message_contains_request_type_and_channel(self):
+        c = CoinoneCollector(symbols=["BTC/KRW"])
+        msg = c._subscribe_message("BTC/KRW")
+        assert isinstance(msg, dict)
+        assert msg["request_type"] == "SUBSCRIBE"
+        assert msg["channel"] == "ORDERBOOK"
+
+    def test_subscribe_message_topic_has_correct_currencies(self):
+        c = CoinoneCollector(symbols=["BTC/KRW"])
+        msg = c._subscribe_message("BTC/KRW")
+        topic = msg["topic"]
+        assert topic["quote_currency"] == "KRW"
+        assert topic["target_currency"] == "BTC"
+
+    def test_subscribe_message_eth_krw(self):
+        c = CoinoneCollector(symbols=["ETH/KRW"])
+        msg = c._subscribe_message("ETH/KRW")
+        assert msg["topic"]["quote_currency"] == "KRW"
+        assert msg["topic"]["target_currency"] == "ETH"
+
+
+class TestCoinoneCollectorParseMessage:
+    def _valid_data_message(
+        self,
+        bids: list | None = None,
+        asks: list | None = None,
+        quote: str = "KRW",
+        target: str = "BTC",
+    ) -> dict:
+        return {
+            "response_type": "DATA",
+            "channel": "ORDERBOOK",
+            "data": {
+                "quote_currency": quote,
+                "target_currency": target,
+                "bids": bids if bids is not None else [{"price": "49900", "qty": "0.2"}],
+                "asks": asks if asks is not None else [{"price": "50000", "qty": "0.1"}],
+            },
+        }
+
+    def test_valid_data_message_returns_symbol_bids_asks(self):
+        c = CoinoneCollector(symbols=["BTC/KRW"])
+        result = c._parse_message(self._valid_data_message())
+        assert result is not None
+        symbol, bids, asks = result
+        assert symbol == "BTC/KRW"
+        assert bids == [["49900", "0.2"]]
+        assert asks == [["50000", "0.1"]]
+
+    def test_subscribed_response_type_returns_none(self):
+        c = CoinoneCollector(symbols=["BTC/KRW"])
+        result = c._parse_message({"response_type": "SUBSCRIBED", "channel": "ORDERBOOK"})
+        assert result is None
+
+    def test_non_orderbook_channel_returns_none(self):
+        c = CoinoneCollector(symbols=["BTC/KRW"])
+        result = c._parse_message({"response_type": "DATA", "channel": "TICKER"})
+        assert result is None
+
+    def test_empty_data_payload_returns_none(self):
+        c = CoinoneCollector(symbols=["BTC/KRW"])
+        result = c._parse_message({"response_type": "DATA", "channel": "ORDERBOOK", "data": {}})
+        assert result is None
+
+    def test_empty_bids_and_asks_returns_none(self):
+        c = CoinoneCollector(symbols=["BTC/KRW"])
+        result = c._parse_message(self._valid_data_message(bids=[], asks=[]))
+        assert result is None
+
+    def test_bids_sorted_descending_by_price(self):
+        c = CoinoneCollector(symbols=["BTC/KRW"])
+        msg = self._valid_data_message(
+            bids=[
+                {"price": "49800", "qty": "0.3"},
+                {"price": "50000", "qty": "0.1"},
+                {"price": "49900", "qty": "0.2"},
+            ],
+            asks=[{"price": "50100", "qty": "0.5"}],
+        )
+        _, bids, _ = c._parse_message(msg)
+        assert bids[0][0] == "50000"
+        assert bids[1][0] == "49900"
+        assert bids[2][0] == "49800"
+
+    def test_asks_sorted_ascending_by_price(self):
+        c = CoinoneCollector(symbols=["BTC/KRW"])
+        msg = self._valid_data_message(
+            bids=[{"price": "49900", "qty": "0.1"}],
+            asks=[
+                {"price": "50300", "qty": "0.3"},
+                {"price": "50100", "qty": "0.1"},
+                {"price": "50200", "qty": "0.2"},
+            ],
+        )
+        _, _, asks = c._parse_message(msg)
+        assert asks[0][0] == "50100"
+        assert asks[1][0] == "50200"
+        assert asks[2][0] == "50300"
+
+    def test_symbol_derived_from_data_currencies(self):
+        c = CoinoneCollector(symbols=["ETH/KRW"])
+        msg = self._valid_data_message(quote="KRW", target="ETH")
+        symbol, _, _ = c._parse_message(msg)
+        assert symbol == "ETH/KRW"
+
+
+class TestCoinoneCollectorHandleMessage:
+    @pytest.mark.asyncio
+    async def test_handle_message_dispatches_callback_with_exchange_id(self):
+        callback = AsyncMock()
+        c = CoinoneCollector(symbols=["BTC/KRW"], on_orderbook=callback)
+        raw = json.dumps({
+            "response_type": "DATA",
+            "channel": "ORDERBOOK",
+            "data": {
+                "quote_currency": "KRW",
+                "target_currency": "BTC",
+                "bids": [{"price": "49900", "qty": "0.2"}],
+                "asks": [{"price": "50000", "qty": "0.1"}],
+            },
+        })
+        await c._handle_message(raw)
+        callback.assert_called_once()
+        args = callback.call_args[0]
+        assert args[0] == "coinone"
+        assert args[1] == "BTC/KRW"
+
+    @pytest.mark.asyncio
+    async def test_handle_message_skips_subscribed_response(self):
+        callback = AsyncMock()
+        c = CoinoneCollector(symbols=["BTC/KRW"], on_orderbook=callback)
+        raw = json.dumps({"response_type": "SUBSCRIBED", "channel": "ORDERBOOK"})
         await c._handle_message(raw)
         callback.assert_not_called()
