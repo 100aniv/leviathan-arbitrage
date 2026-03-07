@@ -486,14 +486,31 @@ class Engine:
         logger.info("StrategyManager initialized with %d strategies",
                      len(self._strategy_manager._strategies))
 
+    def _load_strategy_params(self) -> dict:
+        """Load tuned strategy parameters from config/strategy_params.json."""
+        import json
+        import pathlib
+        params_path = pathlib.Path(__file__).parent.parent / "config" / "strategy_params.json"
+        if not params_path.exists():
+            logger.info("No tuned strategy params found at %s, using defaults", params_path)
+            return {}
+        try:
+            with open(params_path) as f:
+                params = json.load(f)
+            logger.info("Loaded tuned strategy params from %s", params_path)
+            return params
+        except Exception as exc:
+            logger.warning("Failed to load strategy params: %s", exc)
+            return {}
+
     async def _register_default_strategies(self) -> None:
-        """Register all 8 available strategies."""
+        """Register all 8 available strategies with tuned parameters."""
         from src.core.latency_tracker import LatencyTracker
-        from src.strategies.cross_exchange import CrossExchangeStrategy
-        from src.strategies.spot_futures import SpotFuturesStrategy
-        from src.strategies.futures_futures import FuturesFuturesStrategy
-        from src.strategies.triangular import TriangularStrategy
-        from src.strategies.funding_rate import FundingRateStrategy
+        from src.strategies.cross_exchange import CrossExchangeConfig, CrossExchangeStrategy
+        from src.strategies.spot_futures import SpotFuturesConfig, SpotFuturesStrategy
+        from src.strategies.futures_futures import FuturesFuturesConfig, FuturesFuturesStrategy
+        from src.strategies.triangular import TriangularConfig, TriangularStrategy
+        from src.strategies.funding_rate import FundingRateConfig, FundingRateStrategy
         from src.strategies.statistical_arb import StatisticalArbStrategy
         from src.strategies.latency_arb import LatencyArbStrategy
 
@@ -505,12 +522,46 @@ class Engine:
         # Shared latency tracker for LatencyArb strategy
         self._latency_tracker = LatencyTracker()
 
+        # Load tuned parameters (READY/MONITOR strategies only)
+        tuned = self._load_strategy_params()
+
+        # Build strategy configs from tuned params (fall back to defaults)
+        sf_p = tuned.get("spot_futures", {})
+        sf_config = SpotFuturesConfig(
+            min_basis_bps=Decimal(str(sf_p.get("min_basis_bps", 15))),
+            max_position_size=Decimal(str(sf_p.get("max_position_size_usdt", 5484))) / Decimal("50000"),
+        ) if sf_p.get("status") in ("READY", "MONITOR") else None
+
+        fr_p = tuned.get("funding_rate", {})
+        fr_config = FundingRateConfig(
+            min_funding_diff_bps=Decimal(str(fr_p.get("min_funding_diff_bps", 5))),
+            max_position_size=Decimal(str(fr_p.get("max_position_size_usdt", 8928))) / Decimal("50000"),
+        ) if fr_p.get("status") in ("READY", "MONITOR") else None
+
+        ce_p = tuned.get("cross_exchange", {})
+        ce_config = CrossExchangeConfig(
+            min_spread_bps=Decimal(str(ce_p.get("min_spread_bps", 10))),
+            max_position_size=Decimal(str(ce_p.get("max_position_size_usdt", 9767))) / Decimal("50000"),
+        ) if ce_p.get("status") in ("READY", "MONITOR") else None
+
+        ff_p = tuned.get("futures_futures", {})
+        ff_config = FuturesFuturesConfig(
+            min_spread_bps=Decimal(str(ff_p.get("min_spread_bps", 8))),
+            max_position_size=Decimal(str(ff_p.get("max_position_size_usdt", 1738))) / Decimal("50000"),
+        ) if ff_p.get("status") in ("READY", "MONITOR") else None
+
+        tri_p = tuned.get("triangular", {})
+        tri_config = TriangularConfig(
+            min_profit_bps=Decimal(str(tri_p.get("min_profit_bps", 10))),
+            max_position_usdt=Decimal(str(tri_p.get("max_position_usdt", 1000))),
+        ) if tri_p.get("status") in ("READY", "MONITOR") else None
+
         strategies = [
-            CrossExchangeStrategy("cross_exchange_v1", cost_calc),
-            SpotFuturesStrategy("spot_futures_v1", cost_calc),
-            FuturesFuturesStrategy("futures_futures_v1", cost_calc),
-            TriangularStrategy("triangular_v1", cost_calc),
-            FundingRateStrategy("funding_rate_v1", cost_calc),
+            CrossExchangeStrategy("cross_exchange_v1", cost_calc, config=ce_config),
+            SpotFuturesStrategy("spot_futures_v1", cost_calc, config=sf_config),
+            FuturesFuturesStrategy("futures_futures_v1", cost_calc, config=ff_config),
+            TriangularStrategy("triangular_v1", cost_calc, config=tri_config),
+            FundingRateStrategy("funding_rate_v1", cost_calc, config=fr_config),
             StatisticalArbStrategy("statistical_arb_v1", cost_calc),
             LatencyArbStrategy("latency_arb_v1", cost_calc, self._latency_tracker),
         ]
@@ -532,7 +583,10 @@ class Engine:
 
         for strategy in strategies:
             self._strategy_manager.register(strategy)
-        logger.info("Registered %d strategies", len(strategies))
+
+        tuned_count = sum(1 for s in ["spot_futures", "funding_rate", "cross_exchange",
+                                       "futures_futures", "triangular"] if tuned.get(s, {}).get("status") in ("READY", "MONITOR"))
+        logger.info("Registered %d strategies (%d with tuned params)", len(strategies), tuned_count)
 
     def _build_dex_adapter(self):
         """Build DEX adapter if DEX configuration is available. Returns None if not configured."""

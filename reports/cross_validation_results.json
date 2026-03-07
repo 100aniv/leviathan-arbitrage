@@ -1,0 +1,562 @@
+{
+  "cross_exchange": {
+    "optimized_params": {
+      "min_spread_bps": 29.946028,
+      "max_position_size": 9766.864604,
+      "entry_threshold": 0.006724,
+      "exit_threshold": 9.7e-05,
+      "stop_loss_pct": 0.005028
+    },
+    "cross_validation": {
+      "42": {
+        "1000": {
+          "sharpe": 2.5597,
+          "pnl": 554750.39,
+          "trades": 1663,
+          "win_rate": 0.5664,
+          "max_drawdown": -0.1316
+        },
+        "10000": {
+          "sharpe": 5.5915,
+          "pnl": 554750.39,
+          "trades": 1663,
+          "win_rate": 0.5664,
+          "max_drawdown": -0.0134
+        },
+        "100000": {
+          "sharpe": 7.1901,
+          "pnl": 554750.39,
+          "trades": 1663,
+          "win_rate": 0.5664,
+          "max_drawdown": -0.0018
+        }
+      },
+      "123": {
+        "1000": {
+          "sharpe": 2.3647,
+          "pnl": 152347.21,
+          "trades": 1668,
+          "win_rate": 0.5594,
+          "max_drawdown": -0.0278
+        },
+        "10000": {
+          "sharpe": 4.1578,
+          "pnl": 152347.21,
+          "trades": 1668,
+          "win_rate": 0.5594,
+          "max_drawdown": -0.0086
+        },
+        "100000": {
+          "sharpe": 5.9178,
+          "pnl": 152347.21,
+          "trades": 1668,
+          "win_rate": 0.5594,
+          "max_drawdown": -0.0015
+        }
+      },
+      "777": {
+        "1000": {
+          "sharpe": 2.9854,
+          "pnl": 459298.45,
+          "trades": 1628,
+          "win_rate": 0.5657,
+          "max_drawdown": -0.0635
+        },
+        "10000": {
+          "sharpe": 5.0001,
+          "pnl": 459298.45,
+          "trades": 1628,
+          "win_rate": 0.5657,
+          "max_drawdown": -0.0092
+        },
+        "100000": {
+          "sharpe": 6.8227,
+          "pnl": 459298.45,
+          "trades": 1628,
+          "win_rate": 0.5657,
+          "max_drawdown": -0.0014
+        }
+      }
+    }
+  },
+  "triangular": {
+    "optimized_params": {
+      "min_spread_bps": 49.717064,
+      "max_position_size": 100.442373,
+      "entry_threshold": 0.002063,
+      "exit_threshold": 0.000309,
+      "stop_loss_pct": 0.0051
+    },
+    "cross_validation": {
+      "42": {
+        "1000": {
+          "sharpe": 4.856,
+          "pnl": 6002.1,
+          "trades": 910,
+          "win_rate": 0.5692,
+          "max_drawdown": -0.0038
+        },
+        "10000": {
+          "sharpe": 5.8112,
+          "pnl": 6002.1,
+          "trades": 910,
+          "win_rate": 0.5692,
+          "max_drawdown": -0.0004
+        },
+        "100000": {
+          "sharpe": 5.8714,
+          "pnl": 6002.1,
+          "trades": 910,
+          "win_rate": 0.5692,
+          "max_drawdown": -0.0
+        }
+      },
+      "123": {
+        "1000": {
+          "sharpe": 4.8652,
+          "pnl": 4961.3,
+          "trades": 862,
+          "win_rate": 0.5418,
+          "max_drawdown": -0.0022
+        },
+        "10000": {
+          "sharpe": 5.3225,
+          "pnl": 4961.3,
+          "trades": 862,
+          "win_rate": 0.5418,
+          "max_drawdown": -0.0003
+        },
+        "100000": {
+          "sharpe": 5.3036,
+          "pnl": 4961.3,
+          "trades": 862,
+          "win_rate": 0.5418,
+          "max_drawdown": -0.0
+        }
+      },
+      "777": {
+        "1000": {
+          "sharpe": 4.7326,
+          "pnl": 5466.64,
+          "trades": 868,
+          "win_rate": 0.5334,
+          "max_drawdown": -0.0027
+        },
+        "10000": {
+          "sharpe": 5.4263,
+          "pnl": 5466.64,
+          "trades": 868,
+          "win_rate": 0.5334,
+          "max_drawdown": -0.0003
+        },
+        "100000": {
+          "sharpe": 5.4876,
+          "pnl": 5466.64,
+          "trades": 868,
+          "win_rate": 0.5334,
+          "max_drawdown": -0.0
+        }
+      }
+    }
+  },
+  "spot_futures": {
+    "optimized_params": {
+      "min_spread_bps": 20.372559,
+      "max_position_size": 5483.620114,
+      "entry_threshold": 0.00472,
+      "exit_threshold": 0.002679,
+      "stop_loss_pct": 0.005014
+    },
+    "cross_validation": {
+      "42": {
+        "1000": {
+          "sharpe": 2.5875,
+          "pnl": 612423.95,
+          "trades": 1760,
+          "win_rate": 0.5443,
+          "max_drawdown": -0.0724
+        },
+        "10000": {
+          "sharpe": 4.3648,
+          "pnl": 612423.95,
+          "trades": 1760,
+          "win_rate": 0.5443,
+          "max_drawdown": -0.0079
+        },
+        "100000": {
+          "sharpe": 6.8787,
+          "pnl": 612423.95,
+          "trades": 1760,
+          "win_rate": 0.5443,
+          "max_drawdown": -0.0017
+        }
+      },
+      "123": {
+        "1000": {
+          "sharpe": 2.1716,
+          "pnl": 158138.95,
+          "trades": 1723,
+          "win_rate": 0.5595,
+          "max_drawdown": -0.0716
+        },
+        "10000": {
+          "sharpe": 3.9381,
+          "pnl": 158138.95,
+          "trades": 1723,
+          "win_rate": 0.5595,
+          "max_drawdown": -0.0114
+        },
+        "100000": {
+          "sharpe": 5.5422,
+          "pnl": 158138.95,
+          "trades": 1723,
+          "win_rate": 0.5595,
+          "max_drawdown": -0.0015
+        }
+      },
+      "777": {
+        "1000": {
+          "sharpe": 2.8953,
+          "pnl": 382888.81,
+          "trades": 1718,
+          "win_rate": 0.5442,
+          "max_drawdown": -0.0699
+        },
+        "10000": {
+          "sharpe": 5.2757,
+          "pnl": 382888.81,
+          "trades": 1718,
+          "win_rate": 0.5442,
+          "max_drawdown": -0.0079
+        },
+        "100000": {
+          "sharpe": 6.7182,
+          "pnl": 382888.81,
+          "trades": 1718,
+          "win_rate": 0.5442,
+          "max_drawdown": -0.0023
+        }
+      }
+    }
+  },
+  "funding_rate": {
+    "optimized_params": {
+      "min_spread_bps": 8.218656,
+      "max_position_size": 8928.028529,
+      "entry_threshold": 0.000482,
+      "exit_threshold": 0.0001,
+      "stop_loss_pct": 0.024363
+    },
+    "cross_validation": {
+      "42": {
+        "1000": {
+          "sharpe": 1.1541,
+          "pnl": 9678.48,
+          "trades": 358,
+          "win_rate": 0.5642,
+          "max_drawdown": -0.2541
+        },
+        "10000": {
+          "sharpe": 0.9631,
+          "pnl": 9678.48,
+          "trades": 358,
+          "win_rate": 0.5642,
+          "max_drawdown": -0.0955
+        },
+        "100000": {
+          "sharpe": 0.8915,
+          "pnl": 9678.48,
+          "trades": 358,
+          "win_rate": 0.5642,
+          "max_drawdown": -0.0135
+        }
+      },
+      "123": {
+        "1000": {
+          "sharpe": 0.8663,
+          "pnl": 3275.1,
+          "trades": 367,
+          "win_rate": 0.5831,
+          "max_drawdown": -0.3954
+        },
+        "10000": {
+          "sharpe": 1.0897,
+          "pnl": 3275.1,
+          "trades": 367,
+          "win_rate": 0.5831,
+          "max_drawdown": -0.0565
+        },
+        "100000": {
+          "sharpe": 1.1425,
+          "pnl": 3275.1,
+          "trades": 367,
+          "win_rate": 0.5831,
+          "max_drawdown": -0.0059
+        }
+      },
+      "777": {
+        "1000": {
+          "sharpe": 1.0497,
+          "pnl": 8469.06,
+          "trades": 413,
+          "win_rate": 0.5375,
+          "max_drawdown": -0.2773
+        },
+        "10000": {
+          "sharpe": 1.0297,
+          "pnl": 8469.06,
+          "trades": 413,
+          "win_rate": 0.5375,
+          "max_drawdown": -0.099
+        },
+        "100000": {
+          "sharpe": 0.9972,
+          "pnl": 8469.06,
+          "trades": 413,
+          "win_rate": 0.5375,
+          "max_drawdown": -0.0133
+        }
+      }
+    }
+  },
+  "statistical_arb": {
+    "optimized_params": {
+      "min_spread_bps": 23.911214,
+      "max_position_size": 4706.157677,
+      "entry_threshold": 0.000188,
+      "exit_threshold": 0.00089,
+      "stop_loss_pct": 0.005004
+    },
+    "cross_validation": {
+      "42": {
+        "1000": {
+          "sharpe": 1.2471,
+          "pnl": 10259.43,
+          "trades": 110,
+          "win_rate": 0.5091,
+          "max_drawdown": -0.1007
+        },
+        "10000": {
+          "sharpe": 1.2266,
+          "pnl": 10259.43,
+          "trades": 110,
+          "win_rate": 0.5091,
+          "max_drawdown": -0.0151
+        },
+        "100000": {
+          "sharpe": 1.2096,
+          "pnl": 10259.43,
+          "trades": 110,
+          "win_rate": 0.5091,
+          "max_drawdown": -0.002
+        }
+      },
+      "123": {
+        "1000": {
+          "sharpe": 0.7065,
+          "pnl": 1613.2,
+          "trades": 110,
+          "win_rate": 0.4727,
+          "max_drawdown": -0.2118
+        },
+        "10000": {
+          "sharpe": 0.899,
+          "pnl": 1613.2,
+          "trades": 110,
+          "win_rate": 0.4727,
+          "max_drawdown": -0.0212
+        },
+        "100000": {
+          "sharpe": 0.9256,
+          "pnl": 1613.2,
+          "trades": 110,
+          "win_rate": 0.4727,
+          "max_drawdown": -0.0021
+        }
+      },
+      "777": {
+        "1000": {
+          "sharpe": 1.2457,
+          "pnl": 10343.47,
+          "trades": 126,
+          "win_rate": 0.5079,
+          "max_drawdown": -0.0886
+        },
+        "10000": {
+          "sharpe": 1.1364,
+          "pnl": 10343.47,
+          "trades": 126,
+          "win_rate": 0.5079,
+          "max_drawdown": -0.0163
+        },
+        "100000": {
+          "sharpe": 1.1024,
+          "pnl": 10343.47,
+          "trades": 126,
+          "win_rate": 0.5079,
+          "max_drawdown": -0.0021
+        }
+      }
+    }
+  },
+  "cex_dex": {
+    "optimized_params": {
+      "min_spread_bps": 4.157285,
+      "max_position_size": 1686.600697,
+      "entry_threshold": 0.000512,
+      "exit_threshold": 6.3e-05,
+      "stop_loss_pct": 0.005072
+    },
+    "cross_validation": {
+      "42": {
+        "1000": {
+          "sharpe": 2.7956,
+          "pnl": 50632.58,
+          "trades": 557,
+          "win_rate": 0.5422,
+          "max_drawdown": -0.0476
+        },
+        "10000": {
+          "sharpe": 3.2271,
+          "pnl": 50632.58,
+          "trades": 557,
+          "win_rate": 0.5422,
+          "max_drawdown": -0.0194
+        },
+        "100000": {
+          "sharpe": 2.7684,
+          "pnl": 50632.58,
+          "trades": 557,
+          "win_rate": 0.5422,
+          "max_drawdown": -0.0044
+        }
+      },
+      "123": {
+        "1000": {
+          "sharpe": 1.4188,
+          "pnl": 5250.23,
+          "trades": 187,
+          "win_rate": 0.5401,
+          "max_drawdown": -0.1053
+        },
+        "10000": {
+          "sharpe": 1.6769,
+          "pnl": 5250.23,
+          "trades": 187,
+          "win_rate": 0.5401,
+          "max_drawdown": -0.013
+        },
+        "100000": {
+          "sharpe": 1.7418,
+          "pnl": 5250.23,
+          "trades": 187,
+          "win_rate": 0.5401,
+          "max_drawdown": -0.0013
+        }
+      },
+      "777": {
+        "1000": {
+          "sharpe": 2.4414,
+          "pnl": 31491.01,
+          "trades": 568,
+          "win_rate": 0.5211,
+          "max_drawdown": -0.0823
+        },
+        "10000": {
+          "sharpe": 2.9504,
+          "pnl": 31491.01,
+          "trades": 568,
+          "win_rate": 0.5211,
+          "max_drawdown": -0.0201
+        },
+        "100000": {
+          "sharpe": 2.8842,
+          "pnl": 31491.01,
+          "trades": 568,
+          "win_rate": 0.5211,
+          "max_drawdown": -0.0041
+        }
+      }
+    }
+  },
+  "futures_futures": {
+    "optimized_params": {
+      "min_spread_bps": 49.890225,
+      "max_position_size": 1738.140171,
+      "entry_threshold": 0.001211,
+      "exit_threshold": 0.000197,
+      "stop_loss_pct": 0.005111
+    },
+    "cross_validation": {
+      "42": {
+        "1000": {
+          "sharpe": 1.2404,
+          "pnl": 774888.64,
+          "trades": 1528,
+          "win_rate": 0.5425,
+          "max_drawdown": -0.0112
+        },
+        "10000": {
+          "sharpe": 3.63,
+          "pnl": 774888.64,
+          "trades": 1528,
+          "win_rate": 0.5425,
+          "max_drawdown": -0.0046
+        },
+        "100000": {
+          "sharpe": 6.5548,
+          "pnl": 774888.64,
+          "trades": 1528,
+          "win_rate": 0.5425,
+          "max_drawdown": -0.0012
+        }
+      },
+      "123": {
+        "1000": {
+          "sharpe": 2.0243,
+          "pnl": 253396.45,
+          "trades": 1487,
+          "win_rate": 0.5723,
+          "max_drawdown": -0.2074
+        },
+        "10000": {
+          "sharpe": 3.6092,
+          "pnl": 253396.45,
+          "trades": 1487,
+          "win_rate": 0.5723,
+          "max_drawdown": -0.0207
+        },
+        "100000": {
+          "sharpe": 5.2387,
+          "pnl": 253396.45,
+          "trades": 1487,
+          "win_rate": 0.5723,
+          "max_drawdown": -0.0021
+        }
+      },
+      "777": {
+        "1000": {
+          "sharpe": 1.2445,
+          "pnl": 659231.16,
+          "trades": 1503,
+          "win_rate": 0.5609,
+          "max_drawdown": -0.0426
+        },
+        "10000": {
+          "sharpe": 3.2769,
+          "pnl": 659231.16,
+          "trades": 1503,
+          "win_rate": 0.5609,
+          "max_drawdown": -0.0088
+        },
+        "100000": {
+          "sharpe": 6.2108,
+          "pnl": 659231.16,
+          "trades": 1503,
+          "win_rate": 0.5609,
+          "max_drawdown": -0.0016
+        }
+      }
+    }
+  }
+}

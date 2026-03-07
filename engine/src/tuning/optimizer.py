@@ -11,6 +11,7 @@ from optuna.samplers import TPESampler
 
 from src.tuning.backtest import BacktestEngine, BacktestResult, StrategyParams
 from src.tuning.data_loader import DataLoader, OHLCVWindow
+from src.tuning.strategy_backtest import STRATEGY_TYPES, StrategyBacktestEngine
 
 logger = logging.getLogger(__name__)
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -83,10 +84,22 @@ class WalkForwardOptimizer:
     def __init__(
         self,
         config: TunerConfig | None = None,
-        engine: BacktestEngine | None = None,
+        engine: BacktestEngine | StrategyBacktestEngine | None = None,
+        strategy_type: str | None = None,
     ) -> None:
         self._config = config or TunerConfig()
-        self._engine = engine or BacktestEngine()
+        if engine is not None:
+            self._engine = engine
+        elif strategy_type is not None:
+            if strategy_type not in STRATEGY_TYPES:
+                raise ValueError(
+                    f"strategy_type must be one of {STRATEGY_TYPES}, got {strategy_type!r}"
+                )
+            self._engine: BacktestEngine | StrategyBacktestEngine = StrategyBacktestEngine(
+                strategy_type=strategy_type
+            )
+        else:
+            self._engine = BacktestEngine()
 
     # ------------------------------------------------------------------
     # Walk-forward window construction

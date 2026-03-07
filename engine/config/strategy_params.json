@@ -1,0 +1,71 @@
+{
+  "_meta": {
+    "source": "Phase 6 Walk-Forward Optuna 100 trials tuning",
+    "date": "2026-03-07",
+    "data_type": "synthetic_gbm",
+    "note": "max_position_size_usdt values from tuning. Convert to BTC at runtime via reference price."
+  },
+  "spot_futures": {
+    "status": "READY",
+    "wfe": 1.52,
+    "min_basis_bps": 20.4,
+    "max_position_size_usdt": 5484,
+    "entry_threshold": 0.00472,
+    "exit_threshold": 0.00268,
+    "stop_loss_pct": 0.005
+  },
+  "funding_rate": {
+    "status": "READY",
+    "wfe": 0.62,
+    "min_funding_diff_bps": 8.2,
+    "max_position_size_usdt": 8928,
+    "entry_threshold": 0.000482,
+    "exit_threshold": 0.0001,
+    "stop_loss_pct": 0.024
+  },
+  "triangular": {
+    "status": "MONITOR",
+    "wfe": 0.94,
+    "min_profit_bps": 49.7,
+    "max_position_usdt": 100,
+    "entry_threshold": 0.00206,
+    "exit_threshold": 0.000309,
+    "stop_loss_pct": 0.005
+  },
+  "cex_dex": {
+    "status": "MONITOR",
+    "wfe": 1.19,
+    "min_edge_bps": 4.2,
+    "max_position_size_usdt": 1687,
+    "entry_threshold": 0.000512,
+    "exit_threshold": 0.0000633,
+    "stop_loss_pct": 0.005
+  },
+  "cross_exchange": {
+    "status": "MONITOR",
+    "wfe": 0.32,
+    "min_spread_bps": 29.9,
+    "max_position_size_usdt": 9767,
+    "entry_threshold": 0.00672,
+    "exit_threshold": 0.0000971,
+    "stop_loss_pct": 0.005
+  },
+  "futures_futures": {
+    "status": "MONITOR",
+    "wfe": 0.28,
+    "min_spread_bps": 49.9,
+    "max_position_size_usdt": 1738,
+    "entry_threshold": 0.00121,
+    "exit_threshold": 0.000197,
+    "stop_loss_pct": 0.005
+  },
+  "statistical_arb": {
+    "status": "NOT_READY",
+    "wfe": -1.03,
+    "max_position_size_usdt": 4706,
+    "entry_threshold": 0.000188,
+    "exit_threshold": 0.00089,
+    "stop_loss_pct": 0.005,
+    "note": "WFE negative, 9/97 folds positive only. Use defaults until redesigned."
+  }
+}

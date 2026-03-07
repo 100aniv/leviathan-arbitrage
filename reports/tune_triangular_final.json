@@ -1,0 +1,1382 @@
+{
+  "data_source": "synthetic",
+  "candles": 2000,
+  "trials": 100,
+  "folds": [
+    {
+      "fold": 1,
+      "train_pnl": 115.16478108499834,
+      "train_sharpe": 6.653434640637922,
+      "val_pnl": 24.49137114633514,
+      "val_sharpe": 5.978128460082608,
+      "params": {
+        "min_spread_bps": 21.85226953197454,
+        "max_position_size": 133.21636336582293,
+        "entry_threshold": 0.007315726764631855,
+        "exit_threshold": 7.316190573728991e-05,
+        "stop_loss_pct": 0.005113643474774593
+      }
+    },
+    {
+      "fold": 2,
+      "train_pnl": 151.4228847884776,
+      "train_sharpe": 6.787897710844963,
+      "val_pnl": 32.84661706996425,
+      "val_sharpe": 6.418263671436065,
+      "params": {
+        "min_spread_bps": 33.25384893911472,
+        "max_position_size": 106.72112696858946,
+        "entry_threshold": 0.00886622361799537,
+        "exit_threshold": 0.0003279013939248035,
+        "stop_loss_pct": 0.0052567533544160975
+      }
+    },
+    {
+      "fold": 3,
+      "train_pnl": 148.5017850366366,
+      "train_sharpe": 6.671386178766058,
+      "val_pnl": 31.84606050047381,
+      "val_sharpe": 6.1516909806601925,
+      "params": {
+        "min_spread_bps": 29.00642077214513,
+        "max_position_size": 123.79036230276687,
+        "entry_threshold": 0.0015248295293177974,
+        "exit_threshold": 0.00013338957240241624,
+        "stop_loss_pct": 0.006654453154689761
+      }
+    },
+    {
+      "fold": 4,
+      "train_pnl": 213.33870720841406,
+      "train_sharpe": 6.700856321652557,
+      "val_pnl": 46.37713947306942,
+      "val_sharpe": 6.477824315151989,
+      "params": {
+        "min_spread_bps": 40.09786533367555,
+        "max_position_size": 122.49885222026289,
+        "entry_threshold": 0.0003651621891449591,
+        "exit_threshold": 0.00043661734634335025,
+        "stop_loss_pct": 0.006536259450536561
+      }
+    },
+    {
+      "fold": 5,
+      "train_pnl": 400.70633432999165,
+      "train_sharpe": 6.368639176805316,
+      "val_pnl": 84.31677747777556,
+      "val_sharpe": 6.085107256693855,
+      "params": {
+        "min_spread_bps": 24.653490460784205,
+        "max_position_size": 9742.719726302514,
+        "entry_threshold": 0.0049767693024814754,
+        "exit_threshold": 0.0002468164333107676,
+        "stop_loss_pct": 0.005036108362962573
+      }
+    },
+    {
+      "fold": 6,
+      "train_pnl": 153.68484726422392,
+      "train_sharpe": 6.575325874032259,
+      "val_pnl": 32.629981095034765,
+      "val_sharpe": 5.944006259909433,
+      "params": {
+        "min_spread_bps": 23.350480393197042,
+        "max_position_size": 165.2649321783856,
+        "entry_threshold": 0.00017227239950470556,
+        "exit_threshold": 0.0009649460547712333,
+        "stop_loss_pct": 0.0060295938755099265
+      }
+    },
+    {
+      "fold": 7,
+      "train_pnl": 158.1834278351245,
+      "train_sharpe": 6.787109546319209,
+      "val_pnl": 34.337378563705755,
+      "val_sharpe": 6.44082706430113,
+      "params": {
+        "min_spread_bps": 33.4455758857292,
+        "max_position_size": 110.59680643829071,
+        "entry_threshold": 0.00017787294286325184,
+        "exit_threshold": 0.0001496427718398235,
+        "stop_loss_pct": 0.005055969219507669
+      }
+    },
+    {
+      "fold": 8,
+      "train_pnl": 120.54957957734337,
+      "train_sharpe": 6.705010760720827,
+      "val_pnl": 25.80995770029152,
+      "val_sharpe": 6.112377850430909,
+      "params": {
+        "min_spread_bps": 24.07419091333549,
+        "max_position_size": 123.88142636079816,
+        "entry_threshold": 0.0015023724518479233,
+        "exit_threshold": 0.00027318735425180696,
+        "stop_loss_pct": 0.005026350906458115
+      }
+    },
+    {
+      "fold": 9,
+      "train_pnl": 177.63988750771176,
+      "train_sharpe": 6.758287675672607,
+      "val_pnl": 38.61101240681904,
+      "val_sharpe": 6.470617536958526,
+      "params": {
+        "min_spread_bps": 39.66294756307933,
+        "max_position_size": 103.22512131846304,
+        "entry_threshold": 0.0014356927211848212,
+        "exit_threshold": 0.00022465766588069026,
+        "stop_loss_pct": 0.006470233649726346
+      }
+    },
+    {
+      "fold": 10,
+      "train_pnl": 414.7955038480926,
+      "train_sharpe": 6.454453376291823,
+      "val_pnl": 98.56180536132987,
+      "val_sharpe": 6.029480935699027,
+      "params": {
+        "min_spread_bps": 23.115475672812664,
+        "max_position_size": 8977.295805860318,
+        "entry_threshold": 0.0004169848383483053,
+        "exit_threshold": 0.00438450715498861,
+        "stop_loss_pct": 0.005050908199354569
+      }
+    },
+    {
+      "fold": 11,
+      "train_pnl": 125.27809445837536,
+      "train_sharpe": 6.598119864032385,
+      "val_pnl": 26.50843151948827,
+      "val_sharpe": 5.889212268817437,
+      "params": {
+        "min_spread_bps": 23.810282305180017,
+        "max_position_size": 132.37551860168702,
+        "entry_threshold": 0.0011069291195214292,
+        "exit_threshold": 0.0026126449979891365,
+        "stop_loss_pct": 0.006764248668068292
+      }
+    },
+    {
+      "fold": 12,
+      "train_pnl": 408.00556821077294,
+      "train_sharpe": 6.271864532150159,
+      "val_pnl": 83.26202263400887,
+      "val_sharpe": 5.961756924940715,
+      "params": {
+        "min_spread_bps": 21.765579378769967,
+        "max_position_size": 8333.251061807041,
+        "entry_threshold": 0.004091010181165511,
+        "exit_threshold": 0.0038051573688498083,
+        "stop_loss_pct": 0.00500361998576884
+      }
+    },
+    {
+      "fold": 13,
+      "train_pnl": 210.16680903515078,
+      "train_sharpe": 6.685141970568625,
+      "val_pnl": 45.64636588832062,
+      "val_sharpe": 6.446248616942638,
+      "params": {
+        "min_spread_bps": 45.17658559804987,
+        "max_position_size": 106.56452758905692,
+        "entry_threshold": 0.00021065057186897836,
+        "exit_threshold": 0.00022510189336359543,
+        "stop_loss_pct": 0.008417499755459922
+      }
+    },
+    {
+      "fold": 14,
+      "train_pnl": 401.63082867684716,
+      "train_sharpe": 6.354699781434077,
+      "val_pnl": 100.7060002847648,
+      "val_sharpe": 6.015760091762586,
+      "params": {
+        "min_spread_bps": 22.03874059991493,
+        "max_position_size": 8480.334308109648,
+        "entry_threshold": 0.001054461242615249,
+        "exit_threshold": 0.0007651747200633462,
+        "stop_loss_pct": 0.005003410250840336
+      }
+    },
+    {
+      "fold": 15,
+      "train_pnl": 172.81260389203896,
+      "train_sharpe": 6.6294776263699795,
+      "val_pnl": 37.07766828898329,
+      "val_sharpe": 6.149939096648468,
+      "params": {
+        "min_spread_bps": 24.957201493869288,
+        "max_position_size": 170.0830850232287,
+        "entry_threshold": 0.0008890361934594461,
+        "exit_threshold": 0.000705288146344563,
+        "stop_loss_pct": 0.0050190481014038
+      }
+    },
+    {
+      "fold": 16,
+      "train_pnl": 95.82048921274068,
+      "train_sharpe": 6.510236168599563,
+      "val_pnl": 19.93355851922078,
+      "val_sharpe": 5.5980680665365385,
+      "params": {
+        "min_spread_bps": 22.30052179242262,
+        "max_position_size": 111.40419268728408,
+        "entry_threshold": 0.0017166691358466743,
+        "exit_threshold": 0.0019138246963454433,
+        "stop_loss_pct": 0.008382254250433744
+      }
+    },
+    {
+      "fold": 17,
+      "train_pnl": 159.1001867057844,
+      "train_sharpe": 6.733491179013806,
+      "val_pnl": 34.426254565791325,
+      "val_sharpe": 6.347189556070873,
+      "params": {
+        "min_spread_bps": 34.70959117912056,
+        "max_position_size": 107.65944062926799,
+        "entry_threshold": 0.0006187049398545781,
+        "exit_threshold": 5.585254836737243e-05,
+        "stop_loss_pct": 0.006552904299180919
+      }
+    },
+    {
+      "fold": 18,
+      "train_pnl": 489.91826064250404,
+      "train_sharpe": 6.351882408843835,
+      "val_pnl": 111.37623681694328,
+      "val_sharpe": 6.063496498141676,
+      "params": {
+        "min_spread_bps": 23.47625834883106,
+        "max_position_size": 8514.202229819402,
+        "entry_threshold": 0.0007643566181690213,
+        "exit_threshold": 0.0022274175033987972,
+        "stop_loss_pct": 0.005029687362282387
+      }
+    },
+    {
+      "fold": 19,
+      "train_pnl": 205.09736149809294,
+      "train_sharpe": 6.487540755034492,
+      "val_pnl": 43.44658464192051,
+      "val_sharpe": 5.912768345455829,
+      "params": {
+        "min_spread_bps": 47.928364834225164,
+        "max_position_size": 101.15514852051598,
+        "entry_threshold": 0.00751042941014853,
+        "exit_threshold": 0.002908256698895651,
+        "stop_loss_pct": 0.01803597780175348
+      }
+    },
+    {
+      "fold": 20,
+      "train_pnl": 135.1007438303318,
+      "train_sharpe": 6.743625448750999,
+      "val_pnl": 29.13167082349311,
+      "val_sharpe": 6.267629239532479,
+      "params": {
+        "min_spread_bps": 31.9359878127016,
+        "max_position_size": 100.61193650546124,
+        "entry_threshold": 0.00017449566575897116,
+        "exit_threshold": 0.0009062305493382306,
+        "stop_loss_pct": 0.006543575905695938
+      }
+    },
+    {
+      "fold": 21,
+      "train_pnl": 587.4308862757665,
+      "train_sharpe": 6.2989567092250205,
+      "val_pnl": 111.27101941861895,
+      "val_sharpe": 6.144343131402862,
+      "params": {
+        "min_spread_bps": 24.75068115104974,
+        "max_position_size": 7228.96148687198,
+        "entry_threshold": 0.00031173084388696706,
+        "exit_threshold": 0.0025629808270276324,
+        "stop_loss_pct": 0.005049344880313052
+      }
+    },
+    {
+      "fold": 22,
+      "train_pnl": 369.4600948237951,
+      "train_sharpe": 6.240172621565059,
+      "val_pnl": 78.34368408333017,
+      "val_sharpe": 5.747844152871846,
+      "params": {
+        "min_spread_bps": 19.102774514103356,
+        "max_position_size": 508.2635559337589,
+        "entry_threshold": 0.0001262308936349262,
+        "exit_threshold": 0.0008720541033901228,
+        "stop_loss_pct": 0.005074856311971728
+      }
+    },
+    {
+      "fold": 23,
+      "train_pnl": 165.44487249067583,
+      "train_sharpe": 6.741600695801621,
+      "val_pnl": 35.858473235476,
+      "val_sharpe": 6.389606974507046,
+      "params": {
+        "min_spread_bps": 36.56017446884106,
+        "max_position_size": 105.53940606479681,
+        "entry_threshold": 0.004807227246036277,
+        "exit_threshold": 0.0001522820630062225,
+        "stop_loss_pct": 0.006616684889585436
+      }
+    },
+    {
+      "fold": 24,
+      "train_pnl": 149.9654943479226,
+      "train_sharpe": 6.756274609029593,
+      "val_pnl": 32.44990567777879,
+      "val_sharpe": 6.347935832113212,
+      "params": {
+        "min_spread_bps": 30.24745860204177,
+        "max_position_size": 117.78744134373153,
+        "entry_threshold": 0.00269008535625419,
+        "exit_threshold": 0.0035203777492781923,
+        "stop_loss_pct": 0.00508750233631977
+      }
+    },
+    {
+      "fold": 25,
+      "train_pnl": 179.750152636409,
+      "train_sharpe": 6.767304156734403,
+      "val_pnl": 39.07067797189157,
+      "val_sharpe": 6.482141808302398,
+      "params": {
+        "min_spread_bps": 34.90286050997438,
+        "max_position_size": 119.65536436911763,
+        "entry_threshold": 0.0008230373377626971,
+        "exit_threshold": 6.0080699814080275e-05,
+        "stop_loss_pct": 0.0050033265287862064
+      }
+    },
+    {
+      "fold": 26,
+      "train_pnl": 173.93610838577666,
+      "train_sharpe": 6.645364856180573,
+      "val_pnl": 37.379110403455385,
+      "val_sharpe": 6.20346234579349,
+      "params": {
+        "min_spread_bps": 40.57792437891375,
+        "max_position_size": 100.48259200322926,
+        "entry_threshold": 0.0006840103381949126,
+        "exit_threshold": 0.00015973991685470226,
+        "stop_loss_pct": 0.010480525597718946
+      }
+    },
+    {
+      "fold": 27,
+      "train_pnl": 371.3701442058476,
+      "train_sharpe": 6.389790405175307,
+      "val_pnl": 79.1382254171942,
+      "val_sharpe": 6.009286872266568,
+      "params": {
+        "min_spread_bps": 22.829338794952506,
+        "max_position_size": 8534.457223596572,
+        "entry_threshold": 0.00010649829792248777,
+        "exit_threshold": 0.00013996338618248446,
+        "stop_loss_pct": 0.005070263371740526
+      }
+    },
+    {
+      "fold": 28,
+      "train_pnl": 399.51457980852,
+      "train_sharpe": 6.375479226382272,
+      "val_pnl": 92.87787735568858,
+      "val_sharpe": 6.1100765302957525,
+      "params": {
+        "min_spread_bps": 24.496497757730957,
+        "max_position_size": 6963.256305364008,
+        "entry_threshold": 0.0019377118527616856,
+        "exit_threshold": 0.0014195923209136397,
+        "stop_loss_pct": 0.005046286189728567
+      }
+    },
+    {
+      "fold": 29,
+      "train_pnl": 203.09445114051744,
+      "train_sharpe": 6.67821040975503,
+      "val_pnl": 44.04620282057145,
+      "val_sharpe": 6.407286020714597,
+      "params": {
+        "min_spread_bps": 44.80734550464234,
+        "max_position_size": 104.16029658852703,
+        "entry_threshold": 0.001902492770252674,
+        "exit_threshold": 5.201753318663438e-05,
+        "stop_loss_pct": 0.008900149133006465
+      }
+    },
+    {
+      "fold": 30,
+      "train_pnl": 439.41776240279404,
+      "train_sharpe": 6.44214407239401,
+      "val_pnl": 97.89940956173814,
+      "val_sharpe": 6.134212193373196,
+      "params": {
+        "min_spread_bps": 25.185448639823257,
+        "max_position_size": 3362.468212583301,
+        "entry_threshold": 0.0001517050549776142,
+        "exit_threshold": 0.000219518410921188,
+        "stop_loss_pct": 0.005000341258035475
+      }
+    },
+    {
+      "fold": 31,
+      "train_pnl": 179.75775594385487,
+      "train_sharpe": 6.7519773941969765,
+      "val_pnl": 39.06391758085093,
+      "val_sharpe": 6.465139624427478,
+      "params": {
+        "min_spread_bps": 39.33693391513039,
+        "max_position_size": 105.42589254975603,
+        "entry_threshold": 0.0001295926492821635,
+        "exit_threshold": 0.000116141023030438,
+        "stop_loss_pct": 0.00645566230778496
+      }
+    },
+    {
+      "fold": 32,
+      "train_pnl": 119.78341501849096,
+      "train_sharpe": 6.733965641016742,
+      "val_pnl": 25.71175040170519,
+      "val_sharpe": 6.173501988182161,
+      "params": {
+        "min_spread_bps": 28.624668539365263,
+        "max_position_size": 101.1897857605823,
+        "entry_threshold": 0.0032002362189021694,
+        "exit_threshold": 0.002384689888837749,
+        "stop_loss_pct": 0.006321023861787865
+      }
+    },
+    {
+      "fold": 33,
+      "train_pnl": 117.5039992307207,
+      "train_sharpe": 6.705107427311682,
+      "val_pnl": 25.12795990336832,
+      "val_sharpe": 6.097729145003336,
+      "params": {
+        "min_spread_bps": 26.972956650712973,
+        "max_position_size": 106.53426867475957,
+        "entry_threshold": 0.0007994386099899159,
+        "exit_threshold": 0.0003852813799855755,
+        "stop_loss_pct": 0.006391322579216997
+      }
+    },
+    {
+      "fold": 34,
+      "train_pnl": 345.9599303837148,
+      "train_sharpe": 6.471320688521321,
+      "val_pnl": 68.7376560281021,
+      "val_sharpe": 5.940621853995935,
+      "params": {
+        "min_spread_bps": 21.626270043114157,
+        "max_position_size": 4956.51382093589,
+        "entry_threshold": 0.0005488034028192783,
+        "exit_threshold": 0.0003942075381672925,
+        "stop_loss_pct": 0.005044770181900287
+      }
+    },
+    {
+      "fold": 35,
+      "train_pnl": 404.40060369993364,
+      "train_sharpe": 6.269803119393483,
+      "val_pnl": 75.01919395914314,
+      "val_sharpe": 6.055887006062911,
+      "params": {
+        "min_spread_bps": 24.626705030009983,
+        "max_position_size": 2825.126459908305,
+        "entry_threshold": 0.0032926095731037387,
+        "exit_threshold": 0.00019664466398660723,
+        "stop_loss_pct": 0.005047852214884765
+      }
+    },
+    {
+      "fold": 36,
+      "train_pnl": 155.52475256888007,
+      "train_sharpe": 6.65751823526499,
+      "val_pnl": 33.343441726598,
+      "val_sharpe": 6.1478597340488195,
+      "params": {
+        "min_spread_bps": 30.375568013734647,
+        "max_position_size": 123.28744835392808,
+        "entry_threshold": 0.0035977308941441814,
+        "exit_threshold": 0.0011508911732039607,
+        "stop_loss_pct": 0.00723415693673494
+      }
+    },
+    {
+      "fold": 37,
+      "train_pnl": 131.2130047273086,
+      "train_sharpe": 6.730734336635637,
+      "val_pnl": 28.236550788177894,
+      "val_sharpe": 6.217379285155381,
+      "params": {
+        "min_spread_bps": 26.483254238190536,
+        "max_position_size": 120.39093001711001,
+        "entry_threshold": 0.005010089441466293,
+        "exit_threshold": 0.00015768958445535242,
+        "stop_loss_pct": 0.005053138906719296
+      }
+    },
+    {
+      "fold": 38,
+      "train_pnl": 223.7301298325574,
+      "train_sharpe": 6.795832251272004,
+      "val_pnl": 48.99820600079934,
+      "val_sharpe": 6.722263518588865,
+      "params": {
+        "min_spread_bps": 49.717064348537534,
+        "max_position_size": 100.44237305725292,
+        "entry_threshold": 0.002062864622606325,
+        "exit_threshold": 0.0003085647212441888,
+        "stop_loss_pct": 0.005099505906816101
+      }
+    },
+    {
+      "fold": 39,
+      "train_pnl": 414.3053665288719,
+      "train_sharpe": 6.359657911932846,
+      "val_pnl": 97.5307190087886,
+      "val_sharpe": 6.145528485847021,
+      "params": {
+        "min_spread_bps": 25.316985910969624,
+        "max_position_size": 8648.640281670649,
+        "entry_threshold": 0.0010720368722997313,
+        "exit_threshold": 0.0005940115531250061,
+        "stop_loss_pct": 0.005049080490113625
+      }
+    },
+    {
+      "fold": 40,
+      "train_pnl": 407.20275880059404,
+      "train_sharpe": 6.4249585383161785,
+      "val_pnl": 95.7585508041563,
+      "val_sharpe": 6.11129658965411,
+      "params": {
+        "min_spread_bps": 24.45446010762155,
+        "max_position_size": 9814.003600426606,
+        "entry_threshold": 0.0006340086289452532,
+        "exit_threshold": 0.0012012773140267015,
+        "stop_loss_pct": 0.005170137014575402
+      }
+    },
+    {
+      "fold": 41,
+      "train_pnl": 208.1790477088345,
+      "train_sharpe": 6.7970801401111896,
+      "val_pnl": 45.517823965458234,
+      "val_sharpe": 6.665026289427469,
+      "params": {
+        "min_spread_bps": 46.67715101710146,
+        "max_position_size": 100.29305319566524,
+        "entry_threshold": 0.0035254081715676193,
+        "exit_threshold": 9.138830995535935e-05,
+        "stop_loss_pct": 0.005372174972494772
+      }
+    },
+    {
+      "fold": 42,
+      "train_pnl": 146.78693995183954,
+      "train_sharpe": 6.7141171127597,
+      "val_pnl": 31.62355012416073,
+      "val_sharpe": 6.251906107095386,
+      "params": {
+        "min_spread_bps": 34.485126307261744,
+        "max_position_size": 100.68448158509432,
+        "entry_threshold": 0.0017467517450825262,
+        "exit_threshold": 0.001553241586974722,
+        "stop_loss_pct": 0.0076315602609277906
+      }
+    },
+    {
+      "fold": 43,
+      "train_pnl": 606.6805358228545,
+      "train_sharpe": 6.42257969095039,
+      "val_pnl": 194.3920383566417,
+      "val_sharpe": 6.415199410183595,
+      "params": {
+        "min_spread_bps": 29.94224547734534,
+        "max_position_size": 9816.44070545493,
+        "entry_threshold": 0.0045929586549466935,
+        "exit_threshold": 0.0007980512696746338,
+        "stop_loss_pct": 0.005008866065813885
+      }
+    },
+    {
+      "fold": 44,
+      "train_pnl": 537.7119748379407,
+      "train_sharpe": 6.533572530753948,
+      "val_pnl": 144.02546625549448,
+      "val_sharpe": 6.159193623751996,
+      "params": {
+        "min_spread_bps": 24.252257806516468,
+        "max_position_size": 3618.242889037485,
+        "entry_threshold": 0.0006378164068842878,
+        "exit_threshold": 0.00011978159009361347,
+        "stop_loss_pct": 0.005079911261371889
+      }
+    },
+    {
+      "fold": 45,
+      "train_pnl": 218.30306019335518,
+      "train_sharpe": 6.729671458053796,
+      "val_pnl": 47.5913198204951,
+      "val_sharpe": 6.564668230295001,
+      "params": {
+        "min_spread_bps": 46.24397532368137,
+        "max_position_size": 107.04300176010821,
+        "entry_threshold": 0.008382075540196926,
+        "exit_threshold": 0.00035264190281590125,
+        "stop_loss_pct": 0.00687996328326306
+      }
+    },
+    {
+      "fold": 46,
+      "train_pnl": 188.24063671808273,
+      "train_sharpe": 6.7241528507924,
+      "val_pnl": 40.88629978910272,
+      "val_sharpe": 6.446234012259812,
+      "params": {
+        "min_spread_bps": 42.08044298466051,
+        "max_position_size": 102.90950527806531,
+        "entry_threshold": 0.0012530795259831978,
+        "exit_threshold": 0.002935878928819124,
+        "stop_loss_pct": 0.0075075887406131315
+      }
+    },
+    {
+      "fold": 47,
+      "train_pnl": 246.65679770090048,
+      "train_sharpe": 6.685335816988488,
+      "val_pnl": 53.764739088643026,
+      "val_sharpe": 6.5640677972866905,
+      "params": {
+        "min_spread_bps": 46.0438714878651,
+        "max_position_size": 121.5454423302733,
+        "entry_threshold": 0.0006169798567361515,
+        "exit_threshold": 0.00018231569762637199,
+        "stop_loss_pct": 0.006904856394035659
+      }
+    },
+    {
+      "fold": 48,
+      "train_pnl": 147.8395548175706,
+      "train_sharpe": 6.63933180440595,
+      "val_pnl": 31.570352717212785,
+      "val_sharpe": 6.072115553711384,
+      "params": {
+        "min_spread_bps": 31.48989126250601,
+        "max_position_size": 113.26359672012542,
+        "entry_threshold": 0.0008013143170003157,
+        "exit_threshold": 0.0020562445985704506,
+        "stop_loss_pct": 0.008525458956279713
+      }
+    },
+    {
+      "fold": 49,
+      "train_pnl": 210.11346518413433,
+      "train_sharpe": 6.730247722563157,
+      "val_pnl": 45.746665641452296,
+      "val_sharpe": 6.527881363056869,
+      "params": {
+        "min_spread_bps": 41.17925775920497,
+        "max_position_size": 116.82083502955513,
+        "entry_threshold": 0.0017930307060375745,
+        "exit_threshold": 0.00018221999858960972,
+        "stop_loss_pct": 0.006133242633891954
+      }
+    },
+    {
+      "fold": 50,
+      "train_pnl": 146.4366781059947,
+      "train_sharpe": 6.686938017060507,
+      "val_pnl": 31.442652421336135,
+      "val_sharpe": 6.183218989634383,
+      "params": {
+        "min_spread_bps": 33.4958270370589,
+        "max_position_size": 104.13258195404728,
+        "entry_threshold": 0.0026635964610117156,
+        "exit_threshold": 0.0003343880976055713,
+        "stop_loss_pct": 0.008080431942538501
+      }
+    },
+    {
+      "fold": 51,
+      "train_pnl": 225.52292458057104,
+      "train_sharpe": 6.768120487942219,
+      "val_pnl": 49.296535478862694,
+      "val_sharpe": 6.661994895219474,
+      "params": {
+        "min_spread_bps": 44.71609723581283,
+        "max_position_size": 113.74578815120384,
+        "entry_threshold": 0.006319215399290447,
+        "exit_threshold": 9.261936629296397e-05,
+        "stop_loss_pct": 0.005060801187854912
+      }
+    },
+    {
+      "fold": 52,
+      "train_pnl": 212.80610421860047,
+      "train_sharpe": 6.708959084020036,
+      "val_pnl": 46.2754914864783,
+      "val_sharpe": 6.48989673757926,
+      "params": {
+        "min_spread_bps": 39.24728421278942,
+        "max_position_size": 124.89938929002744,
+        "entry_threshold": 0.00015358467770908399,
+        "exit_threshold": 0.001110436452716916,
+        "stop_loss_pct": 0.006140466890519829
+      }
+    },
+    {
+      "fold": 53,
+      "train_pnl": 216.1467457583562,
+      "train_sharpe": 6.716054174321523,
+      "val_pnl": 47.084749181983256,
+      "val_sharpe": 6.534552402231356,
+      "params": {
+        "min_spread_bps": 48.21053016981753,
+        "max_position_size": 101.66274053194459,
+        "entry_threshold": 0.001030215665080077,
+        "exit_threshold": 0.0001352310651046654,
+        "stop_loss_pct": 0.007847843582538186
+      }
+    },
+    {
+      "fold": 54,
+      "train_pnl": 189.22326857958006,
+      "train_sharpe": 6.774947988579963,
+      "val_pnl": 41.20649966981111,
+      "val_sharpe": 6.537785997806195,
+      "params": {
+        "min_spread_bps": 38.28578362037547,
+        "max_position_size": 113.58683256649789,
+        "entry_threshold": 0.009008952212144407,
+        "exit_threshold": 0.002630388117268873,
+        "stop_loss_pct": 0.005220222253024232
+      }
+    },
+    {
+      "fold": 55,
+      "train_pnl": 734.5974889170212,
+      "train_sharpe": 6.1354282145565024,
+      "val_pnl": 180.41564994398053,
+      "val_sharpe": 5.836255567203123,
+      "params": {
+        "min_spread_bps": 19.943978238378026,
+        "max_position_size": 3331.970215964427,
+        "entry_threshold": 0.004097528078832447,
+        "exit_threshold": 0.0008204979639825755,
+        "stop_loss_pct": 0.005000073865094865
+      }
+    },
+    {
+      "fold": 56,
+      "train_pnl": 193.80913213815853,
+      "train_sharpe": 6.801961032230169,
+      "val_pnl": 42.30723414389709,
+      "val_sharpe": 6.613958259741058,
+      "params": {
+        "min_spread_bps": 41.81841446271935,
+        "max_position_size": 105.2825514626499,
+        "entry_threshold": 0.002995242182311249,
+        "exit_threshold": 0.0004696984430572916,
+        "stop_loss_pct": 0.005041149932735782
+      }
+    },
+    {
+      "fold": 57,
+      "train_pnl": 122.96432508698908,
+      "train_sharpe": 6.763694908155087,
+      "val_pnl": 26.50856185119339,
+      "val_sharpe": 6.255969996035154,
+      "params": {
+        "min_spread_bps": 27.502931714180033,
+        "max_position_size": 107.93593947844245,
+        "entry_threshold": 0.006840987093442406,
+        "exit_threshold": 0.00413328195244942,
+        "stop_loss_pct": 0.005075590965852526
+      }
+    },
+    {
+      "fold": 58,
+      "train_pnl": 790.3627629514814,
+      "train_sharpe": 6.012266212353609,
+      "val_pnl": 154.16183968985666,
+      "val_sharpe": 5.624752665405506,
+      "params": {
+        "min_spread_bps": 18.275718090772074,
+        "max_position_size": 3973.6952045786165,
+        "entry_threshold": 0.00019376504300293163,
+        "exit_threshold": 0.0002668775478631807,
+        "stop_loss_pct": 0.005157404290382256
+      }
+    },
+    {
+      "fold": 59,
+      "train_pnl": 114.80473496132785,
+      "train_sharpe": 6.525948435351489,
+      "val_pnl": 24.06466526468219,
+      "val_sharpe": 5.707131843832469,
+      "params": {
+        "min_spread_bps": 19.268770268206236,
+        "max_position_size": 156.3162227904769,
+        "entry_threshold": 0.0003197810372633351,
+        "exit_threshold": 0.0019511696018210062,
+        "stop_loss_pct": 0.005686473706085255
+      }
+    },
+    {
+      "fold": 60,
+      "train_pnl": 158.80935391583614,
+      "train_sharpe": 6.5719897397779565,
+      "val_pnl": 33.70244580166569,
+      "val_sharpe": 5.954242562231341,
+      "params": {
+        "min_spread_bps": 37.484271938799075,
+        "max_position_size": 101.56295208770035,
+        "entry_threshold": 0.002215783416272731,
+        "exit_threshold": 0.003967723218852403,
+        "stop_loss_pct": 0.012618504938883215
+      }
+    },
+    {
+      "fold": 61,
+      "train_pnl": 145.71772583272897,
+      "train_sharpe": 6.786873222097816,
+      "val_pnl": 31.580797891896296,
+      "val_sharpe": 6.392951652566692,
+      "params": {
+        "min_spread_bps": 31.99160100676109,
+        "max_position_size": 107.30405948443331,
+        "entry_threshold": 0.004610985194297904,
+        "exit_threshold": 0.0011532044780579625,
+        "stop_loss_pct": 0.0051569745759460165
+      }
+    },
+    {
+      "fold": 62,
+      "train_pnl": 158.46099840842155,
+      "train_sharpe": 6.603911862476896,
+      "val_pnl": 33.76344136538074,
+      "val_sharpe": 6.031948672193922,
+      "params": {
+        "min_spread_bps": 37.32052608746069,
+        "max_position_size": 101.28608219172767,
+        "entry_threshold": 0.0003290497934590481,
+        "exit_threshold": 0.00014653226667089782,
+        "stop_loss_pct": 0.01152005145570563
+      }
+    },
+    {
+      "fold": 63,
+      "train_pnl": 207.5641168098171,
+      "train_sharpe": 6.795639495484187,
+      "val_pnl": 45.36505949335296,
+      "val_sharpe": 6.65469542536437,
+      "params": {
+        "min_spread_bps": 44.18447441103423,
+        "max_position_size": 106.05119782074208,
+        "entry_threshold": 0.001122156436174566,
+        "exit_threshold": 0.0035178314489381054,
+        "stop_loss_pct": 0.0050034247613361255
+      }
+    },
+    {
+      "fold": 64,
+      "train_pnl": 213.14584616918268,
+      "train_sharpe": 6.217577265380015,
+      "val_pnl": 44.55436255184655,
+      "val_sharpe": 5.4267872801102195,
+      "params": {
+        "min_spread_bps": 16.360465839223465,
+        "max_position_size": 360.4056110174215,
+        "entry_threshold": 0.0005077857098111642,
+        "exit_threshold": 6.410032277905838e-05,
+        "stop_loss_pct": 0.005869956991169703
+      }
+    },
+    {
+      "fold": 65,
+      "train_pnl": 231.23843932661595,
+      "train_sharpe": 6.765654415932741,
+      "val_pnl": 50.57128652069784,
+      "val_sharpe": 6.678944231332456,
+      "params": {
+        "min_spread_bps": 46.02025561652294,
+        "max_position_size": 113.0032705141338,
+        "entry_threshold": 0.0020263693739204953,
+        "exit_threshold": 5.2208197814322626e-05,
+        "stop_loss_pct": 0.005093045376435147
+      }
+    },
+    {
+      "fold": 66,
+      "train_pnl": 199.29003623047248,
+      "train_sharpe": 6.735963501599985,
+      "val_pnl": 43.332688037670565,
+      "val_sharpe": 6.491706579877709,
+      "params": {
+        "min_spread_bps": 36.49260644585026,
+        "max_position_size": 126.39562791817634,
+        "entry_threshold": 0.0001726963988149152,
+        "exit_threshold": 0.003820983185528669,
+        "stop_loss_pct": 0.005347719240981208
+      }
+    },
+    {
+      "fold": 67,
+      "train_pnl": 742.4877291009532,
+      "train_sharpe": 5.818697537056283,
+      "val_pnl": 152.51989192942193,
+      "val_sharpe": 5.611080609831153,
+      "params": {
+        "min_spread_bps": 17.287934476096993,
+        "max_position_size": 9111.107494756436,
+        "entry_threshold": 0.00011474911376372958,
+        "exit_threshold": 0.00019266144577989754,
+        "stop_loss_pct": 0.005070969047594725
+      }
+    },
+    {
+      "fold": 68,
+      "train_pnl": 176.77652658031255,
+      "train_sharpe": 6.593082557500981,
+      "val_pnl": 37.7593516983643,
+      "val_sharpe": 6.0798071461508485,
+      "params": {
+        "min_spread_bps": 40.612464966454645,
+        "max_position_size": 102.86038042903103,
+        "entry_threshold": 0.00448953161990622,
+        "exit_threshold": 0.0003575399331509549,
+        "stop_loss_pct": 0.012240332981325375
+      }
+    },
+    {
+      "fold": 69,
+      "train_pnl": 193.51096884731874,
+      "train_sharpe": 6.4869575190918525,
+      "val_pnl": 40.89292208409972,
+      "val_sharpe": 5.867230150506832,
+      "params": {
+        "min_spread_bps": 43.67249761669204,
+        "max_position_size": 105.67121818428134,
+        "entry_threshold": 0.00011333971340933246,
+        "exit_threshold": 0.0003291659773368179,
+        "stop_loss_pct": 0.016736315661872163
+      }
+    },
+    {
+      "fold": 70,
+      "train_pnl": 790.2073641692489,
+      "train_sharpe": 6.074562699978814,
+      "val_pnl": 216.48154258390912,
+      "val_sharpe": 5.660101617266275,
+      "params": {
+        "min_spread_bps": 17.82611283240036,
+        "max_position_size": 5251.296289774804,
+        "entry_threshold": 0.003709472766045498,
+        "exit_threshold": 0.00012142288935546224,
+        "stop_loss_pct": 0.005001149955582267
+      }
+    },
+    {
+      "fold": 71,
+      "train_pnl": 945.9986227018072,
+      "train_sharpe": 5.98942095732931,
+      "val_pnl": 244.0699286486231,
+      "val_sharpe": 5.740671551811914,
+      "params": {
+        "min_spread_bps": 19.082606568247815,
+        "max_position_size": 4708.988254214231,
+        "entry_threshold": 0.0020232290464251845,
+        "exit_threshold": 0.00370661606764997,
+        "stop_loss_pct": 0.005032406528210043
+      }
+    },
+    {
+      "fold": 72,
+      "train_pnl": 163.7031430247561,
+      "train_sharpe": 6.288224289714371,
+      "val_pnl": 33.82033632448548,
+      "val_sharpe": 5.363025338370377,
+      "params": {
+        "min_spread_bps": 39.88355131226257,
+        "max_position_size": 102.64538484585793,
+        "entry_threshold": 0.00475983606734597,
+        "exit_threshold": 0.0002927008941115155,
+        "stop_loss_pct": 0.023938598223364627
+      }
+    },
+    {
+      "fold": 73,
+      "train_pnl": 109.47677402918848,
+      "train_sharpe": 6.560084502672039,
+      "val_pnl": 22.96245559387681,
+      "val_sharpe": 5.743891649171436,
+      "params": {
+        "min_spread_bps": 27.311525033255897,
+        "max_position_size": 100.38511600917671,
+        "entry_threshold": 0.0004659807339665699,
+        "exit_threshold": 0.0002633882987818145,
+        "stop_loss_pct": 0.00999690311368867
+      }
+    },
+    {
+      "fold": 74,
+      "train_pnl": 183.90164807660133,
+      "train_sharpe": 6.7515447506763175,
+      "val_pnl": 39.96820884418591,
+      "val_sharpe": 6.472966976306536,
+      "params": {
+        "min_spread_bps": 37.275730468222044,
+        "max_position_size": 114.16935950950509,
+        "entry_threshold": 0.0003156016265530273,
+        "exit_threshold": 5.1606827812690256e-05,
+        "stop_loss_pct": 0.005780201404796428
+      }
+    },
+    {
+      "fold": 75,
+      "train_pnl": 278.2359064010407,
+      "train_sharpe": 6.654983605336404,
+      "val_pnl": 60.70617467860225,
+      "val_sharpe": 6.599964714117117,
+      "params": {
+        "min_spread_bps": 48.07606409470827,
+        "max_position_size": 130.6977590499039,
+        "entry_threshold": 0.0042851498073288455,
+        "exit_threshold": 0.00023136286793903242,
+        "stop_loss_pct": 0.00691529080576885
+      }
+    },
+    {
+      "fold": 76,
+      "train_pnl": 178.38166312121854,
+      "train_sharpe": 6.685148165643089,
+      "val_pnl": 38.56161997837599,
+      "val_sharpe": 6.326384961400559,
+      "params": {
+        "min_spread_bps": 40.45599599629874,
+        "max_position_size": 102.5607468895986,
+        "entry_threshold": 0.0009482312502557647,
+        "exit_threshold": 8.696944629565141e-05,
+        "stop_loss_pct": 0.00870649221782798
+      }
+    },
+    {
+      "fold": 77,
+      "train_pnl": 111.97028258217196,
+      "train_sharpe": 6.300328088624938,
+      "val_pnl": 23.04829711846773,
+      "val_sharpe": 5.2947914601191925,
+      "params": {
+        "min_spread_bps": 27.538136234220495,
+        "max_position_size": 105.9185267833929,
+        "entry_threshold": 0.006891656894276325,
+        "exit_threshold": 0.000593262172306302,
+        "stop_loss_pct": 0.016069351925692952
+      }
+    },
+    {
+      "fold": 78,
+      "train_pnl": 1041.7546494017886,
+      "train_sharpe": 5.6534865873286595,
+      "val_pnl": 194.89889380833546,
+      "val_sharpe": 5.424200199719758,
+      "params": {
+        "min_spread_bps": 16.2552578921997,
+        "max_position_size": 5145.9374871433065,
+        "entry_threshold": 0.0014858997006288847,
+        "exit_threshold": 0.0006523325798646859,
+        "stop_loss_pct": 0.005333117463819951
+      }
+    },
+    {
+      "fold": 79,
+      "train_pnl": 225.4061952781832,
+      "train_sharpe": 6.400422648314229,
+      "val_pnl": 47.331754809532214,
+      "val_sharpe": 5.73920609235047,
+      "params": {
+        "min_spread_bps": 45.31978731398566,
+        "max_position_size": 119.30384026225005,
+        "entry_threshold": 0.00033964465395832093,
+        "exit_threshold": 0.0025896523306009585,
+        "stop_loss_pct": 0.019475492828014647
+      }
+    },
+    {
+      "fold": 80,
+      "train_pnl": 243.86836974360403,
+      "train_sharpe": 6.7097100869889665,
+      "val_pnl": 53.214214683844176,
+      "val_sharpe": 6.603346970321015,
+      "params": {
+        "min_spread_bps": 45.059225000624984,
+        "max_position_size": 122.58135366975864,
+        "entry_threshold": 0.0005947636547368316,
+        "exit_threshold": 0.0020376226040405235,
+        "stop_loss_pct": 0.006067938141544073
+      }
+    },
+    {
+      "fold": 81,
+      "train_pnl": 177.97960038991837,
+      "train_sharpe": 6.367873362709813,
+      "val_pnl": 37.0046273072431,
+      "val_sharpe": 5.538666314995528,
+      "params": {
+        "min_spread_bps": 41.872172557674574,
+        "max_position_size": 104.18359215512085,
+        "entry_threshold": 0.00010088670354843675,
+        "exit_threshold": 0.0020031394961539427,
+        "stop_loss_pct": 0.021367583096117294
+      }
+    },
+    {
+      "fold": 82,
+      "train_pnl": 218.50068613535473,
+      "train_sharpe": 6.782168825495214,
+      "val_pnl": 47.77489160134891,
+      "val_sharpe": 6.668794821387579,
+      "params": {
+        "min_spread_bps": 45.72486884467294,
+        "max_position_size": 107.56808865293922,
+        "entry_threshold": 0.0016149987068906086,
+        "exit_threshold": 0.00023350919440971426,
+        "stop_loss_pct": 0.005147162073795596
+      }
+    },
+    {
+      "fold": 83,
+      "train_pnl": 1112.0726434391865,
+      "train_sharpe": 5.753907953920558,
+      "val_pnl": 271.1406449932207,
+      "val_sharpe": 5.492699503297661,
+      "params": {
+        "min_spread_bps": 15.71396590010083,
+        "max_position_size": 9199.43457078298,
+        "entry_threshold": 0.0018326935144957913,
+        "exit_threshold": 0.0022945042136027632,
+        "stop_loss_pct": 0.005007048196746796
+      }
+    },
+    {
+      "fold": 84,
+      "train_pnl": 187.31162430931192,
+      "train_sharpe": 6.725583756948667,
+      "val_pnl": 40.65685988763799,
+      "val_sharpe": 6.432704468320449,
+      "params": {
+        "min_spread_bps": 36.351827816050516,
+        "max_position_size": 119.8384813209435,
+        "entry_threshold": 0.001991269736094541,
+        "exit_threshold": 0.0021986078391810792,
+        "stop_loss_pct": 0.006025858834973075
+      }
+    },
+    {
+      "fold": 85,
+      "train_pnl": 210.67943465913908,
+      "train_sharpe": 6.688745544042427,
+      "val_pnl": 45.7741505748603,
+      "val_sharpe": 6.455872850081907,
+      "params": {
+        "min_spread_bps": 45.348092665114066,
+        "max_position_size": 106.32501481694753,
+        "entry_threshold": 0.005648261009007045,
+        "exit_threshold": 0.000525599328822499,
+        "stop_loss_pct": 0.008318835880114806
+      }
+    },
+    {
+      "fold": 86,
+      "train_pnl": 129.9288362590989,
+      "train_sharpe": 6.76588211374108,
+      "val_pnl": 28.050200981386823,
+      "val_sharpe": 6.289035963642315,
+      "params": {
+        "min_spread_bps": 28.25480433433904,
+        "max_position_size": 110.44578580938462,
+        "entry_threshold": 0.0012667267305171927,
+        "exit_threshold": 0.0007169321701902758,
+        "stop_loss_pct": 0.005016858706083439
+      }
+    },
+    {
+      "fold": 87,
+      "train_pnl": 887.092400956532,
+      "train_sharpe": 5.694638337999266,
+      "val_pnl": 169.23939166721,
+      "val_sharpe": 4.95611425882552,
+      "params": {
+        "min_spread_bps": 10.91920094211967,
+        "max_position_size": 3354.7917157443726,
+        "entry_threshold": 0.0006589687832144694,
+        "exit_threshold": 0.00044287301449048996,
+        "stop_loss_pct": 0.0050848481114234125
+      }
+    },
+    {
+      "fold": 88,
+      "train_pnl": 195.38702795999376,
+      "train_sharpe": 6.5716119519352025,
+      "val_pnl": 41.77466952127766,
+      "val_sharpe": 6.097248522856848,
+      "params": {
+        "min_spread_bps": 41.71427935631167,
+        "max_position_size": 110.34272160754587,
+        "entry_threshold": 0.0032043585277567754,
+        "exit_threshold": 0.0005595530745474708,
+        "stop_loss_pct": 0.012414042049975628
+      }
+    },
+    {
+      "fold": 89,
+      "train_pnl": 137.09482021374544,
+      "train_sharpe": 6.570404290158171,
+      "val_pnl": 28.956510765174343,
+      "val_sharpe": 5.866222753552742,
+      "params": {
+        "min_spread_bps": 32.043426624857275,
+        "max_position_size": 104.54128960941084,
+        "entry_threshold": 0.0007769145508990519,
+        "exit_threshold": 0.0006179378531407217,
+        "stop_loss_pct": 0.011120390453003382
+      }
+    },
+    {
+      "fold": 90,
+      "train_pnl": 131.0311753506458,
+      "train_sharpe": 6.7858459399417335,
+      "val_pnl": 28.33661103308181,
+      "val_sharpe": 6.332598653463242,
+      "params": {
+        "min_spread_bps": 29.528666686876118,
+        "max_position_size": 105.7810842303772,
+        "entry_threshold": 0.000431940807195686,
+        "exit_threshold": 0.003447121405014234,
+        "stop_loss_pct": 0.0050126804975871506
+      }
+    },
+    {
+      "fold": 91,
+      "train_pnl": 154.9185296290926,
+      "train_sharpe": 6.751124713879642,
+      "val_pnl": 33.5498463255922,
+      "val_sharpe": 6.368804228979348,
+      "params": {
+        "min_spread_bps": 35.89184910268642,
+        "max_position_size": 100.9559335993395,
+        "entry_threshold": 0.003165080796638829,
+        "exit_threshold": 0.00015050790991503256,
+        "stop_loss_pct": 0.006667494247442788
+      }
+    },
+    {
+      "fold": 92,
+      "train_pnl": 141.29113264608975,
+      "train_sharpe": 6.351255177061015,
+      "val_pnl": 29.25063119294876,
+      "val_sharpe": 5.432773201979277,
+      "params": {
+        "min_spread_bps": 34.92240672507355,
+        "max_position_size": 101.62447969601816,
+        "entry_threshold": 0.002987647422307503,
+        "exit_threshold": 0.0002265522871192781,
+        "stop_loss_pct": 0.019123800188286265
+      }
+    },
+    {
+      "fold": 93,
+      "train_pnl": 204.70646783458835,
+      "train_sharpe": 5.947388482423322,
+      "val_pnl": 41.47002476642896,
+      "val_sharpe": 5.006137850571864,
+      "params": {
+        "min_spread_bps": 11.039008720945883,
+        "max_position_size": 563.7172760456451,
+        "entry_threshold": 0.0014616516563455992,
+        "exit_threshold": 0.0012904194424507886,
+        "stop_loss_pct": 0.005165443244380283
+      }
+    },
+    {
+      "fold": 94,
+      "train_pnl": 144.78588607946662,
+      "train_sharpe": 6.734410688624086,
+      "val_pnl": 31.254849312059804,
+      "val_sharpe": 6.290754379016756,
+      "params": {
+        "min_spread_bps": 32.72440468682748,
+        "max_position_size": 104.84051323131416,
+        "entry_threshold": 0.0008274957244927659,
+        "exit_threshold": 0.00021882042281964626,
+        "stop_loss_pct": 0.006552413554249104
+      }
+    },
+    {
+      "fold": 95,
+      "train_pnl": 215.9510332339645,
+      "train_sharpe": 6.354077697005207,
+      "val_pnl": 45.00568240401368,
+      "val_sharpe": 5.595024564857317,
+      "params": {
+        "min_spread_bps": 49.20364436030055,
+        "max_position_size": 105.86404645544008,
+        "entry_threshold": 0.009833800877870827,
+        "exit_threshold": 0.00025425025146786056,
+        "stop_loss_pct": 0.024292166885337002
+      }
+    },
+    {
+      "fold": 96,
+      "train_pnl": 139.53131323939024,
+      "train_sharpe": 6.773002790978979,
+      "val_pnl": 30.18386681959153,
+      "val_sharpe": 6.340698972282063,
+      "params": {
+        "min_spread_bps": 29.845693699380195,
+        "max_position_size": 111.2645978887799,
+        "entry_threshold": 0.00021391975604219654,
+        "exit_threshold": 0.00046937967883285063,
+        "stop_loss_pct": 0.005031902878481922
+      }
+    },
+    {
+      "fold": 97,
+      "train_pnl": 142.09427765747407,
+      "train_sharpe": 6.763309248495988,
+      "val_pnl": 30.737838557547278,
+      "val_sharpe": 6.3400579170069875,
+      "params": {
+        "min_spread_bps": 33.39064365449618,
+        "max_position_size": 100.3140102579162,
+        "entry_threshold": 0.0033186104828898033,
+        "exit_threshold": 0.000257946155708858,
+        "stop_loss_pct": 0.006208694205711414
+      }
+    }
+  ],
+  "best_params": {
+    "min_spread_bps": 49.717064348537534,
+    "max_position_size": 100.44237305725292,
+    "entry_threshold": 0.002062864622606325,
+    "exit_threshold": 0.0003085647212441888,
+    "stop_loss_pct": 0.005099505906816101
+  },
+  "best_val_sharpe": 6.722263518588865,
+  "best_val_pnl": 48.99820600079934,
+  "strategy_config": {
+    "min_profit_bps": 49.717064348537534,
+    "entry_threshold": 0.002062864622606325,
+    "exit_threshold": 0.0003085647212441888,
+    "max_notional_usdt": 100.44237305725292,
+    "stop_loss_pct": 0.005099505906816101
+  },
+  "optimize_time_seconds": 57.039528369903564
+}

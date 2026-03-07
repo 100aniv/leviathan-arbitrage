@@ -39,7 +39,11 @@ def _run_tune(args: argparse.Namespace) -> dict:
         val_periods=args.val_periods,
     )
 
-    engine = BacktestEngine(
+    # Use strategy-aware backtest engine
+    from src.tuning.strategy_backtest import StrategyBacktestEngine
+
+    engine = StrategyBacktestEngine(
+        strategy_type=args.strategy,
         initial_capital=args.capital,
         fee_rate=args.fee_rate,
     )
