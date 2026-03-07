@@ -683,19 +683,13 @@ class ShadowMode:
     # -----------------------------------------------------------------------
 
     def _compute_drawdown(self) -> None:
-        """Update peak_pnl and max_drawdown from current total_pnl."""
+        """Update peak_pnl and max_drawdown from current total_pnl (absolute USD)."""
         pnl = self._stats.total_pnl
         if pnl > self._stats.peak_pnl:
             self._stats.peak_pnl = pnl
 
-        # Drawdown is expressed as a fraction of peak (0.0 = no drawdown)
-        if self._stats.peak_pnl > 0:
-            drawdown = (self._stats.peak_pnl - pnl) / self._stats.peak_pnl
-        elif self._stats.peak_pnl == 0 and pnl < 0:
-            # Started with zero peak and went negative: track absolute loss
-            drawdown = abs(pnl)
-        else:
-            drawdown = 0.0
+        # Absolute drawdown in USD (not fraction — avoids blowup when peak is tiny)
+        drawdown = self._stats.peak_pnl - pnl
 
         if drawdown > self._stats.max_drawdown:
             self._stats.max_drawdown = drawdown

@@ -458,9 +458,13 @@ class Engine:
             logger.warning("CostCalculator init failed, using stub: %s", exc)
             self._cost_calculator = None
 
+        min_edge_bps = int(os.environ.get("MIN_EDGE_BPS", "5"))
+        max_spread_pct = float(os.environ.get("MAX_SPREAD_PCT", "0.05"))
+        cooldown_sec = float(os.environ.get("SIGNAL_COOLDOWN_SEC", "2.0"))
         signal_config = SignalConfig(
-            min_edge=Decimal("0.0001"),
-            cooldown_seconds=0.5,
+            min_edge=Decimal(str(min_edge_bps)) / Decimal("10000"),  # bps → fraction
+            max_spread_pct=Decimal(str(max_spread_pct)),
+            cooldown_seconds=cooldown_sec,
         )
         self._signal_generator = SignalGenerator(
             price_hub=self._price_hub,
@@ -468,7 +472,8 @@ class Engine:
             config=signal_config,
             event_bus=self._event_bus,
         )
-        logger.info("Signal pipeline initialized (PriceHub → CostCalculator → SignalGenerator)")
+        logger.info("Signal pipeline initialized",
+                     min_edge_bps=min_edge_bps, max_spread_pct=max_spread_pct)
 
     # ------------------------------------------------------------------
     # Step 5: Strategies
