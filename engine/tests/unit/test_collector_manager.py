@@ -42,8 +42,8 @@ def _make_mock_collector(connected: bool = False, message_count: int = 0) -> Mag
 
 
 class TestDefaultConfiguration:
-    def test_default_exchanges_list_contains_four_exchanges(self):
-        assert CollectorManager.DEFAULT_EXCHANGES == ["binance", "bybit", "okx", "bitget"]
+    def test_default_exchanges_list_contains_six_exchanges(self):
+        assert CollectorManager.DEFAULT_EXCHANGES == ["binance", "bybit", "okx", "bitget", "upbit", "bithumb"]
 
     def test_default_symbols_is_btc_usdt(self):
         manager = CollectorManager()

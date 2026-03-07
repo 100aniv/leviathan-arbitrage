@@ -11,6 +11,8 @@ from src.collectors.binance_collector import BinanceCollector
 from src.collectors.bybit_collector import BybitCollector
 from src.collectors.okx_collector import OKXCollector
 from src.collectors.bitget_collector import BitgetCollector
+from src.collectors.upbit_collector import UpbitCollector
+from src.collectors.bithumb_collector import BithumbCollector
 
 logger = structlog.get_logger(__name__)
 
@@ -23,7 +25,7 @@ class CollectorManager:
     """
 
     # Default exchanges to collect from
-    DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget"]
+    DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget", "upbit", "bithumb"]
 
     def __init__(
         self,
@@ -50,6 +52,8 @@ class CollectorManager:
             "bybit": BybitCollector,
             "okx": OKXCollector,
             "bitget": BitgetCollector,
+            "upbit": UpbitCollector,
+            "bithumb": BithumbCollector,
         }
         cls = factory.get(exchange_id)
         if cls is None:

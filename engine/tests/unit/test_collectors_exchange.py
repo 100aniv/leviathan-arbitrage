@@ -39,6 +39,16 @@ from src.collectors.okx_collector import (
     _denormalize_symbol as okx_denorm,
     _normalize_symbol as okx_norm,
 )
+from src.collectors.upbit_collector import (
+    UpbitCollector,
+    _denormalize_symbol as upbit_denorm,
+    _normalize_symbol as upbit_norm,
+)
+from src.collectors.bithumb_collector import (
+    BithumbCollector,
+    _denormalize_symbol as bithumb_denorm,
+    _normalize_symbol as bithumb_norm,
+)
 
 
 # ===========================================================================
@@ -611,5 +621,258 @@ class TestCollectorHandleMessageDispatch:
         callback = AsyncMock()
         c = BitgetCollector(symbols=["BTC/USDT"], on_orderbook=callback)
         raw = json.dumps({"event": "subscribe", "arg": {}})
+        await c._handle_message(raw)
+        callback.assert_not_called()
+
+
+# ===========================================================================
+# UpbitCollector
+# ===========================================================================
+
+
+class TestUpbitNormalizeSymbol:
+    def test_btc_usdt_becomes_usdt_dash_btc(self):
+        assert upbit_norm("BTC/USDT") == "USDT-BTC"
+
+    def test_btc_krw_becomes_krw_dash_btc(self):
+        assert upbit_norm("BTC/KRW") == "KRW-BTC"
+
+    def test_eth_krw_becomes_krw_dash_eth(self):
+        assert upbit_norm("ETH/KRW") == "KRW-ETH"
+
+    def test_no_slash_returns_unchanged(self):
+        assert upbit_norm("KRW-BTC") == "KRW-BTC"
+
+
+class TestUpbitDenormalizeSymbol:
+    def test_krw_dash_btc_becomes_btc_krw(self):
+        assert upbit_denorm("KRW-BTC") == "BTC/KRW"
+
+    def test_usdt_dash_btc_becomes_btc_usdt(self):
+        assert upbit_denorm("USDT-BTC") == "BTC/USDT"
+
+    def test_no_dash_returns_unchanged(self):
+        assert upbit_denorm("BTCKRW") == "BTCKRW"
+
+
+class TestUpbitCollectorWsUrl:
+    def test_ws_url_is_upbit_endpoint(self):
+        c = UpbitCollector(symbols=["BTC/KRW"])
+        assert c._ws_url() == "wss://api.upbit.com/websocket/v1"
+
+
+class TestUpbitCollectorSubscribeMessage:
+    def test_subscribe_message_is_json_array_with_ticket_and_orderbook(self):
+        c = UpbitCollector(symbols=["BTC/KRW"])
+        msg = c._subscribe_message("BTC/KRW")
+        parsed = json.loads(msg)
+        assert isinstance(parsed, list)
+        assert len(parsed) == 2
+        assert "ticket" in parsed[0]
+        assert parsed[1]["type"] == "orderbook"
+        assert "KRW-BTC" in parsed[1]["codes"]
+
+    def test_subscribe_message_usdt_pair(self):
+        c = UpbitCollector(symbols=["BTC/USDT"])
+        msg = c._subscribe_message("BTC/USDT")
+        parsed = json.loads(msg)
+        assert "USDT-BTC" in parsed[1]["codes"]
+
+
+class TestUpbitCollectorParseMessage:
+    def test_orderbook_returns_symbol_bids_asks(self):
+        c = UpbitCollector(symbols=["BTC/KRW"])
+        data = {
+            "type": "orderbook",
+            "code": "KRW-BTC",
+            "orderbook_units": [
+                {"bid_price": 90000000, "bid_size": 0.1, "ask_price": 90010000, "ask_size": 0.2},
+                {"bid_price": 89990000, "bid_size": 0.3, "ask_price": 90020000, "ask_size": 0.4},
+            ],
+        }
+        result = c._parse_message(data)
+        assert result is not None
+        symbol, bids, asks = result
+        assert symbol == "BTC/KRW"
+        assert len(bids) == 2
+        assert bids[0] == ["90000000", "0.1"]
+        assert len(asks) == 2
+        assert asks[0] == ["90010000", "0.2"]
+
+    def test_non_orderbook_type_returns_none(self):
+        c = UpbitCollector(symbols=["BTC/KRW"])
+        result = c._parse_message({"type": "trade", "code": "KRW-BTC"})
+        assert result is None
+
+    def test_empty_orderbook_units_returns_none(self):
+        c = UpbitCollector(symbols=["BTC/KRW"])
+        result = c._parse_message({"type": "orderbook", "code": "KRW-BTC", "orderbook_units": []})
+        assert result is None
+
+    def test_usdt_pair_symbol_denormalization(self):
+        c = UpbitCollector(symbols=["BTC/USDT"])
+        data = {
+            "type": "orderbook",
+            "code": "USDT-BTC",
+            "orderbook_units": [
+                {"bid_price": 87000, "bid_size": 0.5, "ask_price": 87010, "ask_size": 0.3},
+            ],
+        }
+        result = c._parse_message(data)
+        assert result is not None
+        symbol, _, _ = result
+        assert symbol == "BTC/USDT"
+
+
+class TestUpbitCollectorHandleMessage:
+    @pytest.mark.asyncio
+    async def test_handle_message_binary_bytes(self):
+        """Upbit sends binary (bytes) WebSocket messages."""
+        callback = AsyncMock()
+        c = UpbitCollector(symbols=["BTC/KRW"], on_orderbook=callback)
+        raw = json.dumps({
+            "type": "orderbook",
+            "code": "KRW-BTC",
+            "orderbook_units": [
+                {"bid_price": 90000000, "bid_size": 0.1, "ask_price": 90010000, "ask_size": 0.2},
+            ],
+        }).encode("utf-8")  # bytes, not str
+        await c._handle_message(raw)
+        callback.assert_called_once()
+        args = callback.call_args[0]
+        assert args[0] == "upbit"
+        assert args[1] == "BTC/KRW"
+
+    @pytest.mark.asyncio
+    async def test_handle_message_string(self):
+        callback = AsyncMock()
+        c = UpbitCollector(symbols=["BTC/KRW"], on_orderbook=callback)
+        raw = json.dumps({
+            "type": "orderbook",
+            "code": "KRW-BTC",
+            "orderbook_units": [
+                {"bid_price": 90000000, "bid_size": 0.1, "ask_price": 90010000, "ask_size": 0.2},
+            ],
+        })
+        await c._handle_message(raw)
+        callback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_message_non_orderbook_skips_callback(self):
+        callback = AsyncMock()
+        c = UpbitCollector(symbols=["BTC/KRW"], on_orderbook=callback)
+        raw = json.dumps({"type": "trade", "code": "KRW-BTC"}).encode("utf-8")
+        await c._handle_message(raw)
+        callback.assert_not_called()
+
+
+# ===========================================================================
+# BithumbCollector
+# ===========================================================================
+
+
+class TestBithumbNormalizeSymbol:
+    def test_btc_krw_becomes_btc_underscore_krw(self):
+        assert bithumb_norm("BTC/KRW") == "BTC_KRW"
+
+    def test_eth_krw_becomes_eth_underscore_krw(self):
+        assert bithumb_norm("ETH/KRW") == "ETH_KRW"
+
+
+class TestBithumbDenormalizeSymbol:
+    def test_btc_underscore_krw_becomes_btc_krw(self):
+        assert bithumb_denorm("BTC_KRW") == "BTC/KRW"
+
+    def test_eth_underscore_krw_becomes_eth_krw(self):
+        assert bithumb_denorm("ETH_KRW") == "ETH/KRW"
+
+
+class TestBithumbCollectorWsUrl:
+    def test_ws_url_is_bithumb_endpoint(self):
+        c = BithumbCollector(symbols=["BTC/KRW"])
+        assert c._ws_url() == "wss://pubwss.bithumb.com/pub/ws"
+
+
+class TestBithumbCollectorSubscribeMessage:
+    def test_subscribe_message_contains_type_symbols_ticktypes(self):
+        c = BithumbCollector(symbols=["BTC/KRW"])
+        msg = c._subscribe_message("BTC/KRW")
+        assert isinstance(msg, dict)
+        assert msg["type"] == "orderbookdepth"
+        assert "BTC_KRW" in msg["symbols"]
+        assert "1H" in msg["tickTypes"]
+
+    def test_subscribe_message_eth(self):
+        c = BithumbCollector(symbols=["ETH/KRW"])
+        msg = c._subscribe_message("ETH/KRW")
+        assert "ETH_KRW" in msg["symbols"]
+
+
+class TestBithumbCollectorParseMessage:
+    def test_orderbookdepth_returns_sorted_bids_asks(self):
+        c = BithumbCollector(symbols=["BTC/KRW"])
+        data = {
+            "type": "orderbookdepth",
+            "content": {
+                "list": [
+                    {"symbol": "BTC_KRW", "orderType": "ask", "price": "90010000", "quantity": "0.2"},
+                    {"symbol": "BTC_KRW", "orderType": "bid", "price": "89990000", "quantity": "0.3"},
+                    {"symbol": "BTC_KRW", "orderType": "ask", "price": "90020000", "quantity": "0.4"},
+                    {"symbol": "BTC_KRW", "orderType": "bid", "price": "90000000", "quantity": "0.1"},
+                ],
+            },
+        }
+        result = c._parse_message(data)
+        assert result is not None
+        symbol, bids, asks = result
+        assert symbol == "BTC/KRW"
+        # Bids sorted descending by price
+        assert bids[0] == ["90000000", "0.1"]
+        assert bids[1] == ["89990000", "0.3"]
+        # Asks sorted ascending by price
+        assert asks[0] == ["90010000", "0.2"]
+        assert asks[1] == ["90020000", "0.4"]
+
+    def test_non_orderbookdepth_type_returns_none(self):
+        c = BithumbCollector(symbols=["BTC/KRW"])
+        result = c._parse_message({"type": "transaction", "content": {}})
+        assert result is None
+
+    def test_empty_list_returns_none(self):
+        c = BithumbCollector(symbols=["BTC/KRW"])
+        result = c._parse_message({"type": "orderbookdepth", "content": {"list": []}})
+        assert result is None
+
+    def test_connected_status_message_returns_none(self):
+        c = BithumbCollector(symbols=["BTC/KRW"])
+        result = c._parse_message({"type": "connected"})
+        assert result is None
+
+
+class TestBithumbCollectorHandleMessage:
+    @pytest.mark.asyncio
+    async def test_handle_message_calls_callback_for_orderbookdepth(self):
+        callback = AsyncMock()
+        c = BithumbCollector(symbols=["BTC/KRW"], on_orderbook=callback)
+        raw = json.dumps({
+            "type": "orderbookdepth",
+            "content": {
+                "list": [
+                    {"symbol": "BTC_KRW", "orderType": "bid", "price": "90000000", "quantity": "0.1"},
+                    {"symbol": "BTC_KRW", "orderType": "ask", "price": "90010000", "quantity": "0.2"},
+                ],
+            },
+        })
+        await c._handle_message(raw)
+        callback.assert_called_once()
+        args = callback.call_args[0]
+        assert args[0] == "bithumb"
+        assert args[1] == "BTC/KRW"
+
+    @pytest.mark.asyncio
+    async def test_handle_message_skips_non_orderbook(self):
+        callback = AsyncMock()
+        c = BithumbCollector(symbols=["BTC/KRW"], on_orderbook=callback)
+        raw = json.dumps({"type": "connected"})
         await c._handle_message(raw)
         callback.assert_not_called()
