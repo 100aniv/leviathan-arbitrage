@@ -250,6 +250,7 @@ class TestTriangularStrategyTradeRequest:
 
     @pytest.mark.asyncio
     async def test_size_capped_by_max_position_usdt(self):
+        # max_position_usdt=500, first_price=50000 → max_base_size = 500/50000 = 0.01
         strategy = TriangularStrategy(
             "tri_v1",
             make_calculator(Decimal("0.01")),
@@ -259,8 +260,9 @@ class TestTriangularStrategyTradeRequest:
         signal = make_triangle_signal(spread_pct=Decimal("0.01"), volume=Decimal("2000"))
         result = await strategy.on_signal(signal)
         assert result is not None
+        expected_base_size = Decimal("500") / Decimal("50000")  # 0.01 BTC
         for leg in result.legs:
-            assert leg.size == Decimal("500")
+            assert leg.size == expected_base_size
 
     @pytest.mark.asyncio
     async def test_confidence_preserved_in_trade_request(self):

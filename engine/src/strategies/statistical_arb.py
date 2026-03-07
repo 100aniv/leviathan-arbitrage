@@ -188,13 +188,61 @@ class StatisticalArbStrategy(BaseStrategy):
 
         # --- Exit logic (close open position when z reverts) ---
         if self._state == StatArbState.SHORT and zscore < self.config.zscore_exit:
+            # Unwind SHORT spread: we were long buy_exchange, short sell_exchange
+            # Close by reversing: sell on buy_exchange, buy on sell_exchange
+            size = min(signal.volume, self.config.max_position_size)
             self._state = StatArbState.FLAT
-            self._metrics.signals_filtered += 1
-            return None
+            self._metrics.trade_requests_generated += 1
+            return TradeRequest(
+                strategy_id=self.strategy_id,
+                legs=[
+                    TradeLeg(
+                        exchange_id=signal.buy_exchange,
+                        symbol=signal.symbol,
+                        side=OrderSide.SELL,
+                        size=size,
+                        order_type=OrderType.MARKET,
+                    ),
+                    TradeLeg(
+                        exchange_id=signal.sell_exchange,
+                        symbol=signal.symbol,
+                        side=OrderSide.BUY,
+                        size=size,
+                        order_type=OrderType.MARKET,
+                    ),
+                ],
+                expected_profit_usdt=Decimal("0"),
+                confidence=signal.confidence,
+                metadata={"action": "exit", "prev_state": "short", "zscore": str(zscore)},
+            )
         if self._state == StatArbState.LONG and zscore > -self.config.zscore_exit:
+            # Unwind LONG spread: we were long sell_exchange, short buy_exchange
+            # Close by reversing: buy on buy_exchange, sell on sell_exchange
+            size = min(signal.volume, self.config.max_position_size)
             self._state = StatArbState.FLAT
-            self._metrics.signals_filtered += 1
-            return None
+            self._metrics.trade_requests_generated += 1
+            return TradeRequest(
+                strategy_id=self.strategy_id,
+                legs=[
+                    TradeLeg(
+                        exchange_id=signal.sell_exchange,
+                        symbol=signal.symbol,
+                        side=OrderSide.SELL,
+                        size=size,
+                        order_type=OrderType.MARKET,
+                    ),
+                    TradeLeg(
+                        exchange_id=signal.buy_exchange,
+                        symbol=signal.symbol,
+                        side=OrderSide.BUY,
+                        size=size,
+                        order_type=OrderType.MARKET,
+                    ),
+                ],
+                expected_profit_usdt=Decimal("0"),
+                confidence=signal.confidence,
+                metadata={"action": "exit", "prev_state": "long", "zscore": str(zscore)},
+            )
 
         # Only open new positions when flat
         if self._state != StatArbState.FLAT:

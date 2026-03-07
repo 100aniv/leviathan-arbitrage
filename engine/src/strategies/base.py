@@ -105,5 +105,12 @@ class BaseStrategy(ABC):
         ...
 
     async def on_fill(self, trade: Trade) -> None:
-        """Handle fill notification and update metrics."""
+        """Handle fill notification and update metrics including realized PnL."""
         self._metrics.fills_received += 1
+        # Accumulate realized PnL from trade metadata or compute from fee
+        realized_pnl = trade.metadata.get("realized_pnl")
+        if realized_pnl is not None:
+            self._metrics.total_realized_pnl_usdt += Decimal(str(realized_pnl))
+        else:
+            # Deduct fees as minimum PnL impact
+            self._metrics.total_realized_pnl_usdt -= trade.fee

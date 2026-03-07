@@ -487,18 +487,23 @@ class Engine:
                      len(self._strategy_manager._strategies))
 
     async def _register_default_strategies(self) -> None:
-        """Register all available strategies."""
+        """Register all 8 available strategies."""
+        from src.core.latency_tracker import LatencyTracker
         from src.strategies.cross_exchange import CrossExchangeStrategy
         from src.strategies.spot_futures import SpotFuturesStrategy
         from src.strategies.futures_futures import FuturesFuturesStrategy
         from src.strategies.triangular import TriangularStrategy
         from src.strategies.funding_rate import FundingRateStrategy
         from src.strategies.statistical_arb import StatisticalArbStrategy
+        from src.strategies.latency_arb import LatencyArbStrategy
 
         # Use a simple stub if CostCalculator didn't initialize
         cost_calc = self._cost_calculator
         if cost_calc is None:
             cost_calc = _StubCostCalculator()
+
+        # Shared latency tracker for LatencyArb strategy
+        self._latency_tracker = LatencyTracker()
 
         strategies = [
             CrossExchangeStrategy("cross_exchange_v1", cost_calc),
@@ -507,10 +512,37 @@ class Engine:
             TriangularStrategy("triangular_v1", cost_calc),
             FundingRateStrategy("funding_rate_v1", cost_calc),
             StatisticalArbStrategy("statistical_arb_v1", cost_calc),
+            LatencyArbStrategy("latency_arb_v1", cost_calc, self._latency_tracker),
         ]
+
+        # CexDex requires a DEXAdapter — register only if configured
+        try:
+            from src.strategies.cex_dex import CexDexStrategy
+            dex_adapter = self._build_dex_adapter()
+            if dex_adapter is not None:
+                strategies.append(
+                    CexDexStrategy(
+                        "cex_dex_v1", cost_calc, dex_adapter,
+                        cex_exchange_id=list(self._exchanges.keys())[0] if self._exchanges else "binance",
+                        symbol="BTC/USDT",
+                    )
+                )
+        except Exception as exc:
+            logger.info("CexDex strategy not registered (no DEX adapter): %s", exc)
+
         for strategy in strategies:
             self._strategy_manager.register(strategy)
         logger.info("Registered %d strategies", len(strategies))
+
+    def _build_dex_adapter(self):
+        """Build DEX adapter if DEX configuration is available. Returns None if not configured."""
+        import os
+        dex_rpc = os.getenv("DEX_RPC_URL", "")
+        if not dex_rpc:
+            return None
+        # Future: return a real Uniswap/Curve adapter here
+        logger.info("DEX_RPC_URL set but no concrete DEX adapter implemented yet")
+        return None
 
     # ------------------------------------------------------------------
     # Step 6: Risk Management
@@ -668,6 +700,10 @@ class Engine:
                 tasks.append(
                     asyncio.create_task(self._orderbook_feed_loop(), name="orderbook_feed")
                 )
+                # Multi-strategy signal simulator for paper mode
+                tasks.append(
+                    asyncio.create_task(self._paper_signal_simulator_loop(), name="multi_signal")
+                )
             logger.info("Data mode: %s", self._data_mode)
 
         self.state.background_tasks.extend(tasks)
@@ -734,6 +770,39 @@ class Engine:
                 await asyncio.sleep(1.0)
         except asyncio.CancelledError:
             pass
+
+    async def _paper_signal_simulator_loop(self) -> None:
+        """Run multi-strategy signal simulator for paper mode.
+
+        Produces synthetic signals for SpotFutures, FundingRate, and Triangular
+        strategies so ALL 8 strategies receive signals in paper mode.
+        """
+        from src.core.multi_signal import MultiStrategySignalProducer, PaperSignalSimulator
+
+        producer = MultiStrategySignalProducer(
+            event_bus=self._event_bus,
+            latency_tracker=getattr(self, "_latency_tracker", None),
+        )
+        symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
+        exchanges = list(self._exchanges.keys())
+
+        simulator = PaperSignalSimulator(
+            producer=producer,
+            exchanges=exchanges,
+            symbols=symbols,
+            injection_rate=0.05,
+        )
+        await simulator.start()
+        logger.info("Paper signal simulator started (exchanges=%s, symbols=%s)", exchanges, symbols)
+
+        try:
+            while self.state.running:
+                await simulator.tick()
+                await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await simulator.stop()
 
     async def _real_data_feed_loop(self) -> None:
         """Start real public WebSocket collectors and feed SignalGenerator.

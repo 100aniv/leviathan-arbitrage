@@ -201,12 +201,22 @@ class StrategyManager:
 
     def _should_route(self, strategy: BaseStrategy, signal: Signal) -> bool:
         """Return True if this strategy should handle the signal."""
-        # Route if signal.strategy_id starts with the strategy's own ID
-        # or if the strategy has a STRATEGY_TYPE that appears in the signal's strategy_id
-        strategy_type = getattr(strategy, "STRATEGY_TYPE", None)
-        if strategy_type and strategy_type in signal.strategy_id:
+        # Broadcast: empty or wildcard strategy_id routes to ALL active strategies
+        if not signal.strategy_id or signal.strategy_id == "*":
             return True
-        return signal.strategy_id == strategy.strategy_id
+
+        # Exact match on strategy instance ID
+        if signal.strategy_id == strategy.strategy_id:
+            return True
+
+        # Match by STRATEGY_TYPE: either direction substring match
+        strategy_type = getattr(strategy, "STRATEGY_TYPE", None)
+        if strategy_type:
+            # "cross_exchange_spot" in "cross_exchange_spot_v1" OR vice versa
+            if strategy_type in signal.strategy_id or signal.strategy_id in strategy_type:
+                return True
+
+        return False
 
     async def _emit_trade_request(self, request: TradeRequest) -> None:
         """Publish TradeRequest to the execution stream."""

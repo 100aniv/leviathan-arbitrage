@@ -417,6 +417,8 @@ class TestCexDexStrategy:
         strategy = self.make_strategy()
         fill = MagicMock(spec=Trade)
         fill.trade_id = "t001"
+        fill.fee = Decimal("0")
+        fill.metadata = {}
 
         await strategy.on_fill(fill)
         assert strategy.metrics.fills_received == 1

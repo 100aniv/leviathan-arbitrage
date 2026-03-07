@@ -77,7 +77,14 @@ class TriangularStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
-        size = min(signal.volume, self.config.max_position_usdt)
+        # Convert max_position_usdt to base units using first leg price
+        first_price = Decimal(str(prices[0]))
+        max_base_size = (
+            self.config.max_position_usdt / first_price
+            if first_price > 0
+            else signal.volume
+        )
+        size = min(signal.volume, max_base_size)
 
         # Calculate 3× taker fees (one per leg)
         total_cost = Decimal("0")
@@ -92,7 +99,9 @@ class TriangularStrategy(BaseStrategy):
             )
             total_cost += leg_cost
 
-        gross_profit = signal.spread_pct * size
+        # gross_profit = spread_pct * notional (USDT), not spread_pct * base_size
+        notional = size * first_price
+        gross_profit = signal.spread_pct * notional
         net_profit = gross_profit - total_cost
 
         if net_profit <= Decimal("0"):

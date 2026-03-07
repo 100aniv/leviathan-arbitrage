@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SignalConfig:
-    strategy_id: str = "cross_exchange_arb_v1"
+    strategy_id: str = "cross_exchange_spot"
     min_edge: Decimal = Decimal("0.0001")     # minimum net profit as fraction of notional (1 bps)
     cooldown_seconds: float = 1.0              # dedup suppression window
     max_rollback_cost_usd: Decimal = Decimal("50")
