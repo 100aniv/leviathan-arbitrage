@@ -26,10 +26,10 @@ function mockStats(id: string): StrategyStats {
 }
 
 const MOCK_STRATEGIES: Strategy[] = [
-  { id: 'tri-arb',  name: 'Triangle Arbitrage',   enabled: true,  exchange_a: 'Binance', exchange_b: 'OKX',     symbol: 'BTC/USDT' },
-  { id: 'kim-arb',  name: 'Kimchi Premium',        enabled: true,  exchange_a: 'Upbit',   exchange_b: 'Binance', symbol: 'ETH/KRW'  },
-  { id: 'stat-arb', name: 'Statistical Arbitrage', enabled: false, exchange_a: 'Bybit',   exchange_b: 'OKX',     symbol: 'SOL/USDT' },
-  { id: 'mm-eth',   name: 'ETH Market Making',     enabled: true,  exchange_a: 'Binance', symbol: 'ETH/USDT' },
+  { id: 'tri-arb',  type: 'triangular',  name: 'Triangle Arbitrage',   enabled: true,  exchange_a: 'Binance', exchange_b: 'OKX',     symbol: 'BTC/USDT' },
+  { id: 'kim-arb',  type: 'kimchi',      name: 'Kimchi Premium',        enabled: true,  exchange_a: 'Upbit',   exchange_b: 'Binance', symbol: 'ETH/KRW'  },
+  { id: 'stat-arb', type: 'statistical', name: 'Statistical Arbitrage', enabled: false, exchange_a: 'Bybit',   exchange_b: 'OKX',     symbol: 'SOL/USDT' },
+  { id: 'mm-eth',   type: 'market_make', name: 'ETH Market Making',     enabled: true,  exchange_a: 'Binance', symbol: 'ETH/USDT' },
 ];
 
 // ─── Strategy Card ────────────────────────────────────────────────────────────
@@ -45,6 +45,10 @@ function StrategyCard({
   const [toggling, setToggling] = useState(false);
   const stats  = mockStats(strategy.id);
   const status = strategy.enabled ? 'active' : 'stopped';
+  const displayName = String(strategy.name ?? strategy.type);
+  const exchangeA   = strategy.exchange_a ? String(strategy.exchange_a) : '';
+  const exchangeB   = strategy.exchange_b ? String(strategy.exchange_b) : '';
+  const symbolStr   = strategy.symbol ? String(strategy.symbol) : '';
 
   const handleToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -72,11 +76,11 @@ function StrategyCard({
             }`}
           />
           <div className="min-w-0">
-            <div className="text-xs font-mono text-terminal-text truncate">{strategy.name}</div>
+            <div className="text-xs font-mono text-terminal-text truncate">{displayName}</div>
             <div className="text-[10px] font-mono text-terminal-subtle mt-0.5">
-              {strategy.exchange_a}
-              {strategy.exchange_b ? ` ↔ ${strategy.exchange_b}` : ''}
-              {strategy.symbol ? ` · ${strategy.symbol}` : ''}
+              {exchangeA}
+              {exchangeB ? ` ↔ ${exchangeB}` : ''}
+              {symbolStr ? ` · ${symbolStr}` : ''}
             </div>
           </div>
         </div>
@@ -133,22 +137,26 @@ function StrategyCard({
               <span className="text-terminal-subtle">ID: </span>
               <span className="text-terminal-text">{strategy.id}</span>
             </div>
-            {strategy.exchange_a && (
+            <div>
+              <span className="text-terminal-subtle">Type: </span>
+              <span className="text-terminal-text">{String(strategy.type)}</span>
+            </div>
+            {!!exchangeA && (
               <div>
                 <span className="text-terminal-subtle">Exchange A: </span>
-                <span className="text-terminal-text">{strategy.exchange_a}</span>
+                <span className="text-terminal-text">{exchangeA}</span>
               </div>
             )}
-            {strategy.exchange_b && (
+            {!!exchangeB && (
               <div>
                 <span className="text-terminal-subtle">Exchange B: </span>
-                <span className="text-terminal-text">{strategy.exchange_b}</span>
+                <span className="text-terminal-text">{exchangeB}</span>
               </div>
             )}
-            {strategy.symbol && (
+            {!!symbolStr && (
               <div>
                 <span className="text-terminal-subtle">Symbol: </span>
-                <span className="text-terminal-text">{strategy.symbol}</span>
+                <span className="text-terminal-text">{symbolStr}</span>
               </div>
             )}
           </div>

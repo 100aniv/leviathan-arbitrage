@@ -21,6 +21,11 @@ interface PnLPoint {
   unrealized: number;
 }
 
+interface PnLChartProps {
+  /** Optional real-time PnL from WebSocket — takes priority over REST poll */
+  wsPnl?: { realized: number; unrealized: number; total: number } | null;
+}
+
 const COLORS = {
   total:      '#00ff88',
   realized:   '#3b82f6',
@@ -47,7 +52,7 @@ function fmt(v: number) {
   return `${v >= 0 ? '+' : ''}$${v.toFixed(2)}`;
 }
 
-export function PnLChart() {
+export function PnLChart({ wsPnl }: PnLChartProps = {}) {
   const { data, error, isLoading, mutate } = useApi<PnlResponse>(
     '/trading/pnl',
     getPnl,
@@ -56,25 +61,40 @@ export function PnLChart() {
 
   const [history, setHistory] = useState<PnLPoint[]>(genSeedData);
 
+  // Normalise REST response (realized_pnl / unrealized_pnl / total_pnl) to
+  // the same shape as the WS pnl object (realized / unrealized / total).
+  const restPoint: PnLPoint | null = data
+    ? {
+        time:       '',
+        total:      data.total_pnl,
+        realized:   data.realized_pnl,
+        unrealized: data.unrealized_pnl,
+      }
+    : null;
+
+  // Prefer WS data when available; fall back to REST poll
+  const livePoint = wsPnl ?? restPoint;
+
   useEffect(() => {
-    if (!data) return;
+    if (!livePoint) return;
     setHistory(prev => [
       ...prev.slice(-(MAX_POINTS - 1)),
       {
         time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        total:      data.total,
-        realized:   data.realized,
-        unrealized: data.unrealized,
+        total:      livePoint.total,
+        realized:   livePoint.realized,
+        unrealized: livePoint.unrealized,
       },
     ]);
-  }, [data]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [livePoint?.total, livePoint?.realized, livePoint?.unrealized]);
 
   const latest = useMemo(() => {
-    if (data) return data;
+    if (livePoint) return livePoint;
     if (history.length === 0) return null;
     const last = history[history.length - 1];
     return { total: last.total, realized: last.realized, unrealized: last.unrealized };
-  }, [data, history]);
+  }, [livePoint, history]);
 
   if (error) {
     return (

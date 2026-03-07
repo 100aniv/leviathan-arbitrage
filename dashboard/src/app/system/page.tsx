@@ -50,7 +50,7 @@ export default function SystemPage() {
   );
 
   const engineStatus = health?.status ?? 'unknown';
-  const uptime = status?.uptime_seconds;
+  const uptime = (status as (typeof status & { uptime_seconds?: number }) | undefined)?.uptime_seconds;
   const killActive = status?.kill_switch_active ?? false;
   const strategyCount = status?.strategy_count ?? 0;
   const environment = status?.environment ?? '—';

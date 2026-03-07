@@ -5,21 +5,15 @@ import { useApi } from '@/hooks/useApi';
 import { getPositions } from '@/lib/api';
 import type { Position } from '@/types';
 
-interface EnrichedPosition extends Position {
-  side: 'LONG' | 'SHORT';
-  current_price: number;
-  duration: string;
-}
-
-type SortKey = keyof EnrichedPosition;
+type SortKey = keyof Position;
 type SortDir = 'asc' | 'desc';
 
-const MOCK: EnrichedPosition[] = [
-  { strategy: 'tri-arb',  exchange: 'Binance', symbol: 'BTC/USDT', side: 'LONG',  size: 0.05,  entry_price: 64850,  current_price: 65100,  unrealized_pnl:  12.50, duration: '2m 14s' },
-  { strategy: 'kim-arb',  exchange: 'Upbit',   symbol: 'ETH/USDT', side: 'LONG',  size: 0.8,   entry_price: 3480,   current_price: 3495,   unrealized_pnl:  12.00, duration: '47s'    },
-  { strategy: 'stat-arb', exchange: 'OKX',     symbol: 'SOL/USDT', side: 'SHORT', size: 5,     entry_price: 146.5,  current_price: 144.8,  unrealized_pnl:  -8.50, duration: '5m 3s'  },
-  { strategy: 'tri-arb',  exchange: 'Bybit',   symbol: 'XRP/USDT', side: 'LONG',  size: 1000,  entry_price: 0.5812, current_price: 0.5845, unrealized_pnl:   3.30, duration: '1m 22s' },
-  { strategy: 'mm-eth',   exchange: 'Binance', symbol: 'ETH/USDT', side: 'SHORT', size: 0.3,   entry_price: 3510,   current_price: 3495,   unrealized_pnl:   4.50, duration: '12s'    },
+const MOCK: Position[] = [
+  { strategy_id: 'tri-arb',  exchange_id: 'binance', symbol: 'BTC/USDT', side: 'LONG',  quantity: 0.05,  entry_price: 64850,  mark_price: 65100,  unrealized_pnl:  12.50, realized_pnl: 0 },
+  { strategy_id: 'kim-arb',  exchange_id: 'upbit',   symbol: 'ETH/USDT', side: 'LONG',  quantity: 0.8,   entry_price: 3480,   mark_price: 3495,   unrealized_pnl:  12.00, realized_pnl: 0 },
+  { strategy_id: 'stat-arb', exchange_id: 'okx',     symbol: 'SOL/USDT', side: 'SHORT', quantity: 5,     entry_price: 146.5,  mark_price: 144.8,  unrealized_pnl:  -8.50, realized_pnl: 0 },
+  { strategy_id: 'tri-arb',  exchange_id: 'bybit',   symbol: 'XRP/USDT', side: 'LONG',  quantity: 1000,  entry_price: 0.5812, mark_price: 0.5845, unrealized_pnl:   3.30, realized_pnl: 0 },
+  { strategy_id: 'mm-eth',   exchange_id: 'binance', symbol: 'ETH/USDT', side: 'SHORT', quantity: 0.3,   entry_price: 3510,   mark_price: 3495,   unrealized_pnl:   4.50, realized_pnl: 0 },
 ];
 
 function fmtPrice(price: number): string {
@@ -42,15 +36,15 @@ function Skeleton() {
 }
 
 const COLUMNS: { key: SortKey; label: string; align?: 'right' }[] = [
-  { key: 'strategy',      label: 'Strategy' },
-  { key: 'exchange',      label: 'Exchange' },
-  { key: 'symbol',        label: 'Symbol' },
-  { key: 'side',          label: 'Side' },
-  { key: 'size',          label: 'Size',         align: 'right' },
-  { key: 'entry_price',   label: 'Entry',        align: 'right' },
-  { key: 'current_price', label: 'Mark',         align: 'right' },
-  { key: 'unrealized_pnl',label: 'uPnL',         align: 'right' },
-  { key: 'duration',      label: 'Duration',     align: 'right' },
+  { key: 'strategy_id',    label: 'Strategy' },
+  { key: 'exchange_id',    label: 'Exchange' },
+  { key: 'symbol',         label: 'Symbol' },
+  { key: 'side',           label: 'Side' },
+  { key: 'quantity',       label: 'Size',         align: 'right' },
+  { key: 'entry_price',    label: 'Entry',        align: 'right' },
+  { key: 'mark_price',     label: 'Mark',         align: 'right' },
+  { key: 'unrealized_pnl', label: 'uPnL',         align: 'right' },
+  { key: 'realized_pnl',   label: 'rPnL',         align: 'right' },
 ];
 
 export function PositionTable() {
@@ -63,15 +57,8 @@ export function PositionTable() {
   const [sortKey, setSortKey] = useState<SortKey>('unrealized_pnl');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  const raw: EnrichedPosition[] =
-    data && data.length > 0
-      ? data.map(p => ({
-          ...p,
-          side:          'LONG' as const,
-          current_price: p.entry_price + (p.unrealized_pnl / (p.size || 1)),
-          duration:      '—',
-        }))
-      : MOCK;
+  const raw: Position[] =
+    data && data.length > 0 ? data : MOCK;
 
   const sorted = [...raw].sort((a, b) => {
     const av = a[sortKey];
@@ -147,19 +134,21 @@ export function PositionTable() {
                 key={i}
                 className="border-b border-terminal-border/30 hover:bg-terminal-muted/20 transition-colors"
               >
-                <td className="py-1.5 pr-3 text-terminal-text">{pos.strategy}</td>
-                <td className="py-1.5 pr-3 text-terminal-subtle">{pos.exchange}</td>
+                <td className="py-1.5 pr-3 text-terminal-text">{pos.strategy_id}</td>
+                <td className="py-1.5 pr-3 text-terminal-subtle uppercase">{pos.exchange_id}</td>
                 <td className="py-1.5 pr-3 text-terminal-text">{pos.symbol}</td>
                 <td className={`py-1.5 pr-3 font-semibold ${pos.side === 'LONG' ? 'text-profit' : 'text-loss'}`}>
                   {pos.side}
                 </td>
-                <td className="py-1.5 pr-3 text-right tabular-nums text-terminal-text">{pos.size}</td>
+                <td className="py-1.5 pr-3 text-right tabular-nums text-terminal-text">{pos.quantity}</td>
                 <td className="py-1.5 pr-3 text-right tabular-nums text-terminal-text">{fmtPrice(pos.entry_price)}</td>
-                <td className="py-1.5 pr-3 text-right tabular-nums text-terminal-text">{fmtPrice(pos.current_price)}</td>
+                <td className="py-1.5 pr-3 text-right tabular-nums text-terminal-text">{fmtPrice(pos.mark_price)}</td>
                 <td className={`py-1.5 pr-3 text-right tabular-nums font-semibold ${pos.unrealized_pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
                   {pos.unrealized_pnl >= 0 ? '+' : ''}${pos.unrealized_pnl.toFixed(2)}
                 </td>
-                <td className="py-1.5 pr-3 text-right text-terminal-subtle">{pos.duration}</td>
+                <td className={`py-1.5 pr-3 text-right tabular-nums ${pos.realized_pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+                  {pos.realized_pnl >= 0 ? '+' : ''}${pos.realized_pnl.toFixed(2)}
+                </td>
               </tr>
             ))}
           </tbody>

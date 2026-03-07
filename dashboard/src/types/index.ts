@@ -1,16 +1,19 @@
 // ─── Engine API Types ─────────────────────────────────────────────────────────
 
 export interface HealthResponse {
-  status: "healthy" | "degraded" | "unhealthy";
-  timestamp: string;
+  status: string;
+  engine_running: boolean;
+  kill_switch_active: boolean;
 }
 
 export interface StatusResponse {
   running: boolean;
   kill_switch_active: boolean;
   environment: string;
+  execution_mode: string;
   strategy_count: number;
-  uptime_seconds: number;
+  position_count: number;
+  connection_count: number;
 }
 
 export interface KillResponse {
@@ -20,11 +23,9 @@ export interface KillResponse {
 
 export interface Strategy {
   id: string;
-  name: string;
+  type: string;
   enabled: boolean;
-  exchange_a?: string;
-  exchange_b?: string;
-  symbol?: string;
+  metrics?: Record<string, number>;
   [key: string]: unknown;
 }
 
@@ -34,30 +35,45 @@ export interface ToggleResponse {
 }
 
 export interface Position {
-  strategy: string;
-  exchange: string;
+  strategy_id: string;
+  exchange_id: string;
   symbol: string;
-  size: number;
+  side: string;
+  quantity: number;
   entry_price: number;
+  mark_price: number;
   unrealized_pnl: number;
+  realized_pnl: number;
 }
 
 export interface PnlResponse {
-  realized: number;
-  unrealized: number;
-  total: number;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  total_pnl: number;
 }
 
 export interface RiskMetrics {
-  drawdown: number;
-  exposure_by_exchange: Record<string, number>;
+  kill_switch_active: boolean;
+  circuit_breaker_state: string;
+  max_drawdown_pct: number;
+  daily_loss_pct: number;
+  position_count: number;
+  correlation_alert: boolean;
   [key: string]: unknown;
+}
+
+export interface ModeResponse {
+  mode: string;
+  data_mode: string;
+  shadow_active: boolean;
+  live_gate_eligible: boolean;
 }
 
 // ─── WebSocket Message Types ──────────────────────────────────────────────────
 
 export type WsMessageType =
   | "heartbeat"
+  | "state_update"
   | "market_data"
   | "position_update"
   | "pnl_update"
@@ -66,20 +82,27 @@ export type WsMessageType =
 
 export interface WsMessage<T = unknown> {
   type: WsMessageType;
-  timestamp?: string;
+  ts?: number;
   data?: T;
+}
+
+export interface StateUpdateData {
+  running: boolean;
+  kill_switch: boolean;
+  mode: string;
+  strategy_count: number;
+  strategies: { id: string; enabled: boolean; type: string }[];
+  pnl: { realized: number; unrealized: number; total: number };
+  positions: { strategy_id: string; exchange_id: string; symbol: string; side: string; pnl: number }[];
+  position_count: number;
 }
 
 export interface HeartbeatMessage extends WsMessage {
   type: "heartbeat";
 }
 
-export interface PositionUpdateMessage extends WsMessage<Position[]> {
-  type: "position_update";
-}
-
-export interface PnlUpdateMessage extends WsMessage<PnlResponse> {
-  type: "pnl_update";
+export interface StateUpdateMessage extends WsMessage<StateUpdateData> {
+  type: "state_update";
 }
 
 // ─── UI State Types ───────────────────────────────────────────────────────────

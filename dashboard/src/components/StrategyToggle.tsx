@@ -19,6 +19,10 @@ export function StrategyToggle({ strategy, onChange }: StrategyToggleProps) {
 
   const status: StrategyStatus = hasError ? 'error' : enabled ? 'running' : 'paused';
   const badgeStatus = status === 'running' ? 'active' : status === 'error' ? 'error' : 'paused';
+  const displayName = String(strategy.name ?? strategy.type);
+  const exchangeA   = strategy.exchange_a ? String(strategy.exchange_a) : '';
+  const exchangeB   = strategy.exchange_b ? String(strategy.exchange_b) : '';
+  const symbolStr   = strategy.symbol ? String(strategy.symbol) : '';
 
   const handleToggle = async () => {
     if (isPending || hasError) return;
@@ -51,13 +55,11 @@ export function StrategyToggle({ strategy, onChange }: StrategyToggleProps) {
         <StatusBadge status={badgeStatus} size="sm" showLabel={false} />
         <div className="min-w-0">
           <span className="block text-xs text-terminal-text truncate tracking-wide">
-            {strategy.name}
+            {displayName}
           </span>
-          {(strategy.exchange_a || strategy.symbol) && (
+          {(exchangeA || symbolStr) && (
             <span className="text-[10px] text-terminal-subtle truncate">
-              {[strategy.exchange_a, strategy.exchange_b, strategy.symbol]
-                .filter(Boolean)
-                .join(' · ')}
+              {[exchangeA, exchangeB, symbolStr].filter(Boolean).join(' · ')}
             </span>
           )}
         </div>
@@ -71,7 +73,7 @@ export function StrategyToggle({ strategy, onChange }: StrategyToggleProps) {
         <button
           role="switch"
           aria-checked={enabled}
-          aria-label={`${enabled ? 'Pause' : 'Start'} ${strategy.name}`}
+          aria-label={`${enabled ? 'Pause' : 'Start'} ${displayName}`}
           onClick={handleToggle}
           disabled={isPending || hasError}
           className={[

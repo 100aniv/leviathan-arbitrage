@@ -152,6 +152,9 @@ engine/src/infra/db/versions/__pycache__/
 .omc/
 .claude/
 
+# --- Nginx TLS certs (generated locally, never committed) ---
+infra/nginx/certs/
+
 # --- Temporary ---
 tmp/
 temp/
