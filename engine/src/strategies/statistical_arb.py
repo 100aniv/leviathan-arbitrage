@@ -41,8 +41,16 @@ class StatArbConfig(BaseModel):
     zscore_exit: float = Field(default=0.5, ge=0.0)
     max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
     cointegration_pvalue: float = Field(default=0.05, ge=0.0, le=1.0)
-    kalman_process_noise: float = Field(default=1e-4, ge=0.0)
-    kalman_observation_noise: float = Field(default=1e-2, ge=0.0)
+    kalman_process_noise: float = Field(default=1e-5, ge=0.0)
+    kalman_observation_noise: float = Field(default=5e-3, ge=0.0)
+    # Adaptive z-score: tighten entry when vol_ratio = current_vol / hist_vol is high
+    adaptive_threshold: bool = Field(default=True)
+    vol_lookback: int = Field(default=20, ge=5)
+    # Stationarity filter: spread must cross zero at least this many times in last N obs
+    min_zero_crossings: int = Field(default=3, ge=0)
+    zero_crossing_lookback: int = Field(default=60, ge=10)
+    # Maximum holding period: force exit after this many bars even if z hasn't reverted
+    max_holding_bars: int = Field(default=20, ge=1)
 
 
 class _KalmanHedgeRatio:
@@ -124,7 +132,7 @@ class StatisticalArbStrategy(BaseStrategy):
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
         self.config = config or StatArbConfig()
-        _max_len = self.config.min_history * 4
+        _max_len = max(self.config.min_history * 4, self.config.zero_crossing_lookback * 2)
         self._buy_prices: deque[float] = deque(maxlen=_max_len)
         self._sell_prices: deque[float] = deque(maxlen=_max_len)
         self._spreads: deque[float] = deque(maxlen=_max_len)
@@ -133,10 +141,80 @@ class StatisticalArbStrategy(BaseStrategy):
             observation_noise=self.config.kalman_observation_noise,
         )
         self._state = StatArbState.FLAT
+        self._bars_in_position: int = 0  # count bars since last entry
 
     @property
     def state(self) -> StatArbState:
         return self._state
+
+    @property
+    def bars_in_position(self) -> int:
+        return self._bars_in_position
+
+    def _adaptive_entry_threshold(self) -> float:
+        """Return zscore_entry scaled up when current spread volatility is elevated.
+
+        vol_ratio = current_vol / historical_vol
+        effective_threshold = zscore_entry * (1 + vol_ratio)
+
+        When the spread is quiet, vol_ratio ≈ 0 and threshold ≈ zscore_entry.
+        When the spread is noisy, the threshold rises, reducing false entries.
+        Returns the base zscore_entry unchanged when adaptive_threshold is False
+        or there is insufficient history.
+        """
+        if not self.config.adaptive_threshold:
+            return self.config.zscore_entry
+
+        spreads = list(self._spreads)
+        n = len(spreads)
+        lookback = self.config.vol_lookback
+
+        # Need at least 2*lookback points to compare recent vs. historical vol
+        if n < lookback * 2:
+            return self.config.zscore_entry
+
+        recent = spreads[-lookback:]
+        hist = spreads[:-lookback]
+
+        def _std(xs: list[float]) -> float:
+            if len(xs) < 2:
+                return 0.0
+            m = sum(xs) / len(xs)
+            v = sum((x - m) ** 2 for x in xs) / len(xs)
+            return math.sqrt(v)
+
+        recent_vol = _std(recent)
+        hist_vol = _std(hist)
+
+        if hist_vol < 1e-12:
+            return self.config.zscore_entry
+
+        vol_ratio = max(0.0, recent_vol / hist_vol - 1.0)
+        return self.config.zscore_entry * (1.0 + vol_ratio)
+
+    def _has_sufficient_zero_crossings(self) -> bool:
+        """Return True if the spread has crossed zero at least min_zero_crossings times
+        in the last zero_crossing_lookback observations.
+
+        A spread that rarely crosses zero is not stationary and mean-reversion
+        entries in such regimes tend to be losing trades.
+        """
+        min_crossings = self.config.min_zero_crossings
+        if min_crossings <= 0:
+            return True
+
+        spreads = list(self._spreads)
+        lookback = self.config.zero_crossing_lookback
+        window = spreads[-lookback:] if len(spreads) >= lookback else spreads
+
+        if len(window) < 2:
+            return min_crossings == 0
+
+        crossings = sum(
+            1 for i in range(1, len(window))
+            if (window[i - 1] >= 0) != (window[i] >= 0)
+        )
+        return crossings >= min_crossings
 
     def _is_cointegrated(self) -> bool:
         """
@@ -177,6 +255,10 @@ class StatisticalArbStrategy(BaseStrategy):
         self._sell_prices.append(sell_f)
         self._spreads.append(spread)
 
+        # Tick the holding-period counter while in a position
+        if self._state != StatArbState.FLAT:
+            self._bars_in_position += 1
+
         # Require warmup
         if len(self._spreads) < self.config.min_history:
             self._metrics.signals_filtered += 1
@@ -186,13 +268,23 @@ class StatisticalArbStrategy(BaseStrategy):
         history = list(self._spreads)[:-1]
         zscore = _zscore(history, spread)
 
-        # --- Exit logic (close open position when z reverts) ---
-        if self._state == StatArbState.SHORT and zscore < self.config.zscore_exit:
+        # --- Max holding period: force exit if position held too long ---
+        force_exit = (
+            self._state != StatArbState.FLAT
+            and self._bars_in_position >= self.config.max_holding_bars
+        )
+
+        # --- Exit logic (close open position when z reverts OR max hold reached) ---
+        if self._state == StatArbState.SHORT and (
+            zscore < self.config.zscore_exit or force_exit
+        ):
             # Unwind SHORT spread: we were long buy_exchange, short sell_exchange
             # Close by reversing: sell on buy_exchange, buy on sell_exchange
             size = min(signal.volume, self.config.max_position_size)
             self._state = StatArbState.FLAT
+            self._bars_in_position = 0
             self._metrics.trade_requests_generated += 1
+            exit_reason = "timeout" if force_exit else "zscore"
             return TradeRequest(
                 strategy_id=self.strategy_id,
                 legs=[
@@ -213,14 +305,23 @@ class StatisticalArbStrategy(BaseStrategy):
                 ],
                 expected_profit_usdt=Decimal("0"),
                 confidence=signal.confidence,
-                metadata={"action": "exit", "prev_state": "short", "zscore": str(zscore)},
+                metadata={
+                    "action": "exit",
+                    "prev_state": "short",
+                    "zscore": str(zscore),
+                    "exit_reason": exit_reason,
+                },
             )
-        if self._state == StatArbState.LONG and zscore > -self.config.zscore_exit:
+        if self._state == StatArbState.LONG and (
+            zscore > -self.config.zscore_exit or force_exit
+        ):
             # Unwind LONG spread: we were long sell_exchange, short buy_exchange
             # Close by reversing: buy on buy_exchange, sell on sell_exchange
             size = min(signal.volume, self.config.max_position_size)
             self._state = StatArbState.FLAT
+            self._bars_in_position = 0
             self._metrics.trade_requests_generated += 1
+            exit_reason = "timeout" if force_exit else "zscore"
             return TradeRequest(
                 strategy_id=self.strategy_id,
                 legs=[
@@ -241,7 +342,12 @@ class StatisticalArbStrategy(BaseStrategy):
                 ],
                 expected_profit_usdt=Decimal("0"),
                 confidence=signal.confidence,
-                metadata={"action": "exit", "prev_state": "long", "zscore": str(zscore)},
+                metadata={
+                    "action": "exit",
+                    "prev_state": "long",
+                    "zscore": str(zscore),
+                    "exit_reason": exit_reason,
+                },
             )
 
         # Only open new positions when flat
@@ -249,8 +355,16 @@ class StatisticalArbStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
+        # Adaptive entry threshold (tightens when vol is elevated)
+        effective_entry = self._adaptive_entry_threshold()
+
         # Entry threshold
-        if abs(zscore) < self.config.zscore_entry:
+        if abs(zscore) < effective_entry:
+            self._metrics.signals_filtered += 1
+            return None
+
+        # Stationarity gate: spread must cross zero frequently enough
+        if not self._has_sufficient_zero_crossings():
             self._metrics.signals_filtered += 1
             return None
 
@@ -302,10 +416,12 @@ class StatisticalArbStrategy(BaseStrategy):
             return None
 
         self._state = new_state
+        self._bars_in_position = 0
         self._metrics.trade_requests_generated += 1
 
         abs_z = abs(zscore)
         confidence = signal.confidence * min(abs_z / 5.0, 1.0)
+        effective_entry = self._adaptive_entry_threshold()
 
         return TradeRequest(
             strategy_id=self.strategy_id,
@@ -333,6 +449,7 @@ class StatisticalArbStrategy(BaseStrategy):
                 "gross_profit": str(gross_profit),
                 "total_cost": str(total_cost),
                 "state": str(new_state),
+                "effective_entry_threshold": str(effective_entry),
             },
         )
 

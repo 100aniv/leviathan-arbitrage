@@ -1,0 +1,30 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "description": "Shadow mode configuration for MONITOR strategies",
+    "date": "2026-03-07",
+    "note": "72-hour shadow run for 4 MONITOR strategies before live promotion"
+  },
+  "shadow": {
+    "duration_hours": 72,
+    "log_interval_hours": 1,
+    "strategies": ["triangular", "cex_dex", "cross_exchange", "futures_futures"],
+    "data_source": "synthetic",
+    "num_candles": 2000
+  },
+  "metrics": {
+    "track": ["sharpe", "pnl", "max_drawdown", "trade_count", "win_rate"]
+  },
+  "alert_thresholds": {
+    "max_drawdown_pct": 5.0,
+    "min_sharpe": 0.5,
+    "description": "Alert when MDD > 5% or Sharpe < 0.5"
+  },
+  "promotion_criteria": {
+    "min_sharpe": 1.0,
+    "max_drawdown_pct": 3.0,
+    "min_win_rate_pct": 50.0,
+    "min_trade_count": 10,
+    "description": "Strategy promoted to READY only if all criteria met after 72h"
+  }
+}
