@@ -7,9 +7,12 @@ Fee data sourced from official exchange docs (2026-03, researcher-1 verified).
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import StrEnum
+
+logger = logging.getLogger(__name__)
 
 
 class FeeType(StrEnum):
@@ -62,6 +65,14 @@ DEFAULT_FEES: dict[str, list[FeeConfig]] = {
     "bybit_futures": [
         FeeConfig("bybit_futures", 0, Decimal("0.0002"), Decimal("0.00055")),  # VIP0
         FeeConfig("bybit_futures", 1, Decimal("0.00016"), Decimal("0.0005")),  # VIP1
+    ],
+    "okx_futures": [
+        FeeConfig("okx_futures", 0, Decimal("0.0002"), Decimal("0.0005")),  # USDT-M Regular
+        FeeConfig("okx_futures", 1, Decimal("0.00015"), Decimal("0.00045")),  # VIP1
+    ],
+    "bitget_futures": [
+        FeeConfig("bitget_futures", 0, Decimal("0.0002"), Decimal("0.0006")),  # USDT-M VIP0
+        FeeConfig("bitget_futures", 1, Decimal("0.00016"), Decimal("0.0005")),  # VIP1
     ],
 }
 
@@ -123,6 +134,12 @@ WITHDRAWAL_FEES_USD: dict[str, dict[str, Decimal]] = {
     "bybit_futures": {
         "DEFAULT": Decimal("0.00"),  # internal transfer (free)
     },
+    "okx_futures": {
+        "DEFAULT": Decimal("0.00"),  # internal transfer to spot (free)
+    },
+    "bitget_futures": {
+        "DEFAULT": Decimal("0.00"),  # internal transfer to spot (free)
+    },
 }
 
 
@@ -163,7 +180,12 @@ class FeeModel:
     def _get_config(self, exchange: str) -> FeeConfig:
         configs = self._fees.get(exchange)
         if not configs:
-            raise ValueError(f"Unknown exchange: {exchange}")
+            logger.warning(
+                "Unknown exchange '%s' — using conservative fallback "
+                "(maker=0.25%%, taker=0.25%%)",
+                exchange,
+            )
+            return FeeConfig(exchange, 0, Decimal("0.0025"), Decimal("0.0025"))
         tier = self.get_tier(exchange)
         for config in configs:
             if config.tier == tier:

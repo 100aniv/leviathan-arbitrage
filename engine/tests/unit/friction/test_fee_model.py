@@ -31,10 +31,21 @@ class TestFeeModelDefault:
         fee = model.taker_fee("bybit", Decimal("10000"))
         assert fee == Decimal("10")  # 0.10% spot (corrected from futures rate)
 
-    def test_unknown_exchange_raises(self):
+    def test_unknown_exchange_fallback(self):
+        """Unknown exchange returns conservative 0.25% fallback instead of ValueError."""
         model = FeeModel()
-        with pytest.raises(ValueError, match="Unknown exchange"):
-            model.taker_fee("unknown_exchange", Decimal("1000"))
+        fee = model.taker_fee("unknown_exchange", Decimal("10000"))
+        assert fee == Decimal("25")  # 0.25% of 10000
+
+    def test_unknown_exchange_no_crash(self):
+        model = FeeModel()
+        rate = model.taker_rate("totally_fake_exchange")
+        assert rate == Decimal("0.0025")  # 0.25% fallback
+
+    def test_unknown_exchange_maker_rate_fallback(self):
+        model = FeeModel()
+        rate = model.maker_rate("totally_fake_exchange")
+        assert rate == Decimal("0.0025")  # 0.25% fallback
 
     def test_fee_scales_with_notional(self):
         model = FeeModel()
@@ -165,11 +176,32 @@ class TestFeeModelNewExchanges:
         fee = model.maker_fee("binance_futures", Decimal("10000"))
         assert fee == Decimal("2")  # 0.02% USDT-M VIP0
 
+    def test_okx_futures_taker(self):
+        model = FeeModel()
+        fee = model.taker_fee("okx_futures", Decimal("10000"))
+        assert fee == Decimal("5")  # 0.05%
+
+    def test_okx_futures_maker(self):
+        model = FeeModel()
+        fee = model.maker_fee("okx_futures", Decimal("10000"))
+        assert fee == Decimal("2")  # 0.02%
+
+    def test_bitget_futures_taker(self):
+        model = FeeModel()
+        fee = model.taker_fee("bitget_futures", Decimal("10000"))
+        assert fee == Decimal("6")  # 0.06%
+
+    def test_bitget_futures_maker(self):
+        model = FeeModel()
+        fee = model.maker_fee("bitget_futures", Decimal("10000"))
+        assert fee == Decimal("2")  # 0.02%
+
     def test_all_exchanges_accessible(self):
         model = FeeModel()
         exchanges = [
             "binance", "okx", "bybit", "bitget",
-            "upbit", "bithumb", "coinone", "binance_futures",
+            "upbit", "bithumb", "coinone",
+            "binance_futures", "bybit_futures", "okx_futures", "bitget_futures",
         ]
         for ex in exchanges:
             rate = model.taker_rate(ex)
@@ -246,6 +278,16 @@ class TestWithdrawalFees:
         model = FeeModel()
         cost = model.network_cost("binance", "binance_futures", "USDT")
         assert cost == Decimal("0")  # internal transfer
+
+    def test_network_cost_okx_futures_spot_internal_zero(self):
+        model = FeeModel()
+        cost = model.network_cost("okx", "okx_futures", "USDT")
+        assert cost == Decimal("0")
+
+    def test_network_cost_bitget_futures_spot_internal_zero(self):
+        model = FeeModel()
+        cost = model.network_cost("bitget", "bitget_futures", "USDT")
+        assert cost == Decimal("0")
 
     def test_network_cost_korean_to_global(self):
         model = FeeModel()

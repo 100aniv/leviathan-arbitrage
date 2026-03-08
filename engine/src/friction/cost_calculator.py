@@ -15,6 +15,7 @@ from collections import deque
 from dataclasses import dataclass
 from decimal import Decimal
 
+from src.core.models import OrderSide
 from src.core.order_book import OrderBook
 from src.friction.fee_model import FeeModel
 from src.friction.slippage_model import CEXOrderbookSlippage
@@ -105,6 +106,23 @@ class CostCalculator:
     def expected_rollback_cost(self, avg_rollback_cost: Decimal) -> Decimal:
         """E[Rollback_Cost] = P(rollback) * Avg_Rollback_Cost."""
         return self.rollback_probability() * avg_rollback_cost
+
+    def estimate_cost(
+        self,
+        exchange_id: str,
+        symbol: str,
+        side: OrderSide,
+        size: Decimal,
+        price: Decimal,
+    ) -> Decimal:
+        """Estimate cost in USDT for one trade leg (Protocol bridge).
+
+        Satisfies strategies/base.py CostCalculator Protocol.
+        Returns taker_fee for the given notional (price * size).
+        """
+        ex = exchange_id.removeprefix("paper_").removeprefix("sandbox_")
+        notional = price * size
+        return self._fee_model.taker_fee(ex, notional)
 
     def calculate(
         self,
