@@ -34,7 +34,7 @@ class FuturesFuturesStrategy(BaseStrategy):
       - 'margin_available': float  (USDT available as margin)
     """
 
-    STRATEGY_TYPE = "futures_futures_cross"
+    STRATEGY_TYPE = "futures_futures"
 
     def __init__(
         self,

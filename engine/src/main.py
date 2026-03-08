@@ -744,13 +744,21 @@ class Engine:
         self._data_mode = os.getenv("DATA_MODE", DataMode.SYNTHETIC).lower()
 
         tasks = [
-            asyncio.create_task(self._strategy_manager_loop(), name="strategy_mgr"),
             asyncio.create_task(self._trade_consumer_loop(), name="trade_consumer"),
             asyncio.create_task(self._health_check_loop(), name="health_check"),
             asyncio.create_task(self._reconcile_loop(), name="reconcile"),
             asyncio.create_task(self._heartbeat_loop(), name="ws_heartbeat"),
             asyncio.create_task(self._dashboard_feed_loop(), name="dashboard_feed"),
         ]
+
+        # Shadow mode: route_signal() provides direct in-process routing, no Redis loop needed
+        # Live/Paper modes: Redis Streams consume loop required
+        if self._data_mode != DataMode.SHADOW:
+            tasks.append(
+                asyncio.create_task(self._strategy_manager_loop(), name="strategy_mgr")
+            )
+        else:
+            logger.info("Shadow mode: StrategyManager Redis consume loop skipped (using direct routing)")
 
         if self._data_mode == DataMode.SHADOW:
             # Shadow mode: real data + paper execution + full metrics
@@ -1006,7 +1014,20 @@ class Engine:
             exchanges=exchanges,
             multi_signal_producer=multi_signal_producer,
             funding_rate_collector=funding_rate_collector,
+            strategy_manager=self._strategy_manager,
         )
+
+        # Set all registered strategies to shadow mode and start them
+        if self._strategy_manager is not None:
+            for sid in self._strategy_manager.list_strategies():
+                s = self._strategy_manager.get_strategy(sid)
+                if s:
+                    s.shadow_mode = True
+            for sid in self._strategy_manager.list_strategies():
+                try:
+                    await self._strategy_manager.start_strategy(sid)
+                except Exception as exc:
+                    logger.warning("Shadow strategy %s start failed: %s", sid, exc)
 
         await self._shadow_mode.start()
         logger.info("Shadow Mode started: %s for %s", exchanges, symbols)

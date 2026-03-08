@@ -223,6 +223,36 @@ class StrategyManager:
         await self._event_bus.publish("leviathan:trade_requests", payload)
         logger.debug("Emitted TradeRequest for strategy %s", request.strategy_id)
 
+    async def route_signal(self, signal: Signal) -> list[TradeRequest]:
+        """Route signal directly to matching active strategies (no Redis).
+
+        Used by ShadowMode for in-process signal routing.
+        Returns list of TradeRequests from strategies that accepted the signal.
+        Reuses _should_route() for consistent matching with _dispatch().
+        """
+        results: list[TradeRequest] = []
+        for strategy in self._strategies.values():
+            if not strategy.is_active:
+                continue
+            if not self._should_route(strategy, signal):
+                logger.debug(
+                    "route_signal: skip %s for signal %s",
+                    strategy.strategy_id, signal.strategy_id,
+                )
+                continue
+            try:
+                request = await strategy.on_signal(signal)
+                if request is not None:
+                    results.append(request)
+            except Exception as exc:
+                logger.error(
+                    "Strategy %s raised on route_signal: %s",
+                    strategy.strategy_id, exc, exc_info=True,
+                )
+        if not results:
+            logger.debug("route_signal: no strategy accepted signal %s", signal.strategy_id)
+        return results
+
     # ------------------------------------------------------------------
     # Metrics
     # ------------------------------------------------------------------

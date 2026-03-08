@@ -129,7 +129,6 @@
         "Shadow 10분 실행 시 Bithumb 데이터 정상"
       ]
     },
-
     {
       "id": "US-010",
       "title": "Fee model 완성 — okx_futures, bitget_futures 추가",
@@ -137,7 +136,9 @@
       "priority": 10,
       "passes": true,
       "gap": "GAP-9",
-      "files": ["engine/src/friction/fee_model.py"],
+      "files": [
+        "engine/src/friction/fee_model.py"
+      ],
       "acceptanceCriteria": [
         "DEFAULT_FEES에 okx_futures(maker=0.02%, taker=0.05%) 추가",
         "DEFAULT_FEES에 bitget_futures(maker=0.02%, taker=0.06%) 추가",
@@ -152,7 +153,9 @@
       "priority": 11,
       "passes": true,
       "gap": "GAP-9",
-      "files": ["engine/src/friction/fee_model.py"],
+      "files": [
+        "engine/src/friction/fee_model.py"
+      ],
       "acceptanceCriteria": [
         "_get_config에서 ValueError 대신 FeeConfig(0.25% taker) 반환",
         "unknown exchange → no crash, 0.25% 반환 테스트 통과",
@@ -166,7 +169,10 @@
       "priority": 12,
       "passes": true,
       "gap": "GAP-10",
-      "files": ["engine/src/friction/cost_calculator.py", "engine/src/strategies/base.py"],
+      "files": [
+        "engine/src/friction/cost_calculator.py",
+        "engine/src/strategies/base.py"
+      ],
       "acceptanceCriteria": [
         "friction CostCalculator에 estimate_cost(exchange_id, symbol, side, size, price) 메서드 추가",
         "내부적으로 taker_fee * notional 계산",
@@ -181,14 +187,15 @@
       "priority": 13,
       "passes": true,
       "gap": "GAP-10",
-      "files": ["tests/test_strategy_cost_integration.py"],
+      "files": [
+        "tests/test_strategy_cost_integration.py"
+      ],
       "acceptanceCriteria": [
         "tests/test_strategy_cost_integration.py 생성",
         "7개 전략에 실 CostCalculator 주입 → on_signal 호출 → no error",
         "pytest tests/ -x 전체 통과"
       ]
     },
-
     {
       "id": "US-014",
       "title": "BinanceFuturesCollector WS 구현",
@@ -196,7 +203,9 @@
       "priority": 14,
       "passes": true,
       "gap": "GAP-5",
-      "files": ["engine/src/collectors/binance_futures.py"],
+      "files": [
+        "engine/src/collectors/binance_futures.py"
+      ],
       "acceptanceCriteria": [
         "engine/src/collectors/binance_futures.py 생성",
         "wss://fstream.binance.com/ws 연결",
@@ -212,7 +221,10 @@
       "priority": 15,
       "passes": true,
       "gap": "GAP-5",
-      "files": ["engine/src/collectors/manager.py", "engine/src/modes/shadow.py"],
+      "files": [
+        "engine/src/collectors/manager.py",
+        "engine/src/modes/shadow.py"
+      ],
       "acceptanceCriteria": [
         "DEFAULT_EXCHANGES에 binance_futures 추가",
         "factory case에 BinanceFuturesCollector 추가",
@@ -226,7 +238,9 @@
       "priority": 16,
       "passes": true,
       "gap": "GAP-6",
-      "files": ["engine/src/collectors/funding_rate.py"],
+      "files": [
+        "engine/src/collectors/funding_rate.py"
+      ],
       "acceptanceCriteria": [
         "engine/src/collectors/funding_rate.py 생성",
         "FundingRateStore: dict[exchange][symbol] → {rate, next_time}",
@@ -244,7 +258,9 @@
       "priority": 17,
       "passes": true,
       "gap": "GAP-6",
-      "files": ["engine/src/main.py"],
+      "files": [
+        "engine/src/main.py"
+      ],
       "acceptanceCriteria": [
         "background task로 60초 간격 polling loop 시작",
         "FundingRateStore가 engine에서 접근 가능",
@@ -258,14 +274,15 @@
       "priority": 18,
       "passes": true,
       "gap": "GAP-5,6",
-      "files": ["tests/test_futures_infrastructure.py"],
+      "files": [
+        "tests/test_futures_infrastructure.py"
+      ],
       "acceptanceCriteria": [
         "tests/test_futures_infrastructure.py 생성",
         "mock WS + REST → store에 데이터 도달 확인",
         "pytest tests/ -x 전체 통과"
       ]
     },
-
     {
       "id": "US-019",
       "title": "TriangularScanner 구현 (Bellman-Ford)",
@@ -273,7 +290,9 @@
       "priority": 19,
       "passes": true,
       "gap": "GAP-7",
-      "files": ["engine/src/core/triangular_scanner.py"],
+      "files": [
+        "engine/src/core/triangular_scanner.py"
+      ],
       "acceptanceCriteria": [
         "engine/src/core/triangular_scanner.py 생성",
         "-log(rate) edge weights 그래프 구축",
@@ -289,7 +308,9 @@
       "priority": 20,
       "passes": true,
       "gap": "GAP-3",
-      "files": ["engine/src/core/real_signal_producer.py"],
+      "files": [
+        "engine/src/core/real_signal_producer.py"
+      ],
       "acceptanceCriteria": [
         "engine/src/core/real_signal_producer.py 생성",
         "spot_futures 신호: 동일 거래소 spot vs futures basis 계산",
@@ -304,7 +325,10 @@
       "priority": 21,
       "passes": true,
       "gap": "GAP-3,2",
-      "files": ["engine/src/modes/shadow.py", "engine/src/core/multi_signal.py"],
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/core/multi_signal.py"
+      ],
       "acceptanceCriteria": [
         "_on_orderbook에서 SignalGenerator + RealDataSignalProducer 동시 호출",
         "MultiStrategySignalProducer에 on_orderbook_update() 추가",
@@ -318,22 +342,25 @@
       "priority": 22,
       "passes": true,
       "gap": "GAP-3,2",
-      "files": ["tests/test_multi_signal_integration.py"],
+      "files": [
+        "tests/test_multi_signal_integration.py"
+      ],
       "acceptanceCriteria": [
         "tests/test_multi_signal_integration.py 생성",
         "cross_exchange, spot_futures, funding_rate, triangular 신호 모두 발행 확인",
         "pytest tests/ -x 전체 통과"
       ]
     },
-
     {
       "id": "US-023",
       "title": "ShadowMode에 StrategyManager 주입 + 라우팅",
       "phase": "B-4",
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "gap": "GAP-1",
-      "files": ["engine/src/modes/shadow.py"],
+      "files": [
+        "engine/src/modes/shadow.py"
+      ],
       "acceptanceCriteria": [
         "ShadowMode.__init__에 StrategyManager 파라미터 추가",
         "_on_orderbook이 StrategyManager로 신호 라우팅",
@@ -346,9 +373,11 @@
       "title": "전략별 메트릭 추적 (per-strategy PnL/trades)",
       "phase": "B-4",
       "priority": 24,
-      "passes": false,
+      "passes": true,
       "gap": "GAP-1",
-      "files": ["engine/src/modes/shadow.py"],
+      "files": [
+        "engine/src/modes/shadow.py"
+      ],
       "acceptanceCriteria": [
         "strategy_id별 ShadowStats 분리 추적",
         "Prometheus metrics에 전략별 레이블 추가",
@@ -360,9 +389,11 @@
       "title": "main.py Shadow mode에 StrategyManager 전달",
       "phase": "B-4",
       "priority": 25,
-      "passes": false,
+      "passes": true,
       "gap": "GAP-1",
-      "files": ["engine/src/main.py"],
+      "files": [
+        "engine/src/main.py"
+      ],
       "acceptanceCriteria": [
         "ShadowMode(strategy_manager=self._strategy_manager) 전달",
         "strategy_manager.start_strategy() for each registered strategy",
@@ -374,16 +405,17 @@
       "title": "Shadow 전략 통합 테스트",
       "phase": "B-4",
       "priority": 26,
-      "passes": false,
+      "passes": true,
       "gap": "GAP-1",
-      "files": ["tests/test_shadow_strategy_integration.py"],
+      "files": [
+        "tests/test_shadow_strategy_integration.py"
+      ],
       "acceptanceCriteria": [
         "tests/test_shadow_strategy_integration.py 생성",
         "shadow mode가 모든 전략으로 라우팅 확인",
         "pytest tests/ -x 전체 통과"
       ]
     },
-
     {
       "id": "US-027",
       "title": "ExecutionResult N-leg 확장 + execute_multi_leg()",
@@ -391,7 +423,9 @@
       "priority": 27,
       "passes": false,
       "gap": "GAP-4",
-      "files": ["engine/src/execution/executor.py"],
+      "files": [
+        "engine/src/execution/executor.py"
+      ],
       "acceptanceCriteria": [
         "ExecutionResult에 legs: list[LegResult] 추가",
         "하위 호환 property (leg1 → legs[0], leg2 → legs[1])",
@@ -405,7 +439,10 @@
       "priority": 28,
       "passes": false,
       "gap": "GAP-4",
-      "files": ["engine/src/execution/executor.py", "engine/src/modes/shadow.py"],
+      "files": [
+        "engine/src/execution/executor.py",
+        "engine/src/modes/shadow.py"
+      ],
       "acceptanceCriteria": [
         "leg K 실패 → legs 1..K-1 역순 언와인드",
         "rollback cost CostCalculator에 기록",
@@ -420,7 +457,9 @@
       "priority": 29,
       "passes": false,
       "gap": "GAP-4",
-      "files": ["tests/test_triangular_execution.py"],
+      "files": [
+        "tests/test_triangular_execution.py"
+      ],
       "acceptanceCriteria": [
         "tests/test_triangular_execution.py 생성",
         "3-leg 정상 실행 테스트 통과",
@@ -428,7 +467,6 @@
         "pytest tests/ -x 전체 통과"
       ]
     },
-
     {
       "id": "US-030",
       "title": "cross_exchange 전략 — strategy 객체 경유 Shadow 10min",
@@ -516,14 +554,16 @@
         "SSOT.md §3 전략 매트릭스 업데이트"
       ]
     },
-
     {
       "id": "US-037",
       "title": "Trade History + Alerts 페이지",
       "phase": "D",
       "priority": 37,
       "passes": false,
-      "files": ["dashboard/src/pages/trades.tsx", "dashboard/src/pages/alerts.tsx"],
+      "files": [
+        "dashboard/src/pages/trades.tsx",
+        "dashboard/src/pages/alerts.tsx"
+      ],
       "acceptanceCriteria": [
         "전략별 필터링, 시간순 정렬, PnL 표시",
         "GET /api/trades?strategy=X&limit=50 API 동작",
@@ -538,7 +578,9 @@
       "phase": "D",
       "priority": 38,
       "passes": false,
-      "files": ["dashboard/src/pages/settings.tsx"],
+      "files": [
+        "dashboard/src/pages/settings.tsx"
+      ],
       "acceptanceCriteria": [
         "MIN_EDGE_BPS, 전략 활성/비활성, 거래소 선택 UI",
         ".env 직접 수정 없이 설정 변경 가능",
@@ -552,7 +594,10 @@
       "phase": "D",
       "priority": 39,
       "passes": false,
-      "files": ["dashboard/src/pages/analytics.tsx", "dashboard/src/pages/funding.tsx"],
+      "files": [
+        "dashboard/src/pages/analytics.tsx",
+        "dashboard/src/pages/funding.tsx"
+      ],
       "acceptanceCriteria": [
         "전략별 PnL 누적, WR 추이, DD 이력 차트",
         "거래소별 실시간 funding rate 비교 테이블",
@@ -566,7 +611,9 @@
       "phase": "D",
       "priority": 40,
       "passes": false,
-      "files": ["dashboard/src/pages/exchanges.tsx"],
+      "files": [
+        "dashboard/src/pages/exchanges.tsx"
+      ],
       "acceptanceCriteria": [
         "WS 연결 상태, latency, orderbook depth 표시",
         "거래소별 잔고 표시 (Live 모드용)",
@@ -579,7 +626,9 @@
       "phase": "D",
       "priority": 41,
       "passes": false,
-      "files": ["dashboard/src/**/*.tsx"],
+      "files": [
+        "dashboard/src/**/*.tsx"
+      ],
       "acceptanceCriteria": [
         "Tailwind breakpoint 적용 (sm/md/lg)",
         "모바일에서 모든 페이지 사용 가능",
@@ -588,14 +637,16 @@
         "WS /ws/strategies 실시간 피드"
       ]
     },
-
     {
       "id": "US-042",
       "title": "Telegram 인프라 모니터링 (Docker 24/7)",
       "phase": "E-1",
       "priority": 42,
       "passes": false,
-      "files": ["engine/src/infra/monitor_daemon.py", "docker-compose.yml"],
+      "files": [
+        "engine/src/infra/monitor_daemon.py",
+        "docker-compose.yml"
+      ],
       "acceptanceCriteria": [
         "engine/src/infra/monitor_daemon.py 생성",
         "docker-compose.yml에 monitoring 서비스 추가",
@@ -610,7 +661,9 @@
       "phase": "E-1",
       "priority": 43,
       "passes": false,
-      "files": ["infra/grafana/dashboards/leviathan.json"],
+      "files": [
+        "infra/grafana/dashboards/leviathan.json"
+      ],
       "acceptanceCriteria": [
         "Grafana 대시보드 JSON 프리셋 생성",
         "18개 핵심 메트릭 패널: PnL, WR, DD, latency, spread, trades 등",
@@ -631,14 +684,16 @@
         "일일 PnL 요약 자동 전송 (UTC 0시)"
       ]
     },
-
     {
       "id": "US-045",
       "title": "Scheduled Offline Tuner Docker 서비스",
       "phase": "E-2",
       "priority": 45,
       "passes": false,
-      "files": ["engine/src/tuning/scheduled_tuner.py", "docker-compose.yml"],
+      "files": [
+        "engine/src/tuning/scheduled_tuner.py",
+        "docker-compose.yml"
+      ],
       "acceptanceCriteria": [
         "engine/src/tuning/scheduled_tuner.py 생성",
         "docker-compose.yml에 auto-tuner 서비스 추가",
@@ -653,7 +708,10 @@
       "phase": "E-2",
       "priority": 46,
       "passes": false,
-      "files": ["engine/src/tuning/shadow_runner.py", "engine/src/tuning/data_loader.py"],
+      "files": [
+        "engine/src/tuning/shadow_runner.py",
+        "engine/src/tuning/data_loader.py"
+      ],
       "acceptanceCriteria": [
         "APPLY → config/strategy_params.json 자동 업데이트",
         "MONITOR → 다음 주 재검증",
@@ -667,7 +725,10 @@
       "phase": "E-2",
       "priority": 47,
       "passes": false,
-      "files": ["engine/src/tuning/adaptive_threshold.py", "engine/src/tuning/regime_detector.py"],
+      "files": [
+        "engine/src/tuning/adaptive_threshold.py",
+        "engine/src/tuning/regime_detector.py"
+      ],
       "acceptanceCriteria": [
         "adaptive_threshold.py 생성: 매 1시간 MIN_EDGE 미세조정",
         "WR < 50% → edge 상향, WR > 90% → edge 하향",
@@ -682,7 +743,9 @@
       "phase": "E-2",
       "priority": 48,
       "passes": false,
-      "files": ["tests/test_auto_tuning_pipeline.py"],
+      "files": [
+        "tests/test_auto_tuning_pipeline.py"
+      ],
       "acceptanceCriteria": [
         "tests/test_auto_tuning_pipeline.py 생성",
         "Offline 튜닝 → Adaptive 미세조정 → Regime 대응 통합 동작",
@@ -690,14 +753,15 @@
         "pytest tests/ -x 전체 통과"
       ]
     },
-
     {
       "id": "US-049",
       "title": "Capital Allocator (Kelly Criterion)",
       "phase": "E-3",
       "priority": 49,
       "passes": false,
-      "files": ["engine/src/core/capital_allocator.py"],
+      "files": [
+        "engine/src/core/capital_allocator.py"
+      ],
       "acceptanceCriteria": [
         "engine/src/core/capital_allocator.py 생성",
         "Kelly Criterion: f* = (bp - q) / b, Half-Kelly 적용",
@@ -711,7 +775,10 @@
       "phase": "E-3",
       "priority": 50,
       "passes": false,
-      "files": ["engine/src/core/inventory_rebalancer.py", "engine/src/core/balance_tracker.py"],
+      "files": [
+        "engine/src/core/inventory_rebalancer.py",
+        "engine/src/core/balance_tracker.py"
+      ],
       "acceptanceCriteria": [
         "inventory_rebalancer.py: 매 4시간 잔고 체크, 편차 > 30% 시 이체 제안",
         "balance_tracker.py: 매 5분 거래소별 잔고 폴링, 이력 저장",
@@ -725,7 +792,9 @@
       "phase": "E-3",
       "priority": 51,
       "passes": false,
-      "files": ["engine/src/analysis/attribution.py"],
+      "files": [
+        "engine/src/analysis/attribution.py"
+      ],
       "acceptanceCriteria": [
         "engine/src/analysis/attribution.py 생성",
         "by_strategy, by_exchange, by_pair, by_hour 차원별 PnL 분해",
@@ -738,7 +807,10 @@
       "phase": "E-3",
       "priority": 52,
       "passes": false,
-      "files": ["scripts/backup_db.sh", "engine/src/execution/position_recovery.py"],
+      "files": [
+        "scripts/backup_db.sh",
+        "engine/src/execution/position_recovery.py"
+      ],
       "acceptanceCriteria": [
         "scripts/backup_db.sh: 일 1회 pg_dump, 7일 보관",
         "docker-compose.yml에 backup 서비스 추가",
@@ -752,14 +824,15 @@
       "phase": "E-3",
       "priority": 53,
       "passes": false,
-      "files": ["dashboard/src/pages/attribution.tsx"],
+      "files": [
+        "dashboard/src/pages/attribution.tsx"
+      ],
       "acceptanceCriteria": [
         "전략/거래소/페어별 수익 귀속 차트",
         "Waterfall chart + Heatmap (페어 × 거래소)",
         "npm run build 성공"
       ]
     },
-
     {
       "id": "US-054",
       "title": "72h 연속 Shadow 실행",

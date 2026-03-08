@@ -32,6 +32,7 @@ from src.core.order_book import OrderBook
 from src.core.rust_bridge import get_orderbook_class
 from src.execution.paper import PaperExecutor, SlippageModel
 from src.friction.fee_model import FeeModel
+from src.strategies.base import TradeRequest, TradeLeg
 from src.infra.metrics import (
     COLLECTOR_MESSAGES,
     DRAWDOWN_CURRENT,
@@ -42,6 +43,13 @@ from src.infra.metrics import (
     SIGNALS_TOTAL,
     SPREAD_BPS,
     TRADES_TOTAL,
+)
+from prometheus_client import Counter as PromCounter
+
+ROUTING_FALLBACK_TOTAL = PromCounter(
+    "shadow_routing_fallback_total",
+    "Number of times signal routing fell back to direct execution",
+    ["reason"],
 )
 from src.core.real_signal_producer import RealDataSignalProducer
 from src.core.triangular_scanner import TriangularScanner
@@ -157,6 +165,7 @@ class ShadowMode:
         exchanges: list[str] | None = None,
         multi_signal_producer: Any | None = None,
         funding_rate_collector: Any | None = None,
+        strategy_manager: Any | None = None,
     ) -> None:
         """Initialise the shadow mode orchestrator.
 
@@ -176,10 +185,14 @@ class ShadowMode:
             funding_rate_collector: Optional FundingRateCollector. If provided,
                                replaces the inline funding-rate HTTP loop. If None,
                                falls back to the built-in Binance+Bybit polling.
+            strategy_manager:  Optional StrategyManager. If provided, signals
+                               are also routed to registered strategies and their
+                               TradeRequests are paper-executed (N-leg support).
         """
         self._signal_generator = signal_generator
         self._multi_signal_producer = multi_signal_producer
         self._funding_rate_collector = funding_rate_collector
+        self._strategy_manager = strategy_manager
 
         # Shadow mode: PaperExecutor with realistic slippage, zero flat fee.
         # k=1.0 matches CEXOrderbookSlippage's default (~10bps/side = 20bps round-trip).
@@ -522,7 +535,17 @@ class ShadowMode:
                             "shadow_mode.telegram_signal_notify_failed", error=str(exc)
                         )
 
-                await self._execute_shadow_trade(signal)
+                # Route through Strategy objects when StrategyManager is available;
+                # otherwise fall back to direct 2-leg execution (backward compat).
+                if self._strategy_manager is not None:
+                    logger.debug(
+                        "shadow_mode.routing_via_strategy_manager",
+                        signal_strategy=signal.strategy_id,
+                        symbol=signal.symbol,
+                    )
+                    await self._route_signal_to_strategies(signal)
+                else:
+                    await self._execute_shadow_trade(signal)
 
             # --- Multi-strategy evaluation ---
             if self._multi_signal_producer is not None:
@@ -577,7 +600,10 @@ class ShadowMode:
             self._books, self._futures_books,
         )
         for signal in signals:
-            await self._execute_shadow_trade(signal)
+            if self._strategy_manager is not None:
+                await self._route_signal_to_strategies(signal)
+            else:
+                await self._execute_shadow_trade(signal)
 
     # NOTE: _evaluate_triangular, _evaluate_statistical_arb, _evaluate_latency_arb,
     # _evaluate_spot_futures, _evaluate_futures_futures moved to RealDataSignalProducer
@@ -645,7 +671,10 @@ class ShadowMode:
                             rates_by_exchange, self._books,
                         )
                         for signal in signals:
-                            await self._execute_shadow_trade(signal)
+                            if self._strategy_manager is not None:
+                                await self._route_signal_to_strategies(signal)
+                            else:
+                                await self._execute_shadow_trade(signal)
                     except Exception as exc:
                         logger.warning("shadow_mode.funding_rate_arb_error", error=str(exc))
 
@@ -843,6 +872,155 @@ class ShadowMode:
         )
 
     # -----------------------------------------------------------------------
+    # Strategy routing (StrategyManager integration)
+    # -----------------------------------------------------------------------
+
+    async def _route_signal_to_strategies(self, signal: Signal) -> None:
+        """Route signal to matching strategies via StrategyManager.route_signal().
+
+        Delegates type-based matching to StrategyManager._should_route().
+        Falls back to _execute_shadow_trade() on routing failure.
+
+        Empty list from route_signal() = normal filtering, NO fallback.
+        Exception from route_signal() = routing mechanism failure, fallback triggered.
+        """
+        if self._strategy_manager is None:
+            return
+
+        try:
+            trade_requests = await self._strategy_manager.route_signal(signal)
+            for request in trade_requests:
+                await self._execute_shadow_trade_request(request)
+
+            logger.debug(
+                "shadow_mode.signal_routed",
+                signal_strategy=signal.strategy_id,
+                symbol=signal.symbol,
+                requests_generated=len(trade_requests),
+            )
+        except Exception as exc:
+            ROUTING_FALLBACK_TOTAL.labels(reason="routing_exception").inc()
+            logger.warning(
+                "shadow_mode.strategy_routing_failed",
+                signal_strategy=signal.strategy_id,
+                error=str(exc),
+            )
+            # Fallback: prevent signal loss on routing mechanism failure
+            await self._execute_shadow_trade(signal)
+
+    async def _execute_shadow_trade_request(self, trade_request: TradeRequest) -> None:
+        """Paper-execute an N-leg TradeRequest from a strategy.
+
+        Iterates over trade_request.legs, creates an Order for each leg,
+        paper-executes it, and computes net PnL across all legs using FeeModel.
+        Updates stats with trade_request.strategy_id. Never raises.
+        """
+        t0 = time.monotonic()
+        self._stats.signals_detected += 1
+        sid = trade_request.strategy_id or self.STRATEGY_ID
+
+        try:
+            trades = []
+            for leg in trade_request.legs:
+                order = Order(
+                    order_id=str(uuid.uuid4()),
+                    exchange_id=leg.exchange_id,
+                    symbol=leg.symbol,
+                    side=leg.side,
+                    order_type=leg.order_type,
+                    price=leg.price or Decimal("0"),
+                    amount=leg.size,
+                )
+                trade = await self._paper_executor.execute(order)
+                trades.append((leg, trade))
+        except Exception as exc:
+            logger.error(
+                "shadow_mode.trade_request_execution_failed",
+                strategy_id=sid,
+                error=str(exc),
+            )
+            return
+
+        self._stats.trades_executed += 1
+
+        # Compute net PnL across all legs
+        net_pnl = Decimal("0")
+        for leg, trade in trades:
+            notional = trade.price * trade.amount
+            ex = leg.exchange_id.removeprefix("paper_").removeprefix("sandbox_")
+            try:
+                fee = self._fee_model.taker_fee(ex, notional)
+            except ValueError:
+                fee = notional * Decimal("0.0025")
+
+            if leg.side == OrderSide.SELL:
+                net_pnl += notional - fee
+            else:
+                net_pnl -= notional + fee
+
+        # Network cost between first buy and first sell exchange
+        buy_exs = [l.exchange_id.removeprefix("paper_").removeprefix("sandbox_")
+                   for l, _ in trades if l.side == OrderSide.BUY]
+        sell_exs = [l.exchange_id.removeprefix("paper_").removeprefix("sandbox_")
+                    for l, _ in trades if l.side == OrderSide.SELL]
+        if buy_exs and sell_exs:
+            first_symbol = trade_request.legs[0].symbol
+            transfer_coin = first_symbol.split("/")[0] if "/" in first_symbol else "XRP"
+            try:
+                network_cost = self._fee_model.network_cost(buy_exs[0], sell_exs[0], transfer_coin)
+            except ValueError:
+                network_cost = Decimal("1.00")
+            net_pnl -= network_cost
+
+        net_pnl_float = float(net_pnl)
+
+        # Per-strategy tracking
+        if sid not in self._stats.by_strategy:
+            self._stats.by_strategy[sid] = StrategyStats()
+        ss = self._stats.by_strategy[sid]
+        ss.signals += 1
+        ss.trades += 1
+        ss.pnl += net_pnl_float
+
+        if net_pnl_float > 0:
+            self._stats.trades_won += 1
+            ss.wins += 1
+            result_label = "win"
+        else:
+            self._stats.trades_lost += 1
+            ss.losses += 1
+            result_label = "loss"
+
+        self._stats.total_pnl += net_pnl_float
+        self._compute_drawdown()
+
+        # Prometheus metrics
+        strategy_label = sid
+        try:
+            TRADES_TOTAL.labels(
+                strategy=strategy_label,
+                exchange_pair=f"{buy_exs[0]}-{sell_exs[0]}" if buy_exs and sell_exs else "unknown",
+                result=result_label,
+            ).inc()
+            PNL_TOTAL.labels(strategy=strategy_label).set(self._stats.total_pnl)
+            DRAWDOWN_CURRENT.labels(strategy=strategy_label).set(
+                self._stats.max_drawdown
+            )
+        except Exception:
+            pass
+
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        logger.info(
+            "shadow_mode.trade_request_executed",
+            strategy_id=sid,
+            legs=len(trade_request.legs),
+            net_pnl=f"{net_pnl_float:+.4f}",
+            result=result_label,
+            total_pnl=f"{self._stats.total_pnl:+.4f}",
+            elapsed_ms=f"{elapsed_ms:.2f}",
+        )
+
+    # -----------------------------------------------------------------------
     # KRW/USDT dynamic rate loop
     # -----------------------------------------------------------------------
 
@@ -973,6 +1151,19 @@ class ShadowMode:
             stats.trades_won / total_trades if total_trades > 0 else 0.0
         )
 
+        # Build per-strategy breakdown
+        strategy_breakdown: list[dict[str, Any]] = []
+        for s_id, ss in sorted(stats.by_strategy.items()):
+            s_wr = ss.wins / ss.trades if ss.trades > 0 else 0.0
+            strategy_breakdown.append({
+                "strategy_id": s_id,
+                "trades": ss.trades,
+                "wins": ss.wins,
+                "losses": ss.losses,
+                "win_rate": s_wr,
+                "pnl": ss.pnl,
+            })
+
         summary_data: dict[str, Any] = {
             "date": now.strftime("%Y-%m-%d"),
             "strategy": self.STRATEGY_ID,
@@ -980,18 +1171,34 @@ class ShadowMode:
             "trades": total_trades,
             "win_rate": win_rate,
             "max_drawdown": stats.max_drawdown,
+            "by_strategy": strategy_breakdown,
         }
 
-        # Update Prometheus gauges
+        # Update Prometheus gauges (overall + per-strategy)
         try:
             PNL_TOTAL.labels(strategy=self.STRATEGY_ID).set(stats.total_pnl)
             DRAWDOWN_CURRENT.labels(strategy=self.STRATEGY_ID).set(stats.max_drawdown)
+            for s_id, ss in stats.by_strategy.items():
+                PNL_TOTAL.labels(strategy=s_id).set(ss.pnl)
         except Exception:
             pass
 
         if self._telegram is not None:
             try:
                 await self._telegram.send_daily_summary(summary_data)
+
+                # Send per-strategy breakdown as separate message
+                if strategy_breakdown:
+                    lines = ["Strategy Breakdown:"]
+                    for sb in strategy_breakdown:
+                        lines.append(
+                            f"  {sb['strategy_id']}: "
+                            f"{sb['trades']}T / "
+                            f"{sb['win_rate']:.0%} WR / "
+                            f"${sb['pnl']:+.4f}"
+                        )
+                    await self._telegram.send_alert("\n".join(lines), level="INFO")
+
                 stats.last_daily_summary = now
                 logger.info(
                     "shadow_mode.daily_summary_sent",
@@ -999,6 +1206,7 @@ class ShadowMode:
                     total_pnl=stats.total_pnl,
                     trades=total_trades,
                     win_rate=win_rate,
+                    strategies=len(strategy_breakdown),
                 )
             except Exception as exc:
                 logger.error(
