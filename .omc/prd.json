@@ -563,7 +563,7 @@
       "title": "Trade History + Alerts 페이지",
       "phase": "D",
       "priority": 37,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/pages/trades.tsx",
         "dashboard/src/pages/alerts.tsx"
@@ -574,7 +574,8 @@
         "KillSwitch 발동, WS 끊김 등 알림 이력 조회",
         "WebSocket 실시간 알림 수신",
         "npm run build 성공"
-      ]
+      ],
+      "notes": "Phase D: trades/alerts pages + API endpoints. 3240 tests PASS, npm build OK, shadow crash 0. CRITICAL/HIGH fixes applied (deque, limit, trade recording)."
     },
     {
       "id": "US-038",

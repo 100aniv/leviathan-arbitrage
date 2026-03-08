@@ -77,6 +77,17 @@ async def get_pnl(request: Request) -> JSONResponse:
     return JSONResponse(_get_pnl(ctx))
 
 
+@router.get("/trades", dependencies=[Depends(require_auth)])
+async def list_trades(request: Request, strategy: str | None = None, limit: int = 50) -> JSONResponse:
+    """Return trade history, optionally filtered by strategy_id."""
+    ctx = request.app.state.engine_context
+    trades = list(ctx.trade_history)
+    if strategy:
+        trades = [t for t in trades if t.get("strategy_id") == strategy]
+    trades = sorted(trades, key=lambda t: t.get("timestamp", ""), reverse=True)
+    return JSONResponse(trades[:limit])
+
+
 @router.get("/status")
 async def get_status(request: Request) -> JSONResponse:
     """Return overall engine status."""

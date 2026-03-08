@@ -105,6 +105,32 @@ export interface StateUpdateMessage extends WsMessage<StateUpdateData> {
   type: "state_update";
 }
 
+// ─── Trade & Alert Types ──────────────────────────────────────────────────────
+
+export interface Trade {
+  id: string;
+  strategy_id: string;
+  symbol: string;
+  buy_exchange: string;
+  sell_exchange: string;
+  side: string;
+  size: number;
+  entry_price: number;
+  exit_price: number;
+  pnl: number;
+  timestamp: string;
+  status: string;
+}
+
+export interface Alert {
+  id: string;
+  type: string;
+  severity: "critical" | "warning" | "info";
+  message: string;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+}
+
 // ─── UI State Types ───────────────────────────────────────────────────────────
 
 export type ConnectionState = "connecting" | "connected" | "disconnected" | "error";

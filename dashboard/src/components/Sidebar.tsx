@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Zap, ShieldAlert, Server, Activity } from "lucide-react";
+import { LayoutDashboard, Zap, ShieldAlert, Server, Activity, History, Bell } from "lucide-react";
 import clsx from "clsx";
 
 const NAV_ITEMS = [
@@ -10,6 +10,8 @@ const NAV_ITEMS = [
   { href: "/strategies", label: "Strategies", icon: Zap },
   { href: "/risk",       label: "Risk",       icon: ShieldAlert },
   { href: "/system",     label: "System",     icon: Server },
+  { href: "/trades",     label: "Trades",     icon: History },
+  { href: "/alerts",     label: "Alerts",     icon: Bell },
 ];
 
 export function Sidebar() {

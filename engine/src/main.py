@@ -713,6 +713,39 @@ class Engine:
             trade_request.strategy_id,
             execution_result.status.value,
         )
+        # Record trade in context for dashboard API
+        from datetime import datetime, timezone
+        from uuid import uuid4
+        try:
+            self.context.trade_history.append({
+                "id": str(uuid4()),
+                "strategy_id": trade_request.strategy_id,
+                "symbol": trade_request.legs[0].symbol if trade_request.legs else "UNKNOWN",
+                "buy_exchange": next((l.exchange_id for l in trade_request.legs if l.side.value == "buy"), ""),
+                "sell_exchange": next((l.exchange_id for l in trade_request.legs if l.side.value == "sell"), ""),
+                "side": "arbitrage",
+                "size": float(trade_request.legs[0].size) if trade_request.legs else 0,
+                "entry_price": float(trade_request.legs[0].price or 0) if trade_request.legs else 0,
+                "exit_price": float(trade_request.legs[-1].price or 0) if trade_request.legs else 0,
+                "pnl": float(execution_result.pnl) if hasattr(execution_result, "pnl") else float(trade_request.expected_profit_usdt),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": execution_result.status.value,
+            })
+        except Exception as exc:
+            logger.debug("Failed to record trade to context: %s", exc)
+
+    def _record_alert(self, alert_type: str, severity: str, message: str, metadata: dict | None = None) -> None:
+        """Record a system alert for the dashboard API."""
+        from datetime import datetime, timezone
+        from uuid import uuid4
+        self.context.alert_history.append({
+            "id": str(uuid4()),
+            "type": alert_type,
+            "severity": severity,
+            "message": message,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "metadata": metadata or {},
+        })
 
     # ------------------------------------------------------------------
     # Step 8: Populate EngineContext for API
