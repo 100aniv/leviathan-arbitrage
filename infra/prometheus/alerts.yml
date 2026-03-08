@@ -223,3 +223,54 @@ groups:
         annotations:
           summary: "Strategy {{ $labels.strategy }} error rate elevated ({{ $value | humanize }}/s)"
           description: "Strategy {{ $labels.strategy }} is producing > 0.1 errors/s over 5 minutes. Rate: {{ $value | humanize }}/s"
+
+  # ---------------------------------------------------------------------------
+  # US-044: 자동 알림 규칙 (PnL 급락, WS 끊김, 높은 slippage)
+  # ---------------------------------------------------------------------------
+  - name: leviathan.auto_alerts
+    interval: 15s
+    rules:
+
+      # CRITICAL: PnL 급락 — 5분 내 $10 이상 하락
+      - alert: pnl_sudden_drop
+        expr: leviathan_pnl_total_usd - leviathan_pnl_total_usd offset 5m < -10
+        for: 0m
+        labels:
+          severity: critical
+          component: trading
+        annotations:
+          summary: "PnL 급락: 5분 내 ${{ $value | humanize }} 하락"
+          description: "PnL이 5분 내 $10 이상 급락했습니다. 현재 PnL 변동: ${{ $value | humanize }}. 즉시 확인 필요."
+
+      # CRITICAL: WS 3개 이상 동시 끊김
+      - alert: multiple_ws_disconnected
+        expr: count(leviathan_exchange_health_score == 0) >= 3
+        for: 30s
+        labels:
+          severity: critical
+          component: connectivity
+        annotations:
+          summary: "WS {{ $value }}개 거래소 동시 끊김"
+          description: "3개 이상의 거래소 WebSocket이 동시에 끊겼습니다. 네트워크 또는 인프라 문제 가능성. 즉시 확인 필요."
+
+      # WARNING: Slippage > 50bps
+      - alert: high_slippage
+        expr: histogram_quantile(0.95, rate(leviathan_spread_bps_bucket[5m])) > 50
+        for: 2m
+        labels:
+          severity: warning
+          component: execution
+        annotations:
+          summary: "Slippage p95 > 50bps ({{ $value | humanize }}bps)"
+          description: "최근 5분간 슬리피지 p95가 50bps를 초과했습니다. 현재: {{ $value | humanize }}bps. 유동성 부족 또는 시장 변동성 증가 가능성."
+
+      # INFO: 일일 PnL 요약 (UTC 0시 부근 — recording rule로 트리거)
+      - alert: daily_pnl_summary
+        expr: hour() == 0 and minute() < 15 and leviathan_pnl_total_usd != 0
+        for: 0m
+        labels:
+          severity: info
+          component: reporting
+        annotations:
+          summary: "일일 PnL 요약: ${{ $value | humanize }}"
+          description: "UTC 0시 기준 일일 PnL 요약입니다. 현재 누적 PnL: ${{ $value | humanize }}."

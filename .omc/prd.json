@@ -683,7 +683,7 @@
       "title": "자동 알림 규칙 (PnL 급락, WS 끊김, 높은 slippage)",
       "phase": "E-1",
       "priority": 44,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "Prometheus alerting rules YAML 생성",
         "PnL 급락 (-$10 이상) → Telegram",
