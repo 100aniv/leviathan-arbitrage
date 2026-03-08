@@ -100,6 +100,7 @@ class FuturesFuturesStrategy(BaseStrategy):
                     side=OrderSide.BUY,
                     size=size,
                     order_type=OrderType.MARKET,
+                    price=signal.buy_price,
                     metadata={"leverage": str(self.config.max_leverage), "leg_type": "futures"},
                 ),
                 TradeLeg(
@@ -108,6 +109,7 @@ class FuturesFuturesStrategy(BaseStrategy):
                     side=OrderSide.SELL,
                     size=size,
                     order_type=OrderType.MARKET,
+                    price=signal.sell_price,
                     metadata={"leverage": str(self.config.max_leverage), "leg_type": "futures"},
                 ),
             ],

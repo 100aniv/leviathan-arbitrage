@@ -126,6 +126,7 @@ class SpotFuturesStrategy(BaseStrategy):
                     side=spot_side,
                     size=size,
                     order_type=OrderType.MARKET,
+                    price=spot_price,
                     metadata={"leg_type": "spot"},
                 ),
                 TradeLeg(
@@ -134,6 +135,7 @@ class SpotFuturesStrategy(BaseStrategy):
                     side=futures_side,
                     size=size,
                     order_type=OrderType.MARKET,
+                    price=futures_price,
                     metadata={"leg_type": "futures"},
                 ),
             ],

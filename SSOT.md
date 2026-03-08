@@ -26,25 +26,26 @@
 ## 2. 현재 상태
 
 ```
-Phase:        B-5 (Multi-Leg Executor)
-테스트:       3,156 passed, 0 failed
+Phase:        C (Strategy Validation — US-030 PASS)
+테스트:       3,212 passed, 0 failed
 커버리지:     90%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase B-4: GAP 1 resolved — StrategyManager routing in ShadowMode
+최신 커밋:    Phase C: TradeLeg price fix + PaperExecutor zero slippage
 ```
 
-### Shadow 최신 결과 (Phase 7.3k, 10min)
+### Shadow 최신 결과 (Phase C US-030, 10min, strategy routing)
 
 | 항목 | 값 |
 |------|-----|
-| 거래 수 | 3,110 |
+| 거래 수 | 132 |
 | 승률 | 100% |
-| PnL | +$21.10 |
+| PnL | +$34.97 |
 | Max Drawdown | $0.00 |
-| 심볼 수 | 175 |
-| 활성 거래소 | 8 (MEMORY 기준) |
-| MIN_EDGE_BPS | 5 |
+| 심볼 수 | 8 |
+| 활성 거래소 | 8 |
+| 활성 전략 | cross_exchange_v1 (strategy routing via StrategyManager) |
+| MIN_EDGE_BPS | 3 (SignalGenerator) |
 
 ### Shadow 이력 요약 (Phase 7.3h-i, MIN_EDGE_BPS=5)
 
@@ -110,13 +111,13 @@ Engine.run()
 
 | # | 전략 | 파일 | 상태 | 차단 GAP | 예상 연간수익 |
 |---|------|------|------|---------|------------|
-| 1 | cross_exchange | `strategies/cross_exchange.py` | **활성** | GAP 1,2 (strategy 우회) | 5-25% |
-| 2 | spot_futures | `strategies/spot_futures.py` | 비활성 | GAP 1,2 (strategy 우회) | 8-30% |
-| 3 | futures_futures | `strategies/futures_futures.py` | 비활성 | GAP 1,2 (strategy 우회) | 5-15% |
-| 4 | triangular | `strategies/triangular.py` | 비활성 | ~~GAP 7~~ RESOLVED, GAP 4 (3-leg executor) | 2-10% |
-| 5 | funding_rate | `strategies/funding_rate.py` | 비활성 | GAP 1,2 (strategy 우회) | 15-30% |
-| 6 | statistical_arb | `strategies/stat_arb.py` | 비활성 | ~~GAP 3~~ RESOLVED, NOT_READY | 11-16% |
-| 7 | latency_arb | `strategies/latency_arb.py` | 비활성 | Python 속도 한계 (Phase F) | 20-100%+ |
+| 1 | cross_exchange | `strategies/cross_exchange.py` | **활성** | ~~GAP 1,2~~ RESOLVED | 5-25% |
+| 2 | spot_futures | `strategies/spot_futures.py` | 등록됨 | Korean stale data 이슈 | 8-30% |
+| 3 | futures_futures | `strategies/futures_futures.py` | 등록됨 | 검증 필요 (US-032) | 5-15% |
+| 4 | triangular | `strategies/triangular.py` | 등록됨 | ~~GAP 7,4~~ RESOLVED, 검증 필요 (US-033) | 2-10% |
+| 5 | funding_rate | `strategies/funding_rate.py` | 등록됨 | 검증 필요 (US-034) | 15-30% |
+| 6 | statistical_arb | `strategies/stat_arb.py` | 등록됨 | ~~GAP 3~~ RESOLVED, WFE 음수 | 11-16% |
+| 7 | latency_arb | `strategies/latency_arb.py` | 등록됨 | Python 속도 한계 (Phase F) | 20-100%+ |
 | 8 | cex_dex | `strategies/cex_dex.py` | 조건부 | GAP 8 (DEX stub, Phase F) | 10-50% |
 
 > **GAP 의존성 순서**: GAP9→10→(5,6,7 병렬)→3→(1,2)→4 — 상세: §9 참조
@@ -140,8 +141,10 @@ fill_price = base_price * (1 +/- slippage_pct)
 impact = k * size^gamma
 slippage = base_slippage_pct * impact * random(0.5, 1.5)
 fill_price = base_price * (1 +/- slippage)
-기본값: k=1.0, gamma=0.5, base=0.001
-근거: Almgren-Chriss (2000), sqrt 영향 모델
+기본값: k=0.0, gamma=0.5, base=0.001
+근거: SignalGenerator가 CEXOrderbookSlippage로 사전 필터.
+      PaperExecutor에서 추가 슬리피지 적용 시 이중 계산.
+      k=0으로 PaperExecutor 슬리피지 제거 (Phase C 확정).
 용도: Shadow 모드 전용
 ```
 
@@ -315,11 +318,11 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-025: main.py Shadow mode에 StrategyManager 전달 + start_strategy()
 - [x] US-026: Shadow 전략 통합 테스트 (10 integration tests)
 
-### Phase B-5: Multi-Leg Executor (GAP 4) — US-027~029
+### Phase B-5: Multi-Leg Executor (GAP 4) — US-027~029 ✅ ALL PASS
 
-- [ ] US-027: ExecutionResult N-leg 확장
-- [ ] US-028: execute_multi_leg() + rollback
-- [ ] US-029: 3-leg triangular 실행 테스트
+- [x] US-027: ExecutionResult N-leg 확장 (legs:list[LegResult] + compat properties)
+- [x] US-028: execute_multi_leg() + 역순 rollback + TradeRequestConsumer 라우팅
+- [x] US-029: 3-leg triangular 실행 테스트 (14 unit + 4 integration)
 
 ### Phase C: Strategy Validation — US-030~036
 
@@ -397,7 +400,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | **1** | ~~Shadow가 Strategy 객체 우회 — StrategyManager.route_signal() 도입~~ | `shadow.py:878-909` | ~~B-4~~ **RESOLVED** | L |
 | **2** | ~~SignalGenerator가 cross_exchange 신호만 생산 — RealDataSignalProducer 도입~~ | `core/real_signal.py` | ~~B-3~~ **RESOLVED** | M |
 | **3** | MultiStrategySignalProducer Paper 모드에서만 동작 | `main.py:842-873` | B-3 | L |
-| **4** | AtomicExecutor 2-Leg만 지원 (triangular=3-Leg) | `executor.py:60-66,186-297` | B-5 | L |
+| **4** | ~~AtomicExecutor 2-Leg만 지원 — execute_multi_leg() N-leg 도입~~ | `executor.py:298-380` | ~~B-5~~ **RESOLVED** | L |
 | **5** | ~~Futures 데이터 파이프라인 부재~~ | `collectors/binance_futures_collector.py` | ~~B-2~~ **RESOLVED** | L |
 | **6** | ~~Funding Rate Collector 부재~~ | `collectors/funding_rate_collector.py` | ~~B-2~~ **RESOLVED** | M |
 | **7** | Triangular Scanner 부재 | `triangular.py:63-68` | B-3 | M |

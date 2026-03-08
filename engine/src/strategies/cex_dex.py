@@ -280,12 +280,14 @@ class CexDexStrategy(BaseStrategy):
                     symbol=self._symbol,
                     side=cex_side,
                     size=size,
+                    price=cex_mid,
                 ),
                 TradeLeg(
                     exchange_id=self._dex.dex_id,
                     symbol=self._symbol,
                     side=dex_side,
                     size=size,
+                    price=dex_price,
                     metadata={
                         "dex_pool": self._dex.pool_address,
                         "gas_cost_usd": str(gas_cost_usd),

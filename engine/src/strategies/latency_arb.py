@@ -104,6 +104,7 @@ class LatencyArbStrategy(BaseStrategy):
                     side=OrderSide.BUY,
                     size=size,
                     order_type=OrderType.MARKET,
+                    price=signal.buy_price,
                 ),
                 TradeLeg(
                     exchange_id=signal.sell_exchange,
@@ -111,6 +112,7 @@ class LatencyArbStrategy(BaseStrategy):
                     side=OrderSide.SELL,
                     size=size,
                     order_type=OrderType.MARKET,
+                    price=signal.sell_price,
                 ),
             ],
             expected_profit_usdt=net_profit,

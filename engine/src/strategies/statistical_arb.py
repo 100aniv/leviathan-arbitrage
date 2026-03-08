@@ -294,6 +294,7 @@ class StatisticalArbStrategy(BaseStrategy):
                         side=OrderSide.SELL,
                         size=size,
                         order_type=OrderType.MARKET,
+                        price=signal.buy_price,
                     ),
                     TradeLeg(
                         exchange_id=signal.sell_exchange,
@@ -301,6 +302,7 @@ class StatisticalArbStrategy(BaseStrategy):
                         side=OrderSide.BUY,
                         size=size,
                         order_type=OrderType.MARKET,
+                        price=signal.sell_price,
                     ),
                 ],
                 expected_profit_usdt=Decimal("0"),
@@ -331,6 +333,7 @@ class StatisticalArbStrategy(BaseStrategy):
                         side=OrderSide.SELL,
                         size=size,
                         order_type=OrderType.MARKET,
+                        price=signal.sell_price,
                     ),
                     TradeLeg(
                         exchange_id=signal.buy_exchange,
@@ -338,6 +341,7 @@ class StatisticalArbStrategy(BaseStrategy):
                         side=OrderSide.BUY,
                         size=size,
                         order_type=OrderType.MARKET,
+                        price=signal.buy_price,
                     ),
                 ],
                 expected_profit_usdt=Decimal("0"),
@@ -432,6 +436,7 @@ class StatisticalArbStrategy(BaseStrategy):
                     side=OrderSide.BUY,
                     size=size,
                     order_type=OrderType.MARKET,
+                    price=buy_price,
                 ),
                 TradeLeg(
                     exchange_id=sell_exchange,
@@ -439,6 +444,7 @@ class StatisticalArbStrategy(BaseStrategy):
                     side=OrderSide.SELL,
                     size=size,
                     order_type=OrderType.MARKET,
+                    price=sell_price,
                 ),
             ],
             expected_profit_usdt=net_profit,

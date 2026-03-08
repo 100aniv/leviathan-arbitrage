@@ -112,6 +112,7 @@ class FundingRateStrategy(BaseStrategy):
                     side=OrderSide.SELL,
                     size=size,
                     order_type=OrderType.MARKET,
+                    price=signal.sell_price,
                     metadata={
                         "leg_type": "short",
                         "funding_rate": str(funding_rate_sell),
@@ -123,6 +124,7 @@ class FundingRateStrategy(BaseStrategy):
                     side=OrderSide.BUY,
                     size=long_size,
                     order_type=OrderType.MARKET,
+                    price=signal.buy_price,
                     metadata={
                         "leg_type": "long",
                         "funding_rate": str(funding_rate_buy),

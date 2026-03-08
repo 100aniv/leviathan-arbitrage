@@ -196,10 +196,11 @@ class ShadowMode:
 
         # Shadow mode: PaperExecutor with realistic slippage, zero flat fee.
         # k=1.0 matches CEXOrderbookSlippage's default (~10bps/side = 20bps round-trip).
-        # k=5.0 was 100bps round-trip (absurd), k=0 gives fake 100% WR.
-        # FeeModel in _execute_shadow_trade handles per-exchange fees + network cost.
+        # k=0: zero slippage in PaperExecutor — SignalGenerator already applies
+        # CEXOrderbookSlippage, so PaperExecutor must NOT add more (double-count).
+        # FeeModel in _execute_shadow_trade handles per-exchange fees separately.
         self._paper_executor: PaperExecutor = paper_executor or PaperExecutor(
-            slippage_model=PowerLawSlippage(k=1.0, gamma=0.5),
+            slippage_model=PowerLawSlippage(k=0.0, gamma=0.5),
             fee_rate=Decimal("0"),
         )
 
