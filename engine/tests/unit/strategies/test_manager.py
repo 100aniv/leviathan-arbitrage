@@ -14,6 +14,8 @@ from src.core.models import OrderSide, Signal
 from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeRequest
 from src.strategies.cross_exchange import CrossExchangeConfig, CrossExchangeStrategy
 from src.strategies.funding_rate import FundingRateStrategy
+from src.strategies.statistical_arb import StatisticalArbStrategy
+from src.strategies.latency_arb import LatencyArbStrategy
 from src.strategies.manager import CONSUMER_GROUP, SIGNAL_STREAM, StrategyManager
 
 
@@ -457,5 +459,58 @@ async def test_route_signal_handles_strategy_exception():
     ok.on_signal.assert_awaited_once()
     assert len(results) == 1
     assert results[0] is ok_req
+
+
+@pytest.mark.asyncio
+async def test_cross_exchange_signal_routes_to_statistical_arb():
+    """cross_exchange signals should also route to statistical_arb (derived strategy)."""
+    bus = make_event_bus()
+    manager = StrategyManager(bus)
+
+    strategy = StatisticalArbStrategy("stat_arb_v1", make_calculator())
+    await strategy.start()
+    strategy.on_signal = AsyncMock(return_value=None)
+    manager.register(strategy)
+
+    signal = _make_signal(strategy_id="cross_exchange_spot")
+    await manager.route_signal(signal)
+
+    strategy.on_signal.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cross_exchange_signal_routes_to_latency_arb():
+    """cross_exchange signals should also route to latency_arb (derived strategy)."""
+    bus = make_event_bus()
+    manager = StrategyManager(bus)
+
+    tracker = MagicMock()
+    tracker.get_latency_info = MagicMock(return_value=None)
+    strategy = LatencyArbStrategy("latency_arb_v1", make_calculator(), tracker)
+    await strategy.start()
+    strategy.on_signal = AsyncMock(return_value=None)
+    manager.register(strategy)
+
+    signal = _make_signal(strategy_id="cross_exchange_spot")
+    await manager.route_signal(signal)
+
+    strategy.on_signal.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_funding_rate_signal_not_routed_to_statistical_arb():
+    """Non-cross_exchange signals should NOT route to statistical_arb."""
+    bus = make_event_bus()
+    manager = StrategyManager(bus)
+
+    strategy = StatisticalArbStrategy("stat_arb_v1", make_calculator())
+    await strategy.start()
+    strategy.on_signal = AsyncMock(return_value=None)
+    manager.register(strategy)
+
+    signal = _make_signal(strategy_id="funding_rate_arb")
+    await manager.route_signal(signal)
+
+    strategy.on_signal.assert_not_awaited()
 
 

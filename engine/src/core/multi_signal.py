@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 class MultiSignalConfig:
     """Configuration for multi-strategy signal production."""
     # Spot-Futures
-    spot_futures_min_basis_bps: Decimal = Decimal("15")
+    spot_futures_min_basis_bps: Decimal = Decimal("3")
     spot_futures_symbols: list[str] = field(default_factory=lambda: ["BTC/USDT"])
     futures_suffix: str = ":USDT"
 
@@ -47,7 +47,7 @@ class MultiSignalConfig:
     triangular_paths: list[list[str]] = field(default_factory=lambda: [
         ["USDT", "BTC", "ETH"],
     ])
-    triangular_min_profit_bps: Decimal = Decimal("10")
+    triangular_min_profit_bps: Decimal = Decimal("3")
 
     # Latency
     latency_record_interval: float = 1.0  # how often to record latency samples

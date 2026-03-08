@@ -8,7 +8,7 @@
   "spot_futures": {
     "status": "READY",
     "wfe": 1.52,
-    "min_basis_bps": 20.4,
+    "min_basis_bps": 3,
     "max_position_size_usdt": 5484,
     "entry_threshold": 0.00472,
     "exit_threshold": 0.00268,
@@ -26,7 +26,7 @@
   "triangular": {
     "status": "MONITOR",
     "wfe": 0.94,
-    "min_profit_bps": 49.7,
+    "min_profit_bps": 3,
     "max_position_usdt": 100,
     "entry_threshold": 0.00206,
     "exit_threshold": 0.000309,

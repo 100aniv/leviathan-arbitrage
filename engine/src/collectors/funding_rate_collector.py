@@ -154,7 +154,12 @@ class FundingRateCollector:
         """Fetch funding rates from all configured exchanges for all symbols.
 
         Returns the newly fetched entries (also stored in self.store).
+        Lazily creates an HTTP client if none was provided or start() wasn't called.
         """
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(timeout=10.0)
+            self._owns_client = True
+
         fetched: dict[str, dict[str, FundingRateEntry]] = {}
 
         for symbol in self.symbols:
