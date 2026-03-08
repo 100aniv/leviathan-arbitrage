@@ -268,22 +268,26 @@ class TradeRequestConsumer:
         self, trade_request: TradeRequest, orders: list[Order]
     ) -> ExecutionResult:
         """Route execution based on whether legs share an exchange."""
-        leg1_order = orders[0]
-        leg2_order = orders[1]
-
         try:
-            # Determine if same-exchange or cross-exchange
-            if leg1_order.exchange_id == leg2_order.exchange_id:
+            # Determine routing: multi-leg same-exchange, same-exchange 2-leg, or cross-exchange
+            exchange_ids = {o.exchange_id for o in orders}
+            if len(orders) > 2 and len(exchange_ids) == 1:
+                result = await self._executor.execute_multi_leg(
+                    exchange_id=orders[0].exchange_id,
+                    orders=orders,
+                    strategy_id=trade_request.strategy_id,
+                )
+            elif len(exchange_ids) == 1:
                 result = await self._executor.execute_same_exchange(
-                    exchange_id=leg1_order.exchange_id,
-                    leg1_order=leg1_order,
-                    leg2_order=leg2_order,
+                    exchange_id=orders[0].exchange_id,
+                    leg1_order=orders[0],
+                    leg2_order=orders[1],
                     strategy_id=trade_request.strategy_id,
                 )
             else:
                 result = await self._executor.execute_cross_exchange(
-                    leg1_order=leg1_order,
-                    leg2_order=leg2_order,
+                    leg1_order=orders[0],
+                    leg2_order=orders[1],
                     strategy_id=trade_request.strategy_id,
                     min_edge=self._min_edge,
                 )
@@ -304,8 +308,7 @@ class TradeRequestConsumer:
             # Return a rejected result so the caller always gets an ExecutionResult
             return ExecutionResult(
                 status=ExecutionStatus.REJECTED,
-                leg1=None,
-                leg2=None,
+                legs=[],
                 error=f"Execution exception: {exc}",
                 strategy_id=trade_request.strategy_id,
             )

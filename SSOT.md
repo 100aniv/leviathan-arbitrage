@@ -26,12 +26,12 @@
 ## 2. 현재 상태
 
 ```
-Phase:        B-3 (Signal Production)
-테스트:       3,180 passed, 0 failed
+Phase:        B-5 (Multi-Leg Executor)
+테스트:       3,156 passed, 0 failed
 커버리지:     90%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase B-3: GAP 7,3,2 resolved — TriangularScanner + RealDataSignalProducer
+최신 커밋:    Phase B-4: GAP 1 resolved — StrategyManager routing in ShadowMode
 ```
 
 ### Shadow 최신 결과 (Phase 7.3k, 10min)
@@ -308,12 +308,12 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-021: Shadow mode에 RealDataSignalProducer 연결 — 384줄 인라인 삭제
 - [x] US-022: 4종 신호 타입 통합 테스트 — 17 integration tests
 
-### Phase B-4: Shadow Integration (GAP 1) — US-023~026
+### Phase B-4: Shadow Integration (GAP 1) — US-023~026 ✅ ALL PASS
 
-- [ ] US-023: ShadowMode에 StrategyManager 주입
-- [ ] US-024: _on_orderbook StrategyManager 라우팅
-- [ ] US-025: 전략별 메트릭 추적 (per-strategy PnL)
-- [ ] US-026: Shadow 전략 통합 테스트
+- [x] US-023: ShadowMode에 StrategyManager 주입 + route_signal() (16 tests)
+- [x] US-024: 전략별 메트릭 추적 (by_strategy + Prometheus + Telegram breakdown)
+- [x] US-025: main.py Shadow mode에 StrategyManager 전달 + start_strategy()
+- [x] US-026: Shadow 전략 통합 테스트 (10 integration tests)
 
 ### Phase B-5: Multi-Leg Executor (GAP 4) — US-027~029
 
@@ -394,8 +394,8 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 | GAP | 설명 | 파일:라인 | 해결 Phase | 크기 |
 |-----|------|----------|-----------|------|
-| **1** | Shadow가 Strategy 객체 우회 — SignalGenerator 직접 호출 | `shadow.py:411-417` | B-4 | L |
-| **2** | SignalGenerator가 cross_exchange 신호만 생산 | `signal.py:27,80-204` | B-4 | M |
+| **1** | ~~Shadow가 Strategy 객체 우회 — StrategyManager.route_signal() 도입~~ | `shadow.py:878-909` | ~~B-4~~ **RESOLVED** | L |
+| **2** | ~~SignalGenerator가 cross_exchange 신호만 생산 — RealDataSignalProducer 도입~~ | `core/real_signal.py` | ~~B-3~~ **RESOLVED** | M |
 | **3** | MultiStrategySignalProducer Paper 모드에서만 동작 | `main.py:842-873` | B-3 | L |
 | **4** | AtomicExecutor 2-Leg만 지원 (triangular=3-Leg) | `executor.py:60-66,186-297` | B-5 | L |
 | **5** | ~~Futures 데이터 파이프라인 부재~~ | `collectors/binance_futures_collector.py` | ~~B-2~~ **RESOLVED** | L |

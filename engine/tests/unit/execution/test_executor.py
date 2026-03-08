@@ -665,3 +665,231 @@ async def test_cross_exchange_leg1_partial_unwind_failure_halts(
 
     assert result.status == ExecutionStatus.ROLLBACK_FAILED
     assert is_halted()
+
+
+# ---------------------------------------------------------------------------
+# execute_multi_leg — N-leg sequential same-exchange execution
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_multi_leg_3_legs_success(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """3-leg sequential execution: all legs succeed → SUCCESS, 3 LegResults."""
+    orders = [
+        make_order("binance", OrderSide.BUY),
+        make_order("binance", OrderSide.SELL),
+        make_order("binance", OrderSide.BUY),
+    ]
+    result = await executor.execute_multi_leg(
+        exchange_id="binance", orders=orders, strategy_id="tri_1"
+    )
+    assert result.status == ExecutionStatus.SUCCESS
+    assert len(result.legs) == 3
+
+
+@pytest.mark.asyncio
+async def test_multi_leg_halted_rejects(executor: AtomicExecutor) -> None:
+    """Halted engine returns REJECTED with empty legs list."""
+    from src.risk.kill_switch import halt_local
+    halt_local()
+    orders = [make_order("binance", OrderSide.BUY) for _ in range(3)]
+    result = await executor.execute_multi_leg(
+        exchange_id="binance", orders=orders, strategy_id="tri_1"
+    )
+    assert result.status == ExecutionStatus.REJECTED
+    assert result.legs == []
+
+
+@pytest.mark.asyncio
+async def test_multi_leg_health_rejects(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """Exchange health below threshold returns REJECTED with empty legs."""
+    exchange_a.health_score = 0.5
+    orders = [make_order("binance", OrderSide.BUY) for _ in range(3)]
+    result = await executor.execute_multi_leg(
+        exchange_id="binance", orders=orders, strategy_id="tri_1"
+    )
+    assert result.status == ExecutionStatus.REJECTED
+    assert result.legs == []
+
+
+@pytest.mark.asyncio
+async def test_multi_leg_leg2_fails_rollback_leg1(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """Leg 2 failure triggers reverse rollback: leg 1 unwind order is placed."""
+    call_count = 0
+
+    async def place_side_effect(order: Order) -> Trade:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            raise RuntimeError("leg2 rejected")
+        return make_trade("binance")
+
+    exchange_a.place_order = AsyncMock(side_effect=place_side_effect)
+    orders = [
+        make_order("binance", OrderSide.BUY),
+        make_order("binance", OrderSide.SELL),
+        make_order("binance", OrderSide.BUY),
+    ]
+    result = await executor.execute_multi_leg(
+        exchange_id="binance", orders=orders, strategy_id="tri_1"
+    )
+    assert result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.ROLLBACK_FAILED)
+    # call1=leg1 fill, call2=leg2 fail, call3=unwind leg1
+    assert exchange_a.place_order.call_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_multi_leg_leg3_fails_rollback_legs_1_2(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """Leg 3 failure triggers reverse rollback of legs 2 then 1 (reverse order)."""
+    call_count = 0
+
+    async def place_side_effect(order: Order) -> Trade:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 3:
+            raise RuntimeError("leg3 rejected")
+        return make_trade("binance")
+
+    exchange_a.place_order = AsyncMock(side_effect=place_side_effect)
+    orders = [
+        make_order("binance", OrderSide.BUY),
+        make_order("binance", OrderSide.SELL),
+        make_order("binance", OrderSide.BUY),
+    ]
+    result = await executor.execute_multi_leg(
+        exchange_id="binance", orders=orders, strategy_id="tri_1"
+    )
+    assert result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.ROLLBACK_FAILED)
+    # call1=leg1 fill, call2=leg2 fill, call3=leg3 fail, call4=unwind leg2, call5=unwind leg1
+    assert exchange_a.place_order.call_count >= 4
+
+
+@pytest.mark.asyncio
+async def test_multi_leg_rollback_failure_halts(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """When leg 1 unwind fails after leg 2 error, engine is halted → ROLLBACK_FAILED."""
+    from src.risk.kill_switch import is_halted
+    call_count = 0
+
+    async def place_side_effect(order: Order) -> Trade:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return make_trade("binance")  # leg1 succeeds
+        raise RuntimeError("exchange unavailable")  # leg2 fail + unwind fail
+
+    exchange_a.place_order = AsyncMock(side_effect=place_side_effect)
+    orders = [
+        make_order("binance", OrderSide.BUY),
+        make_order("binance", OrderSide.SELL),
+        make_order("binance", OrderSide.BUY),
+    ]
+    result = await executor.execute_multi_leg(
+        exchange_id="binance", orders=orders, strategy_id="tri_1"
+    )
+    assert result.status == ExecutionStatus.ROLLBACK_FAILED
+    assert is_halted()
+
+
+@pytest.mark.asyncio
+async def test_multi_leg_partial_below_threshold(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """Partial fill ≤80% on leg 2 triggers rollback of all completed legs."""
+    call_count = 0
+
+    async def place_side_effect(order: Order) -> Trade:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            return make_trade("binance", amount=Decimal("0.5"))  # 50% fill
+        return make_trade("binance")
+
+    exchange_a.place_order = AsyncMock(side_effect=place_side_effect)
+    orders = [
+        make_order("binance", OrderSide.BUY, amount=Decimal("1.0")),
+        make_order("binance", OrderSide.SELL, amount=Decimal("1.0")),
+        make_order("binance", OrderSide.BUY, amount=Decimal("1.0")),
+    ]
+    result = await executor.execute_multi_leg(
+        exchange_id="binance", orders=orders, strategy_id="tri_1"
+    )
+    assert result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.ROLLBACK_FAILED)
+
+
+@pytest.mark.asyncio
+async def test_multi_leg_timeout_triggers_rollback(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """Timeout on leg 2 triggers reverse rollback of completed leg 1."""
+    call_count = 0
+
+    async def place_side_effect(order: Order) -> Trade:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            raise asyncio.TimeoutError()
+        return make_trade("binance")
+
+    exchange_a.place_order = AsyncMock(side_effect=place_side_effect)
+    orders = [
+        make_order("binance", OrderSide.BUY),
+        make_order("binance", OrderSide.SELL),
+        make_order("binance", OrderSide.BUY),
+    ]
+    result = await executor.execute_multi_leg(
+        exchange_id="binance", orders=orders, strategy_id="tri_1"
+    )
+    assert result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.ROLLBACK_FAILED)
+
+
+@pytest.mark.asyncio
+async def test_multi_leg_lock_released_on_success(executor: AtomicExecutor) -> None:
+    """Capital lock is released after successful multi-leg execution."""
+    orders = [make_order("binance", OrderSide.BUY) for _ in range(3)]
+    await executor.execute_multi_leg(
+        exchange_id="binance", orders=orders, strategy_id="tri_1"
+    )
+    assert not executor.is_locked("binance")
+
+
+@pytest.mark.asyncio
+async def test_multi_leg_lock_released_on_failure(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """Capital lock is released even when all legs fail immediately."""
+    exchange_a.place_order = AsyncMock(side_effect=RuntimeError("exchange down"))
+    orders = [make_order("binance", OrderSide.BUY) for _ in range(3)]
+    await executor.execute_multi_leg(
+        exchange_id="binance", orders=orders, strategy_id="tri_1"
+    )
+    assert not executor.is_locked("binance")
+
+
+def test_backward_compat_leg1_leg2_properties() -> None:
+    """result.leg1 == result.legs[0] and result.leg2 == result.legs[1]."""
+    order1 = make_order("binance", OrderSide.BUY)
+    order2 = make_order("binance", OrderSide.SELL)
+    lr1 = LegResult(order=order1)
+    lr2 = LegResult(order=order2)
+    result = ExecutionResult(status=ExecutionStatus.SUCCESS, legs=[lr1, lr2])
+    assert result.leg1 is lr1
+    assert result.leg2 is lr2
+    assert result.leg1 == result.legs[0]
+    assert result.leg2 == result.legs[1]
+
+
+def test_backward_compat_empty_legs() -> None:
+    """When legs=[], both leg1 and leg2 properties return None."""
+    result = ExecutionResult(status=ExecutionStatus.REJECTED, legs=[])
+    assert result.leg1 is None
+    assert result.leg2 is None

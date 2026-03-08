@@ -85,16 +85,18 @@ class PaperTradingRunner:
             pnl = 0.0
             if result.status == ExecutionStatus.SUCCESS:
                 # Estimate PnL from leg fills (LegResult has .trade with price/amount/fee)
-                if result.leg1 and result.leg1.trade and result.leg2 and result.leg2.trade:
-                    t1 = result.leg1.trade
-                    t2 = result.leg2.trade
+                filled_legs = [leg for leg in result.legs if leg.trade is not None]
+                if len(filled_legs) >= 2:
+                    t1 = filled_legs[0].trade
+                    t2 = filled_legs[-1].trade
                     l1_cost = float(t1.price * t1.amount)
                     l2_cost = float(t2.price * t2.amount)
                     if t1.side.value == "buy":
                         pnl = l2_cost - l1_cost
                     else:
                         pnl = l1_cost - l2_cost
-                    pnl -= float(t1.fee + t2.fee)
+                    total_fees = sum(float(leg.trade.fee) for leg in filled_legs)
+                    pnl -= total_fees
 
             self._metrics.record_trade(trade_req.strategy_id, pnl)
             self._trade_log.append({

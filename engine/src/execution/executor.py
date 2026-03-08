@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
@@ -57,14 +57,40 @@ class LegResult:
         return self.filled_amount / requested
 
 
-@dataclass
+@dataclass(init=False)
 class ExecutionResult:
     status: ExecutionStatus
-    leg1: LegResult | None
-    leg2: LegResult | None
-    rollback_cost: Decimal = Decimal("0")
-    error: str = ""
-    strategy_id: str = ""
+    legs: list[LegResult]
+    rollback_cost: Decimal
+    error: str
+    strategy_id: str
+
+    def __init__(
+        self,
+        status: ExecutionStatus,
+        legs: list[LegResult] | None = None,
+        leg1: LegResult | None = None,
+        leg2: LegResult | None = None,
+        rollback_cost: Decimal = Decimal("0"),
+        error: str = "",
+        strategy_id: str = "",
+    ) -> None:
+        self.status = status
+        if legs is not None:
+            self.legs = legs
+        else:
+            self.legs = [l for l in [leg1, leg2] if l is not None]
+        self.rollback_cost = rollback_cost
+        self.error = error
+        self.strategy_id = strategy_id
+
+    @property
+    def leg1(self) -> LegResult | None:
+        return self.legs[0] if len(self.legs) > 0 else None
+
+    @property
+    def leg2(self) -> LegResult | None:
+        return self.legs[1] if len(self.legs) > 1 else None
 
 
 @dataclass
@@ -206,8 +232,7 @@ class AtomicExecutor:
             logger.warning("same_exchange_rejected_halted strategy=%s", strategy_id)
             return ExecutionResult(
                 status=ExecutionStatus.REJECTED,
-                leg1=None,
-                leg2=None,
+                legs=[],
                 error="Engine halted",
                 strategy_id=strategy_id,
             )
@@ -220,8 +245,7 @@ class AtomicExecutor:
             )
             return ExecutionResult(
                 status=ExecutionStatus.REJECTED,
-                leg1=None,
-                leg2=None,
+                legs=[],
                 error=f"Exchange {exchange_id} health below threshold",
                 strategy_id=strategy_id,
             )
@@ -273,23 +297,159 @@ class AtomicExecutor:
                     )
                     return ExecutionResult(
                         status=ExecutionStatus.ROLLBACK_FAILED,
-                        leg1=leg1_result,
-                        leg2=leg2_result,
+                        legs=[leg1_result, leg2_result],
                         error="Rollback failed — engine halted",
                         strategy_id=strategy_id,
                     )
 
                 return ExecutionResult(
                     status=ExecutionStatus.ROLLED_BACK,
-                    leg1=leg1_result,
-                    leg2=leg2_result,
+                    legs=[leg1_result, leg2_result],
                     strategy_id=strategy_id,
                 )
 
             return ExecutionResult(
                 status=ExecutionStatus.SUCCESS,
-                leg1=leg1_result,
-                leg2=leg2_result,
+                legs=[leg1_result, leg2_result],
+                strategy_id=strategy_id,
+            )
+
+        finally:
+            self._release_lock(exchange_id)
+
+    # -----------------------------------------------------------------------
+    # MULTI-LEG SAME-EXCHANGE EXECUTION (sequential, N legs)
+    # -----------------------------------------------------------------------
+
+    async def execute_multi_leg(
+        self,
+        exchange_id: str,
+        orders: list[Order],
+        strategy_id: str,
+    ) -> ExecutionResult:
+        """
+        Sequential N-leg execution on a single exchange (e.g., triangular arbitrage).
+
+        Each order is placed in sequence. On any failure or partial fill below
+        threshold, all previously completed legs are rolled back in reverse order.
+        """
+        if self._check_halt():
+            logger.warning("multi_leg_rejected_halted strategy=%s", strategy_id)
+            return ExecutionResult(
+                status=ExecutionStatus.REJECTED,
+                legs=[],
+                error="Engine halted",
+                strategy_id=strategy_id,
+            )
+
+        if not self._check_health(exchange_id):
+            logger.warning(
+                "multi_leg_rejected_health exchange=%s strategy=%s",
+                exchange_id, strategy_id,
+            )
+            return ExecutionResult(
+                status=ExecutionStatus.REJECTED,
+                legs=[],
+                error=f"Exchange {exchange_id} health below threshold",
+                strategy_id=strategy_id,
+            )
+
+        adapter = self._exchanges[exchange_id]
+        await self._acquire_lock(exchange_id)
+
+        completed: list[LegResult] = []
+
+        try:
+            for i, order in enumerate(orders):
+                error_msg: str | None = None
+                trade: Trade | None = None
+                try:
+                    trade = await self._place_with_timeout(adapter, order)
+                except asyncio.TimeoutError:
+                    error_msg = "timeout"
+                    logger.error(
+                        "multi_leg_timeout leg=%d exchange=%s strategy=%s",
+                        i, exchange_id, strategy_id,
+                    )
+                except Exception as exc:
+                    error_msg = str(exc)
+                    logger.error(
+                        "multi_leg_failed leg=%d exchange=%s error=%s strategy=%s",
+                        i, exchange_id, exc, strategy_id,
+                    )
+
+                if error_msg is not None:
+                    # Rollback completed[K-1..0] in reverse order
+                    all_rb_ok = True
+                    for prev_leg in reversed(completed):
+                        rb_ok = await self._rollback_order(
+                            exchange_id, prev_leg.order,
+                            filled=True, filled_amount=prev_leg.filled_amount,
+                        )
+                        if not rb_ok:
+                            all_rb_ok = False
+                    if not all_rb_ok:
+                        halt_local()
+                        logger.critical(
+                            "multi_leg_rollback_failed HALT_SET exchange=%s strategy=%s",
+                            exchange_id, strategy_id,
+                        )
+                        return ExecutionResult(
+                            status=ExecutionStatus.ROLLBACK_FAILED,
+                            legs=completed,
+                            error=f"Rollback failed — engine halted. Leg {i}: {error_msg}",
+                            strategy_id=strategy_id,
+                        )
+                    return ExecutionResult(
+                        status=ExecutionStatus.ROLLED_BACK,
+                        legs=completed,
+                        error=f"Leg {i} failed: {error_msg}",
+                        strategy_id=strategy_id,
+                    )
+
+                leg_result = LegResult(order=order, trade=trade)
+                completed.append(leg_result)
+
+                fill_ratio = leg_result.fill_ratio(order.amount)
+                if fill_ratio <= self._config.partial_fill_threshold:
+                    logger.warning(
+                        "multi_leg_partial_below_threshold leg=%d ratio=%s strategy=%s",
+                        i, fill_ratio, strategy_id,
+                    )
+                    all_rb_ok = True
+                    for prev_leg in reversed(completed):
+                        rb_ok = await self._rollback_order(
+                            exchange_id, prev_leg.order,
+                            filled=True, filled_amount=prev_leg.filled_amount,
+                        )
+                        if not rb_ok:
+                            all_rb_ok = False
+                    if not all_rb_ok:
+                        halt_local()
+                        logger.critical(
+                            "multi_leg_partial_rollback_failed HALT_SET exchange=%s strategy=%s",
+                            exchange_id, strategy_id,
+                        )
+                        return ExecutionResult(
+                            status=ExecutionStatus.ROLLBACK_FAILED,
+                            legs=completed,
+                            error=f"Rollback failed — engine halted. Leg {i} partial fill {fill_ratio:.2%}",
+                            strategy_id=strategy_id,
+                        )
+                    return ExecutionResult(
+                        status=ExecutionStatus.ROLLED_BACK,
+                        legs=completed,
+                        error=f"Leg {i} partial fill {fill_ratio:.2%} below threshold",
+                        strategy_id=strategy_id,
+                    )
+
+            logger.info(
+                "multi_leg_success legs=%d strategy=%s",
+                len(completed), strategy_id,
+            )
+            return ExecutionResult(
+                status=ExecutionStatus.SUCCESS,
+                legs=completed,
                 strategy_id=strategy_id,
             )
 
@@ -323,7 +483,7 @@ class AtomicExecutor:
         if adapter_a is None or adapter_b is None:
             return ExecutionResult(
                 status=ExecutionStatus.REJECTED,
-                leg1=None, leg2=None,
+                legs=[],
                 error=f"Unknown exchange(s): {ex_a_id}, {ex_b_id}",
                 strategy_id=strategy_id,
             )
@@ -334,7 +494,7 @@ class AtomicExecutor:
         if self._check_halt():
             return ExecutionResult(
                 status=ExecutionStatus.REJECTED,
-                leg1=None, leg2=None,
+                legs=[],
                 error="Engine halted",
                 strategy_id=strategy_id,
             )
@@ -343,14 +503,14 @@ class AtomicExecutor:
         if not self._check_health(ex_a_id):
             return ExecutionResult(
                 status=ExecutionStatus.REJECTED,
-                leg1=None, leg2=None,
+                legs=[],
                 error=f"Exchange {ex_a_id} health below threshold",
                 strategy_id=strategy_id,
             )
         if not self._check_health(ex_b_id):
             return ExecutionResult(
                 status=ExecutionStatus.REJECTED,
-                leg1=None, leg2=None,
+                legs=[],
                 error=f"Exchange {ex_b_id} health below threshold",
                 strategy_id=strategy_id,
             )
@@ -388,8 +548,7 @@ class AtomicExecutor:
                 await self._rollback_order(ex_a_id, leg1_order)
                 return ExecutionResult(
                     status=ExecutionStatus.ROLLED_BACK,
-                    leg1=LegResult(order=leg1_order, error="timeout"),
-                    leg2=None,
+                    legs=[LegResult(order=leg1_order, error="timeout")],
                     error="Leg 1 timeout",
                     strategy_id=strategy_id,
                 )
@@ -397,8 +556,7 @@ class AtomicExecutor:
                 logger.error("leg1_failed exchange=%s error=%s strategy=%s", ex_a_id, exc, strategy_id)
                 return ExecutionResult(
                     status=ExecutionStatus.ROLLED_BACK,
-                    leg1=LegResult(order=leg1_order, error=str(exc)),
-                    leg2=None,
+                    legs=[LegResult(order=leg1_order, error=str(exc))],
                     error=f"Leg 1 failed: {exc}",
                     strategy_id=strategy_id,
                 )
@@ -422,15 +580,13 @@ class AtomicExecutor:
                     )
                     return ExecutionResult(
                         status=ExecutionStatus.ROLLBACK_FAILED,
-                        leg1=leg1_result,
-                        leg2=None,
+                        legs=[leg1_result],
                         error=f"Leg 1 partial rollback failed — engine halted",
                         strategy_id=strategy_id,
                     )
                 return ExecutionResult(
                     status=ExecutionStatus.ROLLED_BACK,
-                    leg1=leg1_result,
-                    leg2=None,
+                    legs=[leg1_result],
                     error=f"Leg 1 partial fill {leg1_ratio:.2%} below threshold",
                     strategy_id=strategy_id,
                 )
@@ -491,8 +647,7 @@ class AtomicExecutor:
             )
             return ExecutionResult(
                 status=ExecutionStatus.SUCCESS,
-                leg1=leg1_result,
-                leg2=leg2_result,
+                legs=[leg1_result, leg2_result],
                 strategy_id=strategy_id,
             )
 
@@ -534,16 +689,14 @@ class AtomicExecutor:
             )
             return ExecutionResult(
                 status=ExecutionStatus.ROLLBACK_FAILED,
-                leg1=leg1_result,
-                leg2=leg2_result,
+                legs=[leg1_result, leg2_result],
                 error=f"Rollback failed on {ex_a_id} — engine halted. Reason: {reason}",
                 strategy_id=strategy_id,
             )
 
         return ExecutionResult(
             status=ExecutionStatus.ROLLED_BACK,
-            leg1=leg1_result,
-            leg2=leg2_result,
+            legs=[leg1_result, leg2_result],
             error=reason,
             strategy_id=strategy_id,
         )

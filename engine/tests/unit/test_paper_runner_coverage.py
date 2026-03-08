@@ -53,12 +53,13 @@ def _make_trade(price: Decimal, amount: Decimal, side_value: str, fee: Decimal =
 
 
 def _make_execution_result(status: ExecutionStatus, t1=None, t2=None) -> ExecutionResult:
-    result = MagicMock(spec=ExecutionResult)
+    result = MagicMock()
     result.status = status
     result.leg1 = MagicMock()
     result.leg1.trade = t1
     result.leg2 = MagicMock()
     result.leg2.trade = t2
+    result.legs = [result.leg1, result.leg2]
     return result
 
 

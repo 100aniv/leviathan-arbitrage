@@ -534,12 +534,13 @@ class TestPaperRunnerOnResultBranches:
         trade_req = MagicMock()
         trade_req.strategy_id = "test_sell"
 
-        exec_result = MagicMock(spec=ExecutionResult)
+        exec_result = MagicMock()
         exec_result.status = ExecutionStatus.SUCCESS
         exec_result.leg1 = MagicMock()
         exec_result.leg1.trade = t1
         exec_result.leg2 = MagicMock()
         exec_result.leg2.trade = t2
+        exec_result.legs = [exec_result.leg1, exec_result.leg2]
 
         captured["cb"](trade_req, exec_result)
 
@@ -595,12 +596,13 @@ class TestPaperRunnerOnResultBranches:
         trade_req = MagicMock()
         trade_req.strategy_id = "verbose_arb"
 
-        exec_result = MagicMock(spec=ExecutionResult)
+        exec_result = MagicMock()
         exec_result.status = ExecutionStatus.SUCCESS
         exec_result.leg1 = MagicMock()
         exec_result.leg1.trade = t1
         exec_result.leg2 = MagicMock()
         exec_result.leg2.trade = t2
+        exec_result.legs = [exec_result.leg1, exec_result.leg2]
 
         captured["cb"](trade_req, exec_result)
         out = capsys.readouterr().out
