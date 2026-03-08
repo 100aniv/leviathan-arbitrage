@@ -617,7 +617,7 @@
       "title": "Exchange Status 대시보드",
       "phase": "D",
       "priority": 40,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/pages/exchanges.tsx"
       ],
@@ -625,7 +625,8 @@
         "WS 연결 상태, latency, orderbook depth 표시",
         "거래소별 잔고 표시 (Live 모드용)",
         "npm run build 성공"
-      ]
+      ],
+      "notes": "Phase D: Exchange Status dashboard. GET /api/v1/exchanges. 3303 tests PASS, npm build OK."
     },
     {
       "id": "US-041",

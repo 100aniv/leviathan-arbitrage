@@ -159,6 +159,18 @@ export interface FundingRate {
   updated_at: string;
 }
 
+// ─── Exchange Status Types ────────────────────────────────────────────────────
+
+export interface ExchangeStatus {
+  exchange_id: string;
+  connected: boolean;
+  latency_ms: number;
+  orderbook_depth: number;
+  symbols_count: number;
+  last_update: string;
+  balance?: Record<string, number>;
+}
+
 // ─── UI State Types ───────────────────────────────────────────────────────────
 
 export type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
