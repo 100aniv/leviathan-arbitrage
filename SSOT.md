@@ -26,12 +26,12 @@
 ## 2. 현재 상태
 
 ```
-Phase:        7.3k (Shadow Runtime & Tuning)
-테스트:       3,016 passed, 0 failed
-커버리지:     88%
+Phase:        B-2 (Futures Infrastructure)
+테스트:       3,135 passed, 0 failed
+커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    e273d9a (Phase 7.3i: 60min shadow)
+최신 커밋:    Phase B-2: GAP 5+6 resolved — FundingRateCollector + futures pipeline
 ```
 
 ### Shadow 최신 결과 (Phase 7.3k, 10min)
@@ -111,10 +111,10 @@ Engine.run()
 | # | 전략 | 파일 | 상태 | 차단 GAP | 예상 연간수익 |
 |---|------|------|------|---------|------------|
 | 1 | cross_exchange | `strategies/cross_exchange.py` | **활성** | GAP 1,2 (strategy 우회) | 5-25% |
-| 2 | spot_futures | `strategies/spot_futures.py` | 비활성 | GAP 5 (futures data), GAP 6 (funding rate) | 8-30% |
-| 3 | futures_futures | `strategies/futures_futures.py` | 비활성 | GAP 5 (futures data) | 5-15% |
+| 2 | spot_futures | `strategies/spot_futures.py` | 비활성 | GAP 1,2 (strategy 우회) | 8-30% |
+| 3 | futures_futures | `strategies/futures_futures.py` | 비활성 | GAP 1,2 (strategy 우회) | 5-15% |
 | 4 | triangular | `strategies/triangular.py` | 비활성 | GAP 7 (scanner), GAP 4 (3-leg executor) | 2-10% |
-| 5 | funding_rate | `strategies/funding_rate.py` | 비활성 | GAP 6 (funding rate collector) | 15-30% |
+| 5 | funding_rate | `strategies/funding_rate.py` | 비활성 | GAP 1,2 (strategy 우회) | 15-30% |
 | 6 | statistical_arb | `strategies/stat_arb.py` | 비활성 | GAP 3 (signal producer), NOT_READY | 11-16% |
 | 7 | latency_arb | `strategies/latency_arb.py` | 비활성 | Python 속도 한계 (Phase F) | 20-100%+ |
 | 8 | cex_dex | `strategies/cex_dex.py` | 조건부 | GAP 8 (DEX stub, Phase F) | 10-50% |
@@ -286,20 +286,20 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-008: 기존 문서 아카이브
 - [x] US-009: Phase A 통합 검증
 
-### Phase B-1: Foundation (GAP 9,10) — US-010~013
+### Phase B-1: Foundation (GAP 9,10) — US-010~013 — ☑ ALL PASS
 
-- [ ] US-010: okx/bitget futures 수수료 추가 + unknown exchange fallback
-- [ ] US-011: estimate_cost() 브릿지 메서드 (Protocol 정합성)
-- [ ] US-012: 7개 전략 estimate_cost() 통합 테스트
-- [ ] US-013: Bithumb 초기 스냅샷 구현
+- [x] US-010: okx/bitget futures 수수료 추가 (DEFAULT_FEES + WITHDRAWAL_FEES)
+- [x] US-011: Unknown exchange fallback (ValueError → 0.25% + logging)
+- [x] US-012: estimate_cost() Protocol 브릿지 (CostCalculator)
+- [x] US-013: 7개 전략 통합 테스트 (+47 tests, 3063 total)
 
-### Phase B-2: Futures Infrastructure (GAP 5,6) — US-014~018
+### Phase B-2: Futures Infrastructure (GAP 5,6) — US-014~018 ✅ ALL PASS
 
-- [ ] US-014: BinanceFuturesCollector (WS orderbook)
-- [ ] US-015: FundingRateCollector (4 거래소 REST)
-- [ ] US-016: CollectorManager futures 등록
-- [ ] US-017: Shadow mode futures orderbook store
-- [ ] US-018: Futures 데이터 흐름 통합 테스트
+- [x] US-014: BinanceFuturesCollector 검증 (17 unit tests)
+- [x] US-015: CollectorManager futures 등록 + Shadow 분리 검증 (13 unit tests)
+- [x] US-016: FundingRateCollector 구현 — 4 거래소 REST (23 unit tests)
+- [x] US-017: Engine.run()에 FundingRateCollector 연결 (shadow.py + main.py)
+- [x] US-018: Futures + FundingRate 통합 테스트 (19 integration tests)
 
 ### Phase B-3: Signal Production (GAP 7,3,2) — US-019~022
 
@@ -398,12 +398,12 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | **2** | SignalGenerator가 cross_exchange 신호만 생산 | `signal.py:27,80-204` | B-4 | M |
 | **3** | MultiStrategySignalProducer Paper 모드에서만 동작 | `main.py:842-873` | B-3 | L |
 | **4** | AtomicExecutor 2-Leg만 지원 (triangular=3-Leg) | `executor.py:60-66,186-297` | B-5 | L |
-| **5** | Futures 데이터 파이프라인 부재 | `collectors/manager.py:28-29` | B-2 | L |
-| **6** | Funding Rate Collector 부재 | `funding_rate.py:62-66` | B-2 | M |
+| **5** | ~~Futures 데이터 파이프라인 부재~~ | `collectors/binance_futures_collector.py` | ~~B-2~~ **RESOLVED** | L |
+| **6** | ~~Funding Rate Collector 부재~~ | `collectors/funding_rate_collector.py` | ~~B-2~~ **RESOLVED** | M |
 | **7** | Triangular Scanner 부재 | `triangular.py:63-68` | B-3 | M |
 | **8** | DEX Adapter 완전 Stub | `cex_dex.py:30-68` | F (미래) | XL |
-| **9** | Fee Model에 okx/bitget futures 누락 + ValueError | `fee_model.py:164-166` | B-1 | S |
-| **10** | CostCalculator Protocol 불일치 (estimate_cost 없음) | `cost_calculator.py` vs `base.py:46-58` | B-1 | M |
+| **9** | ~~Fee Model에 okx/bitget futures 누락 + ValueError~~ | `fee_model.py` | ~~B-1~~ **RESOLVED** | S |
+| **10** | ~~CostCalculator Protocol 불일치 (estimate_cost 없음)~~ | `cost_calculator.py` | ~~B-1~~ **RESOLVED** | M |
 
 ### HIGH
 
@@ -431,6 +431,8 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 | 이슈 | 해결 |
 |------|------|
+| GAP 5: Futures 데이터 파이프라인 | BinanceFuturesCollector 검증 + Shadow futures_books 분리 (Phase B-2) |
+| GAP 6: Funding Rate Collector | 4 거래소 REST collector + Engine wiring (Phase B-2) |
 | MIN_EDGE_BPS 최적화 | 5bps 확정 (Phase 7.3h) |
 | _krw_rate=0 ZeroDivisionError | fallback 1380 가드 추가 (Phase 7.3f) |
 | KRW/USDT 정적 환율 | dual-source 동적 조회 구현 (Phase 7.3d) |

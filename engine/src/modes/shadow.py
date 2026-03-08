@@ -155,6 +155,7 @@ class ShadowMode:
         symbols: list[str] | None = None,
         exchanges: list[str] | None = None,
         multi_signal_producer: Any | None = None,
+        funding_rate_collector: Any | None = None,
     ) -> None:
         """Initialise the shadow mode orchestrator.
 
@@ -171,9 +172,13 @@ class ShadowMode:
             multi_signal_producer: Optional MultiStrategySignalProducer for
                                additional strategy signals (triangular, stat_arb,
                                latency_arb, spot_futures, funding_rate, futures_futures).
+            funding_rate_collector: Optional FundingRateCollector. If provided,
+                               replaces the inline funding-rate HTTP loop. If None,
+                               falls back to the built-in Binance+Bybit polling.
         """
         self._signal_generator = signal_generator
         self._multi_signal_producer = multi_signal_producer
+        self._funding_rate_collector = funding_rate_collector
 
         # Shadow mode: PaperExecutor with realistic slippage, zero flat fee.
         # k=1.0 matches CEXOrderbookSlippage's default (~10bps/side = 20bps round-trip).
@@ -924,33 +929,43 @@ class ShadowMode:
             while self._running:
                 rates_by_exchange: dict[str, dict[str, float]] = {}
 
-                # Binance Futures funding rates
-                try:
-                    resp = await self._http_client.get(
-                        "https://fapi.binance.com/fapi/v1/premiumIndex",
-                        params={"symbol": "BTCUSDT"},
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        rate = float(data.get("lastFundingRate", 0))
-                        rates_by_exchange.setdefault("binance_futures", {})["BTC/USDT"] = rate
-                except Exception as exc:
-                    logger.debug("shadow_mode.funding_binance_failed", error=str(exc))
+                if self._funding_rate_collector is not None:
+                    # Delegate to injected FundingRateCollector
+                    try:
+                        fetched = await self._funding_rate_collector.poll_once()
+                        for ex_id, sym_map in fetched.items():
+                            for sym, entry in sym_map.items():
+                                rates_by_exchange.setdefault(ex_id, {})[sym] = entry.rate
+                    except Exception as exc:
+                        logger.debug("shadow_mode.funding_collector_failed", error=str(exc))
+                else:
+                    # Inline fallback: Binance Futures funding rates
+                    try:
+                        resp = await self._http_client.get(
+                            "https://fapi.binance.com/fapi/v1/premiumIndex",
+                            params={"symbol": "BTCUSDT"},
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            rate = float(data.get("lastFundingRate", 0))
+                            rates_by_exchange.setdefault("binance_futures", {})["BTC/USDT"] = rate
+                    except Exception as exc:
+                        logger.debug("shadow_mode.funding_binance_failed", error=str(exc))
 
-                # Bybit funding rates
-                try:
-                    resp = await self._http_client.get(
-                        "https://api.bybit.com/v5/market/tickers",
-                        params={"category": "linear", "symbol": "BTCUSDT"},
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        result_list = data.get("result", {}).get("list", [])
-                        if result_list:
-                            rate = float(result_list[0].get("fundingRate", 0))
-                            rates_by_exchange.setdefault("bybit", {})["BTC/USDT"] = rate
-                except Exception as exc:
-                    logger.debug("shadow_mode.funding_bybit_failed", error=str(exc))
+                    # Inline fallback: Bybit funding rates
+                    try:
+                        resp = await self._http_client.get(
+                            "https://api.bybit.com/v5/market/tickers",
+                            params={"category": "linear", "symbol": "BTCUSDT"},
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            result_list = data.get("result", {}).get("list", [])
+                            if result_list:
+                                rate = float(result_list[0].get("fundingRate", 0))
+                                rates_by_exchange.setdefault("bybit", {})["BTC/USDT"] = rate
+                    except Exception as exc:
+                        logger.debug("shadow_mode.funding_bybit_failed", error=str(exc))
 
                 # Update cached rates
                 self._funding_rates.update(rates_by_exchange)

@@ -475,7 +475,7 @@ class TestCheck4NetExposureCorrelation:
             await cb.record_loss()
 
         import asyncio
-        asyncio.get_event_loop().run_until_complete(_setup())
+        asyncio.run(_setup())
 
         guardian = RiskGuardian(
             circuit_breaker=cb,

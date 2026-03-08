@@ -976,6 +976,7 @@ class Engine:
         paper executor (power-law slippage), market recorder, and telegram alerter.
         Optionally starts a LiveGate auto-evaluation loop.
         """
+        from src.collectors.funding_rate_collector import FundingRateCollector
         from src.modes.shadow import ShadowMode
 
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
@@ -989,6 +990,12 @@ class Engine:
             latency_tracker=getattr(self, "_latency_tracker", None),
         )
 
+        # Create FundingRateCollector with shared HTTP client (4 exchanges, all symbols)
+        funding_rate_collector = FundingRateCollector(
+            symbols=symbols,
+            http_client=getattr(self, "_http_client", None),
+        )
+
         self._shadow_mode = ShadowMode(
             signal_generator=self._signal_generator,
             paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
@@ -998,6 +1005,7 @@ class Engine:
             symbols=symbols,
             exchanges=exchanges,
             multi_signal_producer=multi_signal_producer,
+            funding_rate_collector=funding_rate_collector,
         )
 
         await self._shadow_mode.start()

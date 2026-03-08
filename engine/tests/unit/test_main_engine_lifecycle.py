@@ -97,7 +97,12 @@ class TestEngineRun:
 class TestSetupSignalHandlers:
     def test_setup_signal_handlers_nonfatal(self):
         engine = _make_engine()
-        engine._setup_signal_handlers()  # must not raise
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            engine._setup_signal_handlers()  # must not raise
+        finally:
+            loop.close()
 
     def test_setup_signal_handlers_notimplemented_nonfatal(self):
         engine = _make_engine()
