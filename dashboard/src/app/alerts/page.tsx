@@ -129,7 +129,7 @@ export default function AlertsPage() {
       </div>
 
       {/* Summary badges */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {(["critical", "warning", "info"] as Alert["severity"][]).map((sev) => {
           const s = SEVERITY_STYLES[sev];
           const count = alerts.filter((a) => a.severity === sev).length;

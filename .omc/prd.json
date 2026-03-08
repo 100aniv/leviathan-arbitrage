@@ -633,7 +633,7 @@
       "title": "Mobile Responsive + 전략별 API endpoint",
       "phase": "D",
       "priority": 41,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/**/*.tsx"
       ],

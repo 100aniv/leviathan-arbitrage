@@ -4,8 +4,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+
+from src.api.auth import require_auth
 
 logger = logging.getLogger(__name__)
 
@@ -102,3 +104,18 @@ async def update_strategy_config(
         strategy["config"] = {}
     strategy["config"].update(body)
     return JSONResponse({"id": strategy_id, "config": strategy["config"]})
+
+
+@router.get("/{strategy_id}/trades", dependencies=[Depends(require_auth)])
+async def get_strategy_trades(
+    strategy_id: str,
+    request: Request,
+    limit: int = Query(50, ge=1, le=1000),
+) -> JSONResponse:
+    """Return trade history filtered by strategy_id."""
+    ctx = request.app.state.engine_context
+    trades = [
+        t for t in ctx.trade_history
+        if t.get("strategy_id") == strategy_id
+    ]
+    return JSONResponse(trades[-limit:])

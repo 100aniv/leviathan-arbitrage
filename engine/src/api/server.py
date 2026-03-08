@@ -214,4 +214,25 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
             logger.warning("WebSocket feed error: %s", exc)
             ws_manager.disconnect(websocket)
 
+    @app.websocket("/ws/strategies")
+    async def websocket_strategies_endpoint(websocket: WebSocket) -> None:
+        await ws_manager.connect(websocket)
+        try:
+            from src.api.routes.strategies import _get_strategy_list
+            await ws_manager.send_personal(websocket, {
+                "type": "state_update",
+                "strategies": _get_strategy_list(context),
+            })
+            while True:
+                data = await websocket.receive_text()
+                await ws_manager.send_personal(websocket, {
+                    "type": "state_update",
+                    "strategies": _get_strategy_list(context),
+                })
+        except WebSocketDisconnect:
+            ws_manager.disconnect(websocket)
+        except Exception as exc:
+            logger.warning("WebSocket strategies error: %s", exc)
+            ws_manager.disconnect(websocket)
+
     return app
