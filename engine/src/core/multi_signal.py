@@ -52,6 +52,10 @@ class MultiSignalConfig:
     # Latency
     latency_record_interval: float = 1.0  # how often to record latency samples
 
+    # Trade sizing: fixed USD notional for all multi-strategy signals
+    # volume = notional / price (e.g., $500 / $90,000 BTC = 0.0056 BTC)
+    default_notional_usd: Decimal = Decimal("500")
+
 
 class MultiStrategySignalProducer:
     """
@@ -79,6 +83,17 @@ class MultiStrategySignalProducer:
         self._funding_rates: dict[str, dict[str, float]] = {}   # exchange -> symbol -> rate
         self._last_signal: dict[str, float] = {}  # dedup
         self._exchange_timestamps: dict[str, float] = {}  # for latency tracking
+
+    def _volume_from_price(self, price: Decimal) -> Decimal:
+        """Compute trade volume from price using fixed USD notional.
+
+        Returns notional / price, e.g. $500 / $90,000 = 0.00556 BTC.
+        Ensures minimum volume of 0.0001 to avoid dust orders.
+        """
+        if price <= 0:
+            return Decimal("0.0001")
+        vol = self._config.default_notional_usd / price
+        return max(vol, Decimal("0.0001"))
 
     def on_orderbook(
         self,
@@ -134,7 +149,7 @@ class MultiStrategySignalProducer:
             sell_price=max(spot_price, futures_price),
             spread_pct=abs(basis) / spot_price,
             confidence=min(1.0, float(abs(basis_bps)) / 100.0),
-            volume=Decimal("1"),
+            volume=self._volume_from_price(spot_price),
             timestamp=datetime.now(timezone.utc),
             metadata={
                 "basis_bps": str(basis_bps),
@@ -176,7 +191,7 @@ class MultiStrategySignalProducer:
             sell_price=price,
             spread_pct=Decimal(str(diff)),
             confidence=min(1.0, float(diff_bps) / 50.0),
-            volume=Decimal("1"),
+            volume=self._volume_from_price(price),
             timestamp=datetime.now(timezone.utc),
             metadata={
                 "funding_rate_sell": str(high_rate),
@@ -215,7 +230,7 @@ class MultiStrategySignalProducer:
             sell_price=prices[0] * (Decimal("1") + profit_pct),
             spread_pct=profit_pct,
             confidence=min(1.0, float(profit_bps) / 50.0),
-            volume=Decimal("1"),
+            volume=self._volume_from_price(prices[0]),
             timestamp=datetime.now(timezone.utc),
             metadata={
                 "path": path,
@@ -223,6 +238,138 @@ class MultiStrategySignalProducer:
                 "sides": sides,
                 "prices": [str(p) for p in prices],
                 "exchange_id": exchange_id,
+            },
+        )
+        await self._publish(signal)
+        return signal
+
+    async def produce_statistical_arb_signal(
+        self,
+        symbol: str,
+        buy_exchange: str,
+        sell_exchange: str,
+        buy_price: Decimal,
+        sell_price: Decimal,
+        z_score: float,
+    ) -> Optional[Signal]:
+        """Generate statistical arbitrage signal based on z-score deviation."""
+        if buy_price <= 0 or sell_price <= 0:
+            return None
+
+        spread = sell_price - buy_price
+        spread_pct = spread / buy_price if buy_price > 0 else Decimal("0")
+
+        key = f"sa:{symbol}:{buy_exchange}:{sell_exchange}"
+        if self._is_duplicate(key, cooldown=30.0):
+            return None
+        self._mark_emitted(key)
+
+        signal = Signal(
+            strategy_id="statistical_arb_zscore",
+            symbol=symbol,
+            buy_exchange=buy_exchange,
+            sell_exchange=sell_exchange,
+            buy_price=buy_price,
+            sell_price=sell_price,
+            spread_pct=abs(spread_pct),
+            confidence=min(1.0, abs(z_score) / 4.0),
+            volume=self._volume_from_price(buy_price),
+            timestamp=datetime.now(timezone.utc),
+            metadata={
+                "z_score": str(z_score),
+                "spread_pct": str(spread_pct),
+            },
+        )
+        await self._publish(signal)
+        return signal
+
+    async def produce_latency_arb_signal(
+        self,
+        symbol: str,
+        fast_exchange: str,
+        slow_exchange: str,
+        fast_price: Decimal,
+        slow_price: Decimal,
+        latency_diff_ms: float,
+    ) -> Optional[Signal]:
+        """Generate latency arbitrage signal when exchange update delay is significant."""
+        if fast_price <= 0 or slow_price <= 0:
+            return None
+
+        spread = fast_price - slow_price
+        spread_pct = abs(spread) / slow_price if slow_price > 0 else Decimal("0")
+
+        key = f"la:{symbol}:{fast_exchange}:{slow_exchange}"
+        if self._is_duplicate(key, cooldown=10.0):
+            return None
+        self._mark_emitted(key)
+
+        # Buy on slow (stale price), sell on fast (fresh price) if fast > slow
+        if fast_price > slow_price:
+            buy_ex, sell_ex = slow_exchange, fast_exchange
+            buy_p, sell_p = slow_price, fast_price
+        else:
+            buy_ex, sell_ex = fast_exchange, slow_exchange
+            buy_p, sell_p = fast_price, slow_price
+
+        signal = Signal(
+            strategy_id="latency_arb",
+            symbol=symbol,
+            buy_exchange=buy_ex,
+            sell_exchange=sell_ex,
+            buy_price=buy_p,
+            sell_price=sell_p,
+            spread_pct=spread_pct,
+            confidence=min(1.0, latency_diff_ms / 500.0),
+            volume=self._volume_from_price(buy_p),
+            timestamp=datetime.now(timezone.utc),
+            metadata={
+                "latency_diff_ms": str(latency_diff_ms),
+                "fast_exchange": fast_exchange,
+                "slow_exchange": slow_exchange,
+            },
+        )
+        await self._publish(signal)
+        return signal
+
+    async def produce_futures_futures_signal(
+        self,
+        symbol: str,
+        buy_exchange: str,
+        sell_exchange: str,
+        buy_price: Decimal,
+        sell_price: Decimal,
+    ) -> Optional[Signal]:
+        """Generate futures-futures spread signal across exchanges."""
+        if buy_price <= 0 or sell_price <= 0:
+            return None
+
+        spread = sell_price - buy_price
+        spread_bps = (spread / buy_price) * Decimal("10000") if buy_price > 0 else Decimal("0")
+
+        if abs(spread_bps) < Decimal("10"):
+            return None
+
+        key = f"ff:{symbol}:{buy_exchange}:{sell_exchange}"
+        if self._is_duplicate(key, cooldown=2.0):
+            return None
+        self._mark_emitted(key)
+
+        signal = Signal(
+            strategy_id="futures_futures_spread",
+            symbol=symbol,
+            buy_exchange=buy_exchange,
+            sell_exchange=sell_exchange,
+            buy_price=buy_price,
+            sell_price=sell_price,
+            spread_pct=abs(spread) / buy_price if buy_price > 0 else Decimal("0"),
+            confidence=min(1.0, float(abs(spread_bps)) / 100.0),
+            volume=self._volume_from_price(buy_price),
+            timestamp=datetime.now(timezone.utc),
+            metadata={
+                "spread_bps": str(spread_bps),
+                "buy_futures_exchange": buy_exchange,
+                "sell_futures_exchange": sell_exchange,
             },
         )
         await self._publish(signal)

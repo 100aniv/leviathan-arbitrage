@@ -25,7 +25,8 @@ async def _discover_symbols() -> list[str]:
     """Auto-discover common symbols across configured exchanges."""
     from src.collectors.symbol_discovery import discover_common_symbols
     exchanges = json.loads(os.environ.get("TRADING_ACTIVE_EXCHANGES", '["binance","bybit","okx","bitget","upbit","bithumb","coinone"]'))
-    symbols = await discover_common_symbols(exchanges=exchanges, min_exchanges=len(exchanges))
+    # min_exchanges=3: require symbol on at least 3 exchanges (including Korean KRW-mapped)
+    symbols = await discover_common_symbols(exchanges=exchanges, min_exchanges=3)
     return symbols
 
 
@@ -93,9 +94,15 @@ async def _timer(engine: Engine, duration_minutes: float):
                     s = shadow._stats
                     cm = shadow._collector_manager
                     connected = cm.connected_count if cm else 0
+                    wr = s.trades_won / s.trades_executed * 100 if s.trades_executed > 0 else 0
                     print(f"\n[{elapsed:.0f}s] signals={s.signals_detected} trades={s.trades_executed} "
-                          f"pnl={s.total_pnl:.4f} drawdown={s.max_drawdown:.4f} "
+                          f"wr={wr:.0f}% pnl={s.total_pnl:.4f} drawdown={s.max_drawdown:.4f} "
                           f"collectors={connected}")
+                    # Per-strategy mini report
+                    if s.by_strategy:
+                        for sid, ss in sorted(s.by_strategy.items(), key=lambda x: -x[1].trades):
+                            swr = ss.wins / ss.trades * 100 if ss.trades > 0 else 0
+                            print(f"    {sid}: {ss.trades}t/{swr:.0f}%wr/{ss.pnl:+.4f}pnl")
                     try:
                         _print_spread_report(shadow)
                     except Exception as exc:
@@ -114,9 +121,20 @@ async def _timer(engine: Engine, duration_minutes: float):
         print(f"Shadow Runtime Complete — {elapsed:.1f}s")
         print(f"  Signals: {s.signals_detected}")
         print(f"  Trades:  {s.trades_executed} (won: {s.trades_won}, lost: {s.trades_lost})")
+        wr = s.trades_won / s.trades_executed * 100 if s.trades_executed > 0 else 0
+        print(f"  WinRate: {wr:.1f}%")
         print(f"  PnL:     {s.total_pnl:.6f}")
         print(f"  Peak:    {s.peak_pnl:.6f}")
         print(f"  Drawdown:{s.max_drawdown:.6f}")
+
+        # Per-strategy breakdown
+        if s.by_strategy:
+            print(f"\n  {'Strategy':<28} {'Trades':>6} {'Win':>4} {'Loss':>5} {'WR%':>6} {'PnL':>12}")
+            print(f"  {'-'*65}")
+            for strat_id, ss in sorted(s.by_strategy.items(), key=lambda x: -x[1].pnl):
+                swr = ss.wins / ss.trades * 100 if ss.trades > 0 else 0
+                print(f"  {strat_id:<28} {ss.trades:>6} {ss.wins:>4} {ss.losses:>5} {swr:>5.1f}% {ss.pnl:>+11.6f}")
+
         try:
             _print_spread_report(shadow)
         except Exception:

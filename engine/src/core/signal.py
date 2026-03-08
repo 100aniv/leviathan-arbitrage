@@ -27,11 +27,12 @@ class SignalConfig:
     strategy_id: str = "cross_exchange_spot"
     min_edge: Decimal = Decimal("0.0001")     # minimum net profit as fraction of notional (1 bps)
     max_spread_pct: Decimal = Decimal("0.05") # max gross spread as fraction (5%) — reject data anomalies
-    cooldown_seconds: float = 1.0              # dedup suppression window
+    cooldown_seconds: float = 5.0              # dedup suppression window (5s prevents overtrading on marginal edges)
     max_rollback_cost_usd: Decimal = Decimal("50")
     default_adv: Decimal = Decimal("1000")
     default_sigma: Decimal = Decimal("0.001")
     min_price_usd: Decimal = Decimal("0.10")
+    max_book_age_seconds: float = 30.0  # reject orderbooks not updated within this window
 
 
 class SignalGenerator:
@@ -134,7 +135,20 @@ class SignalGenerator:
         if buy_book is None or sell_book is None:
             return None
 
-        # Friction filter
+        # Staleness gate — reject if either orderbook hasn't updated recently
+        now_mono = time.monotonic()
+        max_age = self._config.max_book_age_seconds
+        if max_age > 0:
+            for label, ob in [("buy", buy_book), ("sell", sell_book)]:
+                if ob.last_update_time > 0 and (now_mono - ob.last_update_time) > max_age:
+                    logger.debug(
+                        "stale_orderbook_rejected symbol=%s exchange=%s age=%.1fs",
+                        symbol, ob.exchange, now_mono - ob.last_update_time,
+                    )
+                    return None
+
+        # Friction filter — use actual base asset for network cost
+        transfer_coin = symbol.split("/")[0] if "/" in symbol else "XRP"
         try:
             friction = self._calc.calculate(
                 buy_exchange=buy_exchange,
@@ -146,6 +160,7 @@ class SignalGenerator:
                 sell_price=sell_price,
                 adv=self._config.default_adv,
                 sigma=self._config.default_sigma,
+                transfer_coin=transfer_coin,
             )
         except Exception as exc:
             logger.warning("Friction calculation failed for %s: %s", symbol, exc)

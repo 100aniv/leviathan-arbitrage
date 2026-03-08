@@ -554,10 +554,13 @@ class TestExecuteShadowTrade:
         sm = make_shadow_mode(paper_executor=paper_executor)
         await sm._execute_shadow_trade(make_signal())
 
-        # sell_proceeds - sell_fee - buy_cost - buy_fee
-        # = (50200 * 0.1 - 5) - (50000 * 0.1 + 5)
-        # = (5020 - 5) - (5000 + 5) = 5015 - 5005 = 10.0
-        assert abs(sm._stats.total_pnl - 10.0) < 1e-6
+        # Per-exchange FeeModel recalculates fees (Amendment 3D):
+        # buy_fee  = taker_fee("binance", 5000) = 5000 * 0.0010 = 5.00
+        # sell_fee = taker_fee("okx",     5020) = 5020 * 0.0010 = 5.02
+        # network  = network_cost("binance", "okx", "BTC")      = 1.39
+        #   (transfer_coin derived from signal symbol "BTC/USDT" → "BTC")
+        # net_pnl  = 5020 - 5.02 - 5000 - 5.00 - 1.39          = 8.59
+        assert abs(sm._stats.total_pnl - 8.59) < 1e-6
 
     @pytest.mark.asyncio
     async def test_execute_shadow_trade_does_not_raise_on_executor_error(self) -> None:

@@ -74,12 +74,14 @@ class CostCalculator:
         network_cost: Decimal = Decimal("0"),
         funding_cost: Decimal = Decimal("0"),
         opportunity_cost: Decimal = Decimal("0"),
+        transfer_coin: str = "XRP",
     ) -> None:
         self._fee_model = fee_model
         self._slippage_model = slippage_model or CEXOrderbookSlippage()
         self._network_cost = network_cost
         self._funding_cost = funding_cost
         self._opportunity_cost = opportunity_cost
+        self._transfer_coin = transfer_coin
         self._trade_history: deque[TradeOutcome] = deque(maxlen=self.ROLLBACK_WINDOW)
 
     def record_trade(self, outcome: TradeOutcome) -> None:
@@ -116,6 +118,7 @@ class CostCalculator:
         adv: Decimal = Decimal("1000"),
         sigma: Decimal = Decimal("0.001"),
         avg_rollback_cost: Decimal | None = None,
+        transfer_coin: str | None = None,
     ) -> FrictionCost:
         """
         Compute complete friction cost for one arbitrage trade leg.
@@ -151,12 +154,22 @@ class CostCalculator:
 
         rollback_cost_exp = self.expected_rollback_cost(avg_rollback_cost)
 
+        # Network cost: use static value if explicitly set (non-zero),
+        # otherwise compute dynamically from withdrawal fee lookup
+        # Use per-call transfer_coin if provided, else fall back to constructor default
+        coin = transfer_coin or self._transfer_coin
+        network_cost = self._network_cost
+        if network_cost == Decimal("0") and hasattr(self._fee_model, "network_cost"):
+            network_cost = self._fee_model.network_cost(
+                buy_ex, sell_ex, coin
+            )
+
         return FrictionCost(
             fee_buy=fee_buy,
             fee_sell=fee_sell,
             slippage_buy=slip_buy.expected,
             slippage_sell=slip_sell.expected,
-            network_cost=self._network_cost,
+            network_cost=network_cost,
             funding_cost=self._funding_cost,
             opportunity_cost=self._opportunity_cost,
             rollback_cost_expected=rollback_cost_exp,

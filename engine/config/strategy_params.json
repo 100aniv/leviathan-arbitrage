@@ -60,7 +60,7 @@
     "stop_loss_pct": 0.005
   },
   "statistical_arb": {
-    "status": "NOT_READY",
+    "status": "MONITOR",
     "wfe": -1.03,
     "max_position_size_usdt": 4706,
     "entry_threshold": 0.000188,

@@ -5,6 +5,7 @@ Implements Binance CRC32 checksum validation.
 """
 from __future__ import annotations
 
+import time
 import zlib
 from decimal import Decimal
 from typing import Optional
@@ -23,6 +24,7 @@ class OrderBook:
         self.exchange = exchange
         self.bids: dict[Decimal, Decimal] = {}  # price -> quantity
         self.asks: dict[Decimal, Decimal] = {}  # price -> quantity
+        self.last_update_time: float = 0.0  # monotonic timestamp of last update
 
     def apply_snapshot(
         self,
@@ -40,6 +42,7 @@ class OrderBook:
             p, q = Decimal(price), Decimal(qty)
             if q > 0:
                 self.asks[p] = q
+        self.last_update_time = time.monotonic()
 
     def apply_delta(
         self,
@@ -59,6 +62,7 @@ class OrderBook:
                 self.asks.pop(p, None)
             else:
                 self.asks[p] = q
+        self.last_update_time = time.monotonic()
 
     def best_bid(self) -> Optional[Decimal]:
         """Highest bid price, or None if empty."""

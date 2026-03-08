@@ -90,10 +90,11 @@ class FundingRateStrategy(BaseStrategy):
         )
         total_cost = short_cost + long_cost
 
-        # Expected income over holding periods
+        # Expected income: conservatively assume 1 funding period (8h) collected
+        # max_holding_periods is the CEILING (force-exit), not the expected hold time
         avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
         expected_funding_income = (
-            funding_diff * avg_price * size * Decimal(str(self.config.max_holding_periods))
+            funding_diff * avg_price * size * Decimal("1")
         )
         net_profit = expected_funding_income - total_cost
 

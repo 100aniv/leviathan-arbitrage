@@ -25,6 +25,9 @@ from decimal import Decimal
 from typing import Any
 
 import uvicorn
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env before any os.getenv() calls
 
 from src.api.server import EngineContext, create_app
 from src.core.config import ExecutionMode, Settings, get_settings
@@ -978,6 +981,14 @@ class Engine:
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
         exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
 
+        # Create MultiStrategySignalProducer for 6 additional strategies
+        from src.core.multi_signal import MultiStrategySignalProducer
+
+        multi_signal_producer = MultiStrategySignalProducer(
+            event_bus=self._event_bus,
+            latency_tracker=getattr(self, "_latency_tracker", None),
+        )
+
         self._shadow_mode = ShadowMode(
             signal_generator=self._signal_generator,
             paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
@@ -986,6 +997,7 @@ class Engine:
             telegram=self._telegram,
             symbols=symbols,
             exchanges=exchanges,
+            multi_signal_producer=multi_signal_producer,
         )
 
         await self._shadow_mode.start()
