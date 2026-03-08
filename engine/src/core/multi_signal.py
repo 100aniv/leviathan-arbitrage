@@ -115,6 +115,15 @@ class MultiStrategySignalProducer:
                 self._latency_tracker.record_latency(exchange_id, latency_ms)
         self._exchange_timestamps[exchange_id] = now
 
+    async def on_orderbook_update(
+        self,
+        exchange_id: str,
+        symbol: str,
+        book: OrderBook,
+    ) -> None:
+        """Alias for on_orderbook(). Matches SignalGenerator's method name for symmetry."""
+        self.on_orderbook(exchange_id, symbol, book)
+
     async def produce_spot_futures_signal(
         self,
         exchange_id: str,

@@ -26,12 +26,12 @@
 ## 2. 현재 상태
 
 ```
-Phase:        B-2 (Futures Infrastructure)
-테스트:       3,135 passed, 0 failed
-커버리지:     89%
+Phase:        B-3 (Signal Production)
+테스트:       3,180 passed, 0 failed
+커버리지:     90%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase B-2: GAP 5+6 resolved — FundingRateCollector + futures pipeline
+최신 커밋:    Phase B-3: GAP 7,3,2 resolved — TriangularScanner + RealDataSignalProducer
 ```
 
 ### Shadow 최신 결과 (Phase 7.3k, 10min)
@@ -113,9 +113,9 @@ Engine.run()
 | 1 | cross_exchange | `strategies/cross_exchange.py` | **활성** | GAP 1,2 (strategy 우회) | 5-25% |
 | 2 | spot_futures | `strategies/spot_futures.py` | 비활성 | GAP 1,2 (strategy 우회) | 8-30% |
 | 3 | futures_futures | `strategies/futures_futures.py` | 비활성 | GAP 1,2 (strategy 우회) | 5-15% |
-| 4 | triangular | `strategies/triangular.py` | 비활성 | GAP 7 (scanner), GAP 4 (3-leg executor) | 2-10% |
+| 4 | triangular | `strategies/triangular.py` | 비활성 | ~~GAP 7~~ RESOLVED, GAP 4 (3-leg executor) | 2-10% |
 | 5 | funding_rate | `strategies/funding_rate.py` | 비활성 | GAP 1,2 (strategy 우회) | 15-30% |
-| 6 | statistical_arb | `strategies/stat_arb.py` | 비활성 | GAP 3 (signal producer), NOT_READY | 11-16% |
+| 6 | statistical_arb | `strategies/stat_arb.py` | 비활성 | ~~GAP 3~~ RESOLVED, NOT_READY | 11-16% |
 | 7 | latency_arb | `strategies/latency_arb.py` | 비활성 | Python 속도 한계 (Phase F) | 20-100%+ |
 | 8 | cex_dex | `strategies/cex_dex.py` | 조건부 | GAP 8 (DEX stub, Phase F) | 10-50% |
 
@@ -301,12 +301,12 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-017: Engine.run()에 FundingRateCollector 연결 (shadow.py + main.py)
 - [x] US-018: Futures + FundingRate 통합 테스트 (19 integration tests)
 
-### Phase B-3: Signal Production (GAP 7,3,2) — US-019~022
+### Phase B-3: Signal Production (GAP 7,3,2) — US-019~022 ✅
 
-- [ ] US-019: TriangularScanner (Bellman-Ford)
-- [ ] US-020: RealDataSignalProducer (실 데이터 신호)
-- [ ] US-021: MultiStrategySignalProducer Shadow 연결
-- [ ] US-022: 4종 신호 타입 통합 테스트
+- [x] US-019: TriangularScanner (Bellman-Ford) — 18 unit tests
+- [x] US-020: RealDataSignalProducer (실 데이터 신호) — 10 unit tests
+- [x] US-021: Shadow mode에 RealDataSignalProducer 연결 — 384줄 인라인 삭제
+- [x] US-022: 4종 신호 타입 통합 테스트 — 17 integration tests
 
 ### Phase B-4: Shadow Integration (GAP 1) — US-023~026
 

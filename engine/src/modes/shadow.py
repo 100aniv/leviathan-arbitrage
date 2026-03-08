@@ -17,7 +17,6 @@ from __future__ import annotations
 import asyncio
 import collections
 import os
-import statistics
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -44,6 +43,8 @@ from src.infra.metrics import (
     SPREAD_BPS,
     TRADES_TOTAL,
 )
+from src.core.real_signal_producer import RealDataSignalProducer
+from src.core.triangular_scanner import TriangularScanner
 
 logger = structlog.get_logger(__name__)
 
@@ -237,6 +238,15 @@ class ShadowMode:
 
         # Futures exchanges for identification
         self._futures_exchanges: set[str] = {"binance_futures"}
+
+        # RealDataSignalProducer: replaces inline _evaluate_* methods
+        self._real_signal_producer: RealDataSignalProducer | None = None
+        if self._multi_signal_producer is not None:
+            self._real_signal_producer = RealDataSignalProducer(
+                multi_signal_producer=self._multi_signal_producer,
+                triangular_scanner=TriangularScanner(),
+                futures_exchanges=self._futures_exchanges,
+            )
 
         # Build collector manager if not supplied
         if collector_manager is not None:
@@ -559,370 +569,28 @@ class ShadowMode:
     async def _evaluate_multi_strategies(
         self, exchange_id: str, symbol: str, book: Any
     ) -> None:
-        """Evaluate triangular, statistical_arb, latency_arb, and futures strategies.
-
-        All independent strategies run concurrently via asyncio.gather.
-        Each is wrapped in _safe_eval so one failure does not block others.
-        Signals are routed through _execute_shadow_trade().
-        """
-        # Disabled strategies in shadow mode:
-        # - stat_arb: requires position holding (mean-reversion), incompatible with instant execution
-        # - spot_futures: Korean exchange stale prices create fake basis signals
-        #   (binance_futures vs bithumb = 0% WR, -$11K in 3min)
-        # - latency_arb: same Korean exchange stale price issue
-        await asyncio.gather(
-            self._safe_eval(self._evaluate_triangular(exchange_id, symbol), "triangular"),
-            self._safe_eval(self._evaluate_futures_futures(symbol), "futures_futures"),
+        """Delegate all multi-strategy evaluation to RealDataSignalProducer."""
+        if self._real_signal_producer is None:
+            return
+        signals = await self._real_signal_producer.on_orderbook_update(
+            exchange_id, symbol, book,
+            self._books, self._futures_books,
         )
+        for signal in signals:
+            await self._execute_shadow_trade(signal)
 
-    async def _evaluate_triangular(self, exchange_id: str, symbol: str) -> None:
-        """Check for triangular arbitrage on the same exchange.
-
-        Requires 3 orderbooks on the same exchange: e.g. BTC/USDT, ETH/USDT, ETH/BTC.
-        Computes cycle profit: buy BTC → buy ETH with BTC → sell ETH for USDT.
-        """
-        if self._multi_signal_producer is None:
-            return
-
-        # Collect all symbols available on this exchange
-        exchange_books: dict[str, Any] = {}
-        for sym, books_by_ex in self._books.items():
-            if exchange_id in books_by_ex:
-                exchange_books[sym] = books_by_ex[exchange_id]
-
-        # Check for triangular paths: USDT→BTC→ETH→USDT
-        tri_paths = [
-            (["USDT", "BTC", "ETH"], ["BTC/USDT", "ETH/BTC", "ETH/USDT"]),
-        ]
-
-        for path, pairs in tri_paths:
-            # Need all 3 orderbooks on this exchange
-            books_available = all(p in exchange_books for p in pairs)
-            if not books_available:
-                continue
-
-            # Get best prices for each leg
-            book_a = exchange_books[pairs[0]]  # BTC/USDT
-            book_b = exchange_books[pairs[1]]  # ETH/BTC
-            book_c = exchange_books[pairs[2]]  # ETH/USDT
-
-            ask_a = book_a.best_ask()  # Buy BTC with USDT
-            bid_b = book_b.best_bid()  # ... not right for this direction
-            bid_c = book_c.best_bid()  # Sell ETH for USDT
-
-            # We need best_ask for buys and best_bid for sells
-            # Path: 1 USDT → buy BTC (ask_a) → buy ETH with BTC (ask_b) → sell ETH for USDT (bid_c)
-            ask_b = book_b.best_ask()  # Buy ETH with BTC
-
-            if any(v is None or v <= 0 for v in [ask_a, ask_b, bid_c]):
-                continue
-
-            # Cycle: start with 1 USDT
-            # Step 1: Buy BTC at ask_a → get 1/ask_a BTC
-            # Step 2: Buy ETH at ask_b (ETH/BTC) → get (1/ask_a)/ask_b ETH
-            # Step 3: Sell ETH at bid_c (ETH/USDT) → get (1/ask_a)/ask_b * bid_c USDT
-            cycle_return = Decimal(str(bid_c)) / (Decimal(str(ask_a)) * Decimal(str(ask_b)))
-            profit_pct = cycle_return - Decimal("1")
-
-            if profit_pct <= Decimal("0"):
-                continue
-
-            signal = await self._multi_signal_producer.produce_triangular_signal(
-                exchange_id=exchange_id,
-                path=path,
-                pairs=pairs,
-                sides=["buy", "buy", "sell"],
-                prices=[Decimal(str(ask_a)), Decimal(str(ask_b)), Decimal(str(bid_c))],
-                profit_pct=profit_pct,
-            )
-            if signal is not None:
-                logger.info(
-                    "shadow_mode.triangular_signal",
-                    exchange=exchange_id, profit_bps=f"{float(profit_pct) * 10000:.1f}",
-                )
-                await self._execute_shadow_trade(signal)
-
-    async def _evaluate_statistical_arb(self, symbol: str) -> None:
-        """Z-score based statistical arbitrage on cross-exchange price differences.
-
-        Maintains a rolling window of mid-price spreads between exchanges.
-        Generates mean-reversion signal when z-score > 2.0.
-        """
-        if self._multi_signal_producer is None:
-            return
-
-        sym_books = self._books.get(symbol, {})
-        if len(sym_books) < 2:
-            return
-
-        # Korean exchanges have structural premium (kimchi) — skip for stat_arb
-        _korean = {"upbit", "bithumb", "coinone"}
-
-        # Compute mid prices per SPOT exchange only (exclude futures + Korean)
-        mid_prices: dict[str, float] = {}
-        for ex_id, book in sym_books.items():
-            if ex_id in self._futures_exchanges or ex_id in _korean:
-                continue
-            bb = book.best_bid()
-            ba = book.best_ask()
-            if bb is not None and ba is not None and bb > 0 and ba > 0:
-                mid_prices[ex_id] = (float(bb) + float(ba)) / 2
-
-        if len(mid_prices) < 2:
-            return
-
-        # Track spreads for all pairs, but only emit the BEST z-score signal
-        best_signal_data: tuple[float, str, str, Decimal, Decimal] | None = None
-
-        exchanges = sorted(mid_prices.keys())
-        for i in range(len(exchanges)):
-            for j in range(i + 1, len(exchanges)):
-                ex_a, ex_b = exchanges[i], exchanges[j]
-                spread = mid_prices[ex_a] - mid_prices[ex_b]
-
-                # Track spread history
-                spread_key = f"{symbol}:{ex_a}:{ex_b}"
-                if spread_key not in self._spread_history:
-                    self._spread_history[spread_key] = collections.deque(
-                        maxlen=self._stat_arb_window
-                    )
-                self._spread_history[spread_key].append(spread)
-
-                window = self._spread_history[spread_key]
-                if len(window) < self._stat_arb_window:
-                    continue
-
-                # Compute z-score
-                mean = statistics.mean(window)
-                stdev = statistics.stdev(window)
-                if stdev == 0:
-                    continue
-                z_score = (spread - mean) / stdev
-
-                if abs(z_score) < 3.0:
-                    continue
-
-                # Only z > 0 signals: spread is HIGH (ex_a overpriced).
-                # Sell ex_a (expensive), buy ex_b (cheap) = immediate profit.
-                # z < 0 signals require position holding (mean-reversion bet
-                # that spread will widen), which shadow mode doesn't support.
-                if z_score <= 0:
-                    continue
-
-                buy_ex, sell_ex = ex_b, ex_a
-                buy_price = Decimal(str(mid_prices[ex_b]))
-                sell_price = Decimal(str(mid_prices[ex_a]))
-
-                # Require positive net spread (sell > buy) after basic friction
-                if sell_price <= buy_price:
-                    continue
-
-                # Min edge filter: spread must exceed round-trip friction (~80 bps)
-                spread_bps = float((sell_price - buy_price) / buy_price) * 10000
-                if spread_bps < 80:
-                    continue
-
-                # Keep only the best z-score signal
-                if best_signal_data is None or abs(z_score) > abs(best_signal_data[0]):
-                    best_signal_data = (z_score, buy_ex, sell_ex, buy_price, sell_price)
-
-        # Emit only the single best signal
-        if best_signal_data is not None:
-            z_score, buy_ex, sell_ex, buy_price, sell_price = best_signal_data
-            signal = await self._multi_signal_producer.produce_statistical_arb_signal(
-                symbol=symbol,
-                buy_exchange=buy_ex,
-                sell_exchange=sell_ex,
-                buy_price=buy_price,
-                sell_price=sell_price,
-                z_score=z_score,
-            )
-            if signal is not None:
-                logger.info(
-                    "shadow_mode.stat_arb_signal",
-                    symbol=symbol, z_score=f"{z_score:.2f}",
-                    buy_ex=buy_ex, sell_ex=sell_ex,
-                )
-                await self._execute_shadow_trade(signal)
-
-    async def _evaluate_latency_arb(self, exchange_id: str, symbol: str) -> None:
-        """Latency arbitrage: detect exchange update delay > 2000ms.
-
-        If one exchange updates significantly slower (>2s stale), its price
-        may lag behind the fast exchange, creating an exploitable window.
-        """
-        if self._multi_signal_producer is None:
-            return
-
-        sym_books = self._books.get(symbol, {})
-        if len(sym_books) < 2:
-            return
-
-        now = self._exchange_update_times.get(exchange_id)
-        if now is None:
-            return
-
-        for other_ex, other_book in sym_books.items():
-            if other_ex == exchange_id:
-                continue
-
-            other_time = self._exchange_update_times.get(other_ex)
-            if other_time is None:
-                continue
-
-            latency_diff_ms = abs(now - other_time) * 1000
-
-            if latency_diff_ms < 2000:
-                continue
-
-            # Determine fast vs slow
-            if now > other_time:
-                fast_ex, slow_ex = exchange_id, other_ex
-            else:
-                fast_ex, slow_ex = other_ex, exchange_id
-
-            fast_book = sym_books.get(fast_ex)
-            slow_book = sym_books.get(slow_ex)
-            if fast_book is None or slow_book is None:
-                continue
-
-            fast_mid = fast_book.best_bid()
-            slow_mid = slow_book.best_ask()
-            if fast_mid is None or slow_mid is None:
-                continue
-
-            # Require minimum spread (10bps) to cover fees+slippage
-            if slow_mid > 0:
-                spread_bps = abs(float(fast_mid) - float(slow_mid)) / float(slow_mid) * 10000
-                if spread_bps < 80:
-                    continue
-
-            signal = await self._multi_signal_producer.produce_latency_arb_signal(
-                symbol=symbol,
-                fast_exchange=fast_ex,
-                slow_exchange=slow_ex,
-                fast_price=Decimal(str(fast_mid)),
-                slow_price=Decimal(str(slow_mid)),
-                latency_diff_ms=latency_diff_ms,
-            )
-            if signal is not None:
-                logger.info(
-                    "shadow_mode.latency_arb_signal",
-                    symbol=symbol, latency_ms=f"{latency_diff_ms:.0f}",
-                    fast_ex=fast_ex, slow_ex=slow_ex,
-                )
-                await self._execute_shadow_trade(signal)
-
-    async def _evaluate_spot_futures(self, exchange_id: str, symbol: str) -> None:
-        """Spot-futures basis trade: compare spot price vs futures price on same underlying."""
-        if self._multi_signal_producer is None:
-            return
-
-        # Only evaluate when we have both spot and futures books for the same symbol
-        spot_books = self._books.get(symbol, {})
-        futures_books = self._futures_books.get(symbol, {})
-
-        if not spot_books or not futures_books:
-            return
-
-        for spot_ex, spot_book in spot_books.items():
-            if spot_ex in self._futures_exchanges:
-                continue  # skip futures exchange entries in spot books
-
-            for fut_ex, fut_book in futures_books.items():
-                spot_ask = spot_book.best_ask()
-                fut_bid = fut_book.best_bid()
-                spot_bid = spot_book.best_bid()
-                fut_ask = fut_book.best_ask()
-
-                if any(v is None for v in [spot_ask, fut_bid, spot_bid, fut_ask]):
-                    continue
-
-                # Check both directions of basis
-                # If futures > spot: buy spot, sell futures
-                if float(fut_bid) > float(spot_ask):
-                    spot_base = spot_ex.replace("binance_futures", "binance")
-                    funding = self._funding_rates.get(fut_ex, {}).get(symbol, 0.0)
-                    signal = await self._multi_signal_producer.produce_spot_futures_signal(
-                        exchange_id=spot_base,
-                        spot_symbol=symbol,
-                        futures_symbol=f"{symbol}:USDT",
-                        spot_price=Decimal(str(spot_ask)),
-                        futures_price=Decimal(str(fut_bid)),
-                        funding_rate=funding,
-                    )
-                    if signal is not None:
-                        logger.info(
-                            "shadow_mode.spot_futures_signal",
-                            symbol=symbol, spot_ex=spot_ex, fut_ex=fut_ex,
-                        )
-                        await self._execute_shadow_trade(signal)
-
-    async def _evaluate_futures_futures(self, symbol: str) -> None:
-        """Futures-futures spread: compare futures prices across exchanges."""
-        if self._multi_signal_producer is None:
-            return
-
-        futures_books = self._futures_books.get(symbol, {})
-        if len(futures_books) < 2:
-            return
-
-        exchanges = sorted(futures_books.keys())
-        for i in range(len(exchanges)):
-            for j in range(i + 1, len(exchanges)):
-                ex_a, ex_b = exchanges[i], exchanges[j]
-                book_a = futures_books[ex_a]
-                book_b = futures_books[ex_b]
-
-                bid_a = book_a.best_bid()
-                ask_b = book_b.best_ask()
-                bid_b = book_b.best_bid()
-                ask_a = book_a.best_ask()
-
-                if any(v is None for v in [bid_a, ask_b, bid_b, ask_a]):
-                    continue
-
-                # Check if ex_a bid > ex_b ask → buy on ex_b, sell on ex_a
-                if float(bid_a) > float(ask_b):
-                    signal = await self._multi_signal_producer.produce_futures_futures_signal(
-                        symbol=symbol,
-                        buy_exchange=ex_b,
-                        sell_exchange=ex_a,
-                        buy_price=Decimal(str(ask_b)),
-                        sell_price=Decimal(str(bid_a)),
-                    )
-                    if signal is not None:
-                        logger.info(
-                            "shadow_mode.futures_futures_signal",
-                            symbol=symbol, buy_ex=ex_b, sell_ex=ex_a,
-                        )
-                        await self._execute_shadow_trade(signal)
-
-                # Check reverse: ex_b bid > ex_a ask
-                if float(bid_b) > float(ask_a):
-                    signal = await self._multi_signal_producer.produce_futures_futures_signal(
-                        symbol=symbol,
-                        buy_exchange=ex_a,
-                        sell_exchange=ex_b,
-                        buy_price=Decimal(str(ask_a)),
-                        sell_price=Decimal(str(bid_b)),
-                    )
-                    if signal is not None:
-                        logger.info(
-                            "shadow_mode.futures_futures_signal",
-                            symbol=symbol, buy_ex=ex_a, sell_ex=ex_b,
-                        )
-                        await self._execute_shadow_trade(signal)
+    # NOTE: _evaluate_triangular, _evaluate_statistical_arb, _evaluate_latency_arb,
+    # _evaluate_spot_futures, _evaluate_futures_futures moved to RealDataSignalProducer
 
     # -----------------------------------------------------------------------
     # Funding rate polling loop
     # -----------------------------------------------------------------------
 
     async def _funding_rate_loop(self) -> None:
-        """Poll funding rates from Binance and Bybit every 60 seconds.
+        """Poll funding rates from exchanges every 60 seconds.
 
-        Results are stored in self._funding_rates and used by
-        _evaluate_spot_futures() and for generating funding_rate_arb signals.
+        Results are stored in self._funding_rates. Funding rate arb signals
+        are generated via RealDataSignalProducer.on_funding_rates_updated().
         Never raises — exceptions are caught and logged.
         """
         try:
@@ -971,9 +639,13 @@ class ShadowMode:
                 self._funding_rates.update(rates_by_exchange)
 
                 # Generate funding rate arbitrage signals if differential exists
-                if self._multi_signal_producer is not None:
+                if self._real_signal_producer is not None:
                     try:
-                        await self._evaluate_funding_rate_arb()
+                        signals = await self._real_signal_producer.on_funding_rates_updated(
+                            rates_by_exchange, self._books,
+                        )
+                        for signal in signals:
+                            await self._execute_shadow_trade(signal)
                     except Exception as exc:
                         logger.warning("shadow_mode.funding_rate_arb_error", error=str(exc))
 
@@ -987,54 +659,7 @@ class ShadowMode:
         except asyncio.CancelledError:
             pass
 
-    async def _evaluate_funding_rate_arb(self) -> None:
-        """Compare funding rates across exchanges and generate arb signals."""
-        if self._multi_signal_producer is None:
-            return
-
-        # Collect all rates for each symbol
-        symbol_rates: dict[str, list[tuple[str, float]]] = {}
-        for ex_id, sym_rates in self._funding_rates.items():
-            for sym, rate in sym_rates.items():
-                symbol_rates.setdefault(sym, []).append((ex_id, rate))
-
-        for symbol, rates in symbol_rates.items():
-            if len(rates) < 2:
-                continue
-
-            # Find highest and lowest funding rate exchanges
-            rates.sort(key=lambda x: x[1])
-            low_ex, low_rate = rates[0]
-            high_ex, high_rate = rates[-1]
-
-            diff = high_rate - low_rate
-            if diff <= 0:
-                continue
-
-            # Get a reference price from any available orderbook
-            sym_books = self._books.get(symbol, {})
-            if not sym_books:
-                continue
-            ref_book = next(iter(sym_books.values()))
-            ref_bid = ref_book.best_bid()
-            if ref_bid is None or ref_bid <= 0:
-                continue
-
-            signal = await self._multi_signal_producer.produce_funding_rate_signal(
-                symbol=symbol,
-                high_rate_exchange=high_ex,
-                low_rate_exchange=low_ex,
-                high_rate=high_rate,
-                low_rate=low_rate,
-                price=Decimal(str(ref_bid)),
-            )
-            if signal is not None:
-                logger.info(
-                    "shadow_mode.funding_rate_signal",
-                    symbol=symbol, diff_bps=f"{diff * 10000:.1f}",
-                    high_ex=high_ex, low_ex=low_ex,
-                )
-                await self._execute_shadow_trade(signal)
+    # NOTE: _evaluate_funding_rate_arb moved to RealDataSignalProducer
 
     # -----------------------------------------------------------------------
     # Shadow trade execution
