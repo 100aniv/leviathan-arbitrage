@@ -1,5 +1,8 @@
 # LEVIATHAN QUANT MANIFESTO
 
+> **DEPRECATED**: 이 문서의 수학 모델은 `SSOT.md §4`로 이관되었습니다.
+> 최신 정보는 **SSOT.md**를 참조하세요. 이 파일은 히스토리 참조용으로만 유지됩니다.
+
 **Version:** 1.0
 **Date:** 2026-03-06
 **Author:** Arbitrage Engine Development Team
