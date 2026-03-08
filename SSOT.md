@@ -2,6 +2,7 @@
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-08 | 최신 커밋: `e273d9a`
+> 실행 플랜: `.claude/plans/jazzy-wishing-avalanche.md` | PRD: `.omc/prd.json` (57 User Stories)
 
 ---
 
@@ -107,16 +108,18 @@ Engine.run()
 
 ### 3.3 전략 매트릭스
 
-| # | 전략 | 파일 | 상태 | 비고 |
-|---|------|------|------|------|
-| 1 | cross_exchange | `strategies/cross_exchange.py` | **활성** | Shadow 주력 |
-| 2 | spot_futures | `strategies/spot_futures.py` | 비활성 | Korean stale data |
-| 3 | futures_futures | `strategies/futures_futures.py` | 비활성 | 신호 소스 없음 |
-| 4 | triangular | `strategies/triangular.py` | 비활성 | |
-| 5 | funding_rate | `strategies/funding_rate.py` | 비활성 | |
-| 6 | statistical_arb | `strategies/stat_arb.py` | 비활성 | NOT_READY 플래그 |
-| 7 | latency_arb | `strategies/latency_arb.py` | 비활성 | 파라미터 누락 |
-| 8 | cex_dex | `strategies/cex_dex.py` | 조건부 | DEX_RPC_URL 필요, 미구현 |
+| # | 전략 | 파일 | 상태 | 차단 GAP | 예상 연간수익 |
+|---|------|------|------|---------|------------|
+| 1 | cross_exchange | `strategies/cross_exchange.py` | **활성** | GAP 1,2 (strategy 우회) | 5-25% |
+| 2 | spot_futures | `strategies/spot_futures.py` | 비활성 | GAP 5 (futures data), GAP 6 (funding rate) | 8-30% |
+| 3 | futures_futures | `strategies/futures_futures.py` | 비활성 | GAP 5 (futures data) | 5-15% |
+| 4 | triangular | `strategies/triangular.py` | 비활성 | GAP 7 (scanner), GAP 4 (3-leg executor) | 2-10% |
+| 5 | funding_rate | `strategies/funding_rate.py` | 비활성 | GAP 6 (funding rate collector) | 15-30% |
+| 6 | statistical_arb | `strategies/stat_arb.py` | 비활성 | GAP 3 (signal producer), NOT_READY | 11-16% |
+| 7 | latency_arb | `strategies/latency_arb.py` | 비활성 | Python 속도 한계 (Phase F) | 20-100%+ |
+| 8 | cex_dex | `strategies/cex_dex.py` | 조건부 | GAP 8 (DEX stub, Phase F) | 10-50% |
+
+> **GAP 의존성 순서**: GAP9→10→(5,6,7 병렬)→3→(1,2)→4 — 상세: §9 참조
 
 ---
 
@@ -266,41 +269,103 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업
+## 7. 남은 작업 (`.omc/prd.json` 57 User Stories)
 
-### 즉시 실행
+> **실행 방식**: 3-Phase Sequential — Phase A(기획/OMC) → Phase B(개발/Agent Teams) → Phase C(검증/OMC)
+> **자동화**: `ralph autopilot` → prd.json 순회 → 각 US 자동 실행
 
-- [x] MIN_EDGE_BPS 최적화 → 5bps 확정 (Phase 7.3h)
-- [x] KRW/USDT 동적 환율 (dual-source, Phase 7.3d)
-- [x] 1시간 Shadow 검증 완료 (Phase 7.3i)
-- [x] 마찰력 모델 5건 수정 (Phase 7.3j)
-- [x] 10min 3110T 100%WR 검증 (Phase 7.3k)
-- [ ] Bithumb REST 스냅샷 + 증분 적용
-- [ ] Maker Order 구현 검토 (마찰 15bps→4-10bps)
+### Phase A: 인프라 재정비 (US-001~009) — ☑ ALL PASS
 
-### 전략 확장
+- [x] US-001: OMC State 초기화 + project-memory 수정
+- [x] US-002: SSOT.md 생성 (기존 문서 통합)
+- [x] US-003: 커스텀 에이전트 정의 파일 생성
+- [x] US-004: settings.local.json 권한 완화
+- [x] US-005: CLAUDE.md 업데이트
+- [x] US-006: prd.json 생성
+- [x] US-007: notepad.md 생성
+- [x] US-008: 기존 문서 아카이브
+- [x] US-009: Phase A 통합 검증
 
-- [ ] funding_rate 활성화 (8시간 주기 차익)
-- [ ] spot_futures 활성화 (현물-선물 베이시스)
-- [ ] triangular 활성화 (3-거래쌍 순환)
-- [ ] 멀티 전략 동시 실행 + 자본 배분 최적화
+### Phase B-1: Foundation (GAP 9,10) — US-010~013
 
-### 성능
+- [ ] US-010: okx/bitget futures 수수료 추가 + unknown exchange fallback
+- [ ] US-011: estimate_cost() 브릿지 메서드 (Protocol 정합성)
+- [ ] US-012: 7개 전략 estimate_cost() 통합 테스트
+- [ ] US-013: Bithumb 초기 스냅샷 구현
 
-- [ ] 신호→주문 레이턴시 프로파일링 (목표 <10ms)
-- [ ] 7/7 거래소 WS 재연결 안정성 검증
+### Phase B-2: Futures Infrastructure (GAP 5,6) — US-014~018
 
-### 72h Shadow (핵심 게이트)
+- [ ] US-014: BinanceFuturesCollector (WS orderbook)
+- [ ] US-015: FundingRateCollector (4 거래소 REST)
+- [ ] US-016: CollectorManager futures 등록
+- [ ] US-017: Shadow mode futures orderbook store
+- [ ] US-018: Futures 데이터 흐름 통합 테스트
 
-- [ ] 72h 무중단 Shadow 실행 (0 crash, Sharpe>1.0, DD<5%)
-- [ ] 72h 후 Walk-Forward 파라미터 재튜닝
-- [ ] Telegram 24h 요약 3회 수신 확인
+### Phase B-3: Signal Production (GAP 7,3,2) — US-019~022
 
-### Live 배포
+- [ ] US-019: TriangularScanner (Bellman-Ford)
+- [ ] US-020: RealDataSignalProducer (실 데이터 신호)
+- [ ] US-021: MultiStrategySignalProducer Shadow 연결
+- [ ] US-022: 4종 신호 타입 통합 테스트
 
-- [ ] 실 거래소 API 키 검증 (Binance, Upbit, Bithumb)
-- [ ] LiveGate 6-check 전체 통과
-- [ ] Testnet 소액 거래 검증
+### Phase B-4: Shadow Integration (GAP 1) — US-023~026
+
+- [ ] US-023: ShadowMode에 StrategyManager 주입
+- [ ] US-024: _on_orderbook StrategyManager 라우팅
+- [ ] US-025: 전략별 메트릭 추적 (per-strategy PnL)
+- [ ] US-026: Shadow 전략 통합 테스트
+
+### Phase B-5: Multi-Leg Executor (GAP 4) — US-027~029
+
+- [ ] US-027: ExecutionResult N-leg 확장
+- [ ] US-028: execute_multi_leg() + rollback
+- [ ] US-029: 3-leg triangular 실행 테스트
+
+### Phase C: Strategy Validation — US-030~036
+
+- [ ] US-030: cross_exchange 전략 객체 경유 Shadow 10min
+- [ ] US-031: spot_futures 단독 Shadow 10min
+- [ ] US-032: futures_futures 단독 Shadow 10min
+- [ ] US-033: funding_rate 단독 Shadow 10min
+- [ ] US-034: triangular 단독 Shadow 10min
+- [ ] US-035: statistical_arb 단독 Shadow 10min
+- [ ] US-036: 전체 전략 통합 Shadow 30min
+
+### Phase D: Dashboard UX — US-037~041
+
+- [ ] US-037: Trade History 페이지
+- [ ] US-038: Alerts/Notifications 페이지
+- [ ] US-039: Settings 페이지
+- [ ] US-040: Strategy Analytics 페이지
+- [ ] US-041: Mobile Responsive + Funding Rate 모니터
+
+### Phase E-1: Production Monitoring — US-042~044
+
+- [ ] US-042: Telegram 인프라 모니터링 daemon
+- [ ] US-043: Grafana 대시보드 프리셋
+- [ ] US-044: 자동 알림 규칙
+
+### Phase E-2: Auto-Tuning Pipeline — US-045~048
+
+- [ ] US-045: Scheduled Offline Tuner (Docker)
+- [ ] US-046: Adaptive Threshold (실시간 MIN_EDGE 조정)
+- [ ] US-047: Regime Detector (4단계 시장 레짐)
+- [ ] US-048: 3-Layer 튜닝 통합 테스트
+
+### Phase E-3: Production Readiness — US-049~053
+
+- [ ] US-049: Capital Allocator (Kelly Criterion)
+- [ ] US-050: Balance Tracker (거래소 잔고 모니터링)
+- [ ] US-051: Performance Attribution Engine
+- [ ] US-052: TimescaleDB 자동 백업
+- [ ] US-053: Position Recovery 로직
+
+### Phase F: 72h Shadow → Live — US-054~057
+
+- [ ] US-054: 72h 연속 Shadow 실행
+- [ ] US-055: LiveGate 자동 평가 확인
+- [ ] US-056: Live 모드 전환 (사용자 승인)
+- [ ] US-057: 운영 문서 최종화
 
 ---
 
@@ -322,18 +387,36 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ## 9. 알려진 이슈
 
+### CRITICAL — Architecture GAPs (10건)
+
+> 전체 플랜: `.claude/plans/jazzy-wishing-avalanche.md` Part 11 참조
+> 의존성 순서: GAP9→10→(5,6,7 병렬)→3→(1,2)→4
+
+| GAP | 설명 | 파일:라인 | 해결 Phase | 크기 |
+|-----|------|----------|-----------|------|
+| **1** | Shadow가 Strategy 객체 우회 — SignalGenerator 직접 호출 | `shadow.py:411-417` | B-4 | L |
+| **2** | SignalGenerator가 cross_exchange 신호만 생산 | `signal.py:27,80-204` | B-4 | M |
+| **3** | MultiStrategySignalProducer Paper 모드에서만 동작 | `main.py:842-873` | B-3 | L |
+| **4** | AtomicExecutor 2-Leg만 지원 (triangular=3-Leg) | `executor.py:60-66,186-297` | B-5 | L |
+| **5** | Futures 데이터 파이프라인 부재 | `collectors/manager.py:28-29` | B-2 | L |
+| **6** | Funding Rate Collector 부재 | `funding_rate.py:62-66` | B-2 | M |
+| **7** | Triangular Scanner 부재 | `triangular.py:63-68` | B-3 | M |
+| **8** | DEX Adapter 완전 Stub | `cex_dex.py:30-68` | F (미래) | XL |
+| **9** | Fee Model에 okx/bitget futures 누락 + ValueError | `fee_model.py:164-166` | B-1 | S |
+| **10** | CostCalculator Protocol 불일치 (estimate_cost 없음) | `cost_calculator.py` vs `base.py:46-58` | B-1 | M |
+
 ### HIGH
 
 | 이슈 | 설명 | 완화책 |
 |------|------|--------|
-| Bithumb 증분 Orderbook | 스냅샷 없이 증분만 수신 → 허위 스프레드 | max_spread_pct=5.0 필터 |
+| Bithumb 증분 Orderbook | 스냅샷 없이 증분만 수신 → 허위 스프레드 | max_spread_pct=5.0 필터 (US-013 근본 해결) |
 | 마찰 vs Gross Spread | 대부분 알트 spread 2-25bps, friction ~20bps | MIN_EDGE_BPS=5 + 고스프레드 심볼 집중 |
 
 ### MEDIUM
 
 | 이슈 | 설명 | 상태 |
 |------|------|------|
-| 전략 3개 미완성 | stat_arb(NOT_READY), latency_arb(파라미터 누락), futures_futures(신호 없음) | 미해결 |
+| 전략 6개 비활성 | GAP 1-7로 cross_exchange만 Shadow 동작 | Phase B-1~B-5에서 해결 예정 |
 | httpx 클라이언트 재생성 | 매 요청마다 httpx.AsyncClient 재생성 → 성능 | 미해결 |
 
 ### LOW
@@ -342,7 +425,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 |------|------|------|
 | Coinone Rate Limit | 30min PING keepalive 유지 실패 가능 | 자동 재연결 구현됨 |
 | 빈 Orderbook 경고 | 타이밍 레이스 (collector 전 신호 평가) | crash 없음, 신호 무시 |
-| cex_dex 미구현 | _build_dex_adapter() 항상 None | DEX_RPC_URL 무시됨 |
+| cex_dex 미구현 | _build_dex_adapter() 항상 None | Phase F (GAP 8) |
 
 ### RESOLVED
 
