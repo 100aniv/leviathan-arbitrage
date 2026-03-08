@@ -11,6 +11,8 @@ import type {
   Trade,
   Alert,
   SettingsResponse,
+  StrategyMetric,
+  FundingRate,
 } from "@/types";
 
 const BASE_URL =
@@ -115,6 +117,14 @@ export const updateSettings = (settings: Partial<SettingsResponse>) =>
     method: "PUT",
     body: JSON.stringify(settings),
   });
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+export const getStrategyMetrics = () =>
+  request<{ strategies: Record<string, StrategyMetric> }>("/api/v1/strategy-metrics");
+
+export const getFundingRates = () =>
+  request<Record<string, Record<string, FundingRate>>>("/api/v1/funding-rates");
 
 export const logout = () => {
   localStorage.removeItem("leviathan_token");

@@ -88,6 +88,31 @@ async def list_trades(request: Request, strategy: str | None = None, limit: int 
     return JSONResponse(trades[:limit])
 
 
+@router.get("/strategy-metrics", dependencies=[Depends(require_auth)])
+async def get_strategy_metrics(request: Request) -> JSONResponse:
+    """Return per-strategy metrics summary."""
+    ctx = request.app.state.engine_context
+    if ctx.strategy_manager is not None:
+        try:
+            return JSONResponse({"strategies": ctx.strategy_manager.get_all_metrics_summary()})
+        except Exception as exc:
+            logger.warning("Failed to get metrics from strategy_manager: %s", exc)
+    # Fallback: build basic metrics from context.strategies
+    metrics = {
+        sid: {
+            "id": sid,
+            "type": s.get("type", "unknown"),
+            "enabled": s.get("enabled", True),
+            "signals_received": s.get("signals_received", 0),
+            "trade_requests": s.get("trade_requests_generated", 0),
+            "fills": s.get("fills_received", 0),
+            "pnl": s.get("pnl", 0.0),
+        }
+        for sid, s in ctx.strategies.items()
+    }
+    return JSONResponse({"strategies": metrics})
+
+
 @router.get("/status")
 async def get_status(request: Request) -> JSONResponse:
     """Return overall engine status."""

@@ -599,7 +599,7 @@
       "title": "Strategy Analytics + Funding Rate 모니터",
       "phase": "D",
       "priority": 39,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/pages/analytics.tsx",
         "dashboard/src/pages/funding.tsx"
@@ -609,7 +609,8 @@
         "거래소별 실시간 funding rate 비교 테이블",
         "Rate history 차트",
         "npm run build 성공"
-      ]
+      ],
+      "notes": "Phase D: Analytics + Funding Rate pages. GET /api/v1/strategy-metrics + GET /api/v1/funding-rates. 3289 tests PASS, npm build OK."
     },
     {
       "id": "US-040",

@@ -43,6 +43,7 @@ class EngineContext:
         "min_edge_bps": 5,
         "active_exchanges": ["binance", "binance_futures", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone"],
     })
+    funding_rates: dict[str, Any] = field(default_factory=dict)
     # Real subsystem references (set during engine init)
     engine: Any = None
     strategy_manager: Any = None
@@ -114,6 +115,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     from src.api.routes.risk import router as risk_router
     from src.api.routes.alerts import router as alerts_router
     from src.api.routes.settings import router as settings_router
+    from src.api.routes.funding import router as funding_router
 
     app.include_router(health_router)
     app.include_router(strategies_router)
@@ -121,6 +123,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     app.include_router(risk_router)
     app.include_router(alerts_router)
     app.include_router(settings_router)
+    app.include_router(funding_router)
 
     # ---------------------------------------------------------------------------
     # Prometheus short-path alias

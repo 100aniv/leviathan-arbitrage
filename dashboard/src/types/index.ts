@@ -139,6 +139,26 @@ export interface SettingsResponse {
   active_exchanges: string[];
 }
 
+// ─── Analytics Types ──────────────────────────────────────────────────────────
+
+export interface StrategyMetric {
+  id: string;
+  type: string;
+  enabled: boolean;
+  signals_received: number;
+  trade_requests: number;
+  fills: number;
+  pnl: number;
+}
+
+export interface FundingRate {
+  exchange: string;
+  symbol: string;
+  rate: number;
+  next_funding_time: string | null;
+  updated_at: string;
+}
+
 // ─── UI State Types ───────────────────────────────────────────────────────────
 
 export type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
