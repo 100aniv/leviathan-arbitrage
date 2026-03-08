@@ -923,13 +923,22 @@ class ShadowMode:
         try:
             trades = []
             for leg in trade_request.legs:
+                leg_price = leg.price or Decimal("0")
+                if leg_price <= Decimal("0"):
+                    logger.warning(
+                        "shadow_mode.trade_leg_missing_price",
+                        strategy_id=sid,
+                        exchange_id=leg.exchange_id,
+                        symbol=leg.symbol,
+                        side=str(leg.side),
+                    )
                 order = Order(
                     order_id=str(uuid.uuid4()),
                     exchange_id=leg.exchange_id,
                     symbol=leg.symbol,
                     side=leg.side,
                     order_type=leg.order_type,
-                    price=leg.price or Decimal("0"),
+                    price=leg_price,
                     amount=leg.size,
                 )
                 trade = await self._paper_executor.execute(order)
