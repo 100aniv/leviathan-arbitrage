@@ -131,6 +131,14 @@ export interface Alert {
   metadata?: Record<string, unknown>;
 }
 
+// ─── Settings Types ───────────────────────────────────────────────────────────
+
+export interface SettingsResponse {
+  min_edge_bps: number;
+  active_strategies: { id: string; type: string; enabled: boolean }[];
+  active_exchanges: string[];
+}
+
 // ─── UI State Types ───────────────────────────────────────────────────────────
 
 export type ConnectionState = "connecting" | "connected" | "disconnected" | "error";

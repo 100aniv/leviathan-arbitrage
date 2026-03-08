@@ -39,6 +39,10 @@ class EngineContext:
     ws_manager: Optional[ConnectionManager] = None
     trade_history: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=10_000))
     alert_history: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=5_000))
+    runtime_settings: dict[str, Any] = field(default_factory=lambda: {
+        "min_edge_bps": 5,
+        "active_exchanges": ["binance", "binance_futures", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone"],
+    })
     # Real subsystem references (set during engine init)
     engine: Any = None
     strategy_manager: Any = None
@@ -109,12 +113,14 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     from src.api.routes.trading import router as trading_router
     from src.api.routes.risk import router as risk_router
     from src.api.routes.alerts import router as alerts_router
+    from src.api.routes.settings import router as settings_router
 
     app.include_router(health_router)
     app.include_router(strategies_router)
     app.include_router(trading_router)
     app.include_router(risk_router)
     app.include_router(alerts_router)
+    app.include_router(settings_router)
 
     # ---------------------------------------------------------------------------
     # Prometheus short-path alias

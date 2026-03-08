@@ -10,6 +10,7 @@ import type {
   ModeResponse,
   Trade,
   Alert,
+  SettingsResponse,
 } from "@/types";
 
 const BASE_URL =
@@ -103,3 +104,20 @@ export const getTrades = (strategy?: string, limit?: number) => {
 
 export const getAlerts = () =>
   request<Alert[]>("/api/v1/alerts");
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+export const getSettings = () =>
+  request<SettingsResponse>("/api/v1/settings");
+
+export const updateSettings = (settings: Partial<SettingsResponse>) =>
+  request<SettingsResponse>("/api/v1/settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+
+export const logout = () => {
+  localStorage.removeItem("leviathan_token");
+  document.cookie = "leviathan_token=; path=/; max-age=0";
+  window.location.href = "/login";
+};

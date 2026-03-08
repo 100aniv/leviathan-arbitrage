@@ -582,7 +582,7 @@
       "title": "Settings 페이지 + Logout 기능",
       "phase": "D",
       "priority": 38,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/pages/settings.tsx"
       ],
@@ -591,7 +591,8 @@
         ".env 직접 수정 없이 설정 변경 가능",
         "cookie 삭제 + redirect 로그아웃 동작",
         "npm run build 성공"
-      ]
+      ],
+      "notes": "Phase D: Settings page + Logout. GET/PUT /api/v1/settings, runtime_settings in EngineContext. 3263 tests PASS, npm build OK, settings.py 100% coverage."
     },
     {
       "id": "US-039",
