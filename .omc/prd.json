@@ -668,7 +668,7 @@
       "title": "Grafana 대시보드 프리셋 (18개 메트릭)",
       "phase": "E-1",
       "priority": 43,
-      "passes": false,
+      "passes": true,
       "files": [
         "infra/grafana/dashboards/leviathan.json"
       ],

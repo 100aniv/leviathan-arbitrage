@@ -1,0 +1,387 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "LEVIATHAN Arbitrage Engine — 18 Core Metrics Dashboard",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "PnL & Performance",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "currencyUSD",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "1. Total PnL (USD)",
+      "type": "stat",
+      "targets": [{ "expr": "leviathan_pnl_total_usd", "legendFormat": "PnL" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "percentunit",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "green", "value": 0.7 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "2. Win Rate",
+      "type": "stat",
+      "targets": [{ "expr": "leviathan_trades_total{result='win'} / leviathan_trades_total", "legendFormat": "WR" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "percentunit",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.03 }, { "color": "red", "value": 0.05 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "3. Current Drawdown",
+      "type": "stat",
+      "targets": [{ "expr": "leviathan_drawdown_current_pct", "legendFormat": "DD" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "currencyUSD",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "gradientMode": "scheme", "spanNulls": true, "pointSize": 5, "showPoints": "auto" }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "4. PnL per Trade (Avg)",
+      "type": "stat",
+      "targets": [{ "expr": "leviathan_pnl_total_usd / leviathan_trades_total", "legendFormat": "Avg PnL" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "currencyUSD",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "gradientMode": "scheme", "spanNulls": true }
+        }
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 5 },
+      "id": 5,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["min", "max", "last"] } },
+      "title": "5. PnL Over Time",
+      "type": "timeseries",
+      "targets": [{ "expr": "leviathan_pnl_total_usd", "legendFormat": "Cumulative PnL" }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "id": 101,
+      "title": "Trading Activity",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 14 },
+      "id": 6,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "6. Total Trades",
+      "type": "stat",
+      "targets": [{ "expr": "leviathan_trades_total", "legendFormat": "Trades" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "ops",
+          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 80 }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 14 },
+      "id": 7,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "7. Trades/min",
+      "type": "stat",
+      "targets": [{ "expr": "rate(leviathan_trades_total[5m]) * 60", "legendFormat": "trades/min" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 3 }, { "color": "red", "value": 5 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 14 },
+      "id": 8,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "8. Open Positions",
+      "type": "stat",
+      "targets": [{ "expr": "leviathan_open_positions", "legendFormat": "Open" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short",
+          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60 }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 14 },
+      "id": 9,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "9. Signals Generated/min",
+      "type": "stat",
+      "targets": [{ "expr": "rate(leviathan_signals_total[5m]) * 60", "legendFormat": "signals/min" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "none",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "id": 10,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom" } },
+      "title": "10. Spread Distribution (bps)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(leviathan_spread_bps_bucket[5m]))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(leviathan_spread_bps_bucket[5m]))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, rate(leviathan_spread_bps_bucket[5m]))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+      "id": 102,
+      "title": "Latency & Performance",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "id": 11,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "title": "11. Order Latency (ms)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(leviathan_order_latency_seconds_bucket[5m])) * 1000", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(leviathan_order_latency_seconds_bucket[5m])) * 1000", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, rate(leviathan_order_latency_seconds_bucket[5m])) * 1000", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
+      "id": 12,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "title": "12. Signal Processing Time (ms)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(leviathan_signal_processing_seconds_bucket[5m])) * 1000", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(leviathan_signal_processing_seconds_bucket[5m])) * 1000", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "id": 13,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "title": "13. Orderbook Update Time (ms)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(leviathan_orderbook_update_seconds_bucket[5m])) * 1000", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(leviathan_orderbook_update_seconds_bucket[5m])) * 1000", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
+      "id": 103,
+      "title": "Risk & System Health",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 36 },
+      "id": 14,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "14. Kill Switch Triggers",
+      "type": "stat",
+      "targets": [{ "expr": "leviathan_kill_switch_triggers_total", "legendFormat": "Triggers" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "0": { "color": "green", "index": 0, "text": "CLOSED" }, "1": { "color": "red", "index": 1, "text": "OPEN" }, "2": { "color": "yellow", "index": 2, "text": "HALF_OPEN" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 36 },
+      "id": 15,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "15. Circuit Breaker State",
+      "type": "stat",
+      "targets": [{ "expr": "leviathan_circuit_breaker_state", "legendFormat": "State" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 20 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 36 },
+      "id": 16,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "16. Risk Rejections",
+      "type": "stat",
+      "targets": [{ "expr": "leviathan_risk_rejections_total", "legendFormat": "Rejections" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 36 },
+      "id": 17,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "17. Errors/min",
+      "type": "stat",
+      "targets": [{ "expr": "rate(leviathan_errors_total[5m]) * 60", "legendFormat": "errors/min" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "green", "value": 0.8 }] }
+        }
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 40 },
+      "id": 18,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last"] } },
+      "title": "18. Exchange Health Score",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "none",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "targets": [
+        { "expr": "leviathan_exchange_health_score{exchange=\"binance\"}", "legendFormat": "Binance" },
+        { "expr": "leviathan_exchange_health_score{exchange=\"bybit\"}", "legendFormat": "Bybit" },
+        { "expr": "leviathan_exchange_health_score{exchange=\"okx\"}", "legendFormat": "OKX" },
+        { "expr": "leviathan_exchange_health_score{exchange=\"bitget\"}", "legendFormat": "Bitget" },
+        { "expr": "leviathan_exchange_health_score{exchange=\"upbit\"}", "legendFormat": "Upbit" },
+        { "expr": "leviathan_exchange_health_score{exchange=\"bithumb\"}", "legendFormat": "Bithumb" },
+        { "expr": "leviathan_exchange_health_score{exchange=\"coinone\"}", "legendFormat": "Coinone" },
+        { "expr": "leviathan_exchange_health_score{exchange=\"binance_futures\"}", "legendFormat": "Binance Futures" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["leviathan", "arbitrage", "core"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "LEVIATHAN — 18 Core Metrics",
+  "uid": "leviathan-core-18",
+  "version": 1
+}
