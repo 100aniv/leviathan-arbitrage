@@ -650,7 +650,7 @@
       "title": "Telegram 인프라 모니터링 (Docker 24/7)",
       "phase": "E-1",
       "priority": 42,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/infra/monitor_daemon.py",
         "docker-compose.yml"
