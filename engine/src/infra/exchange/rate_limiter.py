@@ -35,6 +35,14 @@ class TokenBucket:
         self._tokens = min(self.capacity, self._tokens + elapsed * self.rate)
         self._last_refill = now
 
+    def try_acquire(self, tokens: float = 1.0) -> bool:
+        """Non-blocking acquire. Returns True if tokens consumed, False if insufficient."""
+        self._refill()
+        if self._tokens >= tokens:
+            self._tokens -= tokens
+            return True
+        return False
+
     async def acquire(self, tokens: float = 1.0) -> None:
         async with self._lock:
             while True:

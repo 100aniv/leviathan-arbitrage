@@ -150,6 +150,11 @@ class TestShadowModeSimulation:
                 telegram=None,
             )
 
+        # Bypass rate limiter: integration tests verify signal processing, not rate limiting.
+        # Rate limiting behaviour is covered by tests/test_shadow_rate_limit.py.
+        shadow._rate_limiter = MagicMock()
+        shadow._rate_limiter.try_acquire.return_value = True
+
         return shadow
 
     @pytest.mark.asyncio

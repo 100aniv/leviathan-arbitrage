@@ -27,12 +27,12 @@
 
 ```
 Phase:        SR (Shadow Realism 강화 스프린트)
-테스트:       3,522 passed, 0 failed
+테스트:       3,533 passed, 0 failed
 커버리지:     90%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase SR US-061: VirtualBalanceTracker + depth-based sizing
-다음 작업:    US-062 (거래소별 Rate Limit 시뮬레이션 토큰 버킷, Phase SR)
+최신 커밋:    Phase SR US-062: Rate Limit 시뮬레이션 (토큰 버킷)
+다음 작업:    Phase SR 완료 → Phase F (Progressive Shadow → Live)
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -403,7 +403,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-059: Shadow 레그 간 실행 지연(50-300ms) 추가 — 8 tests, 3492 total PASS
 - [x] US-060: BookWalkSlippage — 오더북 깊이별 VWAP 체결 — 15 tests, 3507 total PASS
 - [x] US-061: VirtualBalanceTracker + 깊이 기반 주문 크기 제한 (15 tests, 3522 total PASS)
-- [ ] US-062: 거래소별 Rate Limit 시뮬레이션
+- [x] US-062: 거래소별 Rate Limit 시뮬레이션 (11 tests, 3533 total PASS)
 
 ### Phase F: 프로그레시브 Shadow → Live — US-054~057 (수정됨)
 
@@ -465,7 +465,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | **SG-3** | ~~PowerLawSlippage(k=1.0) — 오더북 깊이 미반영~~ | BookWalkSlippage VWAP 활성 | ~~US-060~~ **RESOLVED** |
 | **SG-4** | ~~무한 가상 잔고, 소진 추적 없음~~ | VirtualBalanceTracker 활성 ($10M/exchange, 리밸런스 경고) | ~~US-061~~ **RESOLVED** |
 | **SG-5** | ~~trade_size=Decimal("1") 하드코딩~~ | compute_depth_trade_size (L1×0.10, [0.001,10]) | ~~US-061~~ **RESOLVED** |
-| **SG-6** | Rate limit 시뮬레이션 없음 | 무제한 요청 | US-062 |
+| **SG-6** | ~~Rate limit 시뮬레이션 없음~~ | ShadowRateLimiter 토큰 버킷 활성 (거래소별 order rate) | ~~US-062~~ **RESOLVED** |
 
 ### HIGH
 

@@ -34,6 +34,7 @@ from src.core.rust_bridge import get_orderbook_class
 from src.execution.paper import PaperExecutor, SlippageModel, OrderRejectedError
 from src.friction.fee_model import FeeModel
 from src.strategies.base import TradeRequest, TradeLeg
+from src.infra.exchange.rate_limiter import TokenBucket
 from src.infra.metrics import (
     COLLECTOR_MESSAGES,
     DRAWDOWN_CURRENT,
@@ -262,6 +263,71 @@ class StrategyStats:
     partial_fills: int = 0
 
 
+class ShadowRateLimiter:
+    """Per-exchange token bucket rate limiter for shadow mode (SG-6).
+
+    Simulates real exchange order rate limits using non-blocking try_acquire().
+    env var overrides: SHADOW_RATE_LIMIT_UPBIT, SHADOW_RATE_LIMIT_BITHUMB, SHADOW_RATE_LIMIT_DEFAULT
+    """
+
+    EXCHANGE_ORDER_RATES: dict[str, tuple[float, int]] = {
+        "binance": (5.0, 10),
+        "binance_futures": (5.0, 10),
+        "bybit": (5.0, 10),
+        "okx": (6.0, 12),
+        "bitget": (10.0, 20),
+        "upbit": (8.0, 8),
+        "bithumb": (3.0, 5),
+        "coinone": (2.0, 3),
+    }
+    _DEFAULT_RATE: tuple[float, int] = (5.0, 10)
+
+    def __init__(self) -> None:
+        self._buckets: dict[str, TokenBucket] = {}
+        # env var overrides
+        self._env_overrides: dict[str, float] = {}
+        for exchange_id in ("upbit", "bithumb", "default"):
+            env_key = f"SHADOW_RATE_LIMIT_{exchange_id.upper()}"
+            val = os.getenv(env_key)
+            if val is not None:
+                try:
+                    self._env_overrides[exchange_id] = float(val)
+                except ValueError:
+                    pass
+
+    def _normalize(self, exchange_id: str) -> str:
+        """Strip paper_/sandbox_ prefix."""
+        for prefix in ("paper_", "sandbox_"):
+            if exchange_id.startswith(prefix):
+                exchange_id = exchange_id[len(prefix):]
+        return exchange_id
+
+    def _get_bucket(self, exchange_id: str) -> TokenBucket:
+        """Lazy-init token bucket for a given exchange."""
+        key = self._normalize(exchange_id)
+        if key not in self._buckets:
+            if key in self._env_overrides:
+                rate = self._env_overrides[key]
+                default_rate, default_burst = self.EXCHANGE_ORDER_RATES.get(key, self._DEFAULT_RATE)
+                burst = default_burst
+            elif "default" in self._env_overrides:
+                rate = self._env_overrides["default"]
+                burst = self._DEFAULT_RATE[1]
+            else:
+                rate, burst = self.EXCHANGE_ORDER_RATES.get(key, self._DEFAULT_RATE)
+            self._buckets[key] = TokenBucket(rate=rate, capacity=float(burst))
+        return self._buckets[key]
+
+    def try_acquire(self, exchange_id: str) -> bool:
+        """Non-blocking rate limit check for an exchange order slot."""
+        return self._get_bucket(exchange_id).try_acquire()
+
+    def summary(self) -> dict[str, Any]:
+        """Diagnostic summary of current bucket states."""
+        return {k: {"tokens": round(b._tokens, 2), "rate": b.rate, "capacity": b.capacity}
+                for k, b in self._buckets.items()}
+
+
 @dataclass
 class ShadowStats:
     """Cumulative metrics tracked across the shadow mode session."""
@@ -277,6 +343,7 @@ class ShadowStats:
     last_daily_summary: datetime | None = None
     trades_rejected: int = 0
     trades_partial_fill: int = 0
+    trades_rate_limited: int = 0
     # Per-strategy breakdown
     by_strategy: dict[str, StrategyStats] = field(default_factory=dict)
 
@@ -386,6 +453,7 @@ class ShadowMode:
         self._running = False
         self._stats = ShadowStats(start_time=time.monotonic())
         self._balance_tracker = VirtualBalanceTracker()
+        self._rate_limiter = ShadowRateLimiter()
 
         # Background tasks
         self._daily_task: asyncio.Task[None] | None = None
@@ -881,6 +949,16 @@ class ShadowMode:
             )
             return
 
+        # Rate limit check before balance deduct (SG-6)
+        if not self._rate_limiter.try_acquire(signal.buy_exchange):
+            self._stats.trades_rate_limited += 1
+            logger.warning("shadow_mode.rate_limit_exceeded", exchange=signal.buy_exchange)
+            return
+        if not self._rate_limiter.try_acquire(signal.sell_exchange):
+            self._stats.trades_rate_limited += 1
+            logger.warning("shadow_mode.rate_limit_exceeded", exchange=signal.sell_exchange)
+            return
+
         # Balance check before BUY (SG-4)
         notional = signal.buy_price * signal.volume
         if not self._balance_tracker.deduct(signal.buy_exchange, notional):
@@ -1130,6 +1208,13 @@ class ShadowMode:
         sid = trade_request.strategy_id or self.STRATEGY_ID
 
         try:
+            # Rate limit check: all legs must pass before executing any (SG-6)
+            for leg in trade_request.legs:
+                if not self._rate_limiter.try_acquire(leg.exchange_id):
+                    self._stats.trades_rate_limited += 1
+                    logger.warning("shadow_mode.rate_limit_exceeded", exchange=leg.exchange_id)
+                    return
+
             trades = []
             had_partial = False
             for i, leg in enumerate(trade_request.legs):
@@ -1418,6 +1503,7 @@ class ShadowMode:
             "max_drawdown": stats.max_drawdown,
             "trades_rejected": stats.trades_rejected,
             "trades_partial_fill": stats.trades_partial_fill,
+            "trades_rate_limited": stats.trades_rate_limited,
             "by_strategy": strategy_breakdown,
         }
 

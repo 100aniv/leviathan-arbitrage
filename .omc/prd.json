@@ -970,7 +970,7 @@
       "title": "거래소별 Rate Limit 시뮬레이션 (토큰 버킷)",
       "phase": "SR",
       "priority": 62,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "거래소별 토큰 버킷 리미터 구현",
         "업비트 10req/s, 빗썸 20req/s, 기타 50req/s",
