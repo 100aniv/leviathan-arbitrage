@@ -819,7 +819,8 @@
       "title": "TimescaleDB 자동 백업 + Position Recovery",
       "phase": "E-3",
       "priority": 52,
-      "passes": false,
+      "passes": true,
+      "notes": "Phase E-3: backup_db.sh (pg_dump, 7-day retention) + docker-compose backup service + PositionRecovery (Redis WAL, stale detection). 12 tests PASS, 3472 total.",
       "files": [
         "scripts/backup_db.sh",
         "engine/src/execution/position_recovery.py"

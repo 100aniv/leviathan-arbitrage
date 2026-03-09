@@ -15,6 +15,7 @@ volumes:
   timescaledb_data:
   prometheus_data:
   grafana_data:
+  db_backups:
 
 services:
   # ---------------------------------------------------------------------------
@@ -276,6 +277,32 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # DB Backup — daily pg_dump with 7-day retention
+  # ---------------------------------------------------------------------------
+  db-backup:
+    image: timescale/timescaledb:latest-pg16
+    container_name: leviathan-db-backup
+    restart: "no"
+    environment:
+      PGHOST: timescaledb
+      PGPORT: "5432"
+      PGUSER: leviathan
+      PGPASSWORD: leviathan
+      PGDATABASE: leviathan
+      BACKUP_DIR: /backups
+      RETENTION_DAYS: "7"
+    volumes:
+      - db_backups:/backups
+      - ./scripts/backup_db.sh:/scripts/backup_db.sh:ro
+    entrypoint: ["/bin/bash", "/scripts/backup_db.sh"]
+    networks:
+      - leviathan
+    depends_on:
+      timescaledb:
+        condition: service_healthy
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
