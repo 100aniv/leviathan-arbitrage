@@ -932,7 +932,7 @@
       "title": "BookWalkSlippage 오더북 깊이 VWAP 체결 구현",
       "phase": "SR",
       "priority": 60,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "BookWalkSlippage 클래스 신규 생성",
         "체결 가격 = N단계 깊이 워킹 물량가중평균가격",

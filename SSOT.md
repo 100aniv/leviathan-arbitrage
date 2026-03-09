@@ -27,12 +27,12 @@
 
 ```
 Phase:        SR (Shadow Realism 강화 스프린트)
-테스트:       3,492 passed, 0 failed
-커버리지:     89%
+테스트:       3,507 passed, 0 failed
+커버리지:     90%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase D-verify US-063,064 PASS: Dashboard 브라우저 검증 완료 (4bcf509)
-다음 작업:    US-060 (BookWalkSlippage 오더북 깊이 VWAP 체결, Phase SR)
+최신 커밋:    Phase SR US-060: BookWalkSlippage VWAP 체결 구현
+다음 작업:    US-061 (VirtualBalanceTracker + 깊이 기반 주문 크기 제한, Phase SR)
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -44,7 +44,7 @@ Phase:        SR (Shadow Realism 강화 스프린트)
 |----|--------|----------|------------|
 | SG-1 | 치명 | partial_fill_rate=0.0, rejection_rate=0.0 | 0.05 / 0.02 활성화 |
 | SG-2 | ~~치명~~ | ~~매수+매도 레그 동기 실행, 0ms 지연~~ | 50-300ms 랜덤 지연 활성 (RESOLVED) |
-| SG-3 | 높음 | PowerLawSlippage(k=0) — 오더북 깊이 미반영 | BookWalkSlippage (VWAP 체결) |
+| SG-3 | ~~높음~~ | ~~PowerLawSlippage(k=0) — 오더북 깊이 미반영~~ | BookWalkSlippage VWAP 체결 활성 (RESOLVED) |
 | SG-4 | 높음 | 무한 가상 잔고, 소진 추적 없음 | VirtualBalanceTracker + 리밸런스 |
 | SG-5 | 높음 | trade_size=Decimal("1") 하드코딩 | 주문크기 = min(주문량, L1깊이×0.10) |
 | SG-6 | 중간 | Rate limit 시뮬레이션 없음 | 거래소별 토큰 버킷 |
@@ -220,11 +220,13 @@ P(rollback): 30-trade 롤링 윈도우, cold-start 5%
 
 **RiskGuardian (9-check)**: 자본, 마진, 스프레드, 포지션, 주문크기, 일일손실, 연속손실, 슬리피지, 롤백비용
 
-### 4.4 이중 슬리피지 방지 규칙
+### 4.4 슬리피지 계층 규칙
 
-> **절대 규칙**: PowerLawSlippage(k=5.0)는 ~100bps 왕복 영향 → PaperExecutor에 적용 금지.
-> SignalGenerator의 CEXOrderbookSlippage가 유일한 슬리피지 소스.
-> Shadow 모드에서 PaperExecutor는 ZERO slippage로 실행해야 이중 계산 방지.
+> **사전 필터**: SignalGenerator의 CEXOrderbookSlippage — 통계적 시장 영향 추정 (sigma * k * sqrt(size/ADV)). 신호 허용/차단 기준으로만 사용. fill_price에 미반영.
+> **실행 시뮬레이션**: BookWalkSlippage (US-060) — 실제 오더북 깊이 워킹 VWAP 체결가 산출. fill_price를 결정하는 실행 계층.
+> **이중 계산 아님**: 두 계층은 서로 다른 질문에 답함 (필터 vs 체결가). PnL 계산에서 더해지지 않음.
+> **금지**: PowerLawSlippage(k>0)를 PaperExecutor에 적용하는 것은 여전히 금지 (통계 모델 + 통계 모델 = 이중계산).
+> BookWalkSlippage는 실제 오더북 레벨을 워킹하므로 통계 모델이 아닌 실행 시뮬레이션.
 
 ### 4.5 Sharpe 비율 (연간화)
 
@@ -399,7 +401,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 - [x] US-058: PaperExecutor 부분체결(5%) + 주문거부(2%) 활성화 — 12 tests, 3484 total PASS
 - [x] US-059: Shadow 레그 간 실행 지연(50-300ms) 추가 — 8 tests, 3492 total PASS
-- [ ] US-060: BookWalkSlippage — 오더북 깊이별 VWAP 체결
+- [x] US-060: BookWalkSlippage — 오더북 깊이별 VWAP 체결 — 15 tests, 3507 total PASS
 - [ ] US-061: VirtualBalanceTracker + 깊이 기반 주문 크기 제한
 - [ ] US-062: 거래소별 Rate Limit 시뮬레이션
 
@@ -460,7 +462,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 |-----|------|----------|---------|
 | **SG-1** | ~~partial_fill_rate=0.0, rejection_rate=0.0~~ | partial_fill=0.05, rejection=0.02 활성 | ~~US-058~~ **RESOLVED** |
 | **SG-2** | ~~레그 간 0ms 동기 실행~~ | 50-300ms 랜덤 지연 활성 | ~~US-059~~ **RESOLVED** |
-| **SG-3** | PowerLawSlippage(k=1.0) — 오더북 깊이 미반영 | 단순 모델 | US-060 |
+| **SG-3** | ~~PowerLawSlippage(k=1.0) — 오더북 깊이 미반영~~ | BookWalkSlippage VWAP 활성 | ~~US-060~~ **RESOLVED** |
 | **SG-4** | 무한 가상 잔고, 소진 추적 없음 | 무제한 자금 | US-061 |
 | **SG-5** | trade_size=Decimal("1") 하드코딩 | 고정 크기 | US-061 |
 | **SG-6** | Rate limit 시뮬레이션 없음 | 무제한 요청 | US-062 |

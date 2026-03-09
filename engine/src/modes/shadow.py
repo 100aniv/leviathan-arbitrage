@@ -100,6 +100,89 @@ class PowerLawSlippage(SlippageModel):
 
 
 # ---------------------------------------------------------------------------
+# Book-walk VWAP slippage model (SG-3)
+# ---------------------------------------------------------------------------
+
+
+class BookWalkSlippage(SlippageModel):
+    """Orderbook depth-walking VWAP slippage model (SG-3).
+
+    Walks real L2 orderbook levels to compute volume-weighted average
+    fill price. More realistic than PowerLaw or zero slippage.
+    """
+
+    def __init__(
+        self,
+        books: dict[str, dict[str, Any]],
+        fallback_bps: Decimal | None = None,
+        depth_penalty_multiplier: float | None = None,
+    ) -> None:
+        super().__init__(base_slippage_pct=Decimal("0"))
+        self._books = books
+        self._fallback_bps = fallback_bps or Decimal(
+            os.getenv("SHADOW_FALLBACK_SLIPPAGE_BPS", "10")
+        )
+        self._depth_penalty = depth_penalty_multiplier or float(
+            os.getenv("SHADOW_DEPTH_PENALTY_MULTIPLIER", "2.0")
+        )
+        self._current_exchange: str = ""
+        self._current_symbol: str = ""
+
+    def set_context(self, exchange_id: str, symbol: str) -> None:
+        """Set execution context before calling apply()."""
+        self._current_exchange = exchange_id
+        self._current_symbol = symbol
+
+    def apply(
+        self, base_price: Decimal, side: OrderSide, size: Decimal = Decimal("1")
+    ) -> Decimal:
+        book = self._books.get(self._current_symbol, {}).get(self._current_exchange)
+        if book is None or not hasattr(book, "vwap_walk"):
+            return self._apply_fallback(base_price, side)
+
+        walk_side = "buy" if side == OrderSide.BUY else "sell"
+        vwap_price, filled_qty = book.vwap_walk(walk_side, size)
+
+        if filled_qty <= 0:
+            return self._apply_fallback(base_price, side)
+
+        if filled_qty < size:
+            # Insufficient liquidity: penalize unfilled portion
+            unfilled = size - filled_qty
+            if side == OrderSide.BUY:
+                penalty_price = vwap_price * Decimal(str(self._depth_penalty))
+            else:
+                penalty_price = vwap_price / Decimal(str(self._depth_penalty))
+            logger.warning(
+                "shadow_mode.book_walk_insufficient_depth",
+                exchange=self._current_exchange,
+                symbol=self._current_symbol,
+                side=walk_side,
+                requested=str(size),
+                filled=str(filled_qty),
+                unfilled=str(unfilled),
+            )
+            total_weighted = vwap_price * filled_qty + penalty_price * unfilled
+            return total_weighted / size
+
+        return vwap_price
+
+    def _apply_fallback(self, base_price: Decimal, side: OrderSide) -> Decimal:
+        """Conservative fallback when orderbook unavailable."""
+        logger.warning(
+            "shadow_mode.book_walk_fallback",
+            exchange=self._current_exchange,
+            symbol=self._current_symbol,
+            side="buy" if side == OrderSide.BUY else "sell",
+            fallback_bps=str(self._fallback_bps),
+        )
+        bps_fraction = self._fallback_bps / Decimal("10000")
+        if side == OrderSide.BUY:
+            return base_price * (Decimal("1") + bps_fraction)
+        return base_price * (Decimal("1") - bps_fraction)
+
+
+# ---------------------------------------------------------------------------
 # Stats dataclass
 # ---------------------------------------------------------------------------
 
@@ -213,8 +296,13 @@ class ShadowMode:
             rr = max(Decimal("0"), min(Decimal("1"), Decimal(os.environ.get("SHADOW_REJECTION_RATE", "0.02"))))
         except Exception:
             rr = Decimal("0.02")
+        # Orderbook store must be initialized before PaperExecutor so
+        # BookWalkSlippage holds a reference to the live dict.
+        # Structure: symbol -> exchange_id -> OrderBook
+        self._books: dict[str, dict[str, Any]] = {}
+
         self._paper_executor: PaperExecutor = paper_executor or PaperExecutor(
-            slippage_model=PowerLawSlippage(k=0.0, gamma=0.5),
+            slippage_model=BookWalkSlippage(books=self._books),
             fee_rate=Decimal("0"),
             partial_fill_rate=pfr,
             rejection_rate=rr,
@@ -229,10 +317,6 @@ class ShadowMode:
         self._telegram = telegram
         self._symbols = symbols or ["BTC/USDT"]
         self._exchanges = exchanges
-
-        # Orderbook store: exchange_id -> OrderBook (keyed per symbol internally)
-        # Structure: symbol -> exchange_id -> OrderBook
-        self._books: dict[str, dict[str, Any]] = {}
 
         # Futures orderbook store: symbol -> exchange_id -> OrderBook
         self._futures_books: dict[str, dict[str, Any]] = {}
@@ -748,6 +832,8 @@ class ShadowMode:
                 price=signal.buy_price,
                 amount=signal.volume,
             )
+            if hasattr(self._paper_executor, "slippage_model") and hasattr(self._paper_executor.slippage_model, "set_context"):
+                self._paper_executor.slippage_model.set_context(signal.buy_exchange, signal.symbol)
             buy_trade = await self._paper_executor.execute(buy_order)
 
             # Simulate realistic inter-leg execution delay (SG-2)
@@ -773,6 +859,8 @@ class ShadowMode:
                 price=signal.sell_price,
                 amount=buy_trade.amount,
             )
+            if hasattr(self._paper_executor, "slippage_model") and hasattr(self._paper_executor.slippage_model, "set_context"):
+                self._paper_executor.slippage_model.set_context(signal.sell_exchange, signal.symbol)
             sell_trade = await self._paper_executor.execute(sell_order)
 
         except OrderRejectedError as exc:
@@ -993,6 +1081,8 @@ class ShadowMode:
                     price=leg_price,
                     amount=leg.size,
                 )
+                if hasattr(self._paper_executor, "slippage_model") and hasattr(self._paper_executor.slippage_model, "set_context"):
+                    self._paper_executor.slippage_model.set_context(leg.exchange_id, leg.symbol)
                 trade = await self._paper_executor.execute(order)
                 # Detect partial fill (count once per trade, not per leg)
                 if trade.amount < leg.size:

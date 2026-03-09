@@ -3,6 +3,42 @@
 > 이 커맨드는 **ralph 루프 + Phase B TeamCreate** 방식으로 prd.json US를 자동 순회합니다.
 > 사용법: `/project:leviathan` 또는 `/project:leviathan US-010부터`
 
+## 0. 자동 실행 강제 정책 (ZERO TOLERANCE — 최우선 규칙)
+
+> **이 섹션은 문서 내 모든 다른 규칙보다 우선합니다.**
+
+### 절대 금지 행위 (위반 시 워크플로우 실패로 간주)
+1. **사용자에게 확인/승인 요청** — "계속할까요?", "다음으로 넘어갈까요?", "진행할까요?" 등 모든 형태의 질문 금지
+2. **Phase 간 멈춤** — Phase A→B→C 전환 시 텍스트만 출력하고 멈추는 행위 금지
+3. **에이전트 결과 대기 중 멈춤** — 에이전트 결과 수신 즉시 다음 단계 tool call 실행
+4. **US 간 멈춤** — 한 US 완료 즉시 다음 US Phase A 시작 (prd.json에서 다음 `passes:false` 찾기)
+5. **상태 보고만 하고 멈춤** — "현재 상태: X입니다" 출력 후 tool call 없이 턴 종료 금지
+
+### 강제 실행 규칙
+- **모든 응답에 최소 1개 tool call 포함** — 순수 텍스트만 출력하는 응답 금지 (진행 상황 보고 시에도 다음 단계 tool call 포함)
+- **Phase A 완료 → 동일 응답에서 Phase B TeamCreate + Agent 스폰** (별도 턴으로 분리 금지)
+- **Phase B 완료 → 동일 응답에서 Phase C 에이전트 호출** (별도 턴으로 분리 금지)
+- **Phase C 완료 → 동일 응답에서 git commit + 다음 US Phase A 시작** (별도 턴으로 분리 금지)
+- **에이전트 idle 알림 수신 → 해당 에이전트에 작업 있으면 즉시 SendMessage, 없으면 무시하고 다른 작업 진행**
+
+### 유일한 멈춤 허용 조건
+1. 모든 US가 `passes:true` (작업 완료)
+2. 5회 연속 동일 US 실패 (사용자 보고 필요)
+3. 사용자가 명시적으로 "stop", "cancel", "멈춰" 입력
+
+### 자동 실행 흐름 (한 US 전체가 단일 연속 흐름)
+```
+[Phase A] architect/ralplan 호출 → QUANT GATE(해당 시) →
+[Phase B] 같은 응답에서 TeamCreate + Jennie+Lisa 스폰 → 에이전트 완료 대기 → pytest 결과 수신 →
+[Phase C] 같은 응답에서 shadow-tester + code-reviewer 호출 → 결과 수신 → ssot-keeper → git commit+push →
+[다음 US] 같은 응답에서 prd.json 읽기 + 다음 US Phase A 시작
+```
+
+> ⚠️ **위 흐름에서 사용자 입력을 기다리는 지점은 0개입니다.**
+> ⚠️ **텍스트 출력은 진행 상황 1줄 요약만. 장황한 설명 금지.**
+
+---
+
 ## 1. 소스 (반드시 읽을 것)
 
 - `SSOT.md` — 유일한 설계 문서. 작업 전 반드시 읽기.
@@ -29,6 +65,25 @@ ralph 루프 안에서 각 US마다 **3-Phase Sequential** 필수 수행:
 ---
 
 ### Phase A — 기획 (AESPA팀)
+
+**⚡ 배치 판단 (Phase A 진입 시 최우선 실행):**
+
+현재 US와 prd.json의 다음 연속 US들을 비교하여 배치 가능 여부 판단:
+
+| 조건 | 배치 가능 | 예시 |
+|------|----------|------|
+| 동일 Phase (SR, D, F 등) AND 동일 도메인 (engine/src/같은 디렉토리) | O | US-058~062 (모두 Phase SR, Shadow 현실성) |
+| 동일 Phase BUT 다른 도메인 (engine vs dashboard) | X | US-058(engine) + US-063(dashboard) |
+| US 간 의존성 (B가 A 결과 필요) | X | US-060(슬리피지 모델) → US-061(슬리피지 기반 시그널) |
+
+**의존성 안전장치** (배치 전 반드시 확인):
+1. `prd.json`의 `dependencies` 필드 확인 — 의존 US가 `passes:false`면 배치 불가
+2. `files` 배열 교집합 확인 — 동일 파일 수정 US끼리는 순차 실행 (병렬 금지)
+3. 배치 크기 상한: **최대 5 US** (초과 시 분할)
+
+배치 판정 결과:
+- **배치 가능** → 배치 내 US들을 하나의 PLAN.md에 통합 기획 (`docs/planning/US-XXX~YYY_PLAN.md`)
+- **배치 불가** → 단일 US 모드로 진행 (기존 방식)
 
 **복잡도 판단 (prd.json의 `files` 배열 기준):**
 
@@ -126,6 +181,13 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 
 > ⚠️ **Phase B 완료(pytest 0 failures OR D-verify Chrome 검증 완료) 즉시 Phase C 시작. 멈추지 말 것.**
 
+**배치 모드 분기** (Phase A에서 배치 판정된 경우):
+- 배치 내 US들을 **순차적으로** Phase B 실행 (각 US별 TeamCreate → 구현 → pytest → TeamDelete)
+- 단, 같은 도메인 US끼리는 **동일 팀에서 연속 처리** 가능 (팀 재생성 불필요)
+- 배치 내 모든 US의 Phase B 완료 후 → Phase C를 **배치 단위로 일괄 실행**
+
+> ⚠️ **Phase B 완료 직후 반드시 `/compact` 실행. TeamCreate 에이전트 메시지가 컨텍스트의 40-60%를 차지. 미실행 시 Phase C 진입 불가.**
+
 ---
 
 ### Phase C — 검증 (LE SSERAFIM + IVE + NEWJEANS)
@@ -147,10 +209,21 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 - `Agent(subagent_type="oh-my-claudecode:critic", name="hanni", model="opus", prompt="설계 비판 + 개선안 제시")` **직접 호출**
 
 #### C-4. 완료 처리
+
+**단일 US 모드:**
 - `Agent(subagent_type="ssot-keeper", name="haerin", prompt="SSOT.md 해당 섹션 업데이트")` **직접 호출**
 - prd.json 해당 US `passes: true` 마킹
 - `docker compose ps` → 전 컨테이너 healthy 확인
 - `git add` + `git commit` + `git push` (gh CLI)
+
+**배치 US 모드** (Phase A에서 배치 판정된 경우):
+- 배치 내 **모든 US**의 Phase B+C 완료 후 일괄 처리:
+  1. `Agent(subagent_type="ssot-keeper", name="haerin", prompt="SSOT.md 배치 US 일괄 업데이트: US-XXX~US-YYY")` **직접 호출**
+  2. prd.json 배치 내 전체 US `passes: true` 마킹
+  3. `docker compose ps` → 전 컨테이너 healthy 확인
+  4. `git add -A && git commit -m "Phase [phase]: US-XXX~US-YYY [배치 설명]"` — **배치 단위 단일 커밋**
+  5. `git push` (gh CLI)
+- ⚠️ 배치 커밋 메시지 형식: `Phase SR US-058~062: [공통 변경 요약]`
 
 ---
 
@@ -196,12 +269,19 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 - **슬리피지**: PowerLaw `impact = k * size^gamma` (k=1.0, gamma=0.5)
 - **이중 슬리피지 금지**: SignalGenerator의 CEXOrderbookSlippage가 유일한 슬리피지 소스
 
-## 6. 컨텍스트 관리
+## 6. 컨텍스트 관리 (⚠️ 강제 — 생략 시 컨텍스트 폭발로 품질 저하)
 
-- Phase B 완료 후: `/compact` 실행하여 컨텍스트 해제
-- Phase C 완료 후: `/cost` 실행하여 사용량 확인
-- US 3개마다: `/context` 실행하여 비율 모니터링
-- Phase 전환 시 (E→F): `/clear` 실행하여 깨끗한 시작
+> ⚠️ **아래 명령어는 권장이 아닌 필수. 해당 시점에서 반드시 실행할 것.**
+
+| 시점 | 명령어 | 이유 |
+|------|--------|------|
+| Phase B 완료 직후 | `/compact` | TeamCreate 에이전트 메시지 해제. 미실행 시 Phase C에서 컨텍스트 80%+ 소모 |
+| Phase C 완료 직후 | `/cost` | 사용량 확인. 예산 초과 조기 감지 |
+| US 3개 완료마다 | `/context` | 컨텍스트 비율 모니터링. 70% 초과 시 `/compact` 추가 실행 |
+| Phase 전환 시 (SR→F 등) | `/clear` | 이전 Phase 잔여 컨텍스트 완전 제거. 깨끗한 시작 보장 |
+| 배치 US 완료 후 | `/compact` + `/cost` | 배치는 단일 US 대비 2-3배 컨텍스트 소모. 반드시 이중 해제 |
+
+> **실패 사례**: Phase B 후 `/compact` 미실행 → Phase C Shadow 테스트 중 컨텍스트 초과 → 세션 강제 종료 → 작업 소실.
 
 ## 7. 시작 및 자동 루프
 

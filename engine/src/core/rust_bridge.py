@@ -209,6 +209,35 @@ class RustOrderBookWrapper:
         val = self._rust_book.volume_at_price(float(price), side)
         return D(str(val))
 
+    def vwap_walk(self, side: str, size) -> tuple:
+        from decimal import Decimal as D
+
+        if side == "buy":
+            levels = sorted(self.asks.items())
+        elif side == "sell":
+            levels = sorted(self.bids.items(), reverse=True)
+        else:
+            raise ValueError(f"Invalid side '{side}': must be 'buy' or 'sell'")
+
+        if not levels:
+            return (D("0"), D("0"))
+
+        remaining = D(str(size))
+        weighted_sum = D("0")
+        filled = D("0")
+
+        for price, qty in levels:
+            fill_qty = min(remaining, qty)
+            weighted_sum += price * fill_qty
+            filled += fill_qty
+            remaining -= fill_qty
+            if remaining <= 0:
+                break
+
+        if filled > 0:
+            return (weighted_sum / filled, filled)
+        return (D("0"), D("0"))
+
 
 def get_orderbook_class() -> type:
     """Return the orderbook implementation class for this process.

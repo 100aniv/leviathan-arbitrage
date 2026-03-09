@@ -140,3 +140,36 @@ class OrderBook:
     def validate_checksum(self, expected: int) -> bool:
         """Validate orderbook integrity against expected CRC32 checksum."""
         return self.compute_checksum() == expected
+
+    def vwap_walk(self, side: str, size: Decimal) -> tuple[Decimal, Decimal]:
+        """Walk orderbook depth, return (vwap_price, filled_qty).
+
+        BUY → walk asks ascending (cheapest first)
+        SELL → walk bids descending (most expensive first)
+        Returns (Decimal("0"), Decimal("0")) for empty book side.
+        """
+        if side == "buy":
+            levels = sorted(self.asks.items())  # ascending by price
+        elif side == "sell":
+            levels = sorted(self.bids.items(), reverse=True)  # descending by price
+        else:
+            raise ValueError(f"Invalid side '{side}': must be 'buy' or 'sell'")
+
+        if not levels:
+            return (Decimal("0"), Decimal("0"))
+
+        remaining = size
+        weighted_sum = Decimal("0")
+        filled = Decimal("0")
+
+        for price, qty in levels:
+            fill_qty = min(remaining, qty)
+            weighted_sum += price * fill_qty
+            filled += fill_qty
+            remaining -= fill_qty
+            if remaining <= 0:
+                break
+
+        if filled > 0:
+            return (weighted_sum / filled, filled)
+        return (Decimal("0"), Decimal("0"))
