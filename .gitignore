@@ -26,8 +26,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# lib/ 제거 — dashboard/src/lib/ 까지 매칭되는 문제 있음. .venv/으로 이미 커버됨
 parts/
 sdist/
 var/
@@ -149,8 +148,10 @@ dump.rdb
 engine/src/infra/db/versions/__pycache__/
 
 # --- OMC & Claude local state ---
-.omc/
-.claude/
+# .omc/, .claude/ 제거 — CLAUDE.md, leviathan.md, prd.json, handoffs 등 소스코드 추적 필요
+# 민감한 로컬 상태 파일만 선택적 제외:
+.omc/state/
+.omc/artifacts/
 
 # --- Nginx TLS certs (generated locally, never committed) ---
 infra/nginx/certs/
