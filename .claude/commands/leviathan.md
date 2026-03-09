@@ -1,6 +1,6 @@
 # LEVIATHAN Execution Command
 
-> 이 커맨드는 `team ralph` 모드로 prd.json US를 자동 순회합니다.
+> 이 커맨드는 **ralph 루프 + Phase B TeamCreate** 방식으로 prd.json US를 자동 순회합니다.
 > 사용법: `/project:leviathan` 또는 `/project:leviathan US-010부터`
 
 ## 1. 소스 (반드시 읽을 것)
@@ -17,6 +17,12 @@
 ```
 Skill("oh-my-claudecode:ralph")
 ```
+
+> ⚠️ **[설계 원칙 — 절대 변경 금지]** `ralph` vs OMC `team ralph` 스킬 차이:
+> - `Skill("oh-my-claudecode:ralph")` = **올바름** — 메인 세션 self-referential outer loop (지속성만 담당)
+> - `Skill("oh-my-claudecode:team", args="ralph")` = **잘못됨** — OMC 내장 파이프라인(team-plan→team-prd→team-exec→team-verify→team-fix) 강제 활성화 → LEVIATHAN 커스텀 3-Phase Sequential과 충돌
+> - LEVIATHAN의 팀은 Phase B에서 **`TeamCreate("leviathan-us-xxx")` API로 US별 직접 생성/삭제** (OMC team 스킬 불필요, 별도 레이어)
+> - 미래 Claude가 `team ralph`로 변경 시도 → 이 주석이 이유. 절대 변경 금지.
 
 ralph 루프 안에서 각 US마다 **3-Phase Sequential** 필수 수행:
 
