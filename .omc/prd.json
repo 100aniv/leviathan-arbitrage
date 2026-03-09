@@ -897,7 +897,8 @@
       "title": "Shadow 부분체결(5%) + 주문거부(2%) 활성화",
       "phase": "SR",
       "priority": 58,
-      "passes": false,
+      "passes": true,
+      "notes": "Phase SR: partial_fill_rate=0.05, rejection_rate=0.02 활성화. env var 설정 가능. ShadowStats/StrategyStats에 trades_rejected/trades_partial_fill 카운터 추가. 매도수량=매수체결량 조정. 12 신규 테스트, 3484 total PASS.",
       "acceptanceCriteria": [
         "PaperExecutor partial_fill_rate=0.05 설정",
         "PaperExecutor rejection_rate=0.02 설정",

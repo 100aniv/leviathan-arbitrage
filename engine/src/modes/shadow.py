@@ -30,7 +30,7 @@ import structlog
 from src.core.models import Order, OrderSide, OrderType, Signal
 from src.core.order_book import OrderBook
 from src.core.rust_bridge import get_orderbook_class
-from src.execution.paper import PaperExecutor, SlippageModel
+from src.execution.paper import PaperExecutor, SlippageModel, OrderRejectedError
 from src.friction.fee_model import FeeModel
 from src.strategies.base import TradeRequest, TradeLeg
 from src.infra.metrics import (
@@ -112,6 +112,8 @@ class StrategyStats:
     wins: int = 0
     losses: int = 0
     pnl: float = 0.0
+    rejections: int = 0
+    partial_fills: int = 0
 
 
 @dataclass
@@ -127,6 +129,8 @@ class ShadowStats:
     peak_pnl: float = 0.0
     max_drawdown: float = 0.0
     last_daily_summary: datetime | None = None
+    trades_rejected: int = 0
+    trades_partial_fill: int = 0
     # Per-strategy breakdown
     by_strategy: dict[str, StrategyStats] = field(default_factory=dict)
 
@@ -199,9 +203,20 @@ class ShadowMode:
         # k=0: zero slippage in PaperExecutor — SignalGenerator already applies
         # CEXOrderbookSlippage, so PaperExecutor must NOT add more (double-count).
         # FeeModel in _execute_shadow_trade handles per-exchange fees separately.
+        # Parse env vars with validation (clamp to [0, 1], fallback on invalid)
+        try:
+            pfr = max(Decimal("0"), min(Decimal("1"), Decimal(os.environ.get("SHADOW_PARTIAL_FILL_RATE", "0.05"))))
+        except Exception:
+            pfr = Decimal("0.05")
+        try:
+            rr = max(Decimal("0"), min(Decimal("1"), Decimal(os.environ.get("SHADOW_REJECTION_RATE", "0.02"))))
+        except Exception:
+            rr = Decimal("0.02")
         self._paper_executor: PaperExecutor = paper_executor or PaperExecutor(
             slippage_model=PowerLawSlippage(k=0.0, gamma=0.5),
             fee_rate=Decimal("0"),
+            partial_fill_rate=pfr,
+            rejection_rate=rr,
         )
 
         self._fee_model = FeeModel()
@@ -716,6 +731,7 @@ class ShadowMode:
 
         t0 = time.monotonic()
         self._stats.signals_detected += 1
+        buy_trade = None  # Track which leg was rejected
 
         try:
             buy_order = Order(
@@ -727,6 +743,17 @@ class ShadowMode:
                 price=signal.buy_price,
                 amount=signal.volume,
             )
+            buy_trade = await self._paper_executor.execute(buy_order)
+
+            # Detect partial fill on buy leg
+            if buy_trade.amount < signal.volume:
+                self._stats.trades_partial_fill += 1
+                sid = signal.strategy_id or self.STRATEGY_ID
+                if sid not in self._stats.by_strategy:
+                    self._stats.by_strategy[sid] = StrategyStats()
+                self._stats.by_strategy[sid].partial_fills += 1
+
+            # Sell only what was bought (realistic arb)
             sell_order = Order(
                 order_id=str(uuid.uuid4()),
                 exchange_id=signal.sell_exchange,
@@ -734,12 +761,26 @@ class ShadowMode:
                 side=OrderSide.SELL,
                 order_type=OrderType.MARKET,
                 price=signal.sell_price,
-                amount=signal.volume,
+                amount=buy_trade.amount,
             )
-
-            buy_trade = await self._paper_executor.execute(buy_order)
             sell_trade = await self._paper_executor.execute(sell_order)
 
+        except OrderRejectedError as exc:
+            sid = signal.strategy_id or self.STRATEGY_ID
+            self._stats.trades_rejected += 1
+            if sid not in self._stats.by_strategy:
+                self._stats.by_strategy[sid] = StrategyStats()
+            self._stats.by_strategy[sid].rejections += 1
+            # Identify which leg was rejected (buy if buy_trade unset, else sell)
+            rejected_leg = "buy" if buy_trade is None else "sell"
+            logger.warning(
+                "shadow_mode.order_rejected",
+                strategy=sid,
+                symbol=signal.symbol,
+                rejected_leg=rejected_leg,
+                error=str(exc),
+            )
+            return
         except Exception as exc:
             logger.error(
                 "shadow_mode.trade_execution_failed",
@@ -922,6 +963,7 @@ class ShadowMode:
 
         try:
             trades = []
+            had_partial = False
             for leg in trade_request.legs:
                 leg_price = leg.price or Decimal("0")
                 if leg_price <= Decimal("0"):
@@ -942,7 +984,26 @@ class ShadowMode:
                     amount=leg.size,
                 )
                 trade = await self._paper_executor.execute(order)
+                # Detect partial fill (count once per trade, not per leg)
+                if trade.amount < leg.size:
+                    had_partial = True
                 trades.append((leg, trade))
+            if had_partial:
+                self._stats.trades_partial_fill += 1
+                if sid not in self._stats.by_strategy:
+                    self._stats.by_strategy[sid] = StrategyStats()
+                self._stats.by_strategy[sid].partial_fills += 1
+        except OrderRejectedError as exc:
+            self._stats.trades_rejected += 1
+            if sid not in self._stats.by_strategy:
+                self._stats.by_strategy[sid] = StrategyStats()
+            self._stats.by_strategy[sid].rejections += 1
+            logger.warning(
+                "shadow_mode.trade_request_rejected",
+                strategy_id=sid,
+                error=str(exc),
+            )
+            return
         except Exception as exc:
             logger.error(
                 "shadow_mode.trade_request_execution_failed",
@@ -1181,6 +1242,8 @@ class ShadowMode:
             "trades": total_trades,
             "win_rate": win_rate,
             "max_drawdown": stats.max_drawdown,
+            "trades_rejected": stats.trades_rejected,
+            "trades_partial_fill": stats.trades_partial_fill,
             "by_strategy": strategy_breakdown,
         }
 
@@ -1207,6 +1270,10 @@ class ShadowMode:
                             f"{sb['win_rate']:.0%} WR / "
                             f"${sb['pnl']:+.4f}"
                         )
+                    lines.append(
+                        f"  Rejected: {stats.trades_rejected}\n"
+                        f"  Partial fills: {stats.trades_partial_fill}"
+                    )
                     await self._telegram.send_alert("\n".join(lines), level="INFO")
 
                 stats.last_daily_summary = now

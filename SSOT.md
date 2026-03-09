@@ -27,12 +27,12 @@
 
 ```
 Phase:        SR (Shadow Realism 강화 스프린트)
-테스트:       3,472 passed, 0 failed
+테스트:       3,484 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    Phase D-verify US-063,064 PASS: Dashboard 브라우저 검증 완료 (4bcf509)
-다음 작업:    US-058 (Shadow 부분체결 5% + 주문거부 2% 활성화, Phase SR)
+다음 작업:    US-059 (Shadow 레그 간 실행 지연 50-300ms, Phase SR)
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -395,9 +395,9 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-052: TimescaleDB 자동 백업 + Position Recovery (12 tests)
 - [x] US-053: Dashboard Attribution 페이지
 
-### Phase SR: Shadow 현실성 강화 — US-058~062 ⬜ (Phase F 이전 필수)
+### Phase SR: Shadow 현실성 강화 — US-058~062 🔄 (Phase F 이전 필수)
 
-- [ ] US-058: PaperExecutor 부분체결(5%) + 주문거부(2%) 활성화
+- [x] US-058: PaperExecutor 부분체결(5%) + 주문거부(2%) 활성화 — 12 tests, 3484 total PASS
 - [ ] US-059: Shadow 레그 간 실행 지연(50-300ms) 추가
 - [ ] US-060: BookWalkSlippage — 오더북 깊이별 VWAP 체결
 - [ ] US-061: VirtualBalanceTracker + 깊이 기반 주문 크기 제한
@@ -458,7 +458,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 | GAP | 설명 | 현재 상태 | 해결 US |
 |-----|------|----------|---------|
-| **SG-1** | partial_fill_rate=0.0, rejection_rate=0.0 (비활성) | 100% 체결 | US-058 |
+| **SG-1** | ~~partial_fill_rate=0.0, rejection_rate=0.0~~ | partial_fill=0.05, rejection=0.02 활성 | ~~US-058~~ **RESOLVED** |
 | **SG-2** | 레그 간 0ms 동기 실행 (현실: 50-300ms 지연) | 즉시 체결 | US-059 |
 | **SG-3** | PowerLawSlippage(k=1.0) — 오더북 깊이 미반영 | 단순 모델 | US-060 |
 | **SG-4** | 무한 가상 잔고, 소진 추적 없음 | 무제한 자금 | US-061 |
