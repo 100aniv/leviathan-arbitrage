@@ -732,7 +732,8 @@
       "title": "Adaptive Threshold + Regime Detector",
       "phase": "E-2",
       "priority": 47,
-      "passes": false,
+      "passes": true,
+      "notes": "Phase E-2: AdaptiveThreshold + RegimeDetector + DB migration. 28 tests PASS, 4 MEDIUM code review fixes applied (history.clear, typed conn, datetime obj, dual logging). Shadow 10min: 2325T, 96.5%WR, +$39,733, crash 0.",
       "files": [
         "engine/src/tuning/adaptive_threshold.py",
         "engine/src/tuning/regime_detector.py"

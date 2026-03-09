@@ -26,25 +26,23 @@
 ## 2. 현재 상태
 
 ```
-Phase:        C (Strategy Validation — US-030 PASS)
-테스트:       3,215 passed, 0 failed
-커버리지:     90%
+Phase:        E-2 (Auto-Tuning Pipeline — US-047 PASS)
+테스트:       3,384 passed, 0 failed
+커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase C US-031~036: strategy validation + funding_rate fix + signal routing
+최신 커밋:    Phase E-2 US-047: Adaptive Threshold + Regime Detector
 ```
 
-### Shadow 최신 결과 (Phase C US-031~036, 10min, multi-strategy)
+### Shadow 최신 결과 (Phase E-2 US-047, 10min)
 
 | 항목 | 값 |
 |------|-----|
-| 거래 수 | 231 (cross:147, latency:82, stat_arb:2) |
-| 승률 | 99%+ |
-| PnL | cross:+$3,853, latency:+$3,853, stat_arb:-$581 |
+| 거래 수 | 2,325 (cross:1155, latency:1142, spot_futures:28) |
+| 승률 | 96.5% (2243W / 82L) |
+| PnL | +$39,733.58 |
 | Crash | 0 (Traceback=0, CRITICAL=0) |
-| 활성 전략 | 7개 등록+시작 (cross, spot_futures, futures_futures, triangular, funding_rate, stat_arb, latency_arb) |
-| Funding Rate | 4거래소×8심볼 수집 성공, 0 failures |
-| Spot-Futures | 신호 생성(ETH,SOL), 비용>basis로 정상 필터 |
+| 활성 전략 | 7개 등록+시작 |
 | MIN_EDGE_BPS | 3 (SignalGenerator) |
 
 ### Shadow 이력 요약 (Phase 7.3h-i, MIN_EDGE_BPS=5)
@@ -342,17 +340,17 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] US-040: Strategy Analytics 페이지
 - [ ] US-041: Mobile Responsive + Funding Rate 모니터
 
-### Phase E-1: Production Monitoring — US-042~044
+### Phase E-1: Production Monitoring — US-042~044 — ☑ ALL PASS
 
-- [ ] US-042: Telegram 인프라 모니터링 daemon
-- [ ] US-043: Grafana 대시보드 프리셋
-- [ ] US-044: 자동 알림 규칙
+- [x] US-042: Telegram 인프라 모니터링 daemon
+- [x] US-043: Grafana 대시보드 프리셋
+- [x] US-044: 자동 알림 규칙
 
 ### Phase E-2: Auto-Tuning Pipeline — US-045~048
 
-- [ ] US-045: Scheduled Offline Tuner (Docker)
-- [ ] US-046: Adaptive Threshold (실시간 MIN_EDGE 조정)
-- [ ] US-047: Regime Detector (4단계 시장 레짐)
+- [x] US-045: Scheduled Offline Tuner (Docker)
+- [x] US-046: Shadow Runner 자동 적용 + TimescaleDB 데이터
+- [x] US-047: Adaptive Threshold + Regime Detector (28 tests, 4 MEDIUM fixes)
 - [ ] US-048: 3-Layer 튜닝 통합 테스트
 
 ### Phase E-3: Production Readiness — US-049~053
