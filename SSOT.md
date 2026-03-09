@@ -26,8 +26,8 @@
 ## 2. 현재 상태
 
 ```
-Phase:        E-3 (Production Readiness — US-050 PASS)
-테스트:       3,447 passed, 0 failed
+Phase:        E-3 (Production Readiness — US-051 PASS)
+테스트:       3,460 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
@@ -357,7 +357,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 - [x] US-049: Capital Allocator (Kelly Criterion, Half-Kelly, 19 tests)
 - [x] US-050: Inventory Rebalancer + Balance Tracker (27 tests)
-- [ ] US-051: Performance Attribution Engine
+- [x] US-051: Performance Attribution Engine (13 tests)
 - [ ] US-052: TimescaleDB 자동 백업
 - [ ] US-053: Position Recovery 로직
 
