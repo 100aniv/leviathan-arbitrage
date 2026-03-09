@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-09 | 최신 커밋: `e273d9a`
+> 마지막 업데이트: 2026-03-09 | 최신 커밋: `4bcf509`
 > 실행 플랜: `.claude/plans/jazzy-wishing-avalanche.md` | PRD: `.omc/prd.json` (64개 User Stories)
 
 ---
@@ -31,8 +31,8 @@ Phase:        SR (Shadow Realism 강화 스프린트)
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase D-verify US-063: Dashboard Chrome 브라우저 검증
-다음 작업:    US-064 (대시보드 모바일 반응형 + Settings/Alerts 검증)
+최신 커밋:    Phase D-verify US-063,064 PASS: Dashboard 브라우저 검증 완료 (4bcf509)
+다음 작업:    US-058 (Shadow 부분체결 5% + 주문거부 2% 활성화, Phase SR)
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -369,10 +369,10 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-040: Exchange Status 대시보드
 - [x] US-041: Mobile Responsive + 전략별 API endpoint
 
-### Phase D-verify: 브라우저 검증 — US-063~064 ⬜ PENDING
+### Phase D-verify: 브라우저 검증 — US-063~064 ☑ ALL PASS
 
-- [ ] US-063: 대시보드 Chrome 브라우저 검증 — 핵심 4페이지 (Overview, Trades, Settings, Login)
-- [ ] US-064: 대시보드 모바일 반응형 + Settings/Alerts 페이지 검증
+- [x] US-063: 대시보드 Chrome 브라우저 검증 — 핵심 4페이지 (Overview, Trades, Settings, Login)
+- [x] US-064: 대시보드 모바일 반응형 + Settings/Alerts 페이지 검증
 
 ### Phase E-1: Production Monitoring — US-042~044 — ☑ ALL PASS
 
