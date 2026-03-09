@@ -837,7 +837,8 @@
       "title": "Dashboard Attribution 페이지",
       "phase": "E-3",
       "priority": 53,
-      "passes": false,
+      "passes": true,
+      "notes": "Attribution page with Waterfall+Heatmap, /api/v1/attribution endpoint, npm build PASS",
       "files": [
         "dashboard/src/pages/attribution.tsx"
       ],

@@ -174,3 +174,21 @@ export interface ExchangeStatus {
 // ─── UI State Types ───────────────────────────────────────────────────────────
 
 export type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
+
+// ─── Attribution Types ───────────────────────────────────────────────────────
+
+export interface AttributionBreakdown {
+  key: string;
+  pnl: number;
+  trades: number;
+  wr: number;
+}
+
+export interface AttributionResponse {
+  total_trades: number;
+  total_pnl: number;
+  by_strategy: AttributionBreakdown[];
+  by_exchange: AttributionBreakdown[];
+  by_pair: AttributionBreakdown[];
+  by_hour: AttributionBreakdown[];
+}

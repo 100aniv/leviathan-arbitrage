@@ -14,6 +14,7 @@ import type {
   StrategyMetric,
   FundingRate,
   ExchangeStatus,
+  AttributionResponse,
 } from "@/types";
 
 const BASE_URL =
@@ -131,6 +132,11 @@ export const getFundingRates = () =>
 
 export const getExchangeStatus = () =>
   request<Record<string, ExchangeStatus>>("/api/v1/exchanges");
+
+// ─── Attribution ──────────────────────────────────────────────────────────────
+
+export const getAttribution = () =>
+  request<AttributionResponse>("/api/v1/attribution");
 
 export const logout = () => {
   localStorage.removeItem("leviathan_token");

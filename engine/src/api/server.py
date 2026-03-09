@@ -118,6 +118,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     from src.api.routes.settings import router as settings_router
     from src.api.routes.funding import router as funding_router
     from src.api.routes.exchanges import router as exchanges_router
+    from src.api.routes.attribution import router as attribution_router
 
     app.include_router(health_router)
     app.include_router(strategies_router)
@@ -127,6 +128,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     app.include_router(settings_router)
     app.include_router(funding_router)
     app.include_router(exchanges_router)
+    app.include_router(attribution_router)
 
     # ---------------------------------------------------------------------------
     # Prometheus short-path alias
