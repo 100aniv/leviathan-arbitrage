@@ -46,6 +46,28 @@ ralph 루프 안에서 각 US마다 **3-Phase Sequential** 필수 수행:
   - 산출물 동일 (docs/planning/US-XXX_PLAN.md + .omc/handoffs/US-XXX-handoff.md)
   - architect 완료 즉시 → **Phase B 진행 (멈추지 말 것)**
 
+**⚡ QUANT GATE — 전략/수식 관련 US에서만 (인프라/Docker/대시보드 US는 생략):**
+
+`prd.json`의 `files` 배열에 다음 키워드가 하나라도 포함된 경우:
+`slippage`, `signal`, `strategy`, `executor`, `funding`, `futures`, `triangular`, `statistical`, `friction`, `cost_calculator`
+
+→ ralplan/architect 완료 **직후** 반드시 호출:
+```
+Agent(subagent_type="quant-validator", name="winter", model="sonnet",
+      prompt="US-XXX 기획 검증: SSOT.md §4(수식 모델) 대비
+              docs/planning/US-XXX_PLAN.md 정합성 확인.
+              1) 파라미터 범위 합리성 (k, gamma, threshold, bps 등)
+              2) 이중 계산 여부 (slippage, fee 중복 경로)
+              3) PnL 영향 예측 (변경 전/후 net profit 비교)
+              4) SSOT.md §4 수식과 코드 구현 계획의 일치 여부
+              판정: PASS/FAIL + 근거")
+```
+- **PASS** → 즉시 Phase B 진행
+- **FAIL** → Phase B 진입 금지. PLAN.md 수정 후 winter 재호출 (최대 2회)
+
+> 상용 퀀트 회사 동일 패턴: 수식 Sign-off 없이 개발 착수 불가.
+> LEVIATHAN SR 스프린트에서 실제로 발생한 패턴 (PowerLaw k=5.0 이중계산, partial_fill=0.0).
+
 > ⚠️ **Phase A 완료 = 즉시 Phase B 시작. 사용자 입력 기다리지 말 것. 절대 멈추지 말 것.**
 
 ---
