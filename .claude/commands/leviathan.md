@@ -186,7 +186,7 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 - 단, 같은 도메인 US끼리는 **동일 팀에서 연속 처리** 가능 (팀 재생성 불필요)
 - 배치 내 모든 US의 Phase B 완료 후 → Phase C를 **배치 단위로 일괄 실행**
 
-> ⚠️ **Phase B 완료 직후 반드시 `/compact` 실행. TeamCreate 에이전트 메시지가 컨텍스트의 40-60%를 차지. 미실행 시 Phase C 진입 불가.**
+> ⚠️ **Phase B 완료 직후 `/compact` 실행 (TeamCreate 메시지 해제). 단, Phase C 진행 중 `/compact` 절대 금지 (백그라운드 에이전트 결과 소실). §6 참조.**
 
 ---
 
@@ -273,15 +273,44 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 
 > ⚠️ **아래 명령어는 권장이 아닌 필수. 해당 시점에서 반드시 실행할 것.**
 
+### 6.1 US 사이클 단위 컨텍스트 관리
+
+**원칙**: 한 US 사이클(Phase A→B→C + git push)이 하나의 컨텍스트 단위. 사이클 완료 시 `/clear`로 완전 초기화.
+
 | 시점 | 명령어 | 이유 |
 |------|--------|------|
-| Phase B 완료 직후 | `/compact` | TeamCreate 에이전트 메시지 해제. 미실행 시 Phase C에서 컨텍스트 80%+ 소모 |
-| Phase C 완료 직후 | `/cost` | 사용량 확인. 예산 초과 조기 감지 |
-| US 3개 완료마다 | `/context` | 컨텍스트 비율 모니터링. 70% 초과 시 `/compact` 추가 실행 |
-| Phase 전환 시 (SR→F 등) | `/clear` | 이전 Phase 잔여 컨텍스트 완전 제거. 깨끗한 시작 보장 |
-| 배치 US 완료 후 | `/compact` + `/cost` | 배치는 단일 US 대비 2-3배 컨텍스트 소모. 반드시 이중 해제 |
+| Phase B 완료 직후 (팀 해산 후) | `/compact` | TeamCreate 에이전트 메시지 해제 (컨텍스트 40-60% 차지) |
+| **US 사이클 완료** (Phase C + git push 완료) | `/clear` | 컨텍스트 완전 초기화. prd.json/SSOT.md에 결과 기록 완료 상태이므로 안전 |
+| `/clear` 직후 | `/leviathan` | 자동 루프 재개. prd.json에서 다음 `passes:false` US 자동 탐색 |
 
-> **실패 사례**: Phase B 후 `/compact` 미실행 → Phase C Shadow 테스트 중 컨텍스트 초과 → 세션 강제 종료 → 작업 소실.
+### 6.2 절대 금지 시점
+
+> ⚠️ **아래 시점에서 `/compact` 또는 `/clear`를 실행하면 미수집 결과가 소실됩니다.**
+
+| 금지 시점 | 이유 |
+|-----------|------|
+| **Phase C 진행 중** (Shadow/리뷰/critic 에이전트 실행 중) | 백그라운드 에이전트 결과 소실 |
+| Phase B 에이전트가 아직 작업 중 | Jennie/Lisa 구현 결과 소실 |
+| 백그라운드 pytest/Shadow 실행 대기 중 | 테스트 결과 소실 |
+| Phase C-4 완료 처리 중 (SSOT/prd.json/git 미완료) | 결과 미기록 상태에서 초기화 시 데이터 소실 |
+
+### 6.3 안전한 US 사이클 흐름
+
+```
+Phase A 기획 → Phase B 개발
+  → Phase B 완료 (pytest PASS + 팀 해산)
+  → ✅ `/compact` (Phase B 에이전트 메시지 해제)
+  → Phase C 시작 (Shadow + 리뷰 + critic)
+  → ❌ `/compact`·`/clear` 금지 (에이전트 실행 중)
+  → Phase C 모든 결과 수집 + C-4 완료 처리 (SSOT, prd.json, git commit+push)
+  → ✅ `/clear` (컨텍스트 완전 초기화)
+  → `/leviathan` 재호출 (다음 US 자동 시작)
+```
+
+> **핵심**: Phase C 완료 후 `/compact` 대신 `/clear`를 사용. prd.json과 SSOT.md에 모든 결과가 디스크에 기록된 상태이므로 컨텍스트 유지 불필요. `/clear` + `/leviathan` 재호출이 토큰 효율 최적.
+>
+> **실패 사례 (US-060)**: Phase C 에이전트 실행 중 자동 컨텍스트 압축 → Shadow 결과 미수집.
+> **교훈**: Phase C 진행 중에는 어떤 형태의 컨텍스트 조작도 금지.
 
 ## 7. 시작 및 자동 루프
 

@@ -183,6 +183,68 @@ class BookWalkSlippage(SlippageModel):
 
 
 # ---------------------------------------------------------------------------
+# Virtual balance tracker (SG-4)
+# ---------------------------------------------------------------------------
+
+
+class VirtualBalanceTracker:
+    """Per-exchange virtual balance tracker for shadow mode (SG-4).
+
+    Tracks simulated USDT balance per exchange. Prevents unrealistic
+    infinite-capital trades in shadow mode.
+    """
+
+    def __init__(self, initial_balance_usdt: Decimal | None = None) -> None:
+        self._initial: Decimal = initial_balance_usdt or Decimal(
+            os.getenv("SHADOW_INITIAL_BALANCE_USDT", "10000000")
+        )
+        self._threshold_pct: Decimal = Decimal(
+            os.getenv("SHADOW_REBALANCE_THRESHOLD_PCT", "0.10")
+        )
+        self._balances: dict[str, Decimal] = {}
+
+    def get_balance(self, exchange_id: str) -> Decimal:
+        """Return current balance for exchange, lazy-initialised to initial."""
+        if exchange_id not in self._balances:
+            self._balances[exchange_id] = self._initial
+        return self._balances[exchange_id]
+
+    def deduct(self, exchange_id: str, amount_usdt: Decimal) -> bool:
+        """Deduct amount from exchange balance. Returns False if insufficient."""
+        balance = self.get_balance(exchange_id)
+        if balance < amount_usdt:
+            logger.warning(
+                "shadow_mode.insufficient_balance",
+                exchange=exchange_id,
+                balance=str(balance),
+                required=str(amount_usdt),
+            )
+            return False
+        self._balances[exchange_id] = balance - amount_usdt
+        threshold = self._initial * self._threshold_pct
+        if self._balances[exchange_id] < threshold:
+            logger.warning(
+                "shadow_mode.rebalance_needed",
+                exchange=exchange_id,
+                balance=str(self._balances[exchange_id]),
+                threshold=str(threshold),
+            )
+        return True
+
+    def credit(self, exchange_id: str, amount_usdt: Decimal) -> None:
+        """Credit amount to exchange balance."""
+        self._balances[exchange_id] = self.get_balance(exchange_id) + amount_usdt
+
+    def reset(self) -> None:
+        """Reset all balances to initial."""
+        self._balances.clear()
+
+    def summary(self) -> dict[str, str]:
+        """Return balance summary as string values."""
+        return {ex: str(bal) for ex, bal in self._balances.items()}
+
+
+# ---------------------------------------------------------------------------
 # Stats dataclass
 # ---------------------------------------------------------------------------
 
@@ -323,6 +385,7 @@ class ShadowMode:
 
         self._running = False
         self._stats = ShadowStats(start_time=time.monotonic())
+        self._balance_tracker = VirtualBalanceTracker()
 
         # Background tasks
         self._daily_task: asyncio.Task[None] | None = None
@@ -818,6 +881,11 @@ class ShadowMode:
             )
             return
 
+        # Balance check before BUY (SG-4)
+        notional = signal.buy_price * signal.volume
+        if not self._balance_tracker.deduct(signal.buy_exchange, notional):
+            return
+
         t0 = time.monotonic()
         self._stats.signals_detected += 1
         buy_trade = None  # Track which leg was rejected
@@ -862,6 +930,8 @@ class ShadowMode:
             if hasattr(self._paper_executor, "slippage_model") and hasattr(self._paper_executor.slippage_model, "set_context"):
                 self._paper_executor.slippage_model.set_context(signal.sell_exchange, signal.symbol)
             sell_trade = await self._paper_executor.execute(sell_order)
+            # Credit sell proceeds to sell exchange balance (SG-4)
+            self._balance_tracker.credit(signal.sell_exchange, sell_trade.price * sell_trade.amount)
 
         except OrderRejectedError as exc:
             sid = signal.strategy_id or self.STRATEGY_ID

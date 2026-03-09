@@ -27,12 +27,12 @@
 
 ```
 Phase:        SR (Shadow Realism 강화 스프린트)
-테스트:       3,507 passed, 0 failed
+테스트:       3,522 passed, 0 failed
 커버리지:     90%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase SR US-060: BookWalkSlippage VWAP 체결 구현
-다음 작업:    US-061 (VirtualBalanceTracker + 깊이 기반 주문 크기 제한, Phase SR)
+최신 커밋:    Phase SR US-061: VirtualBalanceTracker + depth-based sizing
+다음 작업:    US-062 (거래소별 Rate Limit 시뮬레이션 토큰 버킷, Phase SR)
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -45,8 +45,8 @@ Phase:        SR (Shadow Realism 강화 스프린트)
 | SG-1 | 치명 | partial_fill_rate=0.0, rejection_rate=0.0 | 0.05 / 0.02 활성화 |
 | SG-2 | ~~치명~~ | ~~매수+매도 레그 동기 실행, 0ms 지연~~ | 50-300ms 랜덤 지연 활성 (RESOLVED) |
 | SG-3 | ~~높음~~ | ~~PowerLawSlippage(k=0) — 오더북 깊이 미반영~~ | BookWalkSlippage VWAP 체결 활성 (RESOLVED) |
-| SG-4 | 높음 | 무한 가상 잔고, 소진 추적 없음 | VirtualBalanceTracker + 리밸런스 |
-| SG-5 | 높음 | trade_size=Decimal("1") 하드코딩 | 주문크기 = min(주문량, L1깊이×0.10) |
+| SG-4 | ~~높음~~ | ~~무한 가상 잔고, 소진 추적 없음~~ | VirtualBalanceTracker + 리밸런스 (RESOLVED) |
+| SG-5 | ~~높음~~ | ~~trade_size=Decimal("1") 하드코딩~~ | compute_depth_trade_size(L1깊이×0.10) (RESOLVED) |
 | SG-6 | 중간 | Rate limit 시뮬레이션 없음 | 거래소별 토큰 버킷 |
 
 ### 프로그레시브 Shadow 테스트 프로토콜
@@ -402,7 +402,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-058: PaperExecutor 부분체결(5%) + 주문거부(2%) 활성화 — 12 tests, 3484 total PASS
 - [x] US-059: Shadow 레그 간 실행 지연(50-300ms) 추가 — 8 tests, 3492 total PASS
 - [x] US-060: BookWalkSlippage — 오더북 깊이별 VWAP 체결 — 15 tests, 3507 total PASS
-- [ ] US-061: VirtualBalanceTracker + 깊이 기반 주문 크기 제한
+- [x] US-061: VirtualBalanceTracker + 깊이 기반 주문 크기 제한 (15 tests, 3522 total PASS)
 - [ ] US-062: 거래소별 Rate Limit 시뮬레이션
 
 ### Phase F: 프로그레시브 Shadow → Live — US-054~057 (수정됨)
@@ -463,8 +463,8 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | **SG-1** | ~~partial_fill_rate=0.0, rejection_rate=0.0~~ | partial_fill=0.05, rejection=0.02 활성 | ~~US-058~~ **RESOLVED** |
 | **SG-2** | ~~레그 간 0ms 동기 실행~~ | 50-300ms 랜덤 지연 활성 | ~~US-059~~ **RESOLVED** |
 | **SG-3** | ~~PowerLawSlippage(k=1.0) — 오더북 깊이 미반영~~ | BookWalkSlippage VWAP 활성 | ~~US-060~~ **RESOLVED** |
-| **SG-4** | 무한 가상 잔고, 소진 추적 없음 | 무제한 자금 | US-061 |
-| **SG-5** | trade_size=Decimal("1") 하드코딩 | 고정 크기 | US-061 |
+| **SG-4** | ~~무한 가상 잔고, 소진 추적 없음~~ | VirtualBalanceTracker 활성 ($10M/exchange, 리밸런스 경고) | ~~US-061~~ **RESOLVED** |
+| **SG-5** | ~~trade_size=Decimal("1") 하드코딩~~ | compute_depth_trade_size (L1×0.10, [0.001,10]) | ~~US-061~~ **RESOLVED** |
 | **SG-6** | Rate limit 시뮬레이션 없음 | 무제한 요청 | US-062 |
 
 ### HIGH

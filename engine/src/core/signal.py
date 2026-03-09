@@ -7,6 +7,7 @@ Pipeline:
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -20,6 +21,22 @@ from src.core.price_hub import PriceHub
 from src.friction.cost_calculator import CostCalculator
 
 logger = logging.getLogger(__name__)
+
+
+def compute_depth_trade_size(
+    buy_depth: Decimal,
+    sell_depth: Decimal,
+    depth_fraction: Decimal | None = None,
+    max_trade: Decimal | None = None,
+) -> Decimal:
+    """Compute trade size from L1 orderbook depth (SG-5).
+
+    Returns clamped value in [0.001, max_trade].
+    """
+    frac = depth_fraction or Decimal(os.getenv("SHADOW_DEPTH_FRACTION", "0.10"))
+    cap = max_trade or Decimal(os.getenv("SHADOW_MAX_TRADE_SIZE", "10"))
+    depth_size = min(buy_depth, sell_depth) * frac
+    return max(Decimal("0.001"), min(depth_size, cap))
 
 
 @dataclass
@@ -82,7 +99,7 @@ class SignalGenerator:
         self,
         book: OrderBook,
         books: dict[str, OrderBook],
-        trade_size: Decimal = Decimal("1"),
+        trade_size: Decimal | None = None,
     ) -> Optional[Signal]:
         """
         Process an orderbook update through the full signal pipeline.
@@ -146,6 +163,15 @@ class SignalGenerator:
                         symbol, ob.exchange, now_mono - ob.last_update_time,
                     )
                     return None
+
+        # Depth-based sizing (SG-5): auto-compute from L1 depth if not specified
+        if trade_size is None:
+            try:
+                buy_depth = buy_book.volume_at_price(best_ask.price, "ask")
+                sell_depth = sell_book.volume_at_price(best_bid.price, "bid")
+                trade_size = compute_depth_trade_size(buy_depth, sell_depth)
+            except Exception:
+                trade_size = Decimal("1")
 
         # Friction filter — use actual base asset for network cost
         transfer_coin = symbol.split("/")[0] if "/" in symbol else "XRP"

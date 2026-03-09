@@ -951,7 +951,7 @@
       "title": "VirtualBalanceTracker + 깊이 기반 주문 크기 제한",
       "phase": "SR",
       "priority": 61,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "거래소별 가상 잔고 추적 (VirtualBalanceTracker)",
         "잔고 소진 시 리밸런스 알림 로그",
