@@ -26,8 +26,8 @@
 ## 2. 현재 상태
 
 ```
-Phase:        E-2 (Auto-Tuning Pipeline — US-047 PASS)
-테스트:       3,384 passed, 0 failed
+Phase:        E-2 (Auto-Tuning Pipeline — US-048 PASS)
+테스트:       3,401 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
@@ -351,7 +351,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-045: Scheduled Offline Tuner (Docker)
 - [x] US-046: Shadow Runner 자동 적용 + TimescaleDB 데이터
 - [x] US-047: Adaptive Threshold + Regime Detector (28 tests, 4 MEDIUM fixes)
-- [ ] US-048: 3-Layer 튜닝 통합 테스트
+- [x] US-048: 3-Layer 튜닝 통합 테스트 (17 integration tests)
 
 ### Phase E-3: Production Readiness — US-049~053
 

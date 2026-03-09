@@ -751,7 +751,8 @@
       "title": "자동 튜닝 통합 테스트",
       "phase": "E-2",
       "priority": 48,
-      "passes": false,
+      "passes": true,
+      "notes": "Phase E-2: 3-Layer pipeline integration tests (Offline→Adaptive→Regime). 17 tests: per-strategy independence, regime→KillSwitch, history persistence, full cycle. 3401 total PASS.",
       "files": [
         "tests/test_auto_tuning_pipeline.py"
       ],
