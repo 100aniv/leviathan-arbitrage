@@ -877,7 +877,7 @@
       "title": "대시보드 모바일 반응형 + Settings/Alerts 페이지 검증",
       "phase": "D-verify",
       "priority": 64,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "Chrome DevTools 모바일 뷰포트(375x812)에서 전 페이지 레이아웃 정상",
         "Settings 페이지: 전략 활성/비활성 토글 동작",
