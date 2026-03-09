@@ -697,7 +697,7 @@
       "title": "Scheduled Offline Tuner Docker 서비스",
       "phase": "E-2",
       "priority": 45,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/tuning/scheduled_tuner.py",
         "docker-compose.yml"

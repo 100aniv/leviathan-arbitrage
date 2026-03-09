@@ -249,6 +249,36 @@ services:
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
+  # Auto-Tuner — 매주 일요일 02:00 UTC 파라미터 자동 최적화
+  # ---------------------------------------------------------------------------
+  auto-tuner:
+    image: leviathan-engine:latest
+    container_name: leviathan-auto-tuner
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: timescaledb
+      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://leviathan:leviathan@timescaledb:5432/leviathan
+      TUNER_N_TRIALS: "100"
+    command: ["python", "-m", "src.tuning.scheduled_tuner"]
+    networks:
+      - leviathan
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import src.tuning.scheduled_tuner; print('ok')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
   # Grafana
   # ---------------------------------------------------------------------------
   grafana:

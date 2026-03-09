@@ -557,6 +557,21 @@ class StrategyBacktestEngine:
         self._fee_rate = fee_rate
         self._seed = seed
 
+    def run_with_synthetic_data(self, params: StrategyParams, n_candles: int = 80) -> BacktestResult:
+        """Generate synthetic OHLCV and run backtest (used by ScheduledTuner)."""
+        rng_np = np.random.default_rng(self._seed)
+        closes = 50_000.0 + np.cumsum(rng_np.normal(0, 50.0, n_candles))
+        closes = np.maximum(closes, 1.0)
+        ohlcv = OHLCVWindow(
+            times=np.arange(n_candles, dtype=float),
+            opens=closes - 50,
+            highs=closes + 100,
+            lows=closes - 100,
+            closes=closes,
+            volumes=rng_np.uniform(1, 10, n_candles),
+        )
+        return self.run(params, ohlcv)
+
     def run(self, params: StrategyParams, ohlcv: OHLCVWindow) -> BacktestResult:
         """
         Replay OHLCV data through the real strategy class.
