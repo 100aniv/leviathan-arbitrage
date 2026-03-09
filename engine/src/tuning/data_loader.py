@@ -179,6 +179,83 @@ class DataLoader:
         self._cache[key] = records
         return records
 
+    async def load_execution_log_as_ohlcv(
+        self,
+        strategy: str | None = None,
+        days: int = 7,
+    ) -> OHLCVWindow:
+        """최근 N일 execution_log를 1시간 OHLCV 형태로 변환."""
+        assert self._conn is not None, "Call connect() first"
+        rows = await self._conn.fetch(
+            """
+            SELECT
+                time_bucket('1 hour', executed_at) AS time,
+                FIRST(price, executed_at) AS open,
+                MAX(price) AS high,
+                MIN(price) AS low,
+                LAST(price, executed_at) AS close,
+                SUM(size) AS volume
+            FROM execution_log
+            WHERE executed_at >= NOW() - make_interval(days => $1)
+              AND ($2::text IS NULL OR strategy_id = $2)
+            GROUP BY time
+            ORDER BY time ASC
+            """,
+            days,
+            strategy,
+        )
+
+        if not rows:
+            return OHLCVWindow(
+                times=np.array([], dtype="datetime64[ms]"),
+                opens=np.array([], dtype=float),
+                highs=np.array([], dtype=float),
+                lows=np.array([], dtype=float),
+                closes=np.array([], dtype=float),
+                volumes=np.array([], dtype=float),
+            )
+
+        return OHLCVWindow(
+            times=np.array([r["time"] for r in rows]),
+            opens=np.array([float(r["open"]) for r in rows]),
+            highs=np.array([float(r["high"]) for r in rows]),
+            lows=np.array([float(r["low"]) for r in rows]),
+            closes=np.array([float(r["close"]) for r in rows]),
+            volumes=np.array([float(r["volume"]) for r in rows]),
+        )
+
+    async def load_execution_spreads(
+        self,
+        days: int = 7,
+    ) -> list[SpreadRecord]:
+        """최근 N일 execution_log에서 buy/sell price로 spread 데이터 추출."""
+        assert self._conn is not None, "Call connect() first"
+        rows = await self._conn.fetch(
+            """
+            SELECT
+                executed_at AS time,
+                strategy_id AS strategy,
+                exchange AS exchange_pair,
+                (sell_price - buy_price) AS gross_spread,
+                (sell_price - buy_price - fee) AS net_spread
+            FROM execution_log
+            WHERE executed_at >= NOW() - make_interval(days => $1)
+            ORDER BY executed_at ASC
+            """,
+            days,
+        )
+
+        return [
+            SpreadRecord(
+                time=r["time"],
+                strategy=r["strategy"],
+                exchange_pair=r["exchange_pair"],
+                gross_spread=float(r["gross_spread"]),
+                net_spread=float(r["net_spread"]),
+            )
+            for r in rows
+        ]
+
     # ------------------------------------------------------------------
     # Windowing
     # ------------------------------------------------------------------

@@ -6,10 +6,14 @@ performance against live to decide: APPLY, MONITOR, or REJECT.
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
+from src.infra.telegram import TelegramAlerter
 from src.tuning.backtest import BacktestEngine, BacktestResult, StrategyParams
 from src.tuning.evaluator import EvaluationReport, OutOfSampleEvaluator
 from src.tuning.file_data_loader import FileDataLoader, generate_synthetic_ohlcv
@@ -49,6 +53,8 @@ class ShadowRunner:
         self._engine = engine or BacktestEngine(initial_capital=70.0)
         self._evaluator = evaluator or OutOfSampleEvaluator()
         self._loader = FileDataLoader()
+        self._alerter = TelegramAlerter()
+        self._params_path = Path(os.getenv("STRATEGY_PARAMS_PATH", "config/strategy_params.json"))
 
     def evaluate(
         self,
@@ -144,6 +150,76 @@ class ShadowRunner:
             decision = "REJECT"
 
         return decision, result
+
+    async def apply_decision(
+        self,
+        strategy_id: str,
+        strategy_type: str,
+        baseline_params: StrategyParams,
+        shadow_params: StrategyParams,
+        data_source: str = "synthetic",
+        num_candles: int = 2000,
+    ) -> tuple[str, ShadowResult]:
+        """evaluate_and_decide 후 decision에 따라 자동 처리."""
+        decision, result = self.evaluate_and_decide(
+            strategy_id=strategy_id,
+            strategy_type=strategy_type,
+            baseline_params=baseline_params,
+            shadow_params=shadow_params,
+            data_source=data_source,
+            num_candles=num_candles,
+        )
+
+        if decision == "APPLY":
+            self._apply_params(strategy_id, result)
+            await self._alerter.send_alert(
+                f"✅ {strategy_id} 파라미터 자동 적용 완료\n"
+                f"Sharpe: {result.shadow_result.sharpe_ratio:.4f}",
+                level="INFO",
+            )
+        elif decision == "MONITOR":
+            self._mark_for_monitoring(strategy_id, result)
+            await self._alerter.send_alert(
+                f"👁 {strategy_id} MONITOR — 다음 주 재검증 예정",
+                level="WARNING",
+            )
+        else:  # REJECT
+            await self._alerter.send_alert(
+                f"❌ {strategy_id} REJECT — 기존 파라미터 유지\n"
+                f"Shadow PnL: {result.shadow_result.total_pnl:.4f}",
+                level="WARNING",
+            )
+
+        return decision, result
+
+    def _apply_params(self, strategy_id: str, result: ShadowResult) -> None:
+        """config/strategy_params.json 자동 업데이트."""
+        params_file = self._params_path
+        if params_file.exists():
+            current = json.loads(params_file.read_text())
+        else:
+            current = {}
+        current[strategy_id] = result.config_to_apply
+        params_file.parent.mkdir(parents=True, exist_ok=True)
+        params_file.write_text(json.dumps(current, indent=2))
+
+    def _mark_for_monitoring(self, strategy_id: str, result: ShadowResult) -> None:
+        """monitoring 상태 기록 (다음 주 재검증용)."""
+        monitor_file = self._params_path.parent / "monitor_queue.json"
+        if monitor_file.exists():
+            queue = json.loads(monitor_file.read_text())
+        else:
+            queue = {}
+        queue[strategy_id] = {
+            "shadow_params": (
+                result.shadow_params.__dict__
+                if hasattr(result.shadow_params, "__dict__")
+                else str(result.shadow_params)
+            ),
+            "shadow_pnl": result.shadow_result.total_pnl,
+            "shadow_sharpe": result.shadow_result.sharpe_ratio,
+        }
+        monitor_file.write_text(json.dumps(queue, indent=2))
 
     def print_report(self, result: ShadowResult) -> None:
         """Log human-readable shadow evaluation report."""

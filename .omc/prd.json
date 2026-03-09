@@ -715,7 +715,7 @@
       "title": "Shadow Runner 자동 적용 + TimescaleDB 데이터",
       "phase": "E-2",
       "priority": 46,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/tuning/shadow_runner.py",
         "engine/src/tuning/data_loader.py"
