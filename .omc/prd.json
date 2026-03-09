@@ -915,7 +915,8 @@
       "title": "Shadow 레그 간 실행 지연(50-300ms) 추가",
       "phase": "SR",
       "priority": 59,
-      "passes": false,
+      "passes": true,
+      "notes": "Phase SR: inter-leg delay 50-300ms (env var 설정 가능). _execute_shadow_trade + _execute_shadow_trade_request 모두 적용. 8 신규 테스트, 3492 total PASS.",
       "acceptanceCriteria": [
         "매수-매도 레그 사이 asyncio.sleep(random 50-300ms) 삽입",
         "Shadow 10min 지연 포함해도 수익성 유지",

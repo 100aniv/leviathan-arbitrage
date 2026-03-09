@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import os
+import random
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -218,6 +219,10 @@ class ShadowMode:
             partial_fill_rate=pfr,
             rejection_rate=rr,
         )
+
+        # Inter-leg execution delay simulation (SG-2)
+        self._leg_delay_min_ms = float(os.environ.get("SHADOW_LEG_DELAY_MIN_MS", "50"))
+        self._leg_delay_max_ms = float(os.environ.get("SHADOW_LEG_DELAY_MAX_MS", "300"))
 
         self._fee_model = FeeModel()
         self._market_recorder = market_recorder
@@ -745,6 +750,11 @@ class ShadowMode:
             )
             buy_trade = await self._paper_executor.execute(buy_order)
 
+            # Simulate realistic inter-leg execution delay (SG-2)
+            if self._leg_delay_max_ms > 0:
+                delay_s = random.uniform(self._leg_delay_min_ms, self._leg_delay_max_ms) / 1000.0
+                await asyncio.sleep(delay_s)
+
             # Detect partial fill on buy leg
             if buy_trade.amount < signal.volume:
                 self._stats.trades_partial_fill += 1
@@ -964,7 +974,7 @@ class ShadowMode:
         try:
             trades = []
             had_partial = False
-            for leg in trade_request.legs:
+            for i, leg in enumerate(trade_request.legs):
                 leg_price = leg.price or Decimal("0")
                 if leg_price <= Decimal("0"):
                     logger.warning(
@@ -988,6 +998,10 @@ class ShadowMode:
                 if trade.amount < leg.size:
                     had_partial = True
                 trades.append((leg, trade))
+                # Inter-leg delay (skip after last leg) (SG-2)
+                if i < len(trade_request.legs) - 1 and self._leg_delay_max_ms > 0:
+                    delay_s = random.uniform(self._leg_delay_min_ms, self._leg_delay_max_ms) / 1000.0
+                    await asyncio.sleep(delay_s)
             if had_partial:
                 self._stats.trades_partial_fill += 1
                 if sid not in self._stats.by_strategy:
