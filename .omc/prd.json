@@ -2,9 +2,9 @@
   "project": "LEVIATHAN Arbitrage Engine",
   "version": "2.0",
   "created": "2026-03-08",
-  "updated": "2026-03-08",
+  "updated": "2026-03-09",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 57,
+  "total_stories": 62,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -17,7 +17,8 @@
     "E-1": "Production Monitoring",
     "E-2": "Auto-Tuning Pipeline",
     "E-3": "Production Readiness",
-    "F": "72h Shadow to Live"
+    "F": "72h Shadow to Live",
+    "SR": "Shadow Realism (SG-1~6)"
   },
   "gap_dependency_order": "GAP9 -> GAP10 -> (GAP5,GAP6,GAP7 parallel) -> GAP3 -> GAP1,GAP2 -> GAP4",
   "stories": [
@@ -802,7 +803,7 @@
       "id": "US-051",
       "title": "Performance Attribution Engine",
       "phase": "E-3",
-      "priority": 51,
+      "priority": 64,
       "passes": true,
       "notes": "Phase E-3: 4-dimension PnL decomposition (strategy/exchange/pair/hour) + TimescaleDB materialized views. 13 tests PASS, 3460 total.",
       "files": [
@@ -818,7 +819,7 @@
       "id": "US-052",
       "title": "TimescaleDB 자동 백업 + Position Recovery",
       "phase": "E-3",
-      "priority": 52,
+      "priority": 63,
       "passes": true,
       "notes": "Phase E-3: backup_db.sh (pg_dump, 7-day retention) + docker-compose backup service + PositionRecovery (Redis WAL, stale detection). 12 tests PASS, 3472 total.",
       "files": [
@@ -836,7 +837,7 @@
       "id": "US-053",
       "title": "Dashboard Attribution 페이지",
       "phase": "E-3",
-      "priority": 53,
+      "priority": 64.5,
       "passes": true,
       "notes": "Attribution page with Waterfall+Heatmap, /api/v1/attribution endpoint, npm build PASS",
       "files": [
@@ -849,10 +850,142 @@
       ]
     },
     {
+      "id": "US-063",
+      "title": "대시보드 Chrome 브라우저 검증 — 핵심 4페이지 (Overview, Trades, Strategies, Exchanges)",
+      "phase": "D-verify",
+      "priority": 63,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Chrome 브라우저에서 dev server 실행 (npm run dev)",
+        "Overview 페이지: 실시간 WebSocket 데이터 렌더링 확인",
+        "Trade History 페이지: 거래 목록 표시 + 필터링 동작",
+        "Strategies 페이지: 전략별 상태/메트릭 표시",
+        "Exchanges 페이지: 거래소 연결 상태 표시",
+        "JWT 로그인/로그아웃 정상 동작",
+        "API 엔드포인트 연동 확인 (200 응답)"
+      ],
+      "files": [
+        "dashboard/src/app/page.tsx",
+        "dashboard/src/app/trades/page.tsx",
+        "dashboard/src/app/strategies/page.tsx",
+        "dashboard/src/app/exchanges/page.tsx"
+      ],
+      "notes": "Phase D US-037~041이 npm run build만으로 passes:true 처리됨. 실제 브라우저 렌더링 검증 필요."
+    },
+    {
+      "id": "US-064",
+      "title": "대시보드 모바일 반응형 + Settings/Alerts 페이지 검증",
+      "phase": "D-verify",
+      "priority": 64,
+      "passes": false,
+      "acceptanceCriteria": [
+        "Chrome DevTools 모바일 뷰포트(375x812)에서 전 페이지 레이아웃 정상",
+        "Settings 페이지: 전략 활성/비활성 토글 동작",
+        "Alerts 페이지: 알림 이력 표시",
+        "Attribution 페이지: 전략/거래소별 수익 차트 렌더링",
+        "Tailwind breakpoint 적용 확인 (sm/md/lg)"
+      ],
+      "files": [
+        "dashboard/src/app/settings/page.tsx",
+        "dashboard/src/app/alerts/page.tsx",
+        "dashboard/src/app/attribution/page.tsx"
+      ],
+      "notes": "모바일 반응형은 이전에 검증되지 않음. Chrome DevTools Device Mode 사용."
+    },
+    {
+      "id": "US-058",
+      "title": "Shadow 부분체결(5%) + 주문거부(2%) 활성화",
+      "phase": "SR",
+      "priority": 58,
+      "passes": false,
+      "acceptanceCriteria": [
+        "PaperExecutor partial_fill_rate=0.05 설정",
+        "PaperExecutor rejection_rate=0.02 설정",
+        "Shadow 10min 승률 100% 미만으로 하락",
+        "pytest 전체 PASS"
+      ],
+      "files": [
+        "engine/src/modes/shadow.py"
+      ],
+      "gap": "SG-1"
+    },
+    {
+      "id": "US-059",
+      "title": "Shadow 레그 간 실행 지연(50-300ms) 추가",
+      "phase": "SR",
+      "priority": 59,
+      "passes": false,
+      "acceptanceCriteria": [
+        "매수-매도 레그 사이 asyncio.sleep(random 50-300ms) 삽입",
+        "Shadow 10min 지연 포함해도 수익성 유지",
+        "pytest 전체 PASS"
+      ],
+      "files": [
+        "engine/src/modes/shadow.py"
+      ],
+      "gap": "SG-2"
+    },
+    {
+      "id": "US-060",
+      "title": "BookWalkSlippage 오더북 깊이 VWAP 체결 구현",
+      "phase": "SR",
+      "priority": 60,
+      "passes": false,
+      "acceptanceCriteria": [
+        "BookWalkSlippage 클래스 신규 생성",
+        "체결 가격 = N단계 깊이 워킹 물량가중평균가격",
+        "Shadow에서 기존 PowerLawSlippage 대체",
+        "단위 테스트 10건 이상",
+        "pytest 전체 PASS"
+      ],
+      "files": [
+        "engine/src/friction/slippage_model.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "gap": "SG-3"
+    },
+    {
+      "id": "US-061",
+      "title": "VirtualBalanceTracker + 깊이 기반 주문 크기 제한",
+      "phase": "SR",
+      "priority": 61,
+      "passes": false,
+      "acceptanceCriteria": [
+        "거래소별 가상 잔고 추적 (VirtualBalanceTracker)",
+        "잔고 소진 시 리밸런스 알림 로그",
+        "trade_size = min(order_size, depth * 0.10)",
+        "30min Shadow 마이너스 잔고 없음",
+        "pytest 전체 PASS"
+      ],
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/core/signal.py"
+      ],
+      "gap": "SG-4,SG-5"
+    },
+    {
+      "id": "US-062",
+      "title": "거래소별 Rate Limit 시뮬레이션 (토큰 버킷)",
+      "phase": "SR",
+      "priority": 62,
+      "passes": false,
+      "acceptanceCriteria": [
+        "거래소별 토큰 버킷 리미터 구현",
+        "업비트 10req/s, 빗썸 20req/s, 기타 50req/s",
+        "초과 시 주문 거부 처리",
+        "10min Shadow rate limit 거부 로그 확인",
+        "pytest 전체 PASS"
+      ],
+      "files": [
+        "engine/src/modes/shadow.py"
+      ],
+      "gap": "SG-6"
+    },
+    {
       "id": "US-054",
       "title": "72h 연속 Shadow 실행",
       "phase": "F",
-      "priority": 54,
+      "priority": 65,
       "passes": false,
       "acceptanceCriteria": [
         "Docker compose로 72h 무중단 실행",
@@ -868,7 +1001,7 @@
       "id": "US-055",
       "title": "LiveGate + Preflight 10항목 통과",
       "phase": "F",
-      "priority": 55,
+      "priority": 66,
       "passes": false,
       "acceptanceCriteria": [
         "LiveGate 6-check 전체 통과",
@@ -880,7 +1013,7 @@
       "id": "US-056",
       "title": "Live 모드 전환 (사용자 승인)",
       "phase": "F",
-      "priority": 56,
+      "priority": 67,
       "passes": false,
       "acceptanceCriteria": [
         "사용자 승인 후 EXECUTION_MODE=live 전환",
@@ -892,7 +1025,7 @@
       "id": "US-057",
       "title": "최종 문서화 + 운영 가이드",
       "phase": "F",
-      "priority": 57,
+      "priority": 68,
       "passes": false,
       "acceptanceCriteria": [
         "SSOT.md 최종 업데이트 (Phase Live)",

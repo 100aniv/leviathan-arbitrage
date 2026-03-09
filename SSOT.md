@@ -1,8 +1,8 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-08 | 최신 커밋: `e273d9a`
-> 실행 플랜: `.claude/plans/jazzy-wishing-avalanche.md` | PRD: `.omc/prd.json` (57 User Stories)
+> 마지막 업데이트: 2026-03-09 | 최신 커밋: `e273d9a`
+> 실행 플랜: `.claude/plans/jazzy-wishing-avalanche.md` | PRD: `.omc/prd.json` (64개 User Stories)
 
 ---
 
@@ -14,25 +14,54 @@
 |------|------|
 | 엔진 | Python 3.12+ (AsyncIO) + Rust (PyO3 hot-path) |
 | 대시보드 | Next.js 14 (App Router) + JWT 인증 + 실시간 WS 피드 |
-| 거래소 | 7개 네이티브 WebSocket 어댑터 (ccxt 미사용) |
+| 거래소 | 8개 네이티브 WebSocket 어댑터 (7 spot + Binance Futures, ccxt 미사용) |
 | 전략 | 8개 (7개 기본 + CexDex 조건부) |
 | 인프라 | Docker Compose 8 컨테이너, TimescaleDB + Redis + Prometheus + Grafana |
 | 실행 모드 | Backtest → Paper → Shadow → Live |
 
-**거래소 목록**: Binance, Bybit, OKX, Bitget, Upbit, Bithumb, Coinone (7개 네이티브 어댑터)
+**거래소 목록**: Binance, Binance Futures, Bybit, OKX, Bitget, Upbit, Bithumb, Coinone (8개 네이티브 어댑터)
 
 ---
 
 ## 2. 현재 상태
 
 ```
-Phase:        E-3 (Production Readiness — US-053 PASS)
+Phase:        SR (Shadow Realism 강화 스프린트)
 테스트:       3,472 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase E-3 US-053: Dashboard Attribution 페이지
+최신 커밋:    Phase D-verify US-063: Dashboard Chrome 브라우저 검증
+다음 작업:    US-064 (대시보드 모바일 반응형 + Settings/Alerts 검증)
 ```
+
+### Shadow 현실성 GAP (Phase SR)
+
+> **핵심 발견**: 신호 필터링(CostCalculator)은 상용급이나 실행 시뮬레이션(PaperExecutor)은 데모급.
+> 100% 승률 / +$39K PnL은 실거래 성능을 반영하지 않음.
+
+| ID | 심각도 | 현재 상태 | 필요한 상태 |
+|----|--------|----------|------------|
+| SG-1 | 치명 | partial_fill_rate=0.0, rejection_rate=0.0 | 0.05 / 0.02 활성화 |
+| SG-2 | 치명 | 매수+매도 레그 동기 실행, 0ms 지연 | 50-300ms 랜덤 지연 |
+| SG-3 | 높음 | PowerLawSlippage(k=0) — 오더북 깊이 미반영 | BookWalkSlippage (VWAP 체결) |
+| SG-4 | 높음 | 무한 가상 잔고, 소진 추적 없음 | VirtualBalanceTracker + 리밸런스 |
+| SG-5 | 높음 | trade_size=Decimal("1") 하드코딩 | 주문크기 = min(주문량, L1깊이×0.10) |
+| SG-6 | 중간 | Rate limit 시뮬레이션 없음 | 거래소별 토큰 버킷 |
+
+### 프로그레시브 Shadow 테스트 프로토콜
+
+> 72H 단일 게이트 대신 단계적 검증으로 조기 문제 발견
+
+```
+Stage 1: 1H  → 기본 동작 확인 (crash=0, 신호 흐름 정상)
+Stage 2: 2H  → 승률/PnL 추세 안정성 (WR>50%, PnL 양수)
+Stage 3: 6H  → 전략별 메트릭 분리 + 마찰력 정확도 검증
+Stage 4: 12H → 메모리 누수/리소스 사용량 안정성
+Stage 5: 24H → Sharpe>2.0, MDD<5%, 일일 PnL 양수
+Stage 6: 72H → LiveGate 6-check 전체 PASS → Live 전환 승인
+```
+각 Stage PASS 시 자동으로 다음 Stage 연장 (멈추지 않고 누적)
 
 ### Shadow 최신 결과 (Phase E-2 US-047, 10min)
 
@@ -270,7 +299,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 57 User Stories)
+## 7. 남은 작업 (`.omc/prd.json` 64개 User Stories)
 
 > **실행 방식**: 3-Phase Sequential — Phase A(기획/OMC) → Phase B(개발/Agent Teams) → Phase C(검증/OMC)
 > **자동화**: `ralph autopilot` → prd.json 순회 → 각 US 자동 실행
@@ -332,13 +361,18 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-035: statistical_arb (PASS: z-score 계산, 2 trades 실행)
 - [x] US-036: 전체 통합 (PASS: 7 전략 동시, PnL 분리, crash 0)
 
-### Phase D: Dashboard UX — US-037~041
+### Phase D: Dashboard UX — US-037~041 — ☑ ALL PASS (코드 레벨, Chrome 검증은 D-verify)
 
-- [ ] US-037: Trade History 페이지
-- [ ] US-038: Alerts/Notifications 페이지
-- [ ] US-039: Settings 페이지
-- [ ] US-040: Strategy Analytics 페이지
-- [ ] US-041: Mobile Responsive + Funding Rate 모니터
+- [x] US-037: Trade History + Alerts 페이지
+- [x] US-038: Settings 페이지 + Logout 기능
+- [x] US-039: Strategy Analytics + Funding Rate 모니터
+- [x] US-040: Exchange Status 대시보드
+- [x] US-041: Mobile Responsive + 전략별 API endpoint
+
+### Phase D-verify: 브라우저 검증 — US-063~064 ⬜ PENDING
+
+- [ ] US-063: 대시보드 Chrome 브라우저 검증 — 핵심 4페이지 (Overview, Trades, Settings, Login)
+- [ ] US-064: 대시보드 모바일 반응형 + Settings/Alerts 페이지 검증
 
 ### Phase E-1: Production Monitoring — US-042~044 — ☑ ALL PASS
 
@@ -346,24 +380,32 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-043: Grafana 대시보드 프리셋
 - [x] US-044: 자동 알림 규칙
 
-### Phase E-2: Auto-Tuning Pipeline — US-045~048
+### Phase E-2: Auto-Tuning Pipeline — US-045~048 — ☑ ALL PASS
 
 - [x] US-045: Scheduled Offline Tuner (Docker)
 - [x] US-046: Shadow Runner 자동 적용 + TimescaleDB 데이터
 - [x] US-047: Adaptive Threshold + Regime Detector (28 tests, 4 MEDIUM fixes)
 - [x] US-048: 3-Layer 튜닝 통합 테스트 (17 integration tests)
 
-### Phase E-3: Production Readiness — US-049~053
+### Phase E-3: Production Readiness — US-049~053 — ☑ ALL PASS
 
 - [x] US-049: Capital Allocator (Kelly Criterion, Half-Kelly, 19 tests)
 - [x] US-050: Inventory Rebalancer + Balance Tracker (27 tests)
 - [x] US-051: Performance Attribution Engine (13 tests)
 - [x] US-052: TimescaleDB 자동 백업 + Position Recovery (12 tests)
-- [ ] US-053: Position Recovery 로직
+- [x] US-053: Dashboard Attribution 페이지
 
-### Phase F: 72h Shadow → Live — US-054~057
+### Phase SR: Shadow 현실성 강화 — US-058~062 ⬜ (Phase F 이전 필수)
 
-- [ ] US-054: 72h 연속 Shadow 실행
+- [ ] US-058: PaperExecutor 부분체결(5%) + 주문거부(2%) 활성화
+- [ ] US-059: Shadow 레그 간 실행 지연(50-300ms) 추가
+- [ ] US-060: BookWalkSlippage — 오더북 깊이별 VWAP 체결
+- [ ] US-061: VirtualBalanceTracker + 깊이 기반 주문 크기 제한
+- [ ] US-062: 거래소별 Rate Limit 시뮬레이션
+
+### Phase F: 프로그레시브 Shadow → Live — US-054~057 (수정됨)
+
+- [ ] US-054: 프로그레시브 Shadow (1H→2H→6H→12H→24H→72H 단계별 자동 연장)
 - [ ] US-055: LiveGate 자동 평가 확인
 - [ ] US-056: Live 모드 전환 (사용자 승인)
 - [ ] US-057: 운영 문서 최종화
@@ -383,6 +425,9 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | 7.3h | MIN_EDGE_BPS=5 확정 | 40=없음, 30=거의없음, 5=모든 시간대 수익 |
 | 7.3j | PaperExecutor ZERO slippage | 이중 슬리피지 계산 방지 (CEXOrderbook이 유일 소스) |
 | 7.3k | transfer_coin 동적 할당 | network cost: BTC=$1.39, ETH=$5.60, XRP=$0.40 등 |
+| SR | Docker Shadow 필수화 | Shadow 테스트 중 Docker 미실행 발견. graceful degradation으로 거래 로직 유효하나 TimescaleDB/Redis 미저장. 향후 Shadow 실행 전 `docker compose up -d` 필수 |
+| SR | Phase D 브라우저 테스트 필수화 | US-037~041, US-053 대시보드 US가 `npm run build`만으로 passes:true 처리됨. 실제 Chrome 렌더링/API 연동/WebSocket 피드 검증 미완. Phase D 완료 기준에 Chrome 브라우저 테스트 추가 |
+| SR | Shadow 현실성 6개 GAP 식별 (SG-1~SG-6) | PaperExecutor가 데모급(100% fill, 0ms delay, 무한잔고). 상용급 전환 위해 부분체결/지연/깊이VWAP/가상잔고/Rate Limit 추가 필요 |
 
 ---
 
@@ -406,10 +451,26 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | **9** | ~~Fee Model에 okx/bitget futures 누락 + ValueError~~ | `fee_model.py` | ~~B-1~~ **RESOLVED** | S |
 | **10** | ~~CostCalculator Protocol 불일치 (estimate_cost 없음)~~ | `cost_calculator.py` | ~~B-1~~ **RESOLVED** | M |
 
+### CRITICAL — Shadow Realism GAPs (6건, Phase SR)
+
+> 상세: `.claude/plans/jazzy-wishing-avalanche.md` Part 23 참조
+> PaperExecutor가 데모급 → 상용급 전환 필요
+
+| GAP | 설명 | 현재 상태 | 해결 US |
+|-----|------|----------|---------|
+| **SG-1** | partial_fill_rate=0.0, rejection_rate=0.0 (비활성) | 100% 체결 | US-058 |
+| **SG-2** | 레그 간 0ms 동기 실행 (현실: 50-300ms 지연) | 즉시 체결 | US-059 |
+| **SG-3** | PowerLawSlippage(k=1.0) — 오더북 깊이 미반영 | 단순 모델 | US-060 |
+| **SG-4** | 무한 가상 잔고, 소진 추적 없음 | 무제한 자금 | US-061 |
+| **SG-5** | trade_size=Decimal("1") 하드코딩 | 고정 크기 | US-061 |
+| **SG-6** | Rate limit 시뮬레이션 없음 | 무제한 요청 | US-062 |
+
 ### HIGH
 
 | 이슈 | 설명 | 완화책 |
 |------|------|--------|
+| **Phase D 대시보드 브라우저 미검증** | US-037~041, US-053 코드 레벨만 검증(`npm run build`). Chrome 렌더링, API 연동, WebSocket 실시간 피드, 모바일 반응형 미확인 | Phase D 재검증 US 추가 (Chrome 브라우저 테스트 필수) |
+| **Shadow 실행 시 Docker 미실행 위험** | Docker 없이 Shadow 실행 시 거래 로직은 유효하나 TimescaleDB/Redis 미저장 → 메트릭 유실 | Shadow 실행 전 `docker compose up -d` 필수 (leviathan.md에 명시) |
 | Bithumb 증분 Orderbook | 스냅샷 없이 증분만 수신 → 허위 스프레드 | max_spread_pct=5.0 필터 (US-013 근본 해결) |
 | 마찰 vs Gross Spread | 대부분 알트 spread 2-25bps, friction ~20bps | MIN_EDGE_BPS=5 + 고스프레드 심볼 집중 |
 
