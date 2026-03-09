@@ -768,7 +768,8 @@
       "title": "Capital Allocator (Kelly Criterion)",
       "phase": "E-3",
       "priority": 49,
-      "passes": false,
+      "passes": true,
+      "notes": "Phase E-3: Kelly Criterion + Half-Kelly, per-strategy allocation, config JSON save. 19 tests PASS, 3420 total.",
       "files": [
         "engine/src/core/capital_allocator.py"
       ],

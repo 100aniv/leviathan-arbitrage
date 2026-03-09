@@ -26,8 +26,8 @@
 ## 2. 현재 상태
 
 ```
-Phase:        E-2 (Auto-Tuning Pipeline — US-048 PASS)
-테스트:       3,401 passed, 0 failed
+Phase:        E-3 (Production Readiness — US-049 PASS)
+테스트:       3,420 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
@@ -355,7 +355,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ### Phase E-3: Production Readiness — US-049~053
 
-- [ ] US-049: Capital Allocator (Kelly Criterion)
+- [x] US-049: Capital Allocator (Kelly Criterion, Half-Kelly, 19 tests)
 - [ ] US-050: Balance Tracker (거래소 잔고 모니터링)
 - [ ] US-051: Performance Attribution Engine
 - [ ] US-052: TimescaleDB 자동 백업
