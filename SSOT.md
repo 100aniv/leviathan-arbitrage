@@ -2,7 +2,7 @@
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-10 | 최신 커밋: `5ba17da`
-> 실행 플랜: `.claude/plans/jazzy-wishing-avalanche.md` | PRD: `.omc/prd.json` (64개 User Stories)
+> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획, Phase G~F) | 기존 플랜: `.claude/plans/jazzy-wishing-avalanche.md` (기반, Phase A~SR) | PRD: `.omc/prd.json` (80개 User Stories)
 
 ---
 
@@ -32,7 +32,7 @@ Phase:        SR (Shadow Realism 강화 스프린트)
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    Phase F US-054: Progressive Shadow 6-stage gate
-다음 작업:    US-055 (LiveGate + Preflight 10항목 통과)
+다음 작업:    US-066 (Stale Orderbook 감지 + 블랙리스트 — Phase G)
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -301,7 +301,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 64개 User Stories)
+## 7. 남은 작업 (`.omc/prd.json` 80개 User Stories)
 
 > **실행 방식**: 3-Phase Sequential — Phase A(기획/OMC) → Phase B(개발/Agent Teams) → Phase C(검증/OMC)
 > **자동화**: `ralph autopilot` → prd.json 순회 → 각 US 자동 실행
@@ -397,7 +397,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-052: TimescaleDB 자동 백업 + Position Recovery (12 tests)
 - [x] US-053: Dashboard Attribution 페이지
 
-### Phase SR: Shadow 현실성 강화 — US-058~062 🔄 (Phase F 이전 필수)
+### Phase SR: Shadow 현실성 강화 — US-058~062 ☑ ALL PASS
 
 - [x] US-058: PaperExecutor 부분체결(5%) + 주문거부(2%) 활성화 — 12 tests, 3484 total PASS
 - [x] US-059: Shadow 레그 간 실행 지연(50-300ms) 추가 — 8 tests, 3492 total PASS
@@ -405,12 +405,40 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-061: VirtualBalanceTracker + 깊이 기반 주문 크기 제한 (15 tests, 3522 total PASS)
 - [x] US-062: 거래소별 Rate Limit 시뮬레이션 (11 tests, 3533 total PASS)
 
-### Phase F: 프로그레시브 Shadow → Live — US-054~057 (수정됨)
+### Phase G: 전략 수익성 복원 — US-066~068
 
-- [x] US-054: 프로그레시브 Shadow (1H→2H→6H→12H→24H→72H 단계별 자동 연장) — 42 tests, 3575 total PASS, Shadow 580T/67.2%WR/+$2203.92
+- [ ] US-066: Stale Orderbook 감지 + 블랙리스트 + 손실 제한
+- [ ] US-067: 전략별 개별 1H Shadow 검증 (PnL > 0 확인 후 활성화)
+- [ ] US-068: Shadow 기반 파라미터 재최적화
+
+### Phase H: 대시보드/프론트 통합 완성 — US-065, US-069~072
+
+- [ ] US-065: Shadow→Dashboard 데이터 브리지 (ShadowMode↔EngineContext)
+- [ ] US-069: Overview 종합 상황판 리디자인
+- [ ] US-070: Attribution/Funding/System 빈 페이지 완성
+- [ ] US-071: GlobalHeatmap + OrderbookView 실 데이터 연결
+- [ ] US-072: 계좌 정보/총자산/거래소별 잔고 표시
+
+### Phase I: 거래소/전략 완성도 — US-073~076
+
+- [ ] US-073: Bithumb REST 스냅샷 → 증분 orderbook 근본 해결
+- [ ] US-074: Coinone 네이티브 WebSocket 어댑터 (CCXT 탈피)
+- [ ] US-075: futures_futures 전략 활성화 (OKX/Bybit futures 수집기)
+- [ ] US-076: 전략/거래소 완성도 전수 감사
+
+### Phase J: 운영 안정성 + 문서 동기화 — US-057, US-077~079
+
+- [ ] US-077: 문서 정합성 감사 (SSOT↔PRD↔구현 불일치 전수 조사)
+- [ ] US-078: 장기 Shadow 안정성 테스트 (1H→6H→12H)
+- [ ] US-079: 운영 Runbook 업데이트 + 장애 대응 매뉴얼
+- [ ] US-057: 운영 문서 최종화
+
+### Phase F: 최종 검수 — US-054~056, US-080 (LAST — 전 Phase 완료 후 진입)
+
+- [x] US-054: 프로그레시브 Shadow (1H→2H→6H→12H→24H→72H) — 42 tests, 3575 total PASS, Shadow 580T/67.2%WR/+$2203.92
 - [ ] US-055: LiveGate 자동 평가 확인
 - [ ] US-056: Live 모드 전환 (사용자 승인)
-- [ ] US-057: 운영 문서 최종화
+- [ ] US-080: 종합 검사지 기반 최종 감사 (160항목 체크리스트)
 
 ---
 

@@ -66,15 +66,24 @@ ralph 루프 안에서 각 US마다 **3-Phase Sequential** 필수 수행:
 
 ### Phase A — 기획 (AESPA팀)
 
-**⚡ 배치 판단 (Phase A 진입 시 최우선 실행):**
+**⚡ Phase 단위 배치 수집 (Phase A 진입 시 최우선 실행):**
 
-현재 US와 prd.json의 다음 연속 US들을 비교하여 배치 가능 여부 판단:
+Phase 진입 시 해당 Phase의 **모든** `passes:false` US를 수집하여 최대 배치로 묶어 실행:
+
+```
+1. prd.json에서 현재 Phase의 모든 passes:false US 수집
+2. 의존성 그래프 분석 → 독립 US는 배치, 의존 US는 순차 그룹으로 분류
+3. 도메인 분석 → 동일 도메인(engine/dashboard) 기준 배치 그룹 형성
+4. Phase 내 모든 배치 그룹 완료 = 1 워크플로우 사이클 종료 → 다음 Phase로
+```
+
+**배치 그룹 형성 규칙:**
 
 | 조건 | 배치 가능 | 예시 |
 |------|----------|------|
-| 동일 Phase (SR, D, F 등) AND 동일 도메인 (engine/src/같은 디렉토리) | O | US-058~062 (모두 Phase SR, Shadow 현실성) |
-| 동일 Phase BUT 다른 도메인 (engine vs dashboard) | X | US-058(engine) + US-063(dashboard) |
-| US 간 의존성 (B가 A 결과 필요) | X | US-060(슬리피지 모델) → US-061(슬리피지 기반 시그널) |
+| 동일 Phase AND 동일 도메인 (engine/src/같은 디렉토리) | O | US-058~062 (모두 Phase SR, Shadow 현실성) |
+| 동일 Phase BUT 다른 도메인 (engine vs dashboard) | X (별도 배치) | US-058(engine) + US-063(dashboard) |
+| US 간 의존성 (B가 A 결과 필요) | X (순차 실행) | US-060(슬리피지 모델) → US-061(슬리피지 기반 시그널) |
 
 **의존성 안전장치** (배치 전 반드시 확인):
 1. `prd.json`의 `dependencies` 필드 확인 — 의존 US가 `passes:false`면 배치 불가
@@ -82,8 +91,9 @@ ralph 루프 안에서 각 US마다 **3-Phase Sequential** 필수 수행:
 3. 배치 크기 상한: **최대 5 US** (초과 시 분할)
 
 배치 판정 결과:
-- **배치 가능** → 배치 내 US들을 하나의 PLAN.md에 통합 기획 (`docs/planning/US-XXX~YYY_PLAN.md`)
+- **배치 가능** → 배치 내 US들을 하나의 PLAN.md에 통합 기획 (`docs/planning/Phase-X_PLAN.md`)
 - **배치 불가** → 단일 US 모드로 진행 (기존 방식)
+- Phase 내 모든 배치 그룹 완료 시 1사이클 종료
 
 **복잡도 판단 (prd.json의 `files` 배열 기준):**
 
@@ -140,7 +150,12 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 - `Agent(subagent_type="oh-my-claudecode:executor", name="jennie", team_name="leviathan-us-xxx", prompt="[US-XXX] Backend: .omc/handoffs/US-XXX-handoff.md 읽고 engine/src/ 구현. 파일 경계: engine/src/**만 수정. dashboard/, tests/ 절대 수정 금지. acceptanceCriteria 전부 달성. 완료 시 SendMessage(recipient='lisa', content='구현 완료, 테스트 부탁')")`
 - `Agent(subagent_type="oh-my-claudecode:test-engineer", name="lisa", team_name="leviathan-us-xxx", prompt="[US-XXX] QA: engine/tests/ 테스트 작성. 파일 경계: tests/**만 수정. Jennie 완료 메시지 받으면 cd engine && python -m pytest tests/ -x --tb=short 실행. 0 failures 필수. 결과를 팀 리드에게 SendMessage로 보고")`
 
-**Phase D(구현) US만 추가:**
+**Rosé(Frontend) 스폰 조건 (확대 적용):**
+- Phase D/H US → 항상 Rosé 추가
+- 백엔드 US라도 아래 조건 중 하나 해당 시 Rosé 추가 스폰:
+  - prd.json `files` 배열에 `"api/"` 포함 (대시보드 API 연동)
+  - prd.json `files` 배열에 `"shadow.py"` 포함 (대시보드 데이터 소스)
+  - `acceptanceCriteria`에 `"dashboard"`, `"UI"`, `"프론트"` 키워드 포함
 - `Agent(subagent_type="oh-my-claudecode:designer", name="rose", team_name="leviathan-us-xxx", prompt="[US-XXX] Frontend: dashboard/ 구현. 파일 경계: dashboard/**만 수정. engine/ 절대 수정 금지")`
 
 **D-verify US (US-063, US-064) — Jennie/Lisa/Rosé 없이 메인 세션이 직접 Chrome 검증:**
@@ -154,6 +169,18 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 5. `preview_resize(preset="mobile")` → 375x812 모바일 뷰 확인
 6. `preview_screenshot()` → 증거 캡처 (완료 기준)
 > D-verify US는 TeamCreate 없이 메인 세션 직접 실행. 에이전트 스폰 금지.
+
+#### Step 2.5: 내부 통합 검증 (NEW — 백엔드/프론트 연동 확인)
+
+> 백엔드 US라도 대시보드 반영 필요 여부를 판단하여 프론트 연동까지 검증.
+
+- **판단 기준**: Jennie 구현 완료 → "해당 기능이 대시보드에 반영 필요한가?" 판단
+  - API 엔드포인트 변경/추가 → 대시보드 연동 확인 필요
+  - Shadow 데이터 소스 변경 → 대시보드 데이터 표시 확인 필요
+- **필요 시**: Rosé 추가 스폰하여 프론트 연동 확인 (Phase D US 아니어도)
+- **Chrome 검증**: `preview_start("dashboard")` → 해당 기능 API 연동 확인
+- **프론트 US라도**: 백엔드 API 정상 동작 확인 (Jennie 또는 Lead가 curl/pytest)
+- **"기능 구현 완료" 재정의**: pytest 0 failures **AND** 관련 대시보드 페이지에서 데이터 정상 표시 확인
 
 #### Step 3: 통합 (Jisoo 조율)
 - Jennie → SendMessage(Lisa): "구현 완료, 테스트 부탁"
@@ -186,7 +213,7 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 - 단, 같은 도메인 US끼리는 **동일 팀에서 연속 처리** 가능 (팀 재생성 불필요)
 - 배치 내 모든 US의 Phase B 완료 후 → Phase C를 **배치 단위로 일괄 실행**
 
-> ⚠️ **Phase B 완료 직후 `/compact` 실행 (TeamCreate 메시지 해제). 단, Phase C 진행 중 `/compact` 절대 금지 (백그라운드 에이전트 결과 소실). §6 참조.**
+> ⚠️ **Phase B 완료 직후 Claude가 자동으로 `/compact` 실행 (TeamCreate 메시지 해제). 단, Phase C 진행 중 `/compact` 절대 금지 (백그라운드 에이전트 결과 소실). §6 참조.**
 
 ---
 
@@ -259,6 +286,31 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 > ⚠️ **완료 기준 전부 충족 즉시 → 사용자 확인 없이 자동으로 다음 `passes:false` US의 Phase A 시작.**
 > **"계속 진행할까요?" / "다음으로 넘어갈까요?" 절대 금지. 멈추지 말 것.**
 
+## 4.5 에스컬레이션 규칙 (문제 심각도별 대응)
+
+> 기존 fix 루프(최대 3회)를 넘어서는 구조적 문제 발생 시 상위 단계로 에스컬레이션.
+
+| Level | 조건 | 대응 |
+|-------|------|------|
+| **L0** (팀 내 즉시 해결) | 단순 버그, 테스트 실패, 타입 에러 | 해당 팀에서 바로 수정 |
+| **L1** (개발↔검증 반복) | Phase B fix 루프 (최대 3회) | 기존 방식 유지 |
+| **L2** (Phase A 재기획) | fix 루프 3회 초과 OR 구조적 문제 발견 | Phase B/C 중단 → Phase A 복귀 → 새 PLAN.md 작성 후 Phase B 재시작 |
+| **L3** (PRD/SSOT 수정 필요) | SSOT↔PRD↔구현 간 모순 발견 | 즉시 작업 중단 → SSOT 수정 → PRD 수정 → Phase A 재기획 |
+| **L4** (Phase 재편성 필요) | 현재 Phase 범위로 해결 불가능한 문제 | 새 US 생성 → prd.json 추가 → 다음 Phase에 배정 OR 현재 Phase 확장 |
+
+**에스컬레이션 흐름:**
+```
+L0: Jennie/Lisa/Rosé가 팀 내부에서 해결
+L1: Jisoo(Lead)가 fix 루프 3회 내 해결
+L2: Lead가 Phase A architect에게 재기획 요청 → 새 PLAN.md
+L3: Lead가 ssot-keeper(haerin)에게 SSOT 수정 요청 → prd.json 동기화
+L4: Lead가 prd.json에 새 US 추가 → 다음 사이클에서 처리
+```
+
+> **자동화**: L0~L1은 기존 ralph 루프 내에서 자동 처리. L2~L4는 로그 출력 후 해당 단계로 자동 복귀.
+
+---
+
 ## 5. 인프라 규칙
 
 - **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`
@@ -266,26 +318,27 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 - **Docker**: Shadow 실행 전 반드시 `docker compose up -d` — Redis/TimescaleDB/Prometheus 필수
 - **GitHub**: `gh` CLI로 push, PR, issue 관리
 - **거래소**: 8 native adapters (ccxt 미사용)
-- **슬리피지**: PowerLaw `impact = k * size^gamma` (k=1.0, gamma=0.5)
+- **슬리피지**: PowerLaw `impact = k * size^gamma` (k=0.0, gamma=0.5) — k=0.0이므로 PowerLaw 비활성. CEXOrderbookSlippage가 유일한 슬리피지 소스
 - **이중 슬리피지 금지**: SignalGenerator의 CEXOrderbookSlippage가 유일한 슬리피지 소스
 
-## 6. 컨텍스트 관리 (⚠️ 강제 — 생략 시 컨텍스트 폭발로 품질 저하)
+## 6. 컨텍스트 관리 (⚠️ Claude 자동 실행 — 사용자 개입 불필요)
 
-> ⚠️ **아래 명령어는 권장이 아닌 필수. 해당 시점에서 반드시 실행할 것.**
+> ⚠️ **아래 명령어는 Claude가 자동으로 실행합니다. 사용자가 수동으로 실행할 필요 없습니다.**
+> **Claude는 해당 시점에 도달하면 Bash 도구로 직접 `/compact` 및 `/clear`를 수행합니다.**
 
-### 6.1 US 사이클 단위 컨텍스트 관리
+### 6.1 US 사이클 단위 컨텍스트 관리 (자동)
 
-**원칙**: 한 US 사이클(Phase A→B→C + git push)이 하나의 컨텍스트 단위. 사이클 완료 시 `/clear`로 완전 초기화.
+**원칙**: 한 US 사이클(Phase A→B→C + git push)이 하나의 컨텍스트 단위. 사이클 완료 시 Claude가 자동으로 컨텍스트를 초기화합니다.
 
-| 시점 | 명령어 | 이유 |
-|------|--------|------|
-| Phase B 완료 직후 (팀 해산 후) | `/compact` | TeamCreate 에이전트 메시지 해제 (컨텍스트 40-60% 차지) |
-| **US 사이클 완료** (Phase C + git push 완료) | `/clear` | 컨텍스트 완전 초기화. prd.json/SSOT.md에 결과 기록 완료 상태이므로 안전 |
-| `/clear` 직후 | `/leviathan` | 자동 루프 재개. prd.json에서 다음 `passes:false` US 자동 탐색 |
+| 시점 | Claude 자동 실행 | 이유 |
+|------|-----------------|------|
+| Phase B 완료 직후 (팀 해산 후) | **Claude가 `/compact` 자동 실행** | TeamCreate 에이전트 메시지 해제 (컨텍스트 40-60% 차지) |
+| **US 사이클 완료** (Phase C + git push 완료) | **Claude가 `/clear` 자동 실행** | 컨텍스트 완전 초기화. prd.json/SSOT.md에 결과 기록 완료 상태이므로 안전 |
+| `/clear` 직후 | **Claude가 `/leviathan` 자동 재호출** | 자동 루프 재개. prd.json에서 다음 `passes:false` US 자동 탐색 |
 
-### 6.2 절대 금지 시점
+### 6.2 절대 금지 시점 (Claude 자동 실행에도 적용)
 
-> ⚠️ **아래 시점에서 `/compact` 또는 `/clear`를 실행하면 미수집 결과가 소실됩니다.**
+> ⚠️ **아래 시점에서는 Claude도 `/compact` 또는 `/clear`를 실행하지 않습니다. 자동 실행 로직이 이 시점을 회피합니다.**
 
 | 금지 시점 | 이유 |
 |-----------|------|
@@ -294,25 +347,41 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 | 백그라운드 pytest/Shadow 실행 대기 중 | 테스트 결과 소실 |
 | Phase C-4 완료 처리 중 (SSOT/prd.json/git 미완료) | 결과 미기록 상태에서 초기화 시 데이터 소실 |
 
-### 6.3 안전한 US 사이클 흐름
+### 6.3 안전한 US 사이클 흐름 (전체 자동화)
 
 ```
 Phase A 기획 → Phase B 개발
   → Phase B 완료 (pytest PASS + 팀 해산)
-  → ✅ `/compact` (Phase B 에이전트 메시지 해제)
+  → ✅ Claude 자동 `/compact` (Phase B 에이전트 메시지 해제)
   → Phase C 시작 (Shadow + 리뷰 + critic)
-  → ❌ `/compact`·`/clear` 금지 (에이전트 실행 중)
+  → ❌ `/compact`·`/clear` 금지 (에이전트 실행 중 — Claude도 실행 안 함)
   → Phase C 모든 결과 수집 + C-4 완료 처리 (SSOT, prd.json, git commit+push)
-  → ✅ `/clear` (컨텍스트 완전 초기화)
-  → `/leviathan` 재호출 (다음 US 자동 시작)
+  → ✅ Claude 자동 `/clear` (컨텍스트 완전 초기화)
+  → ✅ Claude 자동 `/leviathan` 재호출 (다음 US 자동 시작)
 ```
 
-> **핵심**: Phase C 완료 후 `/compact` 대신 `/clear`를 사용. prd.json과 SSOT.md에 모든 결과가 디스크에 기록된 상태이므로 컨텍스트 유지 불필요. `/clear` + `/leviathan` 재호출이 토큰 효율 최적.
+> **핵심**: 전체 컨텍스트 관리가 Claude 자동화. 사용자는 어떤 시점에서도 `/compact`나 `/clear`를 수동 입력할 필요 없음.
+> Phase C 완료 후 `/compact` 대신 `/clear`를 사용. prd.json과 SSOT.md에 모든 결과가 디스크에 기록된 상태이므로 컨텍스트 유지 불필요.
 >
 > **실패 사례 (US-060)**: Phase C 에이전트 실행 중 자동 컨텍스트 압축 → Shadow 결과 미수집.
-> **교훈**: Phase C 진행 중에는 어떤 형태의 컨텍스트 조작도 금지.
+> **교훈**: Phase C 진행 중에는 어떤 형태의 컨텍스트 조작도 금지. Claude 자동 실행 로직이 이를 보장.
 
-## 7. 시작 및 자동 루프
+## 7. Phase F 최종 검수 규칙
+
+> Phase F는 **모든 기능이 구현·검증된 후** 진입하는 **마지막 관문**. 자동차 출고 전 최종 품질검사와 동일.
+
+- **검사지 참조**: `docs/checklists/phase-f-final-audit.md` (10개 카테고리, 100+ 항목)
+- **5팀 분담 실행**:
+  - 기획팀(AESPA): 문서/운영 준비도 항목
+  - 개발팀(BLACKPINK): 엔진 코어 + 대시보드 UI/UX 항목
+  - 퀀트팀: 전략 + 실행 시뮬레이션 항목
+  - 테스트팀: 거래소 + 성능 + 인프라 항목
+  - 검증팀: 리스크 관리 + 모니터링 항목 + 최종 크로스체크
+- **게이트**: 전 항목 PASS 필수. 하나라도 FAIL 시 Live 전환(US-056) 절대 금지
+- **Progressive Shadow**: US-054 (1H→2H→6H→12H→24H→72H) 전 단계 통과 필수
+- **LiveGate**: US-055 6-check AND gate 전체 PASS 필수
+
+## 8. 시작 및 자동 루프
 
 위 규칙을 모두 숙지한 후, prd.json에서 `passes:false`인 첫 번째 US를 찾아 Phase A부터 시작하라.
 $ARGUMENTS가 있으면 해당 US부터 시작.

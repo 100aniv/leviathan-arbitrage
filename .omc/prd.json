@@ -4,7 +4,7 @@
   "created": "2026-03-08",
   "updated": "2026-03-09",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 64,
+  "total_stories": 80,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -14,11 +14,16 @@
     "B-5": "Multi-Leg Executor (GAP 4)",
     "C": "Strategy Validation",
     "D": "Dashboard UX",
+    "D-verify": "Dashboard Browser Verification",
     "E-1": "Production Monitoring",
     "E-2": "Auto-Tuning Pipeline",
     "E-3": "Production Readiness",
-    "F": "72h Shadow to Live",
-    "SR": "Shadow Realism (SG-1~6)"
+    "SR": "Shadow Realism (SG-1~6)",
+    "G": "Strategy Profitability Recovery",
+    "H": "Dashboard Integration Complete",
+    "I": "Exchange/Strategy Completeness",
+    "J": "Operational Stability",
+    "F": "Final Audit — 72H Shadow to Live (LAST)"
   },
   "gap_dependency_order": "GAP9 -> GAP10 -> (GAP5,GAP6,GAP7 parallel) -> GAP3 -> GAP1,GAP2 -> GAP4",
   "stories": [
@@ -1032,13 +1037,286 @@
     {
       "id": "US-057",
       "title": "최종 문서화 + 운영 가이드",
-      "phase": "F",
+      "phase": "J",
       "priority": 68,
       "passes": false,
       "acceptanceCriteria": [
         "SSOT.md 최종 업데이트 (Phase Live)",
         "운영 가이드 문서 (시작/중지/모니터링/장애대응)",
         "runbook 2개 추가 (서버 크래시, 포지션 복구)"
+      ]
+    },
+    {
+      "id": "US-065",
+      "title": "Shadow→Dashboard 데이터 브리지",
+      "phase": "H",
+      "priority": 69,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/api/routes/shadow.py",
+        "dashboard/src/hooks/useEngineWs.ts"
+      ],
+      "acceptanceCriteria": [
+        "ShadowMode 메트릭이 API 엔드포인트로 노출",
+        "대시보드 Overview에서 Shadow PnL/trades/WR 실시간 표시",
+        "WebSocket 피드에 shadow_stats 이벤트 추가",
+        "Chrome 브라우저에서 데이터 렌더링 확인"
+      ]
+    },
+    {
+      "id": "US-066",
+      "title": "Stale Orderbook 감지 + 블랙리스트 + 손실 제한",
+      "phase": "G",
+      "priority": 70,
+      "passes": false,
+      "files": [
+        "engine/src/core/signal.py",
+        "engine/src/collectors/manager.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "acceptanceCriteria": [
+        "Orderbook 타임스탬프 N초 미갱신 시 stale 마킹",
+        "Stale orderbook 포함 신호 자동 필터링",
+        "Korean 거래소 stale 감지 특화 (증분 orderbook 검증)",
+        "단건 최대 손실 제한 ($50 cap)",
+        "1H Shadow에서 fat-tail 단건 손실 제거 확인"
+      ]
+    },
+    {
+      "id": "US-067",
+      "title": "전략별 개별 1H Shadow 검증 (수익성 확인 후 활성화)",
+      "phase": "G",
+      "priority": 71,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "각 전략을 개별 활성화하여 1H Shadow 실행",
+        "PnL > 0인 전략만 활성화 목록에 포함",
+        "PnL <= 0인 전략은 비활성화 + 로그 기록",
+        "전략별 1H Shadow 결과 보고서 생성",
+        "최종 활성 전략 목록으로 통합 1H Shadow 실행"
+      ]
+    },
+    {
+      "id": "US-068",
+      "title": "Shadow 기반 전략 파라미터 재최적화",
+      "phase": "G",
+      "priority": 72,
+      "passes": false,
+      "files": [
+        "engine/src/tuning/scheduled_tuner.py",
+        "engine/config/strategy_params.json"
+      ],
+      "acceptanceCriteria": [
+        "Optuna 100 trials 재실행 (stale 필터 적용 후)",
+        "최적 파라미터 config/strategy_params.json 업데이트",
+        "재최적화 후 1H Shadow PnL > 이전 대비 개선",
+        "pytest 전체 PASS"
+      ]
+    },
+    {
+      "id": "US-069",
+      "title": "Overview 종합 상황판 리디자인",
+      "phase": "H",
+      "priority": 73,
+      "passes": false,
+      "files": [
+        "dashboard/src/app/page.tsx",
+        "dashboard/src/components/PortfolioSummary.tsx",
+        "dashboard/src/components/RiskGauge.tsx",
+        "dashboard/src/components/EventFeed.tsx",
+        "dashboard/src/components/PerformanceTrend.tsx"
+      ],
+      "acceptanceCriteria": [
+        "시스템 상태 뱃지 (RUNNING/STOPPED/ERROR) 표시",
+        "핵심 KPI 카드 4개 (총자산, 오늘PnL, 총PnL, 활성포지션)",
+        "거래소 상태 바 (8개 거래소 연결/지연/잔고)",
+        "리스크 패널 (Drawdown 게이지 + KillSwitch + CircuitBreaker)",
+        "최근 이벤트/로그 피드 (실시간 20건)",
+        "성과 추세 미니차트 (7일 PnL/WR 추이)",
+        "모바일 반응형 정상",
+        "npm run build 0 errors"
+      ]
+    },
+    {
+      "id": "US-070",
+      "title": "Attribution/Funding/System 빈 페이지 완성",
+      "phase": "H",
+      "priority": 74,
+      "passes": false,
+      "files": [
+        "dashboard/src/app/attribution/page.tsx",
+        "dashboard/src/app/funding/page.tsx",
+        "dashboard/src/app/system/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "Attribution 페이지: Waterfall + Heatmap 실 데이터 연결",
+        "Funding 페이지: 거래소별 실시간 funding rate 비교 테이블",
+        "System 페이지: Docker 컨테이너 상태, 엔진 정보, 설정 표시",
+        "모든 페이지 API 엔드포인트 연동 (200 응답)",
+        "npm run build 0 errors"
+      ]
+    },
+    {
+      "id": "US-071",
+      "title": "GlobalHeatmap + OrderbookView 실 데이터 연결",
+      "phase": "H",
+      "priority": 75,
+      "passes": false,
+      "files": [
+        "dashboard/src/components/GlobalHeatmap.tsx",
+        "dashboard/src/components/OrderbookView.tsx"
+      ],
+      "acceptanceCriteria": [
+        "GlobalHeatmap: Mock 데이터 → WebSocket 실시간 데이터",
+        "OrderbookView: Mock 데이터 → API/WS 실 orderbook 데이터",
+        "데이터 없을 때 empty state 표시",
+        "Chrome 브라우저 렌더링 확인"
+      ]
+    },
+    {
+      "id": "US-072",
+      "title": "계좌 정보/총자산/거래소별 잔고 표시",
+      "phase": "H",
+      "priority": 76,
+      "passes": false,
+      "files": [
+        "engine/src/api/routes/portfolio.py",
+        "dashboard/src/components/PortfolioSummary.tsx"
+      ],
+      "acceptanceCriteria": [
+        "GET /api/v1/portfolio-summary 엔드포인트 구현",
+        "거래소별 잔고 합산 표시",
+        "총 포트폴리오 가치 계산",
+        "Chrome 브라우저에서 정상 렌더링"
+      ]
+    },
+    {
+      "id": "US-073",
+      "title": "Bithumb REST 스냅샷 → 증분 orderbook 근본 해결",
+      "phase": "I",
+      "priority": 77,
+      "passes": false,
+      "files": [
+        "engine/src/collectors/bithumb_collector.py"
+      ],
+      "acceptanceCriteria": [
+        "REST 스냅샷 주기적 갱신 (증분 데이터 정합성 보장)",
+        "소형코인 가격 2-10x 차이 문제 해결",
+        "Stale 데이터 자동 감지 + 재스냅샷 트리거",
+        "1H Shadow에서 Bithumb 데이터 신선도 < 5초",
+        "pytest 전체 PASS"
+      ]
+    },
+    {
+      "id": "US-074",
+      "title": "Coinone 네이티브 WebSocket 어댑터 (CCXT 탈피)",
+      "phase": "I",
+      "priority": 78,
+      "passes": false,
+      "files": [
+        "engine/src/collectors/coinone_collector.py"
+      ],
+      "acceptanceCriteria": [
+        "Coinone 공식 WebSocket API 직접 연결",
+        "CCXT 의존성 제거 (coinone 전용)",
+        "Orderbook 수신 + 파싱 정상",
+        "0.02% 수수료 적용 유지",
+        "pytest 전체 PASS"
+      ]
+    },
+    {
+      "id": "US-075",
+      "title": "futures_futures 전략 활성화 (OKX/Bybit futures 수집기)",
+      "phase": "I",
+      "priority": 79,
+      "passes": false,
+      "files": [
+        "engine/src/collectors/okx_futures.py",
+        "engine/src/collectors/bybit_futures.py",
+        "engine/src/collectors/manager.py"
+      ],
+      "acceptanceCriteria": [
+        "OKX futures WebSocket 수집기 구현",
+        "Bybit futures WebSocket 수집기 구현",
+        "CollectorManager에 2+ futures 거래소 등록",
+        "futures_futures 전략 최소 2개 거래소 연결 확인",
+        "1H Shadow에서 futures_futures 신호 생성 확인"
+      ]
+    },
+    {
+      "id": "US-076",
+      "title": "전략/거래소 완성도 전수 감사",
+      "phase": "I",
+      "priority": 80,
+      "passes": false,
+      "files": [
+        "docs/audit/strategy-exchange-audit.md"
+      ],
+      "acceptanceCriteria": [
+        "전략 8개: 구현/테스트/대시보드/Shadow 동작 전수 대조",
+        "거래소 8개: 네이티브/WS/데이터품질/거래가능 전수 대조",
+        "Plan↔SSOT↔PRD↔구현 불일치 0건",
+        "감사 보고서 docs/audit/strategy-exchange-audit.md 생성"
+      ]
+    },
+    {
+      "id": "US-077",
+      "title": "문서 정합성 최종 감사 (SSOT↔PRD↔구현 전수 조사)",
+      "phase": "J",
+      "priority": 81,
+      "passes": false,
+      "acceptanceCriteria": [
+        "SSOT.md 모든 섹션 vs 실제 코드 대조",
+        "prd.json 모든 US vs 실제 구현 대조",
+        "CLAUDE.md vs SSOT.md 동기화 확인",
+        "불일치 항목 0건 달성"
+      ]
+    },
+    {
+      "id": "US-078",
+      "title": "장기 Shadow 안정성 테스트 (1H→6H→12H)",
+      "phase": "J",
+      "priority": 82,
+      "passes": false,
+      "acceptanceCriteria": [
+        "1H Shadow: crash=0, PnL>0",
+        "6H Shadow: crash=0, 메모리 안정 (RSS 증가 < 50MB)",
+        "12H Shadow: crash=0, PnL>0, CPU < 80%",
+        "각 단계 결과 SSOT.md에 기록"
+      ]
+    },
+    {
+      "id": "US-079",
+      "title": "운영 Runbook 업데이트 + 장애 대응 매뉴얼",
+      "phase": "J",
+      "priority": 83,
+      "passes": false,
+      "acceptanceCriteria": [
+        "기존 6개 runbook 최신 코드 반영",
+        "장애 시나리오별 대응 절차 문서화",
+        "시뮬레이션 1회 실행 (DB 복구 시나리오)",
+        "Telegram 알림 연동 확인"
+      ]
+    },
+    {
+      "id": "US-080",
+      "title": "종합 검사지 기반 최종 감사 (Phase F 게이트)",
+      "phase": "F",
+      "priority": 84,
+      "passes": false,
+      "files": [
+        "docs/checklists/phase-f-final-audit.md"
+      ],
+      "acceptanceCriteria": [
+        "docs/checklists/phase-f-final-audit.md 전 항목 실행",
+        "10개 카테고리 160항목 전체 PASS",
+        "5팀 분담 실행 + 크로스체크 완료",
+        "FAIL 항목 0건 → Live 전환 승인"
       ]
     }
   ]

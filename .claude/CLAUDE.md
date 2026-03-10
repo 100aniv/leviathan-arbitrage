@@ -217,32 +217,50 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - `quant-validator` — 슬리피지/마찰력/수익성 수학 검증
 - `shadow-tester` — Shadow 모드 실 실행 및 결과 분석
 - `ssot-keeper` — SSOT.md 유일 관리자
+- `browser-verifier` — Chrome 브라우저 대시보드 통합 검증
 
-## 기술 스택
+## 기술 스택 + 파일 구조
 
-- **엔진**: Python 3.12+ (AsyncIO) + Rust (PyO3)
-- **대시보드**: Next.js 14
-- **DB**: TimescaleDB + Redis
-- **거래소**: 8 native adapters (Binance, Binance Futures, Bybit, OKX, Bitget, Upbit, Bithumb, Coinone) — ccxt 미사용
-- **테스트**: `cd engine && python -m pytest tests/ -x`
-- **슬리피지**: PowerLaw `impact = k * size^gamma` (k=1.0, gamma=0.5)
+- **엔진**: Python 3.12+ (AsyncIO) + Rust (PyO3) — `engine/src/`
+- **대시보드**: Next.js 14 (App Router) — `dashboard/src/app/`
+- **DB**: TimescaleDB + Redis — `docker-compose.yml`
+- **거래소**: 8 native WS adapters (ccxt 미사용) — `engine/src/collectors/`
+- **전략 8개**: `engine/src/strategies/` (cross_exchange, spot_futures, futures_futures, triangular, funding_rate, statistical_arb, latency_arb, cex_dex)
+- **API**: `engine/src/api/` (FastAPI + JWT)
+- **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`
+- **슬리피지**: CEXOrderbookSlippage만 활성 (PowerLaw k=0.0 비활성)
+- **설정**: `engine/.env` (엔진용) + 루트 `.env` (Docker용) — **두 파일 반드시 동기화**
+
+## 자주 틀리는 패턴 (반드시 숙지)
+
+- **이중 슬리피지 금지**: SignalGenerator의 CEXOrderbookSlippage가 유일한 슬리피지 소스. PaperExecutor에 PowerLaw 적용 절대 금지
+- **ENGINE_ENV**: `dev|staging|prod|test`만 허용 (`development` 사용 금지)
+- **KRW 거래소**: upbit, bithumb, coinone은 KRW 페어 자동 매핑. auto-symbols `min_exchanges=3` 필수 (7로 하면 0개)
+- **Bithumb stale data**: 증분 orderbook에서 소형코인 2-10x 가격 오차 → fake spread. Phase G에서 해결
+- **Phase C 중 /compact 금지**: Shadow/리뷰 백그라운드 에이전트 실행 중 압축하면 결과 소실. Phase C 완료 + git push 후에만
+- **Coinone 수수료**: 0.20% → 0.02% (API 할인 적용)
+- **cancel_order**: order.symbol 전달 필수 (Binance rollback). TypeError fallback for legacy adapters
+- **friction prefix**: cost_calculator가 `paper_`/`sandbox_` prefix 자동 strip
+
+## 플랜 파일 (유저 레벨 — 레포 밖)
+
+- **강화 계획**: `/Users/100aniv/.claude/plans/smooth-tickling-giraffe.md` (Phase G~F 재편)
+- **기존 플랜**: `/Users/100aniv/.claude/plans/jazzy-wishing-avalanche.md` (Phase A~SR, 25 Parts)
+- **수동 백업**: `/Users/100aniv/Development/arbitrage_OMC/LEVIATHAN_PROJECT_TOTAL_REPLAN.md`
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase**: SR (Shadow Realism 강화 스프린트)
-- **Tests**: 3,472 passed, 0 failures, 89% coverage
-- **Exchanges**: 8개 collector (3개 연결 확인: Binance, Upbit, Bithumb)
-- **Shadow 최신 결과**: 3,110 trades, 100% WR, +$21.10, DD=$0.00 (10min, 데모급 실행)
-- **남은 작업**: `.omc/prd.json` 참조 (64개 User Story, Phase SR ~ F)
-- **실행 플랜**: `.claude/plans/jazzy-wishing-avalanche.md` (25 Parts, 10 GAPs, 전략 명세)
+- **다음 Phase**: G (전략 수익성 복원) → H → I → J → F(최종검수, LAST)
+- **Tests**: 3,575 passed, 0 failures, 89% coverage
+- **PRD**: `.omc/prd.json` (80개 US, 18 Phases)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
+- **다음 작업**: US-066 (Stale Orderbook 감지 + 블랙리스트 — Phase G)
 
 ## 실행 워크플로우 (ralph autopilot)
 
-각 US마다 **3-Phase Sequential** 실행:
-1. **Phase A** (기획): `ralplan --deliberate` → planner+architect+scientist 합의 → US-XXX_PLAN.md
-2. **Phase B** (개발): `TeamCreate` → Backend(engine/src/) + Frontend(dashboard/) + QA(tests/) 병렬
-3. **Phase C** (검증): Shadow 10min(Docker 필수) + `code-reviewer` + `critic` → US-XXX_REVIEW.md → SSOT.md 업데이트
+**3-Phase Sequential** (leviathan.md 참조):
+1. **Phase A** (기획): Phase 단위 배치 수집 → ralplan → PLAN.md
+2. **Phase B** (개발): TeamCreate + Step 2.5 통합검증 (백엔드↔프론트)
+3. **Phase C** (검증): Shadow + code-reviewer + critic → SSOT 업데이트
 
-**GAP 의존성 순서**: GAP9→10→(5,6,7 병렬)→3→(1,2)→4
-**다음 작업**: US-064 (대시보드 모바일 반응형 + Settings/Alerts 검증)
+**에스컬레이션**: L0(팀 내) → L1(fix 루프) → L2(Phase A 재기획) → L3(SSOT 수정) → L4(Phase 재편)
