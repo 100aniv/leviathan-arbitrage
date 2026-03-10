@@ -36,7 +36,7 @@ class TestParamsToStrategyConfig:
     def test_cross_exchange_maps_min_spread_and_position(self):
         config = params_to_strategy_config(self._p(min_spread_bps=10.0, max_position_size=500.0), CROSS_EXCHANGE)
         assert config["min_spread_bps"] == pytest.approx(10.0)
-        assert config["max_position_usdt"] == pytest.approx(500.0)
+        assert config["max_position_size_usdt"] == pytest.approx(500.0)
 
     def test_cross_exchange_maps_all_fields(self):
         params = self._p(
@@ -50,7 +50,7 @@ class TestParamsToStrategyConfig:
         assert "min_spread_bps" in config
         assert "entry_threshold" in config
         assert "exit_threshold" in config
-        assert "max_position_usdt" in config
+        assert "max_position_size_usdt" in config
         assert "stop_loss_pct" in config
 
     def test_triangular_maps_min_profit_bps(self):
@@ -115,7 +115,7 @@ class TestParamsToStrategyConfig:
 
 class TestStrategyConfigToParams:
     def test_cross_exchange_reverse_mapping(self):
-        config = {"min_spread_bps": 10.0, "max_position_usdt": 500.0, "stop_loss_pct": 0.02}
+        config = {"min_spread_bps": 10.0, "max_position_size_usdt": 500.0, "stop_loss_pct": 0.02}
         params = strategy_config_to_params(config, CROSS_EXCHANGE)
         assert params.min_spread_bps == pytest.approx(10.0)
         assert params.max_position_size == pytest.approx(500.0)

@@ -408,7 +408,7 @@ class TestParamBridgeIntegration:
         assert "min_spread_bps" in config
         assert "entry_threshold" in config
         assert "exit_threshold" in config
-        assert "max_position_usdt" in config
+        assert "max_position_size_usdt" in config
         assert "stop_loss_pct" in config
 
     def test_triangular_config_maps_min_spread_to_min_profit_bps(self) -> None:
@@ -447,8 +447,8 @@ class TestParamBridgeIntegration:
     def test_unknown_strategy_type_falls_back_to_cross_exchange_mapping(self) -> None:
         params = self._make_params()
         config = params_to_strategy_config(params, "nonexistent_strategy_type")
-        # Falls back to CROSS_EXCHANGE mapping → max_position_usdt present
-        assert "max_position_usdt" in config
+        # Falls back to CROSS_EXCHANGE mapping → max_position_size_usdt present
+        assert "max_position_size_usdt" in config
 
 
 # ---------------------------------------------------------------------------

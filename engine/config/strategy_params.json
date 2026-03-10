@@ -27,7 +27,7 @@
     "status": "MONITOR",
     "wfe": 0.94,
     "min_profit_bps": 3,
-    "max_position_usdt": 100,
+    "max_position_size_usdt": 100,
     "entry_threshold": 0.00206,
     "exit_threshold": 0.000309,
     "stop_loss_pct": 0.005
@@ -67,5 +67,14 @@
     "exit_threshold": 0.00089,
     "stop_loss_pct": 0.005,
     "note": "WFE negative, 9/97 folds positive only. Use defaults until redesigned."
+  },
+  "latency_arb": {
+    "status": "MONITOR",
+    "wfe": 0.0,
+    "min_spread_bps": 3,
+    "max_position_size_usdt": 5000,
+    "entry_threshold": 0.0005,
+    "exit_threshold": 0.0001,
+    "stop_loss_pct": 0.005
   }
 }

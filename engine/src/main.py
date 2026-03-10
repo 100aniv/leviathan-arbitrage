@@ -535,7 +535,7 @@ class Engine:
         from src.strategies.triangular import TriangularConfig, TriangularStrategy
         from src.strategies.funding_rate import FundingRateConfig, FundingRateStrategy
         from src.strategies.statistical_arb import StatisticalArbStrategy
-        from src.strategies.latency_arb import LatencyArbStrategy
+        from src.strategies.latency_arb import LatencyArbConfig, LatencyArbStrategy
 
         # Use a simple stub if CostCalculator didn't initialize
         cost_calc = self._cost_calculator
@@ -576,8 +576,14 @@ class Engine:
         tri_p = tuned.get("triangular", {})
         tri_config = TriangularConfig(
             min_profit_bps=Decimal(str(tri_p.get("min_profit_bps", 10))),
-            max_position_usdt=Decimal(str(tri_p.get("max_position_usdt", 1000))),
+            max_position_usdt=Decimal(str(tri_p.get("max_position_size_usdt", 1000))),
         ) if tri_p.get("status") in ("READY", "MONITOR") else None
+
+        la_p = tuned.get("latency_arb", {})
+        la_config = LatencyArbConfig(
+            min_latency_advantage_ms=float(la_p.get("entry_threshold", 0.0005)) * 10000,
+            max_position_size=Decimal(str(la_p.get("max_position_size_usdt", 5000))) / _BTC_REFERENCE_PRICE,
+        ) if la_p.get("status") in ("READY", "MONITOR") else None
 
         strategies = [
             CrossExchangeStrategy("cross_exchange_v1", cost_calc, config=ce_config),
@@ -586,7 +592,7 @@ class Engine:
             TriangularStrategy("triangular_v1", cost_calc, config=tri_config),
             FundingRateStrategy("funding_rate_v1", cost_calc, config=fr_config),
             StatisticalArbStrategy("statistical_arb_v1", cost_calc),
-            LatencyArbStrategy("latency_arb_v1", cost_calc, self._latency_tracker),
+            LatencyArbStrategy("latency_arb_v1", cost_calc, self._latency_tracker, config=la_config),
         ]
 
         # CexDex requires a DEXAdapter — register only if configured
@@ -608,7 +614,7 @@ class Engine:
             self._strategy_manager.register(strategy)
 
         tuned_count = sum(1 for s in ["spot_futures", "funding_rate", "cross_exchange",
-                                       "futures_futures", "triangular"] if tuned.get(s, {}).get("status") in ("READY", "MONITOR"))
+                                       "futures_futures", "triangular", "latency_arb"] if tuned.get(s, {}).get("status") in ("READY", "MONITOR"))
         logger.info("Registered %d strategies (%d with tuned params)", len(strategies), tuned_count)
 
     def _build_dex_adapter(self):

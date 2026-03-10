@@ -121,7 +121,7 @@ class TestAutoTuneLoop:
         assert "min_spread_bps" in config
         assert "entry_threshold" in config
         assert "exit_threshold" in config
-        assert "max_position_usdt" in config
+        assert "max_position_size_usdt" in config
         assert "stop_loss_pct" in config
 
     def test_applied_params_values_match_best_fold(self) -> None:

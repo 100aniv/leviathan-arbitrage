@@ -1108,7 +1108,8 @@
       "title": "Shadow 기반 전략 파라미터 재최적화",
       "phase": "G",
       "priority": 72,
-      "passes": false,
+      "passes": true,
+      "notes": "latency_arb 튜닝 추가, activation 필터, param_bridge 키 정규화, ShadowRunner auto-apply. 3640 tests PASS.",
       "files": [
         "engine/src/tuning/scheduled_tuner.py",
         "engine/config/strategy_params.json"

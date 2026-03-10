@@ -167,7 +167,7 @@ class TestParamBridge:
         config = params_to_strategy_config(params, "cross_exchange")
         assert "min_spread_bps" in config
         assert "entry_threshold" in config
-        assert config["max_position_usdt"] == 500.0
+        assert config["max_position_size_usdt"] == 500.0
 
     def test_roundtrip_conversion(self):
         original = StrategyParams(

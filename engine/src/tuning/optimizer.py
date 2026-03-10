@@ -60,7 +60,7 @@ class TunerConfig:
     shadow_duration_hours: float = 24.0
 
     # Parameter search bounds
-    min_spread_bps_range: tuple[float, float] = (1.0, 50.0)
+    min_spread_bps_range: tuple[float, float] = (3.0, 50.0)
     max_position_size_range: tuple[float, float] = (100.0, 10_000.0)
     entry_threshold_range: tuple[float, float] = (0.0001, 0.01)
     exit_threshold_range: tuple[float, float] = (0.00005, 0.005)
