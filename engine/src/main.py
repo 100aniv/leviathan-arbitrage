@@ -795,10 +795,17 @@ class Engine:
 
         if self._data_mode == DataMode.SHADOW:
             # Shadow mode: real data + paper execution + full metrics
-            tasks.append(
-                asyncio.create_task(self._shadow_mode_loop(), name="shadow_mode")
-            )
-            logger.info("Data mode: SHADOW — starting Shadow Mode orchestrator")
+            shadow_progressive = os.getenv("SHADOW_PROGRESSIVE", "false").lower() == "true"
+            if shadow_progressive:
+                tasks.append(
+                    asyncio.create_task(self._progressive_shadow_loop(), name="progressive_shadow")
+                )
+                logger.info("Data mode: SHADOW (PROGRESSIVE) — starting ProgressiveShadowOrchestrator")
+            else:
+                tasks.append(
+                    asyncio.create_task(self._shadow_mode_loop(), name="shadow_mode")
+                )
+                logger.info("Data mode: SHADOW — starting Shadow Mode orchestrator")
         elif self._data_mode == DataMode.REAL_PUBLIC:
             # Real public WebSocket data — no API keys, observation mode
             tasks.append(
@@ -1102,6 +1109,98 @@ class Engine:
                 await asyncio.sleep(5.0)
         except asyncio.CancelledError:
             pass
+
+    async def _progressive_shadow_loop(self) -> None:
+        """Progressive Shadow: 6-stage automatic extension (1H→2H→6H→12H→24H→72H).
+
+        Creates ShadowMode and ProgressiveShadowOrchestrator, runs all 6 stages.
+        Enabled when SHADOW_PROGRESSIVE=true (default: false → _shadow_mode_loop).
+        """
+        from src.collectors.funding_rate_collector import FundingRateCollector
+        from src.modes.shadow import ShadowMode
+        from src.modes.progressive_shadow import ProgressiveShadowOrchestrator
+
+        symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
+        exchanges = (
+            self._settings.trading.active_exchanges
+            if self._settings
+            else ["binance", "bybit", "okx", "bitget"]
+        )
+
+        # Create MultiStrategySignalProducer for 6 additional strategies
+        from src.core.multi_signal import MultiStrategySignalProducer
+
+        multi_signal_producer = MultiStrategySignalProducer(
+            event_bus=self._event_bus,
+            latency_tracker=getattr(self, "_latency_tracker", None),
+        )
+
+        # Create FundingRateCollector with shared HTTP client (4 exchanges, all symbols)
+        funding_rate_collector = FundingRateCollector(
+            symbols=symbols,
+            http_client=getattr(self, "_http_client", None),
+        )
+
+        self._shadow_mode = ShadowMode(
+            signal_generator=self._signal_generator,
+            paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
+            collector_manager=None,  # auto-creates CollectorManager
+            market_recorder=self._market_recorder,
+            telegram=self._telegram,
+            symbols=symbols,
+            exchanges=exchanges,
+            multi_signal_producer=multi_signal_producer,
+            funding_rate_collector=funding_rate_collector,
+            strategy_manager=self._strategy_manager,
+        )
+
+        # Set all registered strategies to shadow mode
+        if self._strategy_manager is not None:
+            for sid in self._strategy_manager.list_strategies():
+                s = self._strategy_manager.get_strategy(sid)
+                if s:
+                    s.shadow_mode = True
+            for sid in self._strategy_manager.list_strategies():
+                try:
+                    await self._strategy_manager.start_strategy(sid)
+                except Exception as exc:
+                    logger.warning("Shadow strategy %s start failed: %s", sid, exc)
+
+        # Build LiveGate for Stage 6
+        if self._db_pool is not None:
+            try:
+                from src.modes.live_gate import LiveGate
+                from src.risk.kill_switch import KillSwitch
+
+                kill_switch = KillSwitch()
+                self._live_gate = LiveGate(
+                    pool=self._db_pool.pool,
+                    telegram=self._telegram,
+                    kill_switch=kill_switch,
+                    circuit_breaker=self._circuit_breaker,
+                    settings=self._settings,
+                )
+            except Exception as exc:
+                logger.warning("LiveGate init failed (non-fatal): %s", exc)
+
+        orchestrator = ProgressiveShadowOrchestrator(
+            shadow_mode=self._shadow_mode,
+            live_gate=self._live_gate,
+            telegram=self._telegram,
+            db_pool=self._db_pool,
+        )
+
+        try:
+            results = await orchestrator.run()
+        except asyncio.CancelledError:
+            return
+
+        passed_count = sum(1 for r in results if r.passed)
+        logger.info(
+            "progressive_shadow_loop.finished",
+            stages_passed=passed_count,
+            total_stages=len(results),
+        )
 
     async def _health_check_loop(self) -> None:
         while self.state.running:

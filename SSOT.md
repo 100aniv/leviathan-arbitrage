@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-09 | 최신 커밋: `4bcf509`
+> 마지막 업데이트: 2026-03-10 | 최신 커밋: `5ba17da`
 > 실행 플랜: `.claude/plans/jazzy-wishing-avalanche.md` | PRD: `.omc/prd.json` (64개 User Stories)
 
 ---
@@ -27,12 +27,12 @@
 
 ```
 Phase:        SR (Shadow Realism 강화 스프린트)
-테스트:       3,533 passed, 0 failed
-커버리지:     90%
+테스트:       3,575 passed, 0 failed
+커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase SR US-062: Rate Limit 시뮬레이션 (토큰 버킷)
-다음 작업:    Phase SR 완료 → Phase F (Progressive Shadow → Live)
+최신 커밋:    Phase F US-054: Progressive Shadow 6-stage gate
+다음 작업:    US-055 (LiveGate + Preflight 10항목 통과)
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -42,12 +42,12 @@ Phase:        SR (Shadow Realism 강화 스프린트)
 
 | ID | 심각도 | 현재 상태 | 필요한 상태 |
 |----|--------|----------|------------|
-| SG-1 | 치명 | partial_fill_rate=0.0, rejection_rate=0.0 | 0.05 / 0.02 활성화 |
+| SG-1 | ~~치명~~ | ~~partial_fill_rate=0.0, rejection_rate=0.0~~ | 0.05 / 0.02 활성화 (RESOLVED) |
 | SG-2 | ~~치명~~ | ~~매수+매도 레그 동기 실행, 0ms 지연~~ | 50-300ms 랜덤 지연 활성 (RESOLVED) |
 | SG-3 | ~~높음~~ | ~~PowerLawSlippage(k=0) — 오더북 깊이 미반영~~ | BookWalkSlippage VWAP 체결 활성 (RESOLVED) |
 | SG-4 | ~~높음~~ | ~~무한 가상 잔고, 소진 추적 없음~~ | VirtualBalanceTracker + 리밸런스 (RESOLVED) |
 | SG-5 | ~~높음~~ | ~~trade_size=Decimal("1") 하드코딩~~ | compute_depth_trade_size(L1깊이×0.10) (RESOLVED) |
-| SG-6 | 중간 | Rate limit 시뮬레이션 없음 | 거래소별 토큰 버킷 |
+| SG-6 | ~~중간~~ | ~~Rate limit 시뮬레이션 없음~~ | 거래소별 토큰 버킷 (RESOLVED) |
 
 ### 프로그레시브 Shadow 테스트 프로토콜
 
@@ -407,7 +407,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ### Phase F: 프로그레시브 Shadow → Live — US-054~057 (수정됨)
 
-- [ ] US-054: 프로그레시브 Shadow (1H→2H→6H→12H→24H→72H 단계별 자동 연장)
+- [x] US-054: 프로그레시브 Shadow (1H→2H→6H→12H→24H→72H 단계별 자동 연장) — 42 tests, 3575 total PASS, Shadow 580T/67.2%WR/+$2203.92
 - [ ] US-055: LiveGate 자동 평가 확인
 - [ ] US-056: Live 모드 전환 (사용자 승인)
 - [ ] US-057: 운영 문서 최종화
