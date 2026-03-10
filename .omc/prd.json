@@ -1089,7 +1089,8 @@
       "title": "전략별 개별 1H Shadow 검증 (수익성 확인 후 활성화)",
       "phase": "G",
       "priority": 71,
-      "passes": false,
+      "passes": true,
+      "notes": "Phase G: StrategyValidationOrchestrator (단일 ShadowMode + 동적 disabled 전환). STRATEGY_SIGNAL_ID_MAP 기반 격리, critic C1+C2+M1+M3 수정, 18 tests, 3627 total PASS.",
       "files": [
         "engine/src/modes/shadow.py",
         "engine/src/main.py"

@@ -1702,3 +1702,40 @@ class ShadowMode:
 
         if drawdown > self._stats.max_drawdown:
             self._stats.max_drawdown = drawdown
+
+    # -----------------------------------------------------------------------
+    # US-067: Strategy validation helpers
+    # -----------------------------------------------------------------------
+
+    def reset_stats(self) -> None:
+        """Reset stats for strategy validation. Preserves infrastructure (collectors, orderbooks, WS connections)."""
+        self._stats = ShadowStats(start_time=time.monotonic())
+        # Reset VirtualBalanceTracker to restore initial balances (architect recommendation)
+        if hasattr(self, '_balance_tracker') and self._balance_tracker is not None:
+            self._balance_tracker.reset()
+        # Reset ShadowRateLimiter buckets (architect recommendation)
+        if hasattr(self, '_rate_limiter') and self._rate_limiter is not None:
+            self._rate_limiter._buckets = {}
+        # Reset StaleOrderbookDetector blacklist (architect recommendation)
+        if hasattr(self, '_stale_detector') and self._stale_detector is not None:
+            if hasattr(self._stale_detector, '_blacklist'):
+                self._stale_detector._blacklist.clear()
+        logger.info("ShadowMode stats reset for strategy validation")
+
+    def set_disabled_strategies(self, disabled: set[str]) -> None:
+        """Dynamically update disabled strategies set."""
+        self._disabled_strategies = disabled
+        logger.info("shadow_mode.disabled_strategies_updated", disabled=list(disabled))
+
+    def get_strategy_report(self) -> dict:
+        """Return serializable per-strategy metrics dict."""
+        report = {}
+        for strategy_id, ss in self._stats.by_strategy.items():
+            report[strategy_id] = {
+                "trades": ss.trades,
+                "wins": ss.wins,
+                "losses": ss.losses,
+                "pnl": float(ss.pnl),
+                "win_rate": float(ss.wins / ss.trades) if ss.trades > 0 else 0.0,
+            }
+        return report

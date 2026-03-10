@@ -26,13 +26,13 @@
 ## 2. 현재 상태
 
 ```
-Phase:        SR (Shadow Realism 강화 스프린트)
-테스트:       3,609 passed, 0 failed
+Phase:        G (전략 수익성 복원)
+테스트:       3,627 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase F US-054: Progressive Shadow 6-stage gate
-다음 작업:    US-067 (전략별 개별 1H Shadow 검증 — Phase G)
+최신 커밋:    Phase G US-067: 전략별 개별 1H Shadow 검증
+다음 작업:    US-068 (Shadow 기반 파라미터 재최적화 — Phase G)
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -408,7 +408,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 ### Phase G: 전략 수익성 복원 — US-066~068
 
 - [x] US-066: Stale Orderbook 감지 + 블랙리스트 + 손실 제한 — StaleOrderbookDetector 4계층 방어, 34 tests, 3609 total PASS
-- [ ] US-067: 전략별 개별 1H Shadow 검증 (PnL > 0 확인 후 활성화)
+- [x] US-067: 전략별 개별 1H Shadow 검증 — StrategyValidationOrchestrator 구현, STRATEGY_SIGNAL_ID_MAP 기반 격리, 18 tests, 3627 total PASS
 - [ ] US-068: Shadow 기반 파라미터 재최적화
 
 ### Phase H: 대시보드/프론트 통합 완성 — US-065, US-069~072
@@ -459,6 +459,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | SR | Phase D 브라우저 테스트 필수화 | US-037~041, US-053 대시보드 US가 `npm run build`만으로 passes:true 처리됨. 실제 Chrome 렌더링/API 연동/WebSocket 피드 검증 미완. Phase D 완료 기준에 Chrome 브라우저 테스트 추가 |
 | SR | Shadow 현실성 6개 GAP 식별 (SG-1~SG-6) | PaperExecutor가 데모급(100% fill, 0ms delay, 무한잔고). 상용급 전환 위해 부분체결/지연/깊이VWAP/가상잔고/Rate Limit 추가 필요 |
 | Phase G | 4계층 stale 방어 (cross-validation + periodic refresh + update_count gate + loss cap) | 1H Shadow -$1,937 fat-tail 방지, defense-in-depth |
+| Phase G | 단일 ShadowMode 인스턴스 재사용 + 동적 _disabled_strategies 전환 | WS 재연결 비용 절감 (7×30s 절약), VirtualBalanceTracker/RateLimiter/StaleDetector reset으로 전략 간 격리 보장 |
 
 ---
 

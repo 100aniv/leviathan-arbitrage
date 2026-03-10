@@ -801,8 +801,14 @@ class Engine:
 
         if self._data_mode == DataMode.SHADOW:
             # Shadow mode: real data + paper execution + full metrics
+            strategy_validation = os.getenv("STRATEGY_VALIDATION", "").lower() == "true"
             shadow_progressive = os.getenv("SHADOW_PROGRESSIVE", "false").lower() == "true"
-            if shadow_progressive:
+            if strategy_validation:
+                tasks.append(
+                    asyncio.create_task(self._strategy_validation_loop(), name="strategy_validation")
+                )
+                logger.info("Data mode: SHADOW (STRATEGY_VALIDATION) — starting StrategyValidationOrchestrator")
+            elif shadow_progressive:
                 tasks.append(
                     asyncio.create_task(self._progressive_shadow_loop(), name="progressive_shadow")
                 )
@@ -1115,6 +1121,71 @@ class Engine:
                 await asyncio.sleep(5.0)
         except asyncio.CancelledError:
             pass
+
+    async def _strategy_validation_loop(self) -> None:
+        """Per-strategy isolated Shadow validation (US-067).
+
+        Creates ShadowMode and StrategyValidationOrchestrator, validates each strategy
+        in isolation, then writes config/strategy_activation.json.
+        Enabled when STRATEGY_VALIDATION=true (overrides SHADOW_PROGRESSIVE).
+        """
+        from src.collectors.funding_rate_collector import FundingRateCollector
+        from src.core.multi_signal import MultiStrategySignalProducer
+        from src.modes.shadow import ShadowMode
+        from src.modes.strategy_validation import StrategyValidationOrchestrator
+
+        symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
+        exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
+
+        multi_signal_producer = MultiStrategySignalProducer(
+            event_bus=self._event_bus,
+            latency_tracker=getattr(self, "_latency_tracker", None),
+        )
+
+        funding_rate_collector = FundingRateCollector(
+            symbols=symbols,
+            http_client=getattr(self, "_http_client", None),
+        )
+
+        shadow = ShadowMode(
+            signal_generator=self._signal_generator,
+            paper_executor=None,
+            collector_manager=None,
+            market_recorder=self._market_recorder,
+            telegram=self._telegram,
+            symbols=symbols,
+            exchanges=exchanges,
+            multi_signal_producer=multi_signal_producer,
+            funding_rate_collector=funding_rate_collector,
+            strategy_manager=self._strategy_manager,
+        )
+
+        if self._strategy_manager is not None:
+            for sid in self._strategy_manager.list_strategies():
+                s = self._strategy_manager.get_strategy(sid)
+                if s:
+                    s.shadow_mode = True
+            for sid in self._strategy_manager.list_strategies():
+                try:
+                    await self._strategy_manager.start_strategy(sid)
+                except Exception as exc:
+                    logger.warning("Strategy validation: strategy %s start failed: %s", sid, exc)
+
+        await shadow.start()
+        logger.info("Strategy validation Shadow started: %s for %s", exchanges, symbols)
+
+        try:
+            orchestrator = StrategyValidationOrchestrator(
+                shadow_mode=shadow,
+                telegram_sender=self._telegram,
+            )
+            report = await orchestrator.run()
+            logger.info(
+                "Strategy validation complete: %d profitable, active=%s",
+                len(report.profitable), report.profitable,
+            )
+        finally:
+            await shadow.stop()
 
     async def _progressive_shadow_loop(self) -> None:
         """Progressive Shadow: 6-stage automatic extension (1H→2H→6H→12H→24H→72H).
