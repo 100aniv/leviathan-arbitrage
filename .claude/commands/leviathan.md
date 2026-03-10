@@ -213,7 +213,7 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 - 단, 같은 도메인 US끼리는 **동일 팀에서 연속 처리** 가능 (팀 재생성 불필요)
 - 배치 내 모든 US의 Phase B 완료 후 → Phase C를 **배치 단위로 일괄 실행**
 
-> ⚠️ **Phase B 완료 직후 Claude가 자동으로 `/compact` 실행 (TeamCreate 메시지 해제). 단, Phase C 진행 중 `/compact` 절대 금지 (백그라운드 에이전트 결과 소실). §6 참조.**
+> ⚠️ **Phase B 완료 직후: leviathan-progress.json 저장 (next_phase: "C") → Claude 자동 `/clear`. 단, Phase C 진행 중 `/clear` 절대 금지 (백그라운드 에이전트 결과 소실). §6 참조.**
 
 ---
 
@@ -324,47 +324,58 @@ L4: Lead가 prd.json에 새 US 추가 → 다음 사이클에서 처리
 ## 6. 컨텍스트 관리 (⚠️ Claude 자동 실행 — 사용자 개입 불필요)
 
 > ⚠️ **아래 명령어는 Claude가 자동으로 실행합니다. 사용자가 수동으로 실행할 필요 없습니다.**
-> **Claude는 해당 시점에 도달하면 Bash 도구로 직접 `/compact` 및 `/clear`를 수행합니다.**
+> **Claude는 해당 시점에 도달하면 leviathan-progress.json 저장 후 `/clear`를 자동 수행합니다. `/compact`는 절대 사용하지 않습니다.**
 
 ### 6.1 US 사이클 단위 컨텍스트 관리 (자동)
 
-**원칙**: 한 US 사이클(Phase A→B→C + git push)이 하나의 컨텍스트 단위. 사이클 완료 시 Claude가 자동으로 컨텍스트를 초기화합니다.
+**원칙**: 각 Phase(A/B/C)가 독립된 컨텍스트 단위. Phase 완료마다 결과를 파일로 저장 후 `/clear`로 초기화. `/compact` 절대 사용 금지.
 
 | 시점 | Claude 자동 실행 | 이유 |
 |------|-----------------|------|
-| Phase B 완료 직후 (팀 해산 후) | **Claude가 `/compact` 자동 실행** | TeamCreate 에이전트 메시지 해제 (컨텍스트 40-60% 차지) |
-| **US 사이클 완료** (Phase C + git push 완료) | **Claude가 `/clear` 자동 실행** | 컨텍스트 완전 초기화. prd.json/SSOT.md에 결과 기록 완료 상태이므로 안전 |
-| `/clear` 직후 | **Claude가 `/leviathan` 자동 재호출** | 자동 루프 재개. prd.json에서 다음 `passes:false` US 자동 탐색 |
+| **Phase A 완료** (PLAN.md 저장 후) | **leviathan-progress.json 저장 → `/clear`** | Phase A 기획 맥락 불필요. PLAN.md가 디스크에 있으므로 안전 |
+| **Phase B 완료** (pytest PASS + 팀 해산 후) | **leviathan-progress.json 저장 → `/clear`** | TeamCreate 에이전트 메시지(40-60K 토큰) 완전 제거 |
+| **Phase C 완료** (Shadow + git push 완료) | **leviathan-progress.json 저장 → `/clear`** | 전 사이클 종료. prd.json/SSOT.md 기록 완료 상태이므로 안전 |
+| `/clear` 직후 | **Claude가 `/leviathan` 자동 재호출** | leviathan-progress.json 읽어 해당 Phase부터 재개 |
 
-### 6.2 절대 금지 시점 (Claude 자동 실행에도 적용)
+### 6.2 절대 금지 시점
 
-> ⚠️ **아래 시점에서는 Claude도 `/compact` 또는 `/clear`를 실행하지 않습니다. 자동 실행 로직이 이 시점을 회피합니다.**
+> ⚠️ **아래 시점에서는 Claude도 `/clear`를 실행하지 않습니다. 자동 실행 로직이 이 시점을 회피합니다.**
+> **`/compact` 는 어떤 시점에서도 절대 금지** (버그 있음: GitHub #3274, #19567, #18482)
 
 | 금지 시점 | 이유 |
 |-----------|------|
-| **Phase C 진행 중** (Shadow/리뷰/critic 에이전트 실행 중) | 백그라운드 에이전트 결과 소실 |
+| Phase A/B/C **진행 중** | 작업 결과 소실 위험 |
 | Phase B 에이전트가 아직 작업 중 | Jennie/Lisa 구현 결과 소실 |
 | 백그라운드 pytest/Shadow 실행 대기 중 | 테스트 결과 소실 |
 | Phase C-4 완료 처리 중 (SSOT/prd.json/git 미완료) | 결과 미기록 상태에서 초기화 시 데이터 소실 |
 
-### 6.3 안전한 US 사이클 흐름 (전체 자동화)
+### 6.3 안전한 US 사이클 흐름 (Phase 단위 /clear 완전 자동화)
 
 ```
-Phase A 기획 → Phase B 개발
-  → Phase B 완료 (pytest PASS + 팀 해산)
-  → ✅ Claude 자동 `/compact` (Phase B 에이전트 메시지 해제)
-  → Phase C 시작 (Shadow + 리뷰 + critic)
-  → ❌ `/compact`·`/clear` 금지 (에이전트 실행 중 — Claude도 실행 안 함)
-  → Phase C 모든 결과 수집 + C-4 완료 처리 (SSOT, prd.json, git commit+push)
-  → ✅ Claude 자동 `/clear` (컨텍스트 완전 초기화)
-  → ✅ Claude 자동 `/leviathan` 재호출 (다음 US 자동 시작)
+[Phase A — 기획]
+  ralplan → PLAN.md 작성 → leviathan-progress.json 저장 (next_phase: "B")
+  → ✅ Claude 자동 `/clear`
+  → ✅ Claude 자동 `/leviathan` 재호출 → progress 읽어 Phase B 시작
+
+[Phase B — 개발]
+  TeamCreate(Jennie+Lisa+Rosé) → 구현 → pytest PASS → TeamDelete
+  → leviathan-progress.json 저장 (next_phase: "C", test_result: "PASS")
+  → ✅ Claude 자동 `/clear` (TeamCreate 에이전트 메시지 40-60K 토큰 완전 제거)
+  → ✅ Claude 자동 `/leviathan` 재호출 → progress 읽어 Phase C 시작
+
+[Phase C — 검증]
+  Shadow 10min + code-reviewer + critic → SSOT/prd.json/git push 완료
+  → leviathan-progress.json 저장 (next_phase: "A", next_us: "US-XXX+1")
+  → ✅ Claude 자동 `/clear` (US 사이클 완전 종료)
+  → ✅ Claude 자동 `/leviathan` 재호출 → 다음 US Phase A 시작
 ```
 
-> **핵심**: 전체 컨텍스트 관리가 Claude 자동화. 사용자는 어떤 시점에서도 `/compact`나 `/clear`를 수동 입력할 필요 없음.
-> Phase C 완료 후 `/compact` 대신 `/clear`를 사용. prd.json과 SSOT.md에 모든 결과가 디스크에 기록된 상태이므로 컨텍스트 유지 불필요.
+> **핵심**: `/compact` 완전 폐기. Phase마다 `/clear` + 파일 기반 상태 전달.
+> Phase 시작 토큰 비용: leviathan-progress.json + PLAN.md 읽기 ≈ 3-5K 토큰
+> 누적 없이 쌓이는 토큰 (80K+)과 비교하면 압도적으로 효율적.
 >
 > **실패 사례 (US-060)**: Phase C 에이전트 실행 중 자동 컨텍스트 압축 → Shadow 결과 미수집.
-> **교훈**: Phase C 진행 중에는 어떤 형태의 컨텍스트 조작도 금지. Claude 자동 실행 로직이 이를 보장.
+> **교훈**: Phase 진행 중에는 어떤 형태의 컨텍스트 조작도 금지. `/clear`는 Phase **완료 후**에만.
 
 ## 7. Phase F 최종 검수 규칙
 
