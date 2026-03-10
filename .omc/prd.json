@@ -1051,7 +1051,7 @@
       "title": "Shadow→Dashboard 데이터 브리지",
       "phase": "H",
       "priority": 69,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py",
         "engine/src/api/routes/shadow.py",

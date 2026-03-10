@@ -45,6 +45,7 @@ class EngineContext:
     })
     funding_rates: dict[str, Any] = field(default_factory=dict)
     exchange_status: dict[str, Any] = field(default_factory=dict)
+    shadow_mode: Any = None
     # Real subsystem references (set during engine init)
     engine: Any = None
     strategy_manager: Any = None
@@ -119,6 +120,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     from src.api.routes.funding import router as funding_router
     from src.api.routes.exchanges import router as exchanges_router
     from src.api.routes.attribution import router as attribution_router
+    from src.api.routes.shadow import router as shadow_router
 
     app.include_router(health_router)
     app.include_router(strategies_router)
@@ -129,6 +131,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     app.include_router(funding_router)
     app.include_router(exchanges_router)
     app.include_router(attribution_router)
+    app.include_router(shadow_router)
 
     # ---------------------------------------------------------------------------
     # Prometheus short-path alias

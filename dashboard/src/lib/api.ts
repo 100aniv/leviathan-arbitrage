@@ -15,6 +15,7 @@ import type {
   FundingRate,
   ExchangeStatus,
   AttributionResponse,
+  ShadowStats,
 } from "@/types";
 
 const BASE_URL =
@@ -137,6 +138,11 @@ export const getExchangeStatus = () =>
 
 export const getAttribution = () =>
   request<AttributionResponse>("/api/v1/attribution");
+
+// ─── Shadow ───────────────────────────────────────────────────────────────────
+
+export const getShadowStats = () =>
+  request<ShadowStats>("/api/v1/shadow/stats");
 
 export const logout = () => {
   localStorage.removeItem("leviathan_token");

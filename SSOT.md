@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-10 | 최신 커밋: `5ba17da`
+> 마지막 업데이트: 2026-03-11 | 최신 커밋: `6fd7db1`
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획, Phase G~F) | 기존 플랜: `.claude/plans/jazzy-wishing-avalanche.md` (기반, Phase A~SR) | PRD: `.omc/prd.json` (80개 User Stories)
 
 ---
@@ -26,13 +26,14 @@
 ## 2. 현재 상태
 
 ```
-Phase:        G (전략 수익성 복원)
-테스트:       3,627 passed, 0 failed
+Phase:        H (대시보드 통합 완성)
+테스트:       3,656 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    Phase G US-067: 전략별 개별 1H Shadow 검증
-다음 작업:    US-068 (Shadow 기반 파라미터 재최적화 — Phase G)
+최신 커밋:    6fd7db1 Phase G US-068: 전략 파라미터 재최적화 파이프라인 강화
+다음 작업:    Phase H 계속 — US-069 (Overview 종합 상황판 리디자인)
+완료된 US:    US-065 (Shadow→Dashboard 데이터 브리지) ← Phase H 첫 US 완료
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -133,6 +134,19 @@ Engine.run()
   ├── _start_background_tasks()# Health, Reconcile, Heartbeat, Shadow, LiveGate
   └── await shutdown signal
 ```
+
+### 3.4 대시보드 API 엔드포인트
+
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| GET | `/api/v1/shadow/stats` | JWT | Shadow 실시간 메트릭 (PnL, WR, MDD, 전략별 breakdown) |
+| WS | `/ws` | JWT cookie | 실시간 state_update 브로드캐스트 (shadow_stats 포함) |
+
+**Shadow 데이터 흐름**: `ShadowMode._metrics` → `get_snapshot()` (thread-safe dict) → `EngineContext.shadow_mode` → `/api/v1/shadow/stats` (REST) + WS `_dashboard_feed_loop` (1s 간격) → `ShadowPanel.tsx` 렌더링
+
+**ShadowStats 타입** (`dashboard/src/types/index.ts`):
+- `total_pnl`, `win_rate`, `total_trades`, `max_drawdown`
+- `by_strategy`: `ShadowStrategyBreakdown[]` (strategy_id, pnl, trades, win_rate)
 
 ### 3.3 전략 매트릭스
 
@@ -409,11 +423,11 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 - [x] US-066: Stale Orderbook 감지 + 블랙리스트 + 손실 제한 — StaleOrderbookDetector 4계층 방어, 34 tests, 3609 total PASS
 - [x] US-067: 전략별 개별 1H Shadow 검증 — StrategyValidationOrchestrator 구현, STRATEGY_SIGNAL_ID_MAP 기반 격리, 18 tests, 3627 total PASS
-- [ ] US-068: Shadow 기반 파라미터 재최적화
+- [x] US-068: Shadow 기반 파라미터 재최적화 — Optuna 파이프라인 latency_arb 추가, TimescaleDB/activation 필터 연동, param_bridge 키 정규화, 13 tests, 3640 total PASS
 
 ### Phase H: 대시보드/프론트 통합 완성 — US-065, US-069~072
 
-- [ ] US-065: Shadow→Dashboard 데이터 브리지 (ShadowMode↔EngineContext)
+- [x] US-065: Shadow→Dashboard 데이터 브리지 — ShadowMode.get_snapshot() + /api/v1/shadow/stats REST + ShadowPanel 컴포넌트 + WS feed shadow_stats 통합. 3656 tests PASS
 - [ ] US-069: Overview 종합 상황판 리디자인
 - [ ] US-070: Attribution/Funding/System 빈 페이지 완성
 - [ ] US-071: GlobalHeatmap + OrderbookView 실 데이터 연결
@@ -460,6 +474,9 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | SR | Shadow 현실성 6개 GAP 식별 (SG-1~SG-6) | PaperExecutor가 데모급(100% fill, 0ms delay, 무한잔고). 상용급 전환 위해 부분체결/지연/깊이VWAP/가상잔고/Rate Limit 추가 필요 |
 | Phase G | 4계층 stale 방어 (cross-validation + periodic refresh + update_count gate + loss cap) | 1H Shadow -$1,937 fat-tail 방지, defense-in-depth |
 | Phase G | 단일 ShadowMode 인스턴스 재사용 + 동적 _disabled_strategies 전환 | WS 재연결 비용 절감 (7×30s 절약), VirtualBalanceTracker/RateLimiter/StaleDetector reset으로 전략 간 격리 보장 |
+| Phase G | latency_arb Optuna 튜닝 파이프라인 추가 | US-068: statistical_arb/cex_dex 제외, activation filter 결과 연동, TimescaleDB 데이터 기반 최적화 |
+| Phase G | param_bridge 키 정규화 (max_position_size_usdt) | strategy_params.json의 '최대_포지션_크기_usdt'를 'max_position_size_usdt'로 정규화하여 Optuna 반환값과 일치 |
+| Phase H US-065 | ShadowMode.get_snapshot() 공개 메서드 + EngineContext.shadow_mode 필드 | Shadow 메트릭을 REST/WS 양방향으로 대시보드에 노출. shadow_router 별도 마운트로 관심사 분리. ShadowPanel 조건부 렌더링으로 Shadow 모드 비활성 시 UI 숨김 |
 
 ---
 

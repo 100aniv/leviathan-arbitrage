@@ -86,6 +86,32 @@ export interface WsMessage<T = unknown> {
   data?: T;
 }
 
+export interface ShadowStrategyBreakdown {
+  strategy_id: string;
+  trades: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  pnl: number;
+}
+
+export interface ShadowStats {
+  active: boolean;
+  uptime_seconds: number;
+  signals_detected: number;
+  trades_executed: number;
+  trades_won: number;
+  trades_lost: number;
+  win_rate: number;
+  total_pnl: number;
+  peak_pnl: number;
+  max_drawdown: number;
+  trades_rejected: number;
+  trades_partial_fill: number;
+  trades_rate_limited: number;
+  by_strategy: ShadowStrategyBreakdown[];
+}
+
 export interface StateUpdateData {
   running: boolean;
   kill_switch: boolean;
@@ -95,6 +121,7 @@ export interface StateUpdateData {
   pnl: { realized: number; unrealized: number; total: number };
   positions: { strategy_id: string; exchange_id: string; symbol: string; side: string; pnl: number }[];
   position_count: number;
+  shadow_stats?: ShadowStats | null;
 }
 
 export interface HeartbeatMessage extends WsMessage {

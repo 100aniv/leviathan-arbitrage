@@ -1620,7 +1620,7 @@ class ShadowMode:
 
         # Build per-strategy breakdown
         strategy_breakdown: list[dict[str, Any]] = []
-        for s_id, ss in sorted(stats.by_strategy.items()):
+        for s_id, ss in sorted(list(stats.by_strategy.items())):
             s_wr = ss.wins / ss.trades if ss.trades > 0 else 0.0
             strategy_breakdown.append({
                 "strategy_id": s_id,
@@ -1706,6 +1706,35 @@ class ShadowMode:
     # -----------------------------------------------------------------------
     # US-067: Strategy validation helpers
     # -----------------------------------------------------------------------
+
+    def get_snapshot(self) -> dict[str, Any]:
+        """Return current shadow stats as a serializable dict."""
+        stats = self._stats
+        total_trades = stats.trades_executed
+        win_rate = stats.trades_won / total_trades if total_trades > 0 else 0.0
+        uptime_s = time.monotonic() - stats.start_time
+        by_strategy = []
+        for s_id, ss in sorted(list(stats.by_strategy.items())):
+            s_wr = ss.wins / ss.trades if ss.trades > 0 else 0.0
+            by_strategy.append({
+                "strategy_id": s_id, "trades": ss.trades,
+                "wins": ss.wins, "losses": ss.losses,
+                "win_rate": round(s_wr, 4), "pnl": round(ss.pnl, 6),
+            })
+        return {
+            "active": self._running, "uptime_seconds": round(uptime_s, 1),
+            "signals_detected": stats.signals_detected,
+            "trades_executed": total_trades,
+            "trades_won": stats.trades_won, "trades_lost": stats.trades_lost,
+            "win_rate": round(win_rate, 4),
+            "total_pnl": round(stats.total_pnl, 6),
+            "peak_pnl": round(stats.peak_pnl, 6),
+            "max_drawdown": round(stats.max_drawdown, 6),
+            "trades_rejected": stats.trades_rejected,
+            "trades_partial_fill": stats.trades_partial_fill,
+            "trades_rate_limited": stats.trades_rate_limited,
+            "by_strategy": by_strategy,
+        }
 
     def reset_stats(self) -> None:
         """Reset stats for strategy validation. Preserves infrastructure (collectors, orderbooks, WS connections)."""

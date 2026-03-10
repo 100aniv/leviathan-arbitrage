@@ -5,6 +5,7 @@ import { GlobalHeatmap } from '@/components/GlobalHeatmap';
 import { KillSwitch } from '@/components/KillSwitch';
 import { StrategyPanel } from '@/components/StrategyPanel';
 import { OrderbookView } from '@/components/OrderbookView';
+import { ShadowPanel } from '@/components/ShadowPanel';
 import { useEngineWs } from '@/hooks/useEngineWs';
 
 export default function OverviewPage() {
@@ -68,6 +69,9 @@ export default function OverviewPage() {
         <StrategyPanel />
         <OrderbookView />
       </div>
+
+      {/* Shadow Monitor — full width, visible only when active */}
+      <ShadowPanel wsStats={data?.shadow_stats ?? null} />
     </div>
   );
 }

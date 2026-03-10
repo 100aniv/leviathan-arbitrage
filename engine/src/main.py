@@ -1088,6 +1088,7 @@ class Engine:
                     logger.warning("Shadow strategy %s start failed: %s", sid, exc)
 
         await self._shadow_mode.start()
+        self.context.shadow_mode = self._shadow_mode
         logger.info("Shadow Mode started: %s for %s", exchanges, symbols)
 
         # Start LiveGate auto-evaluation if DB is available
@@ -1374,6 +1375,13 @@ class Engine:
                     except Exception:
                         pass
 
+                shadow_stats = None
+                if self._shadow_mode and hasattr(self._shadow_mode, 'get_snapshot'):
+                    try:
+                        shadow_stats = self._shadow_mode.get_snapshot()
+                    except Exception:
+                        pass
+
                 await ws.broadcast({
                     "type": "state_update",
                     "data": {
@@ -1389,6 +1397,7 @@ class Engine:
                         },
                         "positions": positions,
                         "position_count": len(positions),
+                        "shadow_stats": shadow_stats,
                     },
                     "ts": time.time(),
                 })
