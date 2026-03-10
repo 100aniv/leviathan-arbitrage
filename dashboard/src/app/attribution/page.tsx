@@ -1,6 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import { getAttribution } from "@/lib/api";
 import type { AttributionBreakdown, AttributionResponse } from "@/types";
 
@@ -15,6 +23,66 @@ const TABS: { key: Tab; label: string }[] = [
 
 function fmt(n: number) {
   return `${n >= 0 ? "+" : ""}$${Math.abs(n).toFixed(4)}`;
+}
+
+const PIE_COLORS = ['#00ff88', '#3b82f6', '#f59e0b', '#ff4d4d', '#a78bfa', '#34d399', '#fb923c', '#60a5fa'];
+
+function StrategyPieChart({ items }: { items: AttributionBreakdown[] }) {
+  if (items.length === 0) return null;
+
+  const totalAbs = items.reduce((s, i) => s + Math.abs(i.pnl), 0) || 1;
+  const pieData = items.map((item, idx) => ({
+    name: item.key,
+    value: parseFloat(Math.abs(item.pnl).toFixed(4)),
+    pct: ((Math.abs(item.pnl) / totalAbs) * 100).toFixed(1),
+    profit: item.pnl >= 0,
+    color: item.pnl >= 0 ? PIE_COLORS[idx % PIE_COLORS.length] : '#ff4d4d',
+  }));
+
+  return (
+    <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4 space-y-3">
+      <p className="text-xs font-mono text-terminal-subtle uppercase tracking-wider">Strategy Distribution</p>
+      <ResponsiveContainer width="100%" height={200}>
+        <PieChart>
+          <Pie
+            data={pieData}
+            cx="50%"
+            cy="50%"
+            innerRadius={55}
+            outerRadius={85}
+            paddingAngle={2}
+            dataKey="value"
+            isAnimationActive={false}
+          >
+            {pieData.map((entry, idx) => (
+              <Cell key={idx} fill={entry.color} opacity={0.85} />
+            ))}
+          </Pie>
+          <Tooltip
+            contentStyle={{
+              background: '#111419',
+              border: '1px solid #1e2329',
+              borderRadius: 0,
+              fontFamily: 'monospace',
+              fontSize: 11,
+            }}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            formatter={(value: any, name: any, props: any) => {
+              const v = typeof value === 'number' ? value : 0;
+              return [`${props.payload?.profit ? '+' : '-'}$${v.toFixed(4)} (${props.payload?.pct}%)`, name ?? ''];
+            }}
+          />
+          <Legend
+            iconType="circle"
+            iconSize={8}
+            formatter={(value: string) => (
+              <span style={{ color: '#6e7681', fontSize: 10, fontFamily: 'monospace' }}>{value}</span>
+            )}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
 }
 
 function WaterfallChart({ items }: { items: AttributionBreakdown[] }) {
@@ -293,6 +361,9 @@ export default function AttributionPage() {
             </div>
           ) : (
             <>
+              {/* Strategy PieChart — strategy tab only */}
+              {activeTab === "strategy" && <StrategyPieChart items={items} />}
+
               {/* Waterfall Chart */}
               <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4 space-y-3">
                 <p className="text-xs font-mono text-terminal-subtle uppercase tracking-wider">

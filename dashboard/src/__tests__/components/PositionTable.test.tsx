@@ -13,20 +13,26 @@ const mockUseApi = useApi as jest.MockedFunction<typeof useApi>;
 
 const mockPositions = [
   {
-    strategy: 'tri-arb',
-    exchange: 'Binance',
+    strategy_id: 'tri-arb',
+    exchange_id: 'Binance',
     symbol: 'BTC/USDT',
-    size: 0.05,
+    side: 'LONG',
+    quantity: 0.05,
     entry_price: 64850,
+    mark_price: 64900,
     unrealized_pnl: 12.5,
+    realized_pnl: 0,
   },
   {
-    strategy: 'kim-arb',
-    exchange: 'Upbit',
+    strategy_id: 'kim-arb',
+    exchange_id: 'Upbit',
     symbol: 'ETH/USDT',
-    size: 0.8,
+    side: 'SHORT',
+    quantity: 0.8,
     entry_price: 3480,
+    mark_price: 3490,
     unrealized_pnl: -5.0,
+    realized_pnl: 2.0,
   },
 ];
 

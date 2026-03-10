@@ -3,16 +3,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getFeedManager } from '@/lib/websocket';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import type { WsMessage } from '@/types';
+import { useApi } from '@/hooks/useApi';
+import { getExchangeStatus } from '@/lib/api';
+import type { WsMessage, ExchangeStatus } from '@/types';
 
-const EXCHANGES = ['Binance', 'Bybit', 'OKX', 'Upbit', 'Bithumb', 'Coinone'];
-const SYMBOLS   = ['BTC', 'ETH', 'XRP', 'SOL', 'DOGE', 'ADA', 'AVAX', 'DOT'];
+const FALLBACK_EXCHANGES = ['Binance', 'Bybit', 'OKX', 'Upbit', 'Bithumb', 'Coinone'];
+const SYMBOLS            = ['BTC', 'ETH', 'XRP', 'SOL', 'DOGE', 'ADA', 'AVAX', 'DOT'];
 
 type SpreadGrid = Record<string, Record<string, number | null>>;
 
-function genMockGrid(): SpreadGrid {
+function genMockGrid(exchanges: string[]): SpreadGrid {
   const g: SpreadGrid = {};
-  for (const ex of EXCHANGES) {
+  for (const ex of exchanges) {
     g[ex] = {};
     for (const sym of SYMBOLS) {
       g[ex][sym] = parseFloat(((Math.random() - 0.35) * 120).toFixed(2));
@@ -39,18 +41,43 @@ interface MarketDataPayload {
 export function GlobalHeatmap() {
   const manager = useMemo(() => getFeedManager(), []);
   const { lastMessage, connected } = useWebSocket({ manager });
-  const [grid, setGrid] = useState<SpreadGrid>(genMockGrid);
+
+  // Real exchange status from API
+  const { data: exchangeStatus } = useApi<Record<string, ExchangeStatus>>(
+    '/exchanges',
+    getExchangeStatus,
+    { refreshInterval: 5000 },
+  );
+
+  // Derive exchange list: API keys → display names, fallback to static list
+  const exchanges = useMemo<string[]>(() => {
+    if (exchangeStatus && Object.keys(exchangeStatus).length > 0) {
+      return Object.keys(exchangeStatus).map(id =>
+        id.charAt(0).toUpperCase() + id.slice(1)
+      );
+    }
+    return FALLBACK_EXCHANGES;
+  }, [exchangeStatus]);
+
+  const isLiveData = exchangeStatus && Object.keys(exchangeStatus).length > 0;
+
+  const [grid, setGrid] = useState<SpreadGrid>(() => genMockGrid(FALLBACK_EXCHANGES));
   const [updatedAt, setUpdatedAt] = useState<Date>(() => new Date());
+
+  // Re-seed grid when exchange list changes
+  useEffect(() => {
+    setGrid(genMockGrid(exchanges));
+  }, [exchanges]);
 
   // Simulate live updates when no real WS data
   useEffect(() => {
     if (connected) return;
     const interval = setInterval(() => {
-      setGrid(genMockGrid());
+      setGrid(genMockGrid(exchanges));
       setUpdatedAt(new Date());
     }, 3000);
     return () => clearInterval(interval);
-  }, [connected]);
+  }, [connected, exchanges]);
 
   // Apply real WS market_data updates
   useEffect(() => {
@@ -72,8 +99,13 @@ export function GlobalHeatmap() {
           Spread Heatmap
         </span>
         <div className="flex items-center gap-3">
+          {/* LIVE = WS connected, MOCK = simulated */}
           <span className={`text-[9px] font-mono uppercase ${connected ? 'text-profit' : 'text-terminal-subtle'}`}>
             {connected ? '● LIVE' : '○ MOCK'}
+          </span>
+          {/* API data indicator */}
+          <span className={`text-[9px] font-mono uppercase ${isLiveData ? 'text-accent' : 'text-terminal-subtle'}`}>
+            {isLiveData ? '◆ API' : '◇ STATIC'}
           </span>
           <span className="text-[10px] font-mono text-terminal-subtle tabular-nums">
             {updatedAt.toLocaleTimeString()}
@@ -94,10 +126,17 @@ export function GlobalHeatmap() {
             </tr>
           </thead>
           <tbody>
-            {EXCHANGES.map(ex => (
+            {exchanges.map(ex => (
               <tr key={ex}>
                 <td className="py-0.5 pr-3 text-[10px] font-mono text-terminal-subtle uppercase tracking-wider whitespace-nowrap">
-                  {ex}
+                  <div className="flex items-center gap-1.5">
+                    {exchangeStatus && (
+                      <span className={`w-1 h-1 rounded-full ${
+                        exchangeStatus[ex.toLowerCase()]?.connected ? 'bg-profit' : 'bg-terminal-muted'
+                      }`} />
+                    )}
+                    {ex}
+                  </div>
                 </td>
                 {SYMBOLS.map(sym => {
                   const bps = grid[ex]?.[sym] ?? null;

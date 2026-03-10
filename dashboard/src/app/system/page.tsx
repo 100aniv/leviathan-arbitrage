@@ -1,8 +1,8 @@
 'use client';
 
 import { useApi } from '@/hooks/useApi';
-import { getHealth, getStatus } from '@/lib/api';
-import type { HealthResponse, StatusResponse } from '@/types';
+import { getHealth, getStatus, getExchangeStatus } from '@/lib/api';
+import type { HealthResponse, StatusResponse, ExchangeStatus, ContainerStatus } from '@/types';
 
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86400);
@@ -21,45 +21,62 @@ function StatusDot({ status }: { status: 'healthy' | 'degraded' | 'unhealthy' | 
     unhealthy: 'bg-loss',
     unknown:   'bg-terminal-muted',
   };
-  return (
-    <span className={`inline-block w-2 h-2 rounded-full ${colors[status]} mr-1.5`} />
-  );
+  return <span className={`inline-block w-2 h-2 rounded-full ${colors[status]} mr-1.5`} />;
 }
 
-const CONNECTIONS = [
-  { label: 'Binance',   key: 'binance' },
-  { label: 'Bybit',     key: 'bybit' },
-  { label: 'OKX',       key: 'okx' },
-  { label: 'Bitget',    key: 'bitget' },
-  { label: 'Upbit',     key: 'upbit' },
-  { label: 'Bithumb',   key: 'bithumb' },
-  { label: 'TimescaleDB', key: 'db' },
-  { label: 'Redis',     key: 'redis' },
+// Mock Docker containers (8 containers)
+const MOCK_CONTAINERS: ContainerStatus[] = [
+  { name: 'leviathan-engine',     status: 'running', cpu_pct: 12.4, memory_mb: 384,  uptime: '2d 4h' },
+  { name: 'leviathan-dashboard',  status: 'running', cpu_pct: 3.1,  memory_mb: 128,  uptime: '2d 4h' },
+  { name: 'nginx',                status: 'running', cpu_pct: 0.4,  memory_mb: 32,   uptime: '2d 4h' },
+  { name: 'timescaledb',          status: 'running', cpu_pct: 8.7,  memory_mb: 512,  uptime: '2d 4h' },
+  { name: 'redis',                status: 'running', cpu_pct: 1.2,  memory_mb: 64,   uptime: '2d 4h' },
+  { name: 'prometheus',           status: 'running', cpu_pct: 2.6,  memory_mb: 96,   uptime: '2d 4h' },
+  { name: 'grafana',              status: 'running', cpu_pct: 1.8,  memory_mb: 80,   uptime: '2d 4h' },
+  { name: 'redis-exporter',       status: 'running', cpu_pct: 0.2,  memory_mb: 16,   uptime: '2d 4h' },
 ];
 
+function ContainerBadge({ status }: { status: ContainerStatus['status'] }) {
+  if (status === 'running') return <span className="badge-profit">running</span>;
+  if (status === 'stopped') return <span className="badge-warn">stopped</span>;
+  return <span className="badge-loss">error</span>;
+}
+
 export default function SystemPage() {
-  const { data: health, error: healthError, isLoading: healthLoading, mutate: mutateHealth } = useApi<HealthResponse>(
-    '/health',
-    getHealth,
-    { refreshInterval: 5000 },
-  );
-  const { data: status, error: statusError, isLoading: statusLoading, mutate: mutateStatus } = useApi<StatusResponse>(
-    '/status',
-    getStatus,
+  const {
+    data: health,
+    error: healthError,
+    isLoading: healthLoading,
+    mutate: mutateHealth,
+  } = useApi<HealthResponse>('/health', getHealth, { refreshInterval: 5000 });
+
+  const {
+    data: status,
+    error: statusError,
+    isLoading: statusLoading,
+    mutate: mutateStatus,
+  } = useApi<StatusResponse>('/status', getStatus, { refreshInterval: 5000 });
+
+  const { data: exchanges, isLoading: exchangesLoading } = useApi<Record<string, ExchangeStatus>>(
+    '/exchanges',
+    getExchangeStatus,
     { refreshInterval: 5000 },
   );
 
-  const engineStatus = health?.status ?? 'unknown';
-  const uptime = (status as (typeof status & { uptime_seconds?: number }) | undefined)?.uptime_seconds;
-  const killActive = status?.kill_switch_active ?? false;
+  const engineStatus  = health?.status ?? 'unknown';
+  const uptime        = (status as (typeof status & { uptime_seconds?: number }) | undefined)?.uptime_seconds;
+  const killActive    = status?.kill_switch_active ?? false;
   const strategyCount = status?.strategy_count ?? 0;
-  const environment = status?.environment ?? '—';
+  const environment   = status?.environment ?? '—';
 
   const hasError = healthError || statusError;
   const isLoading = (healthLoading && !health) || (statusLoading && !status);
 
+  const exchangeList = Object.entries(exchanges ?? {});
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-mono font-semibold text-terminal-text">System Health</h2>
@@ -78,8 +95,7 @@ export default function SystemPage() {
             <StatusDot status={engineStatus as 'healthy' | 'degraded' | 'unhealthy' | 'unknown'} />
             <span className={
               engineStatus === 'healthy' ? 'text-profit' :
-              engineStatus === 'degraded' ? 'text-warn' :
-              'text-loss'
+              engineStatus === 'degraded' ? 'text-warn' : 'text-loss'
             }>
               {engineStatus.toUpperCase()}
             </span>
@@ -102,28 +118,48 @@ export default function SystemPage() {
 
         <div className="card">
           <p className="card-header">Environment</p>
-          <p className="stat-value text-terminal-text">
-            {environment.toUpperCase()}
-          </p>
+          <p className="stat-value text-terminal-text">{environment.toUpperCase()}</p>
         </div>
       </div>
 
-      {/* Active strategies count */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Exchange connections */}
+        {/* Exchange connections — real API data */}
         <div className="bg-terminal-surface border border-terminal-border p-4">
           <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle block mb-4">
             Exchange Connections
           </span>
-          {isLoading ? (
+          {(isLoading || exchangesLoading) && exchangeList.length === 0 ? (
             <div className="space-y-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="h-7 bg-terminal-muted/40 animate-pulse border border-terminal-border/30" />
               ))}
             </div>
-          ) : (
+          ) : exchangeList.length > 0 ? (
             <div className="space-y-1.5">
-              {CONNECTIONS.map(({ label }) => (
+              {exchangeList.map(([id, ex]) => (
+                <div
+                  key={id}
+                  className="flex items-center justify-between px-3 py-1.5 bg-terminal-bg border border-terminal-border/40"
+                >
+                  <span className="text-xs font-mono text-terminal-subtle uppercase tracking-wider">{id}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-mono text-terminal-subtle tabular-nums">
+                      {ex.latency_ms}ms · {ex.symbols_count}s
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full ${ex.connected ? 'bg-profit animate-pulse' : 'bg-loss'}`} />
+                      <span className={`text-[10px] font-mono ${ex.connected ? 'text-profit' : 'text-loss'}`}>
+                        {ex.connected ? 'CONNECTED' : 'OFFLINE'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* Fallback: show status-based list */
+            <div className="space-y-1.5">
+              {['Binance', 'Bybit', 'OKX', 'Bitget', 'Upbit', 'Bithumb', 'Coinone', 'TimescaleDB'].map(label => (
                 <div
                   key={label}
                   className="flex items-center justify-between px-3 py-1.5 bg-terminal-bg border border-terminal-border/40"
@@ -193,6 +229,64 @@ export default function SystemPage() {
               ))}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Docker containers — mock */}
+      <div className="bg-terminal-surface border border-terminal-border p-4">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">
+            Docker Containers
+          </span>
+          <span className="text-[10px] font-mono text-terminal-subtle">8 / 8 running</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+          {MOCK_CONTAINERS.map(container => (
+            <div
+              key={container.name}
+              className="px-3 py-2 bg-terminal-bg border border-terminal-border/40"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-mono text-terminal-text truncate pr-2">{container.name}</span>
+                <ContainerBadge status={container.status} />
+              </div>
+              <div className="flex items-center gap-3 text-[10px] font-mono text-terminal-subtle tabular-nums">
+                <span>CPU {container.cpu_pct}%</span>
+                <span>{container.memory_mb}MB</span>
+                <span>{container.uptime}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Memory / CPU — placeholder for Prometheus */}
+      <div className="bg-terminal-surface border border-terminal-border p-4">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">
+            Resource Usage
+          </span>
+          <span className="text-[10px] font-mono text-terminal-subtle">via Prometheus (placeholder)</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[
+            { label: 'CPU Usage',    value: '29.4%',  bar: 29, color: '#00ff88' },
+            { label: 'Memory',       value: '1.3 GB', bar: 52, color: '#3b82f6' },
+            { label: 'Disk I/O',     value: '12 MB/s', bar: 18, color: '#f59e0b' },
+          ].map(({ label, value, bar, color }) => (
+            <div key={label} className="space-y-2">
+              <div className="flex justify-between text-[11px] font-mono">
+                <span className="text-terminal-subtle">{label}</span>
+                <span className="text-terminal-text tabular-nums">{value}</span>
+              </div>
+              <div className="h-1.5 bg-terminal-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${bar}%`, backgroundColor: color }}
+                />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

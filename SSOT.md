@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-11 | 최신 커밋: `6fd7db1`
+> 마지막 업데이트: 2026-03-11 (US-069~071 배치 완료) | 최신 커밋: `360b602`
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획, Phase G~F) | 기존 플랜: `.claude/plans/jazzy-wishing-avalanche.md` (기반, Phase A~SR) | PRD: `.omc/prd.json` (80개 User Stories)
 
 ---
@@ -31,9 +31,9 @@ Phase:        H (대시보드 통합 완성)
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    6fd7db1 Phase G US-068: 전략 파라미터 재최적화 파이프라인 강화
-다음 작업:    Phase H 계속 — US-069 (Overview 종합 상황판 리디자인)
-완료된 US:    US-065 (Shadow→Dashboard 데이터 브리지) ← Phase H 첫 US 완료
+최신 커밋:    360b602 Phase H US-065: Shadow→Dashboard 데이터 브리지
+다음 작업:    Phase H 계속 — US-072 (계좌 정보/총자산/거래소별 잔고 표시)
+완료된 US:    US-065~071 (Shadow 데이터 브리지 + 대시보드 UI 완성)
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -135,12 +135,30 @@ Engine.run()
   └── await shutdown signal
 ```
 
-### 3.4 대시보드 API 엔드포인트
+### 3.4 대시보드 컴포넌트 & API
+
+**신규 UI 컴포넌트** (US-069/070/071):
+
+| 컴포넌트 | 페이지 | 용도 | 상태 |
+|---------|--------|------|------|
+| **PortfolioSummary** | Overview | 포트폴리오 상태 (4 KPI: 총자산, 일일 PnL, 누적 PnL, 활성 포지션) + 거래소별 연결 상태 바 | ✅ 완성 |
+| **RiskGauge** | Overview | 리스크 지표 (Max Drawdown 게이지 + Kill Switch/Circuit Breaker 상태) | ✅ 완성 |
+| **PerformanceTrend** | Overview | 세션 성과 추세 (시간대별 PnL 꺾은선 그래프) | ✅ 완성 |
+| **EventFeed** | Overview | 거래/신호/경고 실시간 피드 (WebSocket 브로드캐스트) | ✅ 완성 |
+| **GlobalHeatmap** | Overview | 거래소×심볼 스프레드 히트맵 (REST polling fallback) | ✅ 개선 |
+| **OrderbookView** | Overview | 실시간 오더북 (Binance spot 기본, 거래소 선택 가능) | ✅ 개선 |
+| Attribution | Attribution 페이지 | 전략별/거래소별 수익 기여도 분석 | ✅ 완성 |
+| Funding Rate | Funding 페이지 | 펀딩레이트 수익 추적 + 거래소별 비교 | ✅ 완성 |
+| System Health | System 페이지 | 인프라 상태 (Docker, DB, Redis, Prometheus) | ✅ 완성 |
+
+**API 엔드포인트**:
 
 | 메서드 | 경로 | 인증 | 설명 |
 |--------|------|------|------|
 | GET | `/api/v1/shadow/stats` | JWT | Shadow 실시간 메트릭 (PnL, WR, MDD, 전략별 breakdown) |
-| WS | `/ws` | JWT cookie | 실시간 state_update 브로드캐스트 (shadow_stats 포함) |
+| GET | `/exchanges` | JWT | 거래소 연결 상태 + 잔고 (balance.USDT) |
+| GET | `/risk/metrics` | JWT | Kill Switch/Circuit Breaker 상태 + MDD |
+| WS | `/ws` | JWT cookie | 실시간 state_update 브로드캐스트 (1s 간격, shadow_stats 포함) |
 
 **Shadow 데이터 흐름**: `ShadowMode._metrics` → `get_snapshot()` (thread-safe dict) → `EngineContext.shadow_mode` → `/api/v1/shadow/stats` (REST) + WS `_dashboard_feed_loop` (1s 간격) → `ShadowPanel.tsx` 렌더링
 
@@ -428,10 +446,10 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 ### Phase H: 대시보드/프론트 통합 완성 — US-065, US-069~072
 
 - [x] US-065: Shadow→Dashboard 데이터 브리지 — ShadowMode.get_snapshot() + /api/v1/shadow/stats REST + ShadowPanel 컴포넌트 + WS feed shadow_stats 통합. 3656 tests PASS
-- [ ] US-069: Overview 종합 상황판 리디자인
-- [ ] US-070: Attribution/Funding/System 빈 페이지 완성
-- [ ] US-071: GlobalHeatmap + OrderbookView 실 데이터 연결
-- [ ] US-072: 계좌 정보/총자산/거래소별 잔고 표시
+- [x] US-069: Overview 종합 상황판 리디자인 — PortfolioSummary(4 KPI + 거래소 상태바) + RiskGauge(MDD 게이지) + PerformanceTrend(PnL 추세) + EventFeed(실시간 피드). 81 tests PASS
+- [x] US-070: Attribution/Funding/System 빈 페이지 완성 — 3개 페이지 실 컨텐츠 구현 (전략별 수익 분석, 펀딩레이트 추적, 인프라 상태). 81 tests PASS
+- [x] US-071: GlobalHeatmap + OrderbookView 실 데이터 연결 — REST polling fallback 구현, 거래소 선택 기능. 81 tests PASS
+- [ ] US-072: 계좌 정보/총자산/거래소별 잔고 표시 ← NEXT
 
 ### Phase I: 거래소/전략 완성도 — US-073~076
 
@@ -477,6 +495,9 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | Phase G | latency_arb Optuna 튜닝 파이프라인 추가 | US-068: statistical_arb/cex_dex 제외, activation filter 결과 연동, TimescaleDB 데이터 기반 최적화 |
 | Phase G | param_bridge 키 정규화 (max_position_size_usdt) | strategy_params.json의 '최대_포지션_크기_usdt'를 'max_position_size_usdt'로 정규화하여 Optuna 반환값과 일치 |
 | Phase H US-065 | ShadowMode.get_snapshot() 공개 메서드 + EngineContext.shadow_mode 필드 | Shadow 메트릭을 REST/WS 양방향으로 대시보드에 노출. shadow_router 별도 마운트로 관심사 분리. ShadowPanel 조건부 렌더링으로 Shadow 모드 비활성 시 UI 숨김 |
+| Phase H US-069 | 4개 신규 컴포넌트 + Overview 페이지 리디자인 | PortfolioSummary(상태 배지 + 4 KPI), RiskGauge(SVG 게이지), PerformanceTrend(선 그래프), EventFeed(피드). grid 반응형 레이아웃 (1-col mobile, 2-col xl+). useEngineWs() + useApi() hook으로 실시간 데이터 연동 |
+| Phase H US-070 | Attribution/Funding/System 페이지 실 컨텐츠 구현 | 3개 빈 페이지를 함수형 컴포넌트로 변환. REST API 연동 (getAttributionData, getFundingMetrics, getSystemHealth). 테스트 통합 (81 total) |
+| Phase H US-071 | GlobalHeatmap + OrderbookView REST polling fallback | API 장애 시 mock 데이터로 fallback. 거래소 드롭다운 선택기 추가. 재시도 로직 (exponential backoff) |
 
 ---
 

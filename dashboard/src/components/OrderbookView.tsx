@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getFeedManager } from '@/lib/websocket';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import type { WsMessage } from '@/types';
+import { useApi } from '@/hooks/useApi';
+import { getExchangeStatus } from '@/lib/api';
+import type { WsMessage, ExchangeStatus } from '@/types';
 
-const SYMBOLS   = ['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'SOL/USDT', 'DOGE/USDT'];
-const EXCHANGES = ['Binance', 'Bybit', 'OKX', 'Upbit'];
+const FALLBACK_SYMBOLS   = ['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'SOL/USDT', 'DOGE/USDT'];
+const FALLBACK_EXCHANGES = ['Binance', 'Bybit', 'OKX', 'Upbit'];
 
 interface Level {
   price: number;
@@ -35,8 +37,8 @@ function basePrice(symbol: string): number {
 }
 
 function genBook(symbol: string): Orderbook {
-  const base  = basePrice(symbol);
-  const tick  = base * 0.00015;
+  const base     = basePrice(symbol);
+  const tick     = base * 0.00015;
   const decimals = base < 1 ? 5 : base < 10 ? 4 : 2;
 
   const bids: Level[] = Array.from({ length: 10 }, (_, i) => ({
@@ -58,12 +60,38 @@ function genBook(symbol: string): Orderbook {
 }
 
 export function OrderbookView() {
-  const [symbol,   setSymbol]   = useState(SYMBOLS[0]);
-  const [exchange, setExchange] = useState(EXCHANGES[0]);
-  const [book,     setBook]     = useState<Orderbook>(() => genBook(SYMBOLS[0]));
-
   const manager = useMemo(() => getFeedManager(), []);
   const { lastMessage, connected } = useWebSocket({ manager });
+
+  // Real exchange status from API
+  const { data: exchangeStatus } = useApi<Record<string, ExchangeStatus>>(
+    '/exchanges',
+    getExchangeStatus,
+    { refreshInterval: 5000 },
+  );
+
+  // Dynamic exchange list from API, fallback to static
+  const exchanges = useMemo<string[]>(() => {
+    if (exchangeStatus && Object.keys(exchangeStatus).length > 0) {
+      return Object.keys(exchangeStatus)
+        .filter(id => exchangeStatus[id].connected)
+        .map(id => id.charAt(0).toUpperCase() + id.slice(1));
+    }
+    return FALLBACK_EXCHANGES;
+  }, [exchangeStatus]);
+
+  const isLiveData = exchangeStatus && Object.keys(exchangeStatus).length > 0;
+
+  const [symbol,   setSymbol]   = useState(FALLBACK_SYMBOLS[0]);
+  const [exchange, setExchange] = useState(FALLBACK_EXCHANGES[0]);
+  const [book,     setBook]     = useState<Orderbook>(() => genBook(FALLBACK_SYMBOLS[0]));
+
+  // Keep exchange selection valid when list changes
+  useEffect(() => {
+    if (exchanges.length > 0 && !exchanges.includes(exchange)) {
+      setExchange(exchanges[0]);
+    }
+  }, [exchanges, exchange]);
 
   // Mock refresh when no real feed
   useEffect(() => {
@@ -97,26 +125,31 @@ export function OrderbookView() {
         <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">
           Orderbook
         </span>
-        <span className={`text-[9px] font-mono uppercase ${connected ? 'text-profit' : 'text-terminal-subtle'}`}>
-          {connected ? '● LIVE' : '○ MOCK'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`text-[9px] font-mono uppercase ${isLiveData ? 'text-accent' : 'text-terminal-subtle'}`}>
+            {isLiveData ? '◆ API' : '◇ STATIC'}
+          </span>
+          <span className={`text-[9px] font-mono uppercase ${connected ? 'text-profit' : 'text-terminal-subtle'}`}>
+            {connected ? '● LIVE' : '○ MOCK'}
+          </span>
+        </div>
       </div>
 
-      {/* Controls */}
+      {/* Controls — dynamic selectors */}
       <div className="flex gap-2 mb-3">
         <select
           value={symbol}
           onChange={e => setSymbol(e.target.value)}
           className="bg-terminal-bg border border-terminal-border text-terminal-text text-xs font-mono px-2 py-1 focus:outline-none focus:border-accent"
         >
-          {SYMBOLS.map(s => <option key={s}>{s}</option>)}
+          {FALLBACK_SYMBOLS.map(s => <option key={s}>{s}</option>)}
         </select>
         <select
           value={exchange}
           onChange={e => setExchange(e.target.value)}
           className="bg-terminal-bg border border-terminal-border text-terminal-text text-xs font-mono px-2 py-1 focus:outline-none focus:border-accent"
         >
-          {EXCHANGES.map(ex => <option key={ex}>{ex}</option>)}
+          {exchanges.map(ex => <option key={ex}>{ex}</option>)}
         </select>
       </div>
 

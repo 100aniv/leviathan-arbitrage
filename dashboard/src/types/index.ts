@@ -202,6 +202,22 @@ export interface ExchangeStatus {
 
 export type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
 
+// ─── Session Performance Types ────────────────────────────────────────────────
+
+export interface SessionPnlPoint {
+  timestamp: number;  // Unix ms
+  pnl: number;
+  win_rate: number;
+}
+
+export interface ContainerStatus {
+  name: string;
+  status: 'running' | 'stopped' | 'error';
+  cpu_pct: number;
+  memory_mb: number;
+  uptime: string;
+}
+
 // ─── Attribution Types ───────────────────────────────────────────────────────
 
 export interface AttributionBreakdown {

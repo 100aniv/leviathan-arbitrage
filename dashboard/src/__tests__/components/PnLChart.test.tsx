@@ -29,7 +29,7 @@ describe('PnLChart', () => {
 
   it('renders the chart with live data', () => {
     mockUseApi.mockReturnValue({
-      data: { total: 150, realized: 100, unrealized: 50 },
+      data: { total_pnl: 150, realized_pnl: 100, unrealized_pnl: 50 },
       error: undefined,
       isLoading: false,
       mutate: jest.fn(),
@@ -44,7 +44,7 @@ describe('PnLChart', () => {
 
   it('shows summary cards with total, realized, unrealized labels', () => {
     mockUseApi.mockReturnValue({
-      data: { total: 200, realized: 150, unrealized: 50 },
+      data: { total_pnl: 200, realized_pnl: 150, unrealized_pnl: 50 },
       error: undefined,
       isLoading: false,
       mutate: jest.fn(),
@@ -104,7 +104,7 @@ describe('PnLChart', () => {
 
   it('renders legend with total, realized, unrealized entries', () => {
     mockUseApi.mockReturnValue({
-      data: { total: 0, realized: 0, unrealized: 0 },
+      data: { total_pnl: 0, realized_pnl: 0, unrealized_pnl: 0 },
       error: undefined,
       isLoading: false,
       mutate: jest.fn(),

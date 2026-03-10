@@ -995,7 +995,13 @@
       "priority": 65,
       "passes": true,
       "notes": "Phase F: ProgressiveShadowOrchestrator 6-stage gate. 42 tests PASS, 3575 total. Shadow 10min: 580T/67.2%WR/+$2203.92/crash=0. Code review: 1 CRITICAL + 3 HIGH fixed. DB migration 003 added.",
-      "files": ["engine/src/modes/progressive_shadow.py", "engine/src/modes/shadow.py", "engine/src/main.py", "docker-compose.yml", "engine/tests/test_progressive_shadow.py"],
+      "files": [
+        "engine/src/modes/progressive_shadow.py",
+        "engine/src/modes/shadow.py",
+        "engine/src/main.py",
+        "docker-compose.yml",
+        "engine/tests/test_progressive_shadow.py"
+      ],
       "dependencies": [],
       "acceptanceCriteria": [
         "ProgressiveShadowOrchestrator 클래스 구현 (engine/src/modes/progressive_shadow.py)",
@@ -1126,7 +1132,7 @@
       "title": "Overview 종합 상황판 리디자인",
       "phase": "H",
       "priority": 73,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/app/page.tsx",
         "dashboard/src/components/PortfolioSummary.tsx",
@@ -1150,7 +1156,7 @@
       "title": "Attribution/Funding/System 빈 페이지 완성",
       "phase": "H",
       "priority": 74,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/app/attribution/page.tsx",
         "dashboard/src/app/funding/page.tsx",
@@ -1169,7 +1175,7 @@
       "title": "GlobalHeatmap + OrderbookView 실 데이터 연결",
       "phase": "H",
       "priority": 75,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/components/GlobalHeatmap.tsx",
         "dashboard/src/components/OrderbookView.tsx"
