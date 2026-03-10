@@ -258,9 +258,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 실행 워크플로우 (ralph autopilot)
 
-**3-Phase Sequential** (leviathan.md 참조):
-1. **Phase A** (기획): Phase 단위 배치 수집 → ralplan → PLAN.md
-2. **Phase B** (개발): TeamCreate + Step 2.5 통합검증 (백엔드↔프론트)
-3. **Phase C** (검증): Shadow + code-reviewer + critic → SSOT 업데이트
+**3-Phase Sequential 연속 실행** (leviathan.md 참조):
+1. **Phase A** (기획): ralplan → PLAN.md → QUANT GATE → checkpoint 저장 → **즉시 Phase B**
+2. **Phase B** (개발): TeamCreate + Step 2.5 통합검증 → pytest PASS → TeamDelete → checkpoint 저장 → **즉시 Phase C**
+3. **Phase C** (검증): Shadow + code-reviewer + critic → SSOT 업데이트 → git push → checkpoint 저장 → **즉시 다음 US**
 
+**연속 실행 원칙**: Phase A→B→C는 끊김 없는 단일 흐름. Phase 간 `/clear` 없음. `/compact` 절대 금지.
+**체크포인트 복구**: `.omc/state/leviathan-progress.json` — 세션 크래시/수동 `/clear` 시 `/leviathan` 재호출로 자동 재개.
 **에스컬레이션**: L0(팀 내) → L1(fix 루프) → L2(Phase A 재기획) → L3(SSOT 수정) → L4(Phase 재편)

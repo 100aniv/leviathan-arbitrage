@@ -16,9 +16,9 @@
 
 ### 강제 실행 규칙
 - **모든 응답에 최소 1개 tool call 포함** — 순수 텍스트만 출력하는 응답 금지 (진행 상황 보고 시에도 다음 단계 tool call 포함)
-- **Phase A 완료 → 동일 응답에서 Phase B TeamCreate + Agent 스폰** (별도 턴으로 분리 금지)
-- **Phase B 완료 → 동일 응답에서 Phase C 에이전트 호출** (별도 턴으로 분리 금지)
-- **Phase C 완료 → 동일 응답에서 git commit + 다음 US Phase A 시작** (별도 턴으로 분리 금지)
+- **Phase A 완료 → 즉시 Phase B TeamCreate + Agent 스폰** (ralplan 결과 수신 즉시 다음 tool call)
+- **Phase B 완료 → 즉시 Phase C 에이전트 호출** (TeamDelete 완료 즉시 shadow-tester 호출)
+- **Phase C 완료 → 즉시 git commit + 다음 US Phase A 시작** (git push 완료 즉시 prd.json 읽기)
 - **에이전트 idle 알림 수신 → 해당 에이전트에 작업 있으면 즉시 SendMessage, 없으면 무시하고 다른 작업 진행**
 
 ### 유일한 멈춤 허용 조건
@@ -28,10 +28,10 @@
 
 ### 자동 실행 흐름 (한 US 전체가 단일 연속 흐름)
 ```
-[Phase A] architect/ralplan 호출 → QUANT GATE(해당 시) →
-[Phase B] 같은 응답에서 TeamCreate + Jennie+Lisa 스폰 → 에이전트 완료 대기 → pytest 결과 수신 →
-[Phase C] 같은 응답에서 shadow-tester + code-reviewer 호출 → 결과 수신 → ssot-keeper → git commit+push →
-[다음 US] 같은 응답에서 prd.json 읽기 + 다음 US Phase A 시작
+[Phase A] ralplan/architect 호출 → PLAN.md 저장 → QUANT GATE(해당 시) → checkpoint 저장 →
+[Phase B] 즉시 TeamCreate + Jennie+Lisa 스폰 → 에이전트 완료 대기 → pytest PASS → TeamDelete → checkpoint 저장 →
+[Phase C] 즉시 shadow-tester + code-reviewer 호출 → 결과 수신 → ssot-keeper → git commit+push → checkpoint 저장 →
+[다음 US] 즉시 prd.json 읽기 + 다음 US Phase A 시작
 ```
 
 > ⚠️ **위 흐름에서 사용자 입력을 기다리는 지점은 0개입니다.**
@@ -135,6 +135,16 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 
 > ⚠️ **Phase A 완료 = 즉시 Phase B 시작. 사용자 입력 기다리지 말 것. 절대 멈추지 말 것.**
 
+**Phase A → Phase B 전환 (구체적 실행 순서 — 반드시 이 순서대로):**
+```
+1. ralplan/architect 결과 수신 → docs/planning/US-XXX_PLAN.md 파일 존재 확인
+2. QUANT GATE 해당 시 → quant-validator 호출 → PASS 확인 (FAIL 시 PLAN 수정 후 재호출)
+3. leviathan-progress.json 저장:
+   Bash: echo '{"current_us":"US-XXX","next_phase":"B","plan_file":"docs/planning/US-XXX_PLAN.md","timestamp":"'$(date -Iseconds)'"}' > .omc/state/leviathan-progress.json
+4. 즉시 Phase B 시작 → TeamCreate(team_name="leviathan-us-xxx") 호출
+```
+> ⚠️ **1~4 사이에 텍스트만 출력하고 tool call 없이 멈추는 행위 금지. 반드시 4번까지 연속 실행.**
+
 ---
 
 ### Phase B — 개발 (BLACKPINK팀)
@@ -213,7 +223,15 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
 - 단, 같은 도메인 US끼리는 **동일 팀에서 연속 처리** 가능 (팀 재생성 불필요)
 - 배치 내 모든 US의 Phase B 완료 후 → Phase C를 **배치 단위로 일괄 실행**
 
-> ⚠️ **Phase B 완료 직후: leviathan-progress.json 저장 (next_phase: "C") → Claude 자동 `/clear`. 단, Phase C 진행 중 `/clear` 절대 금지 (백그라운드 에이전트 결과 소실). §6 참조.**
+**Phase B → Phase C 전환 (구체적 실행 순서 — 반드시 이 순서대로):**
+```
+1. pytest PASS 확인 (Lisa 보고 수신)
+2. TeamDelete 완료 (Jennie+Lisa+Rosé 전원 shutdown)
+3. leviathan-progress.json 저장:
+   Bash: echo '{"current_us":"US-XXX","next_phase":"C","plan_file":"docs/planning/US-XXX_PLAN.md","test_result":"PASS","timestamp":"'$(date -Iseconds)'"}' > .omc/state/leviathan-progress.json
+4. 즉시 Phase C 시작 → shadow-tester(sakura) 호출
+```
+> ⚠️ **1~4 사이에 멈추지 말 것. TeamDelete 완료 즉시 Phase C 에이전트 호출.**
 
 ---
 
@@ -251,6 +269,18 @@ Agent(subagent_type="quant-validator", name="winter", model="sonnet",
   4. `git add -A && git commit -m "Phase [phase]: US-XXX~US-YYY [배치 설명]"` — **배치 단위 단일 커밋**
   5. `git push` (gh CLI)
 - ⚠️ 배치 커밋 메시지 형식: `Phase SR US-058~062: [공통 변경 요약]`
+
+**Phase C → 다음 US 전환 (구체적 실행 순서 — 반드시 이 순서대로):**
+```
+1. Shadow PASS + Review 완료 확인
+2. ssot-keeper(haerin) → SSOT.md 업데이트
+3. prd.json 해당 US passes:true 마킹
+4. git add + git commit + git push
+5. leviathan-progress.json 저장:
+   Bash: echo '{"current_us":"US-XXX","next_phase":"A","next_us":"US-YYY","timestamp":"'$(date -Iseconds)'"}' > .omc/state/leviathan-progress.json
+6. 즉시 다음 US Phase A 시작 → prd.json에서 다음 passes:false US 찾기 → ralplan 호출
+```
+> ⚠️ **1~6 사이에 멈추지 말 것. git push 완료 즉시 다음 US 진행.**
 
 ---
 
@@ -321,61 +351,53 @@ L4: Lead가 prd.json에 새 US 추가 → 다음 사이클에서 처리
 - **슬리피지**: PowerLaw `impact = k * size^gamma` (k=0.0, gamma=0.5) — k=0.0이므로 PowerLaw 비활성. CEXOrderbookSlippage가 유일한 슬리피지 소스
 - **이중 슬리피지 금지**: SignalGenerator의 CEXOrderbookSlippage가 유일한 슬리피지 소스
 
-## 6. 컨텍스트 관리 (⚠️ Claude 자동 실행 — 사용자 개입 불필요)
+## 6. 컨텍스트 관리
 
-> ⚠️ **아래 명령어는 Claude가 자동으로 실행합니다. 사용자가 수동으로 실행할 필요 없습니다.**
-> **Claude는 해당 시점에 도달하면 leviathan-progress.json 저장 후 `/clear`를 자동 수행합니다. `/compact`는 절대 사용하지 않습니다.**
+### 6.1 연속 실행 원칙
 
-### 6.1 US 사이클 단위 컨텍스트 관리 (자동)
+**Phase A→B→C는 하나의 연속 흐름으로 실행.** Phase 간 `/clear` 없음.
+Phase 완료마다 `leviathan-progress.json`에 체크포인트 저장 (세션 복구용).
 
-**원칙**: 각 Phase(A/B/C)가 독립된 컨텍스트 단위. Phase 완료마다 결과를 파일로 저장 후 `/clear`로 초기화. `/compact` 절대 사용 금지.
+> **왜 Phase 간 `/clear` 안 하나?** Claude는 `/clear`를 프로그래밍적으로 실행할 수 없음 (사용자 전용 명령어).
+> 자동화된 연속 실행과 `/clear`는 양립 불가. 멈추지 않는 것이 최우선.
+> Claude Code의 내장 auto-compression이 컨텍스트 한계 도달 시 자동 처리.
 
-| 시점 | Claude 자동 실행 | 이유 |
-|------|-----------------|------|
-| **Phase A 완료** (PLAN.md 저장 후) | **leviathan-progress.json 저장 → `/clear`** | Phase A 기획 맥락 불필요. PLAN.md가 디스크에 있으므로 안전 |
-| **Phase B 완료** (pytest PASS + 팀 해산 후) | **leviathan-progress.json 저장 → `/clear`** | TeamCreate 에이전트 메시지(40-60K 토큰) 완전 제거 |
-| **Phase C 완료** (Shadow + git push 완료) | **leviathan-progress.json 저장 → `/clear`** | 전 사이클 종료. prd.json/SSOT.md 기록 완료 상태이므로 안전 |
-| `/clear` 직후 | **Claude가 `/leviathan` 자동 재호출** | leviathan-progress.json 읽어 해당 Phase부터 재개 |
+| 시점 | 동작 |
+|------|------|
+| **Phase A 완료** | PLAN.md 저장 + checkpoint → **즉시 Phase B TeamCreate** |
+| **Phase B 완료** | pytest PASS + TeamDelete + checkpoint → **즉시 Phase C shadow-tester** |
+| **Phase C 완료** | SSOT/prd.json/git push + checkpoint → **즉시 다음 US Phase A** |
 
-### 6.2 절대 금지 시점
+### 6.2 절대 금지
 
-> ⚠️ **아래 시점에서는 Claude도 `/clear`를 실행하지 않습니다. 자동 실행 로직이 이 시점을 회피합니다.**
-> **`/compact` 는 어떤 시점에서도 절대 금지** (버그 있음: GitHub #3274, #19567, #18482)
+- **`/compact` 어떤 시점에서도 절대 금지** (버그: GitHub #3274, #19567, #18482)
+- **Phase 진행 중 컨텍스트 조작 금지** (백그라운드 에이전트 결과 소실)
+- **Phase 간 멈춤 금지** — 체크포인트 저장 후 즉시 다음 Phase tool call 실행
+- **실패 사례 (US-060)**: Phase C 에이전트 실행 중 컨텍스트 압축 → Shadow 결과 미수집
 
-| 금지 시점 | 이유 |
-|-----------|------|
-| Phase A/B/C **진행 중** | 작업 결과 소실 위험 |
-| Phase B 에이전트가 아직 작업 중 | Jennie/Lisa 구현 결과 소실 |
-| 백그라운드 pytest/Shadow 실행 대기 중 | 테스트 결과 소실 |
-| Phase C-4 완료 처리 중 (SSOT/prd.json/git 미완료) | 결과 미기록 상태에서 초기화 시 데이터 소실 |
+### 6.3 체크포인트 파일 (leviathan-progress.json)
 
-### 6.3 안전한 US 사이클 흐름 (Phase 단위 /clear 완전 자동화)
-
-```
-[Phase A — 기획]
-  ralplan → PLAN.md 작성 → leviathan-progress.json 저장 (next_phase: "B")
-  → ✅ Claude 자동 `/clear`
-  → ✅ Claude 자동 `/leviathan` 재호출 → progress 읽어 Phase B 시작
-
-[Phase B — 개발]
-  TeamCreate(Jennie+Lisa+Rosé) → 구현 → pytest PASS → TeamDelete
-  → leviathan-progress.json 저장 (next_phase: "C", test_result: "PASS")
-  → ✅ Claude 자동 `/clear` (TeamCreate 에이전트 메시지 40-60K 토큰 완전 제거)
-  → ✅ Claude 자동 `/leviathan` 재호출 → progress 읽어 Phase C 시작
-
-[Phase C — 검증]
-  Shadow 10min + code-reviewer + critic → SSOT/prd.json/git push 완료
-  → leviathan-progress.json 저장 (next_phase: "A", next_us: "US-XXX+1")
-  → ✅ Claude 자동 `/clear` (US 사이클 완전 종료)
-  → ✅ Claude 자동 `/leviathan` 재호출 → 다음 US Phase A 시작
+`.omc/state/leviathan-progress.json` — 각 Phase 완료 시 자동 저장:
+```json
+{"current_us": "US-066", "next_phase": "B", "plan_file": "docs/planning/US-066_PLAN.md", "timestamp": "2026-03-10T15:30:00+09:00"}
 ```
 
-> **핵심**: `/compact` 완전 폐기. Phase마다 `/clear` + 파일 기반 상태 전달.
-> Phase 시작 토큰 비용: leviathan-progress.json + PLAN.md 읽기 ≈ 3-5K 토큰
-> 누적 없이 쌓이는 토큰 (80K+)과 비교하면 압도적으로 효율적.
->
-> **실패 사례 (US-060)**: Phase C 에이전트 실행 중 자동 컨텍스트 압축 → Shadow 결과 미수집.
-> **교훈**: Phase 진행 중에는 어떤 형태의 컨텍스트 조작도 금지. `/clear`는 Phase **완료 후**에만.
+**용도**: 세션 복구 전용
+- 세션 크래시, 사용자 수동 `/clear`, 또는 네트워크 오류 시 → `/leviathan` 재호출하면 이 파일로 재개
+- 정상 실행 시에는 Phase 간 끊김 없이 연속 진행 (체크포인트는 보험)
+- §8의 시작 로직이 이 파일을 1순위로 확인
+
+### 6.4 사용자 수동 `/clear` 시 복구 흐름
+
+```
+사용자가 수동 /clear 실행
+  → 컨텍스트 초기화됨
+  → 사용자가 /leviathan 입력
+  → §8 시작 로직: leviathan-progress.json 읽기 (1순위)
+  → next_phase에 따라 해당 Phase부터 재개 (Phase A가 아니어도 됨)
+  → plan_file이 있으면 PLAN.md 읽어 컨텍스트 복원
+```
+> **정상 흐름에서는 /clear 불필요.** ralph 루프가 Phase A→B→C→다음 US를 끊김 없이 순회.
 
 ## 7. Phase F 최종 검수 규칙
 
