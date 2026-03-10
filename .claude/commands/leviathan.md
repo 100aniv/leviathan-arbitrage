@@ -394,8 +394,19 @@ L4: Lead가 prd.json에 새 US 추가 → 다음 사이클에서 처리
 
 ## 8. 시작 및 자동 루프
 
-위 규칙을 모두 숙지한 후, prd.json에서 `passes:false`인 첫 번째 US를 찾아 Phase A부터 시작하라.
-$ARGUMENTS가 있으면 해당 US부터 시작.
+위 규칙을 모두 숙지한 후, 아래 순서로 재개 지점을 결정하라:
+
+**1순위 — leviathan-progress.json 확인** (`.omc/state/leviathan-progress.json`):
+```json
+{"current_us": "US-066", "next_phase": "B", "plan_file": "docs/planning/US-066_PLAN.md", "timestamp": "..."}
+```
+- 파일이 존재하면: `next_phase`에 따라 해당 Phase부터 재개 (Phase A가 아니어도 됨)
+- `plan_file`이 있으면 해당 PLAN.md를 읽어 컨텍스트 복원
+- `/clear` 직후 `/leviathan` 재호출 시 이 파일이 항상 존재해야 함
+
+**2순위 — $ARGUMENTS**: 인수가 있으면 해당 US부터 Phase A 시작
+
+**3순위 — prd.json 스캔**: 위 둘 다 없으면 prd.json에서 `passes:false`인 첫 번째 US를 찾아 Phase A부터 시작
 
 > ⚠️ **모든 US가 `passes:true`가 될 때까지 자동 루프 지속.**
 > **한 US 완료 즉시 prd.json에서 다음 `passes:false` US 찾아 Phase A 시작.**
