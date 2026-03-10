@@ -27,12 +27,12 @@
 
 ```
 Phase:        SR (Shadow Realism 강화 스프린트)
-테스트:       3,575 passed, 0 failed
+테스트:       3,609 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    Phase F US-054: Progressive Shadow 6-stage gate
-다음 작업:    US-066 (Stale Orderbook 감지 + 블랙리스트 — Phase G)
+다음 작업:    US-067 (전략별 개별 1H Shadow 검증 — Phase G)
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -407,7 +407,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ### Phase G: 전략 수익성 복원 — US-066~068
 
-- [ ] US-066: Stale Orderbook 감지 + 블랙리스트 + 손실 제한
+- [x] US-066: Stale Orderbook 감지 + 블랙리스트 + 손실 제한 — StaleOrderbookDetector 4계층 방어, 34 tests, 3609 total PASS
 - [ ] US-067: 전략별 개별 1H Shadow 검증 (PnL > 0 확인 후 활성화)
 - [ ] US-068: Shadow 기반 파라미터 재최적화
 
@@ -458,6 +458,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | SR | Docker Shadow 필수화 | Shadow 테스트 중 Docker 미실행 발견. graceful degradation으로 거래 로직 유효하나 TimescaleDB/Redis 미저장. 향후 Shadow 실행 전 `docker compose up -d` 필수 |
 | SR | Phase D 브라우저 테스트 필수화 | US-037~041, US-053 대시보드 US가 `npm run build`만으로 passes:true 처리됨. 실제 Chrome 렌더링/API 연동/WebSocket 피드 검증 미완. Phase D 완료 기준에 Chrome 브라우저 테스트 추가 |
 | SR | Shadow 현실성 6개 GAP 식별 (SG-1~SG-6) | PaperExecutor가 데모급(100% fill, 0ms delay, 무한잔고). 상용급 전환 위해 부분체결/지연/깊이VWAP/가상잔고/Rate Limit 추가 필요 |
+| Phase G | 4계층 stale 방어 (cross-validation + periodic refresh + update_count gate + loss cap) | 1H Shadow -$1,937 fat-tail 방지, defense-in-depth |
 
 ---
 
@@ -501,7 +502,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 |------|------|--------|
 | **Phase D 대시보드 브라우저 미검증** | US-037~041, US-053 코드 레벨만 검증(`npm run build`). Chrome 렌더링, API 연동, WebSocket 실시간 피드, 모바일 반응형 미확인 | Phase D 재검증 US 추가 (Chrome 브라우저 테스트 필수) |
 | **Shadow 실행 시 Docker 미실행 위험** | Docker 없이 Shadow 실행 시 거래 로직은 유효하나 TimescaleDB/Redis 미저장 → 메트릭 유실 | Shadow 실행 전 `docker compose up -d` 필수 (leviathan.md에 명시) |
-| Bithumb 증분 Orderbook | 스냅샷 없이 증분만 수신 → 허위 스프레드 | max_spread_pct=5.0 필터 (US-013 근본 해결) |
+| Bithumb 증분 Orderbook | 스냅샷 없이 증분만 수신 → 허위 스프레드 | max_spread_pct=5.0 + StaleOrderbookDetector cross-exchange validation(10%) + periodic REST refresh(60s) + per-trade loss cap($50) + blacklist(TTL 300s) |
 | 마찰 vs Gross Spread | 대부분 알트 spread 2-25bps, friction ~20bps | MIN_EDGE_BPS=5 + 고스프레드 심볼 집중 |
 
 ### MEDIUM
@@ -530,3 +531,4 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | KRW/USDT 정적 환율 | dual-source 동적 조회 구현 (Phase 7.3d) |
 | 이중 슬리피지 | PaperExecutor ZERO slippage 적용 (Phase 7.3j) |
 | PowerLawSlippage k/gamma 무시 | 실제 공식 적용 완료 (Phase 3.5) |
+| Stale Orderbook fat-tail loss | StaleOrderbookDetector 4계층 방어 + loss cap $50 (Phase G US-066) |

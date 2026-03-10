@@ -443,6 +443,7 @@ class Engine:
     async def _init_signal_pipeline(self) -> None:
         from src.core.price_hub import PriceHub
         from src.core.signal import SignalConfig, SignalGenerator
+        from src.core.stale_detector import StaleOrderbookDetector
         from src.friction.cost_calculator import CostCalculator
         from src.friction.fee_model import FeeModel
         from src.friction.slippage_model import CEXOrderbookSlippage
@@ -471,15 +472,20 @@ class Engine:
             cooldown_seconds=cooldown_sec,
             min_price_usd=min_price_usd,
         )
+        stale_detector = StaleOrderbookDetector(
+            deviation_pct=float(os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10")),
+            blacklist_ttl_s=float(os.getenv("STALE_BLACKLIST_TTL_S", "300")),
+        )
         self._signal_generator = SignalGenerator(
             price_hub=self._price_hub,
             cost_calculator=self._cost_calculator,
             config=signal_config,
             event_bus=self._event_bus,
+            stale_detector=stale_detector,
         )
         logger.info(
-            "Signal pipeline initialized min_edge_bps=%s max_spread_pct=%s",
-            min_edge_bps, max_spread_pct,
+            "Signal pipeline initialized min_edge_bps=%s max_spread_pct=%s stale_deviation_pct=%s",
+            min_edge_bps, max_spread_pct, os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10"),
         )
 
     # ------------------------------------------------------------------

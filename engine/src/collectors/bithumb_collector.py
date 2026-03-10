@@ -106,7 +106,7 @@ class BithumbCollector(BaseCollector):
                         asks.sort(key=lambda x: float(x[0]))
 
                         if self._on_orderbook:
-                            await self._on_orderbook(self.exchange_id, symbol, bids, asks)
+                            await self._on_orderbook(self.exchange_id, symbol, bids, asks, is_snapshot=True)
                         self._last_update[symbol] = time.monotonic()
                         fetched += 1
 
@@ -193,6 +193,16 @@ class BithumbCollector(BaseCollector):
         self._last_update[symbol] = time.monotonic()
 
         return symbol, bids, asks
+
+    async def refresh_snapshots(self) -> int:
+        """Re-fetch REST snapshots for all symbols to re-anchor accumulated deltas.
+
+        Returns count of successfully refreshed symbols.
+        Called periodically by ShadowMode._delta_refresh_loop (US-066).
+        """
+        self._snapshot_fetched = False
+        await self._fetch_initial_snapshots()
+        return sum(1 for s in self.symbols if not self.is_symbol_stale(s, max_age_s=10.0))
 
     def is_symbol_stale(self, symbol: str, max_age_s: float = 300.0) -> bool:
         """Check if a symbol's orderbook data is stale (no update in max_age_s seconds)."""

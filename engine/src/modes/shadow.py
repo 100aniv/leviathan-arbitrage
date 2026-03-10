@@ -44,6 +44,8 @@ from src.infra.metrics import (
     SIGNAL_PROCESSING_TIME,
     SIGNALS_TOTAL,
     SPREAD_BPS,
+    STALE_ORDERBOOK_REJECTED,
+    TRADE_LOSS_CAPPED,
     TRADES_TOTAL,
 )
 from prometheus_client import Counter as PromCounter
@@ -497,6 +499,27 @@ class ShadowMode:
                 futures_exchanges=self._futures_exchanges,
             )
 
+        # US-066: Stale orderbook defense — cross-validation + blacklist
+        from src.core.stale_detector import StaleOrderbookDetector
+        self._stale_detector = StaleOrderbookDetector(
+            deviation_pct=float(os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10")),
+            blacklist_ttl_s=float(os.getenv("STALE_BLACKLIST_TTL_S", "300")),
+        )
+
+        # US-066: Strategy blacklist — comma-separated strategy IDs to disable
+        _disabled_raw = os.environ.get("SHADOW_DISABLED_STRATEGIES", "")
+        self._disabled_strategies: set[str] = {
+            s.strip() for s in _disabled_raw.split(",") if s.strip()
+        }
+
+        # US-066: Per-trade loss cap (hard ceiling on single-trade loss)
+        self._max_loss_per_trade_usd: Decimal = Decimal(
+            os.getenv("SHADOW_MAX_LOSS_PER_TRADE_USD", "50")
+        )
+
+        # US-066: Background task handle for periodic Bithumb REST refresh
+        self._delta_refresh_task: asyncio.Task[None] | None = None
+
         # Build collector manager if not supplied
         if collector_manager is not None:
             self._collector_manager = collector_manager
@@ -573,6 +596,11 @@ class ShadowMode:
             self._daily_summary_loop(), name="shadow_daily_summary"
         )
 
+        # US-066: Periodic REST refresh for delta exchanges (Bithumb)
+        self._delta_refresh_task = asyncio.create_task(
+            self._delta_refresh_loop(), name="shadow_delta_refresh"
+        )
+
         logger.info("shadow_mode.started", multi_strategy=self._multi_signal_producer is not None)
 
     async def stop(self) -> None:
@@ -583,6 +611,15 @@ class ShadowMode:
 
         self._running = False
         logger.info("shadow_mode.stopping")
+
+        # Cancel delta refresh task (US-066)
+        if self._delta_refresh_task is not None and not self._delta_refresh_task.done():
+            self._delta_refresh_task.cancel()
+            try:
+                await self._delta_refresh_task
+            except asyncio.CancelledError:
+                pass
+            self._delta_refresh_task = None
 
         # Cancel KRW rate task
         if self._krw_rate_task is not None and not self._krw_rate_task.done():
@@ -649,6 +686,7 @@ class ShadowMode:
         symbol: str,
         bids: list[list[Any]],
         asks: list[list[Any]],
+        is_snapshot: bool = False,
     ) -> None:
         """Handle a new orderbook snapshot from a collector.
 
@@ -687,13 +725,27 @@ class ShadowMode:
                 self._books[symbol] = {}
 
             existing = self._books[symbol].get(exchange_id)
-            if existing is not None and exchange_id in DELTA_EXCHANGES:
+            if existing is not None and exchange_id in DELTA_EXCHANGES and not is_snapshot:
                 existing.apply_delta(bid_tuples, ask_tuples)
                 book = existing
             else:
                 book = self._orderbook_cls(symbol=symbol, exchange=exchange_id)
                 book.apply_snapshot(bid_tuples, ask_tuples)
                 self._books[symbol][exchange_id] = book
+
+            # Cross-exchange price validation (US-066) — reject stale/drifted books
+            if not self._stale_detector.check_cross_exchange(
+                exchange_id, symbol, book, self._books
+            ):
+                STALE_ORDERBOOK_REJECTED.labels(
+                    exchange=exchange_id, reason="cross_validation"
+                ).inc()
+                logger.info(
+                    "shadow_mode.stale_cross_validation_rejected",
+                    exchange=exchange_id,
+                    symbol=symbol,
+                )
+                return
 
             # Record to TimescaleDB (best_bid / best_ask; skip if missing)
             if self._market_recorder is not None:
@@ -927,6 +979,43 @@ class ShadowMode:
     # NOTE: _evaluate_funding_rate_arb moved to RealDataSignalProducer
 
     # -----------------------------------------------------------------------
+    # Delta exchange periodic REST refresh (US-066)
+    # -----------------------------------------------------------------------
+
+    async def _delta_refresh_loop(self) -> None:
+        """Periodically re-fetch REST snapshots for delta exchanges (Bithumb).
+
+        Bithumb sends incremental WS deltas that drift over time without
+        periodic re-anchoring. This loop calls refresh_snapshots() every
+        BITHUMB_REFRESH_INTERVAL_S seconds to reset the orderbook to ground truth.
+
+        HTTP errors are logged and suppressed; the loop continues regardless.
+        Never raises — exceptions are caught and logged.
+        """
+        interval = float(os.getenv("BITHUMB_REFRESH_INTERVAL_S", "60"))
+        try:
+            while self._running:
+                await asyncio.sleep(interval)
+                for eid in ("bithumb",):
+                    collector = self._collector_manager.get_collector(eid)
+                    if collector is not None and hasattr(collector, "refresh_snapshots"):
+                        try:
+                            count = await collector.refresh_snapshots()
+                            logger.info(
+                                "shadow_mode.delta_refresh_done",
+                                exchange=eid,
+                                refreshed=count,
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "shadow_mode.delta_refresh_failed",
+                                exchange=eid,
+                                error=str(exc),
+                            )
+        except asyncio.CancelledError:
+            pass
+
+    # -----------------------------------------------------------------------
     # Shadow trade execution
     # -----------------------------------------------------------------------
 
@@ -947,6 +1036,12 @@ class ShadowMode:
                 buy_price=str(signal.buy_price),
                 sell_price=str(signal.sell_price),
             )
+            return
+
+        # Strategy blacklist check (US-066)
+        sid_check = signal.strategy_id or self.STRATEGY_ID
+        if sid_check in self._disabled_strategies:
+            logger.debug("shadow_mode.strategy_disabled", strategy=sid_check)
             return
 
         # Rate limit check before balance deduct (SG-6)
@@ -1065,6 +1160,24 @@ class ShadowMode:
             - network_cost
         )
         net_pnl_float = float(net_pnl)
+
+        # Per-trade loss cap (US-066): hard ceiling to prevent fat-tail losses
+        max_loss = self._max_loss_per_trade_usd
+        if net_pnl < -max_loss:
+            capped_pnl = -max_loss
+            logger.warning(
+                "shadow_mode.trade_loss_capped",
+                symbol=signal.symbol,
+                buy_exchange=signal.buy_exchange,
+                sell_exchange=signal.sell_exchange,
+                raw_pnl=f"{float(net_pnl):+.4f}",
+                capped_pnl=f"{float(capped_pnl):+.4f}",
+            )
+            net_pnl = capped_pnl
+            net_pnl_float = float(net_pnl)
+            TRADE_LOSS_CAPPED.labels(exchange=signal.buy_exchange).inc()
+            self._stale_detector.add_blacklist(signal.buy_exchange, signal.symbol)
+            self._stale_detector.add_blacklist(signal.sell_exchange, signal.symbol)
 
         # Per-strategy tracking
         sid = signal.strategy_id or self.STRATEGY_ID
@@ -1207,6 +1320,11 @@ class ShadowMode:
         self._stats.signals_detected += 1
         sid = trade_request.strategy_id or self.STRATEGY_ID
 
+        # Strategy blacklist check (US-066)
+        if sid in self._disabled_strategies:
+            logger.debug("shadow_mode.strategy_disabled", strategy=sid)
+            return
+
         try:
             # Rate limit check: all legs must pass before executing any (SG-6)
             for leg in trade_request.legs:
@@ -1303,6 +1421,25 @@ class ShadowMode:
             net_pnl -= network_cost
 
         net_pnl_float = float(net_pnl)
+
+        # Per-trade loss cap (US-066): same hard ceiling as _execute_shadow_trade
+        max_loss = self._max_loss_per_trade_usd
+        if net_pnl < -max_loss:
+            capped_pnl = -max_loss
+            logger.warning(
+                "shadow_mode.trade_request_loss_capped",
+                strategy_id=sid,
+                raw_pnl=f"{float(net_pnl):+.4f}",
+                capped_pnl=f"{float(capped_pnl):+.4f}",
+            )
+            net_pnl = capped_pnl
+            net_pnl_float = float(net_pnl)
+            TRADE_LOSS_CAPPED.labels(
+                exchange=trade_request.legs[0].exchange_id if trade_request.legs else "unknown"
+            ).inc()
+            if self._stale_detector is not None:
+                for leg in trade_request.legs:
+                    self._stale_detector.add_blacklist(leg.exchange_id, leg.symbol)
 
         # Per-strategy tracking
         if sid not in self._stats.by_strategy:

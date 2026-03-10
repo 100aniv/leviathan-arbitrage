@@ -1069,7 +1069,8 @@
       "title": "Stale Orderbook 감지 + 블랙리스트 + 손실 제한",
       "phase": "G",
       "priority": 70,
-      "passes": false,
+      "passes": true,
+      "notes": "Phase G: StaleOrderbookDetector 4계층 방어 (cross-exchange validation 10%, periodic REST refresh 60s, update_count gate, per-trade loss cap $50). 34 신규 테스트, 3609 total PASS. Shadow 10min: 155T/32.9%WR/+$20.18/crash=0/max_loss=-$44.01(<$50 cap).",
       "files": [
         "engine/src/core/signal.py",
         "engine/src/collectors/manager.py",

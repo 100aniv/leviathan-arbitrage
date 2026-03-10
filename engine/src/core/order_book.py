@@ -25,6 +25,7 @@ class OrderBook:
         self.bids: dict[Decimal, Decimal] = {}  # price -> quantity
         self.asks: dict[Decimal, Decimal] = {}  # price -> quantity
         self.last_update_time: float = 0.0  # monotonic timestamp of last update
+        self.update_count: int = 0  # incremented on apply_delta; reset to 0 on apply_snapshot
 
     def apply_snapshot(
         self,
@@ -43,6 +44,7 @@ class OrderBook:
             if q > 0:
                 self.asks[p] = q
         self.last_update_time = time.monotonic()
+        self.update_count = 0  # re-anchor: delta count resets after each snapshot
 
     def apply_delta(
         self,
@@ -63,6 +65,7 @@ class OrderBook:
             else:
                 self.asks[p] = q
         self.last_update_time = time.monotonic()
+        self.update_count += 1  # counts deltas since last snapshot
 
     def best_bid(self) -> Optional[Decimal]:
         """Highest bid price, or None if empty."""

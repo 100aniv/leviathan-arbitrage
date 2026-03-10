@@ -121,3 +121,7 @@ class CollectorManager:
     def connected_count(self) -> int:
         """Number of currently connected collectors."""
         return sum(1 for c in self._collectors.values() if c.is_connected)
+
+    def get_collector(self, exchange_id: str) -> BaseCollector | None:
+        """Return the collector for the given exchange, or None if not running."""
+        return self._collectors.get(exchange_id)

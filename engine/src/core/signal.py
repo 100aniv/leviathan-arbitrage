@@ -19,6 +19,7 @@ from src.core.models import Signal
 from src.core.order_book import OrderBook
 from src.core.price_hub import PriceHub
 from src.friction.cost_calculator import CostCalculator
+from src.core.stale_detector import StaleOrderbookDetector
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class SignalConfig:
     default_sigma: Decimal = Decimal("0.001")
     min_price_usd: Decimal = Decimal("0.10")
     max_book_age_seconds: float = 30.0  # reject orderbooks not updated within this window
+    min_delta_update_count: int = 3    # STALE_MIN_DELTA_UPDATES: min deltas since snapshot for delta exchanges
 
 
 class SignalGenerator:
@@ -76,11 +78,13 @@ class SignalGenerator:
         cost_calculator: CostCalculator,
         config: SignalConfig | None = None,
         event_bus: Any | None = None,
+        stale_detector: StaleOrderbookDetector | None = None,
     ) -> None:
         self._hub = price_hub
         self._calc = cost_calculator
         self._config = config or SignalConfig()
         self._event_bus = event_bus
+        self._stale_detector = stale_detector
         self._last_signal: dict[str, float] = {}  # dedup_key -> last emit timestamp
 
     def _dedup_key(self, buy_ex: str, sell_ex: str, symbol: str) -> str:
@@ -163,6 +167,26 @@ class SignalGenerator:
                         symbol, ob.exchange, now_mono - ob.last_update_time,
                     )
                     return None
+
+        # Blacklist gate — fast reject for known stale pairs (US-066)
+        if self._stale_detector is not None:
+            for _label, ob in [("buy", buy_book), ("sell", sell_book)]:
+                if self._stale_detector.is_blacklisted(ob.exchange, symbol):
+                    logger.debug(
+                        "blacklisted_rejected symbol=%s exchange=%s", symbol, ob.exchange
+                    )
+                    return None
+
+        # Delta exchange minimum update count gate — require enough deltas since last snapshot (US-066)
+        DELTA_EXCHANGES = {"bithumb"}
+        min_count = self._config.min_delta_update_count
+        for _label, ob in [("buy", buy_book), ("sell", sell_book)]:
+            if ob.exchange in DELTA_EXCHANGES and ob.update_count < min_count:
+                logger.debug(
+                    "low_update_count_rejected symbol=%s exchange=%s count=%d min=%d",
+                    symbol, ob.exchange, ob.update_count, min_count,
+                )
+                return None
 
         # Depth-based sizing (SG-5): auto-compute from L1 depth if not specified
         if trade_size is None:

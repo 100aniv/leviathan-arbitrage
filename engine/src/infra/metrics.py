@@ -145,6 +145,22 @@ COLLECTOR_MESSAGES = Counter(
     ["exchange"],
 )
 
+# ---------------------------------------------------------------------------
+# Phase G: Stale orderbook detection (US-066)
+# ---------------------------------------------------------------------------
+
+STALE_ORDERBOOK_REJECTED = Counter(
+    "shadow_stale_orderbook_rejected_total",
+    "Orderbooks rejected due to stale data detection",
+    ["exchange", "reason"],  # reason: cross_validation, blacklisted
+)
+
+TRADE_LOSS_CAPPED = Counter(
+    "shadow_trade_loss_capped_total",
+    "Trades where per-trade loss was capped at max threshold",
+    ["exchange"],
+)
+
 
 def start_metrics_server(port: int = 8000) -> None:
     """Start Prometheus metrics HTTP server on the given port."""
