@@ -47,6 +47,17 @@ cd engine && timeout 600 python -m src.main
 - 상세: (이슈 있으면)
 ```
 
+## ML Canary 검증 (Phase M)
+- ML 시그널 활성 시 기존 시그널과 A/B Shadow 비교 실행
+- Canary 모드: ML 시그널 10% 비중 → PnL 개선 확인 후 단계적 확대
+- ONNX Runtime 추론 레이턴시 <1ms 확인 (predict_signal 타이밍)
+- Feature drift 발생 시 자동 fallback (기존 시그널로 전환)
+
+## DB 모니터링 (Phase B/C Shadow 중)
+- Shadow 실행 중 3분/6분/9분 시점에 DB/Redis 주기적 체크
+- TimescaleDB: 데이터 적재 확인 (`SELECT count(*) FROM trades`)
+- Redis: 키 카운트 및 메모리 사용량 확인
+
 ## 주의사항
 - engine/.env의 DATA_MODE=shadow 확인 필수
 - Docker (Redis, TimescaleDB) 실행 여부 확인

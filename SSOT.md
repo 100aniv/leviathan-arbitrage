@@ -2,7 +2,7 @@
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-11 (US-069~071 배치 완료) | 최신 커밋: `360b602`
-> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획, Phase G~F) | 기존 플랜: `.claude/plans/jazzy-wishing-avalanche.md` (기반, Phase A~SR) | PRD: `.omc/prd.json` (80개 User Stories)
+> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획, Phase G~F) | 기존 플랜: `.claude/plans/jazzy-wishing-avalanche.md` (기반, Phase A~SR) | PRD: `.omc/prd.json` (96개 User Stories)
 
 ---
 
@@ -333,7 +333,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 80개 User Stories)
+## 7. 남은 작업 (`.omc/prd.json` 96개 User Stories)
 
 > **실행 방식**: 3-Phase Sequential — Phase A(기획/OMC) → Phase B(개발/Agent Teams) → Phase C(검증/OMC)
 > **자동화**: `ralph autopilot` → prd.json 순회 → 각 US 자동 실행
@@ -454,7 +454,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 ### Phase I: 거래소/전략 완성도 — US-073~076
 
 - [ ] US-073: Bithumb REST 스냅샷 → 증분 orderbook 근본 해결
-- [ ] US-074: Coinone 네이티브 WebSocket 어댑터 (CCXT 탈피)
+- [ ] US-074: Coinone WebSocket 안정성 강화 + 재연결 로직 개선
 - [ ] US-075: futures_futures 전략 활성화 (OKX/Bybit futures 수집기)
 - [ ] US-076: 전략/거래소 완성도 전수 감사
 
@@ -465,12 +465,37 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] US-079: 운영 Runbook 업데이트 + 장애 대응 매뉴얼
 - [ ] US-057: 운영 문서 최종화
 
+### Phase K: Regime Detection 기반 구축 — US-081~085
+
+- [ ] US-081: ML 의존성 + HMM 3-regime 설계 (hmmlearn/sklearn, MarketRegime enum 확장)
+- [ ] US-082: 레짐 피처 엔지니어링 (volatility, spread, volume, momentum, order flow)
+- [ ] US-083: HMM 학습 파이프라인 (TimescaleDB → 피처 → GaussianHMM fit → 전이 행렬)
+- [ ] US-084: 레짐→시그널 통합 (MIN_EDGE_BPS regime별 조정: CALM:3, NORMAL:5, VOLATILE:8)
+- [ ] US-085: Walk-forward 레짐 검증 (레짐 전환 vs 성과 상관분석)
+
+### Phase L: DEX 실시간 + 가스비 통합 — US-086~090
+
+- [ ] US-086: 실시간 가스비 오라클 (Ethereum/Solana/Polygon, 30초 캐시)
+- [ ] US-087: CostCalculator DEX 확장 (LP fee + gas + MEV 추정 + bridge cost)
+- [ ] US-088: Uniswap V3 실시간 가격/슬리피지 (slot0 → 가격, liquidity → VWAP)
+- [ ] US-089: CEX-DEX 스프레드 스캐너 (net spread 가스비 차감 후)
+- [ ] US-090: CEX-DEX Shadow 검증
+
+### Phase M: 로컬 ML 시그널 파이프라인 — US-091~096
+
+- [ ] US-091: ML 피처 파이프라인 (orderbook/volatility/volume/regime/execution)
+- [ ] US-092: XGBoost 학습 루프 (주간 배치, optuna HPO)
+- [ ] US-093: ONNX 내보내기 + 버전관리 (onnxmltools, opset 관리)
+- [ ] US-094: ONNX Runtime 추론 통합 (<1ms 보장, SignalGenerator 연동)
+- [ ] US-095: ML 시그널 백테스트 (walk-forward A/B 비교)
+- [ ] US-096: Production Canary (Paper→Shadow ML 시그널 검증)
+
 ### Phase F: 최종 검수 — US-054~056, US-080 (LAST — 전 Phase 완료 후 진입)
 
 - [x] US-054: 프로그레시브 Shadow (1H→2H→6H→12H→24H→72H) — 42 tests, 3575 total PASS, Shadow 580T/67.2%WR/+$2203.92
 - [ ] US-055: LiveGate 자동 평가 확인
 - [ ] US-056: Live 모드 전환 (사용자 승인)
-- [ ] US-080: 종합 검사지 기반 최종 감사 (160항목 체크리스트)
+- [ ] US-080: 종합 검사지 기반 최종 감사 (178항목 체크리스트)
 
 ---
 

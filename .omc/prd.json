@@ -2,9 +2,9 @@
   "project": "LEVIATHAN Arbitrage Engine",
   "version": "2.0",
   "created": "2026-03-08",
-  "updated": "2026-03-09",
+  "updated": "2026-03-11",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 80,
+  "total_stories": 96,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -23,7 +23,10 @@
     "H": "Dashboard Integration Complete",
     "I": "Exchange/Strategy Completeness",
     "J": "Operational Stability",
-    "F": "Final Audit — 72H Shadow to Live (LAST)"
+    "F": "Final Audit — 72H Shadow to Live (LAST)",
+    "K": "Regime Detection (ML-based HMM)",
+    "L": "DEX Real-time + Gas Integration",
+    "M": "ML Signal Pipeline (XGBoost/ONNX)"
   },
   "gap_dependency_order": "GAP9 -> GAP10 -> (GAP5,GAP6,GAP7 parallel) -> GAP3 -> GAP1,GAP2 -> GAP4",
   "stories": [
@@ -124,7 +127,7 @@
     },
     {
       "id": "US-009",
-      "title": "Bithumb 초기 스냅샷 구현",
+      "title": "Phase A 통합 검증",
       "phase": "A",
       "priority": 9,
       "passes": true,
@@ -1223,7 +1226,7 @@
     },
     {
       "id": "US-074",
-      "title": "Coinone 네이티브 WebSocket 어댑터 (CCXT 탈피)",
+      "title": "Coinone WebSocket 안정성 강화 + 재연결 로직 개선",
       "phase": "I",
       "priority": 78,
       "passes": false,
@@ -1231,11 +1234,10 @@
         "engine/src/collectors/coinone_collector.py"
       ],
       "acceptanceCriteria": [
-        "Coinone 공식 WebSocket API 직접 연결",
-        "CCXT 의존성 제거 (coinone 전용)",
-        "Orderbook 수신 + 파싱 정상",
-        "0.02% 수수료 적용 유지",
-        "pytest 전체 PASS"
+        "Coinone WS 재연결 로직 강화 (exponential backoff + jitter)",
+        "연결 끊김 시 자동 복구 + 데이터 갭 감지",
+        "Heartbeat/ping-pong 프레임 정상 처리",
+        "24H 연속 실행 안정성 테스트 통과"
       ]
     },
     {
@@ -1326,6 +1328,304 @@
         "10개 카테고리 160항목 전체 PASS",
         "5팀 분담 실행 + 크로스체크 완료",
         "FAIL 항목 0건 → Live 전환 승인"
+      ]
+    },
+    {
+      "id": "US-081",
+      "title": "ML 의존성 + HMM 3-regime 설계",
+      "phase": "K",
+      "priority": 85,
+      "passes": false,
+      "files": [
+        "engine/pyproject.toml",
+        "engine/src/tuning/regime_detector.py"
+      ],
+      "acceptanceCriteria": [
+        "hmmlearn/sklearn pyproject.toml [ml] optional dep 추가",
+        "MarketRegime enum 확장 (CALM/NORMAL/VOLATILE)",
+        "GaussianHMM 3-state 모델 설계 완료"
+      ]
+    },
+    {
+      "id": "US-082",
+      "title": "레짐 피처 엔지니어링",
+      "phase": "K",
+      "priority": 86,
+      "passes": false,
+      "dependencies": [
+        "US-081"
+      ],
+      "files": [
+        "engine/src/ml/feature_pipeline.py",
+        "engine/src/tuning/regime_detector.py"
+      ],
+      "acceptanceCriteria": [
+        "volatility(실현/역사), spread(bid-ask), volume(z-score) 피처 추출",
+        "momentum(rolling mean), order flow imbalance 피처 추출",
+        "피처 정규화 + 결측값 처리 파이프라인"
+      ]
+    },
+    {
+      "id": "US-083",
+      "title": "HMM 학습 파이프라인",
+      "phase": "K",
+      "priority": 87,
+      "passes": false,
+      "dependencies": [
+        "US-082"
+      ],
+      "files": [
+        "engine/src/ml/hmm_trainer.py",
+        "engine/src/ml/feature_pipeline.py"
+      ],
+      "acceptanceCriteria": [
+        "TimescaleDB → 피처 추출 → GaussianHMM fit 파이프라인",
+        "전이 행렬 캐시 + 주간 배치 학습 스케줄러",
+        "HMM predict <2ms 레이턴시 확인"
+      ]
+    },
+    {
+      "id": "US-084",
+      "title": "레짐→시그널 통합",
+      "phase": "K",
+      "priority": 88,
+      "passes": false,
+      "dependencies": [
+        "US-083"
+      ],
+      "files": [
+        "engine/src/core/signal.py",
+        "engine/src/tuning/regime_detector.py"
+      ],
+      "acceptanceCriteria": [
+        "SignalGenerator에 regime 필터 추가",
+        "MIN_EDGE_BPS를 regime별 조정 (CALM:3, NORMAL:5, VOLATILE:8)",
+        "레짐 전환 시 시그널 생성 로직 정상 동작"
+      ]
+    },
+    {
+      "id": "US-085",
+      "title": "Walk-forward 레짐 검증",
+      "phase": "K",
+      "priority": 89,
+      "passes": false,
+      "dependencies": [
+        "US-084"
+      ],
+      "files": [
+        "engine/src/analysis/walk_forward.py",
+        "engine/tests/test_regime_ml.py"
+      ],
+      "acceptanceCriteria": [
+        "레짐 전환 시점 vs 성과 상관분석 완료",
+        "백테스트에서 regime 효과 측정 (PnL 개선 확인)",
+        "Walk-forward 검증 PASS"
+      ]
+    },
+    {
+      "id": "US-086",
+      "title": "실시간 가스비 오라클",
+      "phase": "L",
+      "priority": 90,
+      "passes": false,
+      "files": [
+        "engine/src/infra/dex/gas_oracle.py",
+        "engine/pyproject.toml"
+      ],
+      "acceptanceCriteria": [
+        "Ethereum/Solana/Polygon 가스비 실시간 조회",
+        "30초 캐시 + fallback 고정값",
+        "[dex] optional dependency (web3>=6.15) 추가"
+      ]
+    },
+    {
+      "id": "US-087",
+      "title": "CostCalculator DEX 확장",
+      "phase": "L",
+      "priority": 91,
+      "passes": false,
+      "dependencies": [
+        "US-086"
+      ],
+      "files": [
+        "engine/src/friction/cost_calculator.py",
+        "engine/src/friction/dex_cost.py"
+      ],
+      "acceptanceCriteria": [
+        "DEX LP fee + gas + MEV 추정(2-5bps) + bridge cost 통합",
+        "CostCalculator에 DEX 경로 포함",
+        "기존 CEX 경로와 독립적으로 동작"
+      ]
+    },
+    {
+      "id": "US-088",
+      "title": "Uniswap V3 실시간 가격/슬리피지",
+      "phase": "L",
+      "priority": 92,
+      "passes": false,
+      "dependencies": [
+        "US-086"
+      ],
+      "files": [
+        "engine/src/infra/dex/uniswap_v3.py"
+      ],
+      "acceptanceCriteria": [
+        "slot0 → 실시간 가격 조회",
+        "liquidity → VWAP 슬리피지 추정",
+        "기존 스켈레톤 확장 (Web3 + ABI 활용)"
+      ]
+    },
+    {
+      "id": "US-089",
+      "title": "CEX-DEX 스프레드 스캐너",
+      "phase": "L",
+      "priority": 93,
+      "passes": false,
+      "dependencies": [
+        "US-087",
+        "US-088"
+      ],
+      "files": [
+        "engine/src/strategies/cex_dex.py",
+        "engine/src/core/signal.py"
+      ],
+      "acceptanceCriteria": [
+        "CEX orderbook vs DEX pool price 비교",
+        "net spread (가스비 차감 후) 계산",
+        "시그널 생성 + SignalGenerator 통합"
+      ]
+    },
+    {
+      "id": "US-090",
+      "title": "CEX-DEX Shadow 검증",
+      "phase": "L",
+      "priority": 94,
+      "passes": false,
+      "dependencies": [
+        "US-089"
+      ],
+      "files": [
+        "engine/tests/test_cex_dex_shadow.py",
+        "engine/src/strategies/cex_dex.py"
+      ],
+      "acceptanceCriteria": [
+        "Shadow 모드에서 CEX-DEX 전략 실행",
+        "PnL 측정 + 가스비 정확도 검증",
+        "10분 Shadow PASS (crash=0, PnL>0)"
+      ]
+    },
+    {
+      "id": "US-091",
+      "title": "ML 피처 파이프라인 확장",
+      "phase": "M",
+      "priority": 95,
+      "passes": false,
+      "dependencies": [
+        "US-085"
+      ],
+      "files": [
+        "engine/src/ml/feature_pipeline.py",
+        "engine/src/ml/feature_store.py"
+      ],
+      "acceptanceCriteria": [
+        "orderbook(spread/depth L1-L5), volatility(1m/5m/1h) 피처",
+        "volume(VWAP ratio), regime(HMM state), execution(fill rate) 피처",
+        "피처 저장소 + drift 감지 파이프라인"
+      ]
+    },
+    {
+      "id": "US-092",
+      "title": "XGBoost 학습 루프",
+      "phase": "M",
+      "priority": 96,
+      "passes": false,
+      "dependencies": [
+        "US-091"
+      ],
+      "files": [
+        "engine/src/ml/xgb_trainer.py",
+        "engine/pyproject.toml"
+      ],
+      "acceptanceCriteria": [
+        "주간 배치: TimescaleDB → 피처 추출 → XGBoost train",
+        "optuna HPO (하이퍼파라미터 최적화) 통합",
+        "[ml] optional dep에 xgboost>=2.0 추가"
+      ]
+    },
+    {
+      "id": "US-093",
+      "title": "ONNX 내보내기 + 버전관리",
+      "phase": "M",
+      "priority": 97,
+      "passes": false,
+      "dependencies": [
+        "US-092"
+      ],
+      "files": [
+        "engine/src/ml/onnx_exporter.py",
+        "engine/models/"
+      ],
+      "acceptanceCriteria": [
+        "onnxmltools로 XGBoost→ONNX 변환",
+        "opset 버전 관리 + 모델 파일 저장소",
+        "engine/models/ 디렉토리 구조 확립"
+      ]
+    },
+    {
+      "id": "US-094",
+      "title": "ONNX Runtime 추론 통합",
+      "phase": "M",
+      "priority": 98,
+      "passes": false,
+      "dependencies": [
+        "US-093"
+      ],
+      "files": [
+        "engine/src/ml/onnx_runtime.py",
+        "engine/src/core/signal.py"
+      ],
+      "acceptanceCriteria": [
+        "InferenceSession 글로벌 캐시",
+        "predict_signal() <1ms 보장",
+        "SignalGenerator에 ML 스코어 통합"
+      ]
+    },
+    {
+      "id": "US-095",
+      "title": "ML 시그널 백테스트",
+      "phase": "M",
+      "priority": 99,
+      "passes": false,
+      "dependencies": [
+        "US-094"
+      ],
+      "files": [
+        "engine/src/analysis/ml_backtest.py",
+        "engine/tests/test_ml_signal.py"
+      ],
+      "acceptanceCriteria": [
+        "walk-forward ML 랭킹 시그널 vs 기존 시그널 비교",
+        "A/B 테스트 프레임워크 구축",
+        "ML 시그널 PnL delta > 0 확인"
+      ]
+    },
+    {
+      "id": "US-096",
+      "title": "Production Canary (ML 시그널)",
+      "phase": "M",
+      "priority": 100,
+      "passes": false,
+      "dependencies": [
+        "US-095"
+      ],
+      "files": [
+        "engine/src/ml/canary.py",
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "Paper → Shadow 모드에서 ML 시그널 검증",
+        "기존 시그널 대비 PnL 개선 확인 후 활성화",
+        "Canary 10% → 50% → 100% 단계적 전환"
       ]
     }
   ]

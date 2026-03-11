@@ -214,10 +214,12 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 커스텀 에이전트 (.claude/agents/)
 
-- `quant-validator` — 슬리피지/마찰력/수익성 수학 검증
-- `shadow-tester` — Shadow 모드 실 실행 및 결과 분석
+- `quant-validator` — 슬리피지/마찰력/수익성 수학 검증 + ML 모델 수학 검증
+- `shadow-tester` — Shadow 모드 실 실행 및 결과 분석 + ML Canary 검증
 - `ssot-keeper` — SSOT.md 유일 관리자
 - `browser-verifier` — Chrome 브라우저 대시보드 통합 검증
+- `ml-pipeline` — HMM 레짐 분류, XGBoost 학습, ONNX 추론 파이프라인
+- `dex-specialist` — 가스비 오라클, Uniswap V3, CEX-DEX 스프레드 통합
 
 ## 기술 스택 + 파일 구조
 
@@ -250,11 +252,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **다음 Phase**: G (전략 수익성 복원) → H → I → J → F(최종검수, LAST)
-- **Tests**: 3,575 passed, 0 failures, 89% coverage
-- **PRD**: `.omc/prd.json` (80개 US, 18 Phases)
+- **다음 Phase**: H (대시보드 통합, US-072 남음) → I → J → K → L → M → F(최종검수, LAST)
+- **Tests**: 3,656 passed, 0 failures
+- **PRD**: `.omc/prd.json` (96개 US, 21 Phases)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: US-066 (Stale Orderbook 감지 + 블랙리스트 — Phase G)
+- **다음 작업**: US-072 (계좌 정보/총자산/거래소별 잔고 — Phase H)
 
 ## 실행 워크플로우 (ralph autopilot)
 

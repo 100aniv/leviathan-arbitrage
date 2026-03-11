@@ -21,11 +21,17 @@ model: sonnet
 - `engine/src/core/signal.py` — SignalGenerator + CEXOrderbookSlippage
 
 ## 검증 체크리스트
-1. PowerLaw: `impact = k * size^gamma` (k=1.0, gamma=0.5)
+1. PowerLaw: `impact = k * size^gamma` (k=0.0, gamma=0.5) — k=0.0이므로 PowerLaw 비활성. CEXOrderbookSlippage가 유일한 슬리피지 소스
 2. 거래소별 수수료: Binance 0.10%, Upbit 0.05%, Bithumb 0.25%, Coinone 0.02%
 3. 네트워크 비용: 동적 transfer_coin 기반 (BTC=$1.39, ETH=$5.60, XRP=$0.40)
 4. KRW/USDT 환율: dual-source (Upbit+Bithumb API, 30s 갱신, ±10% sanity)
 5. 이중 슬리피지 금지: SignalGenerator에서만 슬리피지 적용, PaperExecutor는 ZERO
+
+## ML 모델 검증 (Phase K/M)
+- HMM 레짐 분류: 전이 행렬 안정성, 3-state(CALM/NORMAL/VOLATILE) 분류 정확도
+- 피처 분포 검증: feature drift 감지, 정규화 범위 이상 여부
+- XGBoost/ONNX 수학 검증: 예측값 범위, 피처 중요도 합리성
+- ML 시그널 vs 기존 시그널 A/B 비교: PnL delta, 승률 변화 통계적 유의성
 
 ## 출력 형식
 ```
