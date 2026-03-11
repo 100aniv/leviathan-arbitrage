@@ -491,10 +491,6 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] US-119: IOC 주문 타입 (IOC 리밋 우선 → 타임아웃 시 마켓 폴백)
 - [ ] US-120: 인벤토리 리밸런싱 통합 확인 (inventory_rebalancer.py 활성화 + 드리프트 알람)
 
-**Wave 4 — 인프라** *(실행 순서: K/L/M 완료 후, Phase F 직전)*
-- [ ] US-121: Loki + Promtail 로그 집계 (Grafana 연동, 크로스 컨테이너 검색)
-- [ ] US-122: WAL 백업 + PITR (RPO <1시간, 주간 복원 검증)
-
 ### Phase K: Regime Detection 기반 구축 — US-081~085
 
 - [ ] US-081: ML 의존성 + HMM 3-regime 설계 (hmmlearn/sklearn, MarketRegime enum 확장)
@@ -519,6 +515,11 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] US-094: ONNX Runtime 추론 통합 (<1ms 보장, SignalGenerator 연동)
 - [ ] US-095: ML 시그널 백테스트 (walk-forward A/B 비교)
 - [ ] US-096: Production Canary (Paper→Shadow ML 시그널 검증)
+
+### Phase J-EXT Wave 4 — 인프라 (K/L/M 완료 후 실행) — US-121~122
+
+- [ ] US-121: Loki + Promtail 로그 집계 (Grafana 연동, 크로스 컨테이너 검색)
+- [ ] US-122: WAL 백업 + PITR (RPO <1시간, 주간 복원 검증)
 
 ### Phase F: 최종 검수 — US-054~057, US-077, US-079~080 (LAST — 전 Phase 완료 후 진입)
 
