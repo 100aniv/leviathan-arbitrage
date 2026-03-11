@@ -69,7 +69,9 @@ export default function AlertsPage() {
   useEffect(() => {
     const engineUrl =
       process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8000";
-    const wsUrl = engineUrl.replace(/^http/, "ws") + "/ws/feed";
+    const wsBase = engineUrl.replace(/^http/, "ws") + "/ws/feed";
+    const token = typeof localStorage !== "undefined" ? localStorage.getItem("leviathan_token") : null;
+    const wsUrl = token ? `${wsBase}?token=${token}` : wsBase;
 
     let ws: WebSocket;
     try {

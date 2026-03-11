@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 from fastapi import Depends, HTTPException
+from typing import Any
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 logger = logging.getLogger(__name__)
@@ -98,3 +99,27 @@ def require_auth(
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def verify_ws_token(websocket: Any) -> str | None:
+    """
+    Verify JWT for WebSocket connections.
+
+    Checks in order:
+    1. ?token= query parameter
+    2. leviathan_token cookie (dashboard compatibility)
+
+    Returns username if valid, None if invalid/missing.
+    """
+    token = websocket.query_params.get("token")
+    if not token:
+        token = websocket.cookies.get("leviathan_token")
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
+        return str(payload["sub"])
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None

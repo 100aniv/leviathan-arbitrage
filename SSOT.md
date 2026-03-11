@@ -28,13 +28,13 @@
 
 ```
 Phase:        J-EXT (보안+UX+엔진+인프라) ← CURRENT  [Phase I ✅ 완료]
-테스트:       3,747 passed, 0 failed
+테스트:       3,799 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    96a872a Phase I US-076: 전략/거래소 완성도 전수 감사 완료
-다음 작업:    Phase J-EXT — US-106 (WebSocket JWT 인증)
-완료된 US:    US-065~076 (Shadow 데이터 브리지 + 대시보드 UI 완성 + 계좌/잔고 + 수집기 강화 + futures_futures 활성화 + 완성도 감사)
+다음 작업:    Phase J-EXT — US-107 (모드 전환 UI)
+완료된 US:    US-065~076, US-105~106 (Shadow 데이터 브리지 + 대시보드 UI 완성 + 계좌/잔고 + 수집기 강화 + futures_futures 활성화 + 완성도 감사 + JWT 보안 강화 + WS JWT 인증)
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
@@ -161,7 +161,8 @@ Engine.run()
 | GET | `/api/v1/portfolio-summary` | JWT | 총자산 + 거래소별 잔고 (VirtualBalanceTracker 기반, exchange_status fallback) |
 | GET | `/exchanges` | JWT | 거래소 연결 상태 + 잔고 (balance.USDT) |
 | GET | `/risk/metrics` | JWT | Kill Switch/Circuit Breaker 상태 + MDD |
-| WS | `/ws` | JWT cookie | 실시간 state_update 브로드캐스트 (1s 간격, shadow_stats 포함) |
+| WS | `/ws` | JWT (query/cookie) | 실시간 state_update 브로드캐스트 (1s 간격, shadow_stats 포함) |
+| WS | `/ws/feed` | JWT (query/cookie) | 실시간 이벤트 피드 (거래/신호/경고 브로드캐스트) |
 
 **Shadow 데이터 흐름**: `ShadowMode._metrics` → `get_snapshot()` (thread-safe dict) → `EngineContext.shadow_mode` → `/api/v1/shadow/stats` (REST) + WS `_dashboard_feed_loop` (1s 간격) → `ShadowPanel.tsx` 렌더링
 
@@ -471,7 +472,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 **Wave 1 — 보안 (간단, 먼저)**
 - [x] US-105: JWT 시크릿 기본값 제거 + bcrypt 비밀번호 해싱 (기본값 fallback 제거 → 미설정 시 서버 거부, 평문→bcrypt) ✅
-- [ ] US-106: WebSocket 피드 JWT 인증 (WS 핸드셰이크 시 토큰 검증)
+- [x] US-106: WebSocket 피드 JWT 인증 (WS 핸드셰이크 시 토큰 검증) ✅
 
 **Wave 2 — 대시보드 UX**
 - [ ] US-107: 모드 전환 UI 연결 + 친화적 명칭 (ModeSwitch→Overview 헤더, "시뮬레이션/연습/실거래", Live 전환 시 LiveGate 체크)
@@ -561,6 +562,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | Phase I US-073 | Bithumb 누적 orderbook 방식 채택 | REST 스냅샷 후 증분 적용(full_snapshot→updates). 허위 스프레드 근본 해결. stale 5초 감지 + parallel re-sync로 데이터 신뢰성 확보 |
 | Phase I US-074 | 지터 백오프 공통화 + Coinone watchdog | 재연결 지터(jitter backoff) 패턴 공통화. Coinone watchdog 120초, app PING 25분으로 장시간 연결 안정성 확보. symbol stale 감지 추가 |
 | Phase I US-075 | OKX/Bybit futures -SWAP 접미사 + DEFAULT_EXCHANGES 8→10 | okx_futures/bybit_futures 수집기 신설. 심볼 형식: BTC-USDT-SWAP (OKX), BTCUSDT (Bybit). futures_futures 전략 활성화 조건(2+ 선물 거래소) 충족 |
+| Phase J-EXT US-106 | WS JWT: query param ?token= 우선 + cookie leviathan_token fallback | 브라우저 WebSocket API가 커스텀 헤더 미지원. 업계 표준(Socket.IO, Slack). accept()→close(4003) 패턴으로 미인증 연결 즉시 거부 |
 
 ---
 

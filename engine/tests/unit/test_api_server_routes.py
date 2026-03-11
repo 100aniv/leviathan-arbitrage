@@ -450,3 +450,193 @@ class TestEngineContext:
         from decimal import Decimal
         ctx = EngineContext()
         assert ctx.realized_pnl == Decimal("0")
+
+
+# ---------------------------------------------------------------------------
+# verify_ws_token unit tests (US-106)
+# ---------------------------------------------------------------------------
+
+class TestVerifyWsToken:
+    """Unit tests for verify_ws_token function."""
+
+    def test_valid_token_in_query_params(self):
+        from src.api.auth import verify_ws_token, create_token
+        token = create_token("testuser")
+        mock_ws = MagicMock()
+        mock_ws.query_params = {"token": token}
+        mock_ws.cookies = {}
+        result = verify_ws_token(mock_ws)
+        assert result == "testuser"
+
+    def test_valid_token_in_cookie(self):
+        from src.api.auth import verify_ws_token, create_token
+        token = create_token("testuser")
+        mock_ws = MagicMock()
+        mock_ws.query_params = {}
+        mock_ws.cookies = {"leviathan_token": token}
+        result = verify_ws_token(mock_ws)
+        assert result == "testuser"
+
+    def test_query_param_takes_priority_over_cookie(self):
+        from src.api.auth import verify_ws_token, create_token
+        token1 = create_token("user1")
+        token2 = create_token("user2")
+        mock_ws = MagicMock()
+        mock_ws.query_params = {"token": token1}
+        mock_ws.cookies = {"leviathan_token": token2}
+        result = verify_ws_token(mock_ws)
+        assert result == "user1"
+
+    def test_no_token_returns_none(self):
+        from src.api.auth import verify_ws_token
+        mock_ws = MagicMock()
+        mock_ws.query_params = {}
+        mock_ws.cookies = {}
+        result = verify_ws_token(mock_ws)
+        assert result is None
+
+    def test_invalid_token_returns_none(self):
+        from src.api.auth import verify_ws_token
+        mock_ws = MagicMock()
+        mock_ws.query_params = {"token": "not.a.valid.jwt"}
+        mock_ws.cookies = {}
+        result = verify_ws_token(mock_ws)
+        assert result is None
+
+    def test_expired_token_returns_none(self):
+        import jwt as pyjwt
+        from datetime import datetime, timedelta, timezone
+        from src.api.auth import verify_ws_token, _JWT_SECRET, _JWT_ALGORITHM
+        expired = pyjwt.encode(
+            {"sub": "user", "exp": datetime.now(timezone.utc) - timedelta(hours=1)},
+            _JWT_SECRET, algorithm=_JWT_ALGORITHM
+        )
+        mock_ws = MagicMock()
+        mock_ws.query_params = {"token": expired}
+        mock_ws.cookies = {}
+        result = verify_ws_token(mock_ws)
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# WebSocket JWT Authentication (US-106)
+# ---------------------------------------------------------------------------
+
+class TestWebSocketAuth:
+    """Test JWT authentication for WebSocket endpoints."""
+
+    def _get_valid_token(self) -> str:
+        """Generate a valid JWT token for testing."""
+        from src.api.auth import create_token
+        return create_token("admin")
+
+    def _get_expired_token(self) -> str:
+        """Generate an expired JWT token for testing."""
+        import jwt as pyjwt
+        from datetime import datetime, timedelta, timezone
+        from src.api.auth import _JWT_SECRET, _JWT_ALGORITHM
+        payload = {
+            "sub": "admin",
+            "exp": datetime.now(timezone.utc) - timedelta(hours=1),
+            "iat": datetime.now(timezone.utc) - timedelta(hours=2),
+        }
+        return pyjwt.encode(payload, _JWT_SECRET, algorithm=_JWT_ALGORITHM)
+
+    def test_ws_with_valid_token_query_param(self):
+        """Valid token via ?token= query param allows WS connection."""
+        ctx = _make_context()
+        app = create_app(ctx)
+        token = self._get_valid_token()
+        from starlette.testclient import TestClient
+        client = TestClient(app)
+        with client.websocket_connect(f"/ws?token={token}") as ws:
+            ws.send_text("hello")
+            data = ws.receive_json()
+            assert data["type"] == "ack"
+
+    def test_ws_with_valid_token_cookie(self):
+        """Valid token via leviathan_token cookie allows WS connection."""
+        ctx = _make_context()
+        app = create_app(ctx)
+        token = self._get_valid_token()
+        from starlette.testclient import TestClient
+        client = TestClient(app, cookies={"leviathan_token": token})
+        with client.websocket_connect("/ws") as ws:
+            ws.send_text("hello")
+            data = ws.receive_json()
+            assert data["type"] == "ack"
+
+    def test_ws_without_token_rejected(self):
+        """WS connection without token is rejected with close code 4003."""
+        ctx = _make_context()
+        app = create_app(ctx)
+        from starlette.testclient import TestClient
+        from starlette.websockets import WebSocketDisconnect
+        client = TestClient(app)
+        with pytest.raises(Exception):
+            with client.websocket_connect("/ws") as ws:
+                ws.receive_json()
+
+    def test_ws_with_invalid_token_rejected(self):
+        """WS connection with invalid token is rejected."""
+        ctx = _make_context()
+        app = create_app(ctx)
+        from starlette.testclient import TestClient
+        client = TestClient(app)
+        with pytest.raises(Exception):
+            with client.websocket_connect("/ws?token=invalid.token.here") as ws:
+                ws.receive_json()
+
+    def test_ws_with_expired_token_rejected(self):
+        """WS connection with expired token is rejected."""
+        ctx = _make_context()
+        app = create_app(ctx)
+        token = self._get_expired_token()
+        from starlette.testclient import TestClient
+        client = TestClient(app)
+        with pytest.raises(Exception):
+            with client.websocket_connect(f"/ws?token={token}") as ws:
+                ws.receive_json()
+
+    def test_ws_feed_with_valid_token(self):
+        """/ws/feed accepts authenticated connections."""
+        ctx = _make_context()
+        app = create_app(ctx)
+        token = self._get_valid_token()
+        from starlette.testclient import TestClient
+        client = TestClient(app)
+        with client.websocket_connect(f"/ws/feed?token={token}") as ws:
+            ws.send_text("ping")
+            data = ws.receive_json()
+            assert data["type"] == "ack"
+
+    def test_ws_feed_without_token_rejected(self):
+        """/ws/feed rejects unauthenticated connections."""
+        ctx = _make_context()
+        app = create_app(ctx)
+        from starlette.testclient import TestClient
+        client = TestClient(app)
+        with pytest.raises(Exception):
+            with client.websocket_connect("/ws/feed") as ws:
+                ws.receive_json()
+
+    def test_ws_strategies_with_valid_token(self):
+        """/ws/strategies accepts authenticated connections."""
+        ctx = _make_context(strategies={"s1": {"id": "s1", "enabled": True}})
+        app = create_app(ctx)
+        token = self._get_valid_token()
+        from starlette.testclient import TestClient
+        client = TestClient(app)
+        with client.websocket_connect(f"/ws/strategies?token={token}") as ws:
+            data = ws.receive_json()
+            assert data["type"] == "state_update"
+
+    def test_ws_strategies_without_token_rejected(self):
+        """/ws/strategies rejects unauthenticated connections."""
+        ctx = _make_context()
+        app = create_app(ctx)
+        from starlette.testclient import TestClient
+        client = TestClient(app)
+        with pytest.raises(Exception):
+            with client.websocket_connect("/ws/strategies") as ws:
+                ws.receive_json()

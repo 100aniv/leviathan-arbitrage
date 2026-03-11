@@ -1641,7 +1641,7 @@
       "title": "WebSocket 피드 JWT 인증",
       "phase": "J-EXT",
       "priority": 102,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-105"
       ],

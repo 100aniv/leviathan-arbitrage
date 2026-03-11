@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from src.api.auth import DASHBOARD_USER, verify_password, create_token
+from src.api.auth import DASHBOARD_USER, verify_password, create_token, verify_ws_token
 from src.api.middleware import IPWhitelistMiddleware, RateLimitMiddleware
 from src.api.websocket import ConnectionManager
 
@@ -197,7 +197,13 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
+        user = verify_ws_token(websocket)
+        if user is None:
+            await websocket.accept()
+            await websocket.close(code=4003, reason="Authentication required")
+            return
         await ws_manager.connect(websocket)
+        logger.info("WebSocket /ws authenticated — user: %s", user)
         try:
             while True:
                 data = await websocket.receive_text()
@@ -210,7 +216,13 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
 
     @app.websocket("/ws/feed")
     async def websocket_feed_endpoint(websocket: WebSocket) -> None:
+        user = verify_ws_token(websocket)
+        if user is None:
+            await websocket.accept()
+            await websocket.close(code=4003, reason="Authentication required")
+            return
         await ws_manager.connect(websocket)
+        logger.info("WebSocket /ws/feed authenticated — user: %s", user)
         try:
             while True:
                 data = await websocket.receive_text()
@@ -223,7 +235,13 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
 
     @app.websocket("/ws/strategies")
     async def websocket_strategies_endpoint(websocket: WebSocket) -> None:
+        user = verify_ws_token(websocket)
+        if user is None:
+            await websocket.accept()
+            await websocket.close(code=4003, reason="Authentication required")
+            return
         await ws_manager.connect(websocket)
+        logger.info("WebSocket /ws/strategies authenticated — user: %s", user)
         try:
             from src.api.routes.strategies import _get_strategy_list
             await ws_manager.send_personal(websocket, {

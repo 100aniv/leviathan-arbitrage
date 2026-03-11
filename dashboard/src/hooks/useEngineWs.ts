@@ -40,7 +40,9 @@ export function useEngineWs(): UseEngineWsReturn {
     function connect() {
       if (destroyedRef.current) return;
 
-      const url = getWsUrl();
+      const baseUrl = getWsUrl();
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("leviathan_token") : null;
+      const url = token ? `${baseUrl}?token=${token}` : baseUrl;
       let ws: WebSocket;
       try {
         ws = new WebSocket(url);

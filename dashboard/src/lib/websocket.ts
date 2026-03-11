@@ -28,7 +28,10 @@ export class WebSocketManager {
     this.setState("connecting");
 
     try {
-      this.ws = new WebSocket(this.url);
+      const token = typeof localStorage !== "undefined" ? localStorage.getItem("leviathan_token") : null;
+      const sep = this.url.includes("?") ? "&" : "?";
+      const urlWithAuth = token ? `${this.url}${sep}token=${token}` : this.url;
+      this.ws = new WebSocket(urlWithAuth);
     } catch {
       this.scheduleReconnect();
       return;
