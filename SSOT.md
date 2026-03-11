@@ -2,7 +2,8 @@
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-11 (Phase J-EXT 신설: 6-관점 GAP 분석 기반 18개 US 추가) | 최신 커밋: `96a872a`
-> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (114개 User Stories)
+> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (113개 User Stories)
+> **실행 순서**: J-EXT Wave1(보안) → Wave2(UX) → Wave3(엔진) → K(Regime) → L(DEX) → M(ML) → Wave4(인프라) → F(LAST)
 
 ---
 
@@ -26,13 +27,13 @@
 ## 2. 현재 상태
 
 ```
-Phase:        J (운영 안정성) ← CURRENT  [Phase I ✅ 완료]
+Phase:        J-EXT (보안+UX+엔진+인프라) ← CURRENT  [Phase I ✅ 완료]
 테스트:       3,747 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    96a872a Phase I US-076: 전략/거래소 완성도 전수 감사 완료
-다음 작업:    Phase J — US-077 (문서 정합성 감사)
+다음 작업:    Phase J-EXT — US-106 (WebSocket JWT 인증)
 완료된 US:    US-065~076 (Shadow 데이터 브리지 + 대시보드 UI 완성 + 계좌/잔고 + 수집기 강화 + futures_futures 활성화 + 완성도 감사)
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
@@ -463,13 +464,6 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-075: futures_futures 전략 활성화 (OKX/Bybit futures 수집기, DEFAULT_EXCHANGES 8→10)
 - [x] US-076: 전략/거래소 완성도 전수 감사
 
-### Phase J: 운영 안정성 + 문서 동기화 — US-057, US-077~079
-
-- [ ] US-077: 문서 정합성 감사 (SSOT↔PRD↔구현 불일치 전수 조사)
-- [ ] US-078: 장기 Shadow 안정성 테스트 (1H→6H→12H)
-- [ ] US-079: 운영 Runbook 업데이트 + 장애 대응 매뉴얼
-- [ ] US-057: 운영 문서 최종화
-
 ### Phase J-EXT: 보안+UX+엔진+인프라 강화 (6-관점 GAP 분석) — US-105~122
 
 > 6개 관점(UX, 퀀트, DevOps, PM, 보안, 경쟁분석) 통합 GAP 분석 결과.
@@ -497,7 +491,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] US-119: IOC 주문 타입 (IOC 리밋 우선 → 타임아웃 시 마켓 폴백)
 - [ ] US-120: 인벤토리 리밸런싱 통합 확인 (inventory_rebalancer.py 활성화 + 드리프트 알람)
 
-**Wave 4 — 인프라**
+**Wave 4 — 인프라** *(실행 순서: K/L/M 완료 후, Phase F 직전)*
 - [ ] US-121: Loki + Promtail 로그 집계 (Grafana 연동, 크로스 컨테이너 검색)
 - [ ] US-122: WAL 백업 + PITR (RPO <1시간, 주간 복원 검증)
 
@@ -526,9 +520,12 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] US-095: ML 시그널 백테스트 (walk-forward A/B 비교)
 - [ ] US-096: Production Canary (Paper→Shadow ML 시그널 검증)
 
-### Phase F: 최종 검수 — US-054~056, US-080 (LAST — 전 Phase 완료 후 진입)
+### Phase F: 최종 검수 — US-054~057, US-077, US-079~080 (LAST — 전 Phase 완료 후 진입)
 
-- [x] US-054: 프로그레시브 Shadow (1H→2H→6H→12H→24H→72H) — 42 tests, 3575 total PASS, Shadow 580T/67.2%WR/+$2203.92
+- [ ] US-054: Progressive Shadow 재실행 (J-EXT/K/L/M 포함된 최신 엔진, 72H 전 단계) — 기존: 580T/67.2%WR/+$2203.92
+- [ ] US-077: 문서 정합성 최종 감사 (SSOT↔PRD↔구현 전수 조사)
+- [ ] US-057: 운영 문서 최종화
+- [ ] US-079: 운영 Runbook 업데이트 + 장애 대응 매뉴얼
 - [ ] US-055: LiveGate 자동 평가 확인
 - [ ] US-056: Live 모드 전환 (사용자 승인)
 - [ ] US-080: 종합 검사지 기반 최종 감사 (178항목 체크리스트)

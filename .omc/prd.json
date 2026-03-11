@@ -2,9 +2,9 @@
   "project": "LEVIATHAN Arbitrage Engine",
   "version": "2.0",
   "created": "2026-03-08",
-  "updated": "2026-03-11",
+  "updated": "2026-03-12",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 114,
+  "total_stories": 113,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -22,7 +22,7 @@
     "G": "Strategy Profitability Recovery",
     "H": "Dashboard Integration Complete",
     "I": "Exchange/Strategy Completeness",
-    "J": "Operational Stability",
+    "J": "Merged into Phase F (US-057/077/079 이동, US-078 삭제)",
     "J-EXT": "Security + UX + Engine + Infra Enhancement (6-Perspective GAP Analysis)",
     "F": "Final Audit — 72H Shadow to Live (LAST)",
     "K": "Regime Detection (ML-based HMM)",
@@ -997,8 +997,8 @@
       "title": "프로그레시브 Shadow (1H→2H→6H→12H→24H→72H 단계별 자동 연장)",
       "phase": "F",
       "priority": 65,
-      "passes": true,
-      "notes": "Phase F: ProgressiveShadowOrchestrator 6-stage gate. 42 tests PASS, 3575 total. Shadow 10min: 580T/67.2%WR/+$2203.92/crash=0. Code review: 1 CRITICAL + 3 HIGH fixed. DB migration 003 added.",
+      "passes": false,
+      "notes": "J-EXT/K/L/M 구현 후 재실행 필수. 기존 결과: 580T/67.2%WR/+$2203.92/crash=0. Phase F: ProgressiveShadowOrchestrator 6-stage gate. 42 tests PASS, 3575 total. DB migration 003 added.",
       "files": [
         "engine/src/modes/progressive_shadow.py",
         "engine/src/modes/shadow.py",
@@ -1047,9 +1047,9 @@
     {
       "id": "US-057",
       "title": "최종 문서화 + 운영 가이드",
-      "phase": "J",
+      "phase": "F",
       "priority": 68,
-      "passes": true,
+      "passes": false,
       "acceptanceCriteria": [
         "SSOT.md 최종 업데이트 (Phase Live)",
         "운영 가이드 문서 (시작/중지/모니터링/장애대응)",
@@ -1279,9 +1279,9 @@
     {
       "id": "US-077",
       "title": "문서 정합성 최종 감사 (SSOT↔PRD↔구현 전수 조사)",
-      "phase": "J",
+      "phase": "F",
       "priority": 81,
-      "passes": true,
+      "passes": false,
       "acceptanceCriteria": [
         "SSOT.md 모든 섹션 vs 실제 코드 대조",
         "prd.json 모든 US vs 실제 구현 대조",
@@ -1290,24 +1290,11 @@
       ]
     },
     {
-      "id": "US-078",
-      "title": "장기 Shadow 안정성 테스트 (1H→6H→12H)",
-      "phase": "J",
-      "priority": 82,
-      "passes": true,
-      "acceptanceCriteria": [
-        "1H Shadow: crash=0, PnL>0",
-        "6H Shadow: crash=0, 메모리 안정 (RSS 증가 < 50MB)",
-        "12H Shadow: crash=0, PnL>0, CPU < 80%",
-        "각 단계 결과 SSOT.md에 기록"
-      ]
-    },
-    {
       "id": "US-079",
       "title": "운영 Runbook 업데이트 + 장애 대응 매뉴얼",
-      "phase": "J",
+      "phase": "F",
       "priority": 83,
-      "passes": true,
+      "passes": false,
       "acceptanceCriteria": [
         "기존 6개 runbook 최신 코드 반영",
         "장애 시나리오별 대응 절차 문서화",
