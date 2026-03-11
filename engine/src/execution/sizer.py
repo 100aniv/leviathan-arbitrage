@@ -1,6 +1,7 @@
 """Position sizing — Kelly criterion, capital-tier aware, per-strategy limits."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
@@ -125,3 +126,72 @@ class PositionSizer:
         """
         required = self.compute_margin(leg2_position_value, leg2_leverage, cross_margin)
         return available_capital >= required
+
+
+# ---------------------------------------------------------------------------
+# US-114: Dynamic position sizer — confidence × regime × liquidity
+# ---------------------------------------------------------------------------
+
+
+class MarketRegime(StrEnum):
+    CRISIS = "crisis"
+    HIGH = "high"
+    NORMAL = "normal"
+    LOW_VOL = "low_vol"
+
+
+REGIME_MULTIPLIER: dict[MarketRegime, float] = {
+    MarketRegime.CRISIS: 0.25,
+    MarketRegime.HIGH: 0.75,
+    MarketRegime.NORMAL: 1.0,
+    MarketRegime.LOW_VOL: 1.5,
+}
+
+
+class DynamicSizer:
+    """Dynamic position sizer: base × confidence × regime × liquidity."""
+
+    def __init__(
+        self,
+        base_sizer: PositionSizer,
+        liquidity_threshold: Decimal = Decimal("10000"),
+    ) -> None:
+        self._base = base_sizer
+        self._liquidity_threshold = liquidity_threshold
+
+    @staticmethod
+    def confidence(edge_bps: float) -> float:
+        """Sigmoid mapping: 5bps→~0.5, 50bps→~1.0."""
+        return 1.0 / (1.0 + math.exp(-0.1 * (edge_bps - 10)))
+
+    @staticmethod
+    def regime_multiplier(regime: MarketRegime) -> float:
+        return REGIME_MULTIPLIER.get(regime, 1.0)
+
+    @staticmethod
+    def liquidity_factor(bid_depth_usd: Decimal, threshold: Decimal) -> float:
+        if threshold <= 0:
+            return 1.0
+        return min(1.0, float(bid_depth_usd / threshold))
+
+    def compute_dynamic_size(
+        self,
+        win_prob: Decimal,
+        win_loss_ratio: Decimal,
+        price: Decimal,
+        strategy_id: str,
+        strategy_used_capital: Decimal,
+        edge_bps: float,
+        regime: MarketRegime,
+        bid_depth_usd: Decimal,
+        kelly_multiplier: float = 0.5,
+    ) -> Decimal:
+        base = self._base.compute_size(
+            win_prob, win_loss_ratio, price, strategy_id, strategy_used_capital, kelly_multiplier
+        )
+        c = self.confidence(edge_bps)
+        r = self.regime_multiplier(regime)
+        lf = self.liquidity_factor(bid_depth_usd, self._liquidity_threshold)
+        # Clamp combined multiplier to prevent exceeding base position caps
+        combined = min(c * r * lf, 1.5)
+        return base * Decimal(str(combined))

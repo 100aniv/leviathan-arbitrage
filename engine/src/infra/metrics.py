@@ -162,6 +162,39 @@ TRADE_LOSS_CAPPED = Counter(
 )
 
 
+# ---------------------------------------------------------------------------
+# Wave 3: Dynamic sizer, slippage feedback, correlation, IOC order metrics
+# ---------------------------------------------------------------------------
+
+SLIPPAGE_ADJUSTMENT = Gauge(
+    "slippage_adjustment_factor",
+    "EMA-adjusted slippage calibration factor",
+)
+
+SLIPPAGE_ERROR = Histogram(
+    "slippage_prediction_error",
+    "Slippage prediction error distribution",
+    buckets=[0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05],
+)
+
+STRATEGY_CORRELATION = Gauge(
+    "strategy_correlation",
+    "Pairwise strategy PnL correlation",
+    ["strategy_a", "strategy_b"],
+)
+
+IOC_FILL_RATE = Gauge(
+    "ioc_fill_rate",
+    "IOC limit order fill rate vs total",
+)
+
+IOC_VS_MARKET = Histogram(
+    "ioc_vs_market_slippage_bps",
+    "IOC vs market order slippage comparison",
+    buckets=[0.5, 1, 2, 5, 10, 20, 50],
+)
+
+
 def start_metrics_server(port: int = 8000) -> None:
     """Start Prometheus metrics HTTP server on the given port."""
     start_http_server(port)

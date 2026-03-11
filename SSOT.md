@@ -27,14 +27,14 @@
 ## 2. 현재 상태
 
 ```
-Phase:        J-EXT Wave 2 (UX) ← CURRENT  [Wave 1 보안 ✅, Wave 2 Batch 1-3 ✅]
-테스트:       3,854 passed, 0 failed
+Phase:        J-EXT Wave 3 (엔진) ← CURRENT  [Wave 1 보안 ✅, Wave 2 UX ✅, Wave 3 Batch 1 ✅]
+테스트:       3,854+ passed, 0 failed (Wave 3 Batch 1: +73 tests)
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    (pending) Phase J-EXT Wave 2 Batch 3: PRE-FIX + US-111 + US-112
-다음 작업:    Phase J-EXT Wave 3 — US-114 (동적 포지션 사이징)
-완료된 US:    US-065~076, US-105~113 (Shadow 데이터 브리지 + 대시보드 UI 완성 + 계좌/잔고 + 수집기 강화 + futures_futures 활성화 + 완성도 감사 + JWT 보안 강화 + WS JWT 인증 + 모드 전환 UI + 포트폴리오 탭 + 오버뷰 개선 + 히트맵 심볼 확장 + 거래 설명 + 필터/CSV + 용어 친화화)
+최신 커밋:    (pending) Phase J-EXT Wave 3 Batch 1: US-114~119
+다음 작업:    Phase J-EXT Wave 3 Batch 2 — US-116 (TCA 모듈 + 대시보드 위젯)
+완료된 US:    US-065~076, US-105~119 (... + 동적포지션사이징 + 슬리피지피드백 + 텔레그램명령 + 상관관계모니터 + IOC원자실행)
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 

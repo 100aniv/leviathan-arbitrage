@@ -1789,7 +1789,7 @@
       "title": "동적 포지션 사이징 (신뢰도 × 레짐 × 유동성)",
       "phase": "J-EXT",
       "priority": 110,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "engine/src/execution/sizer.py",
@@ -1806,7 +1806,7 @@
       "title": "슬리피지 피드백 루프",
       "phase": "J-EXT",
       "priority": 111,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "engine/src/execution/paper.py",
@@ -1841,7 +1841,7 @@
       "title": "텔레그램 양방향 명령어",
       "phase": "J-EXT",
       "priority": 113,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "engine/src/infra/telegram_bot.py"
@@ -1859,7 +1859,7 @@
       "title": "전략 간 상관관계 모니터링",
       "phase": "J-EXT",
       "priority": 114,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "engine/src/risk/correlation_monitor.py",
@@ -1876,7 +1876,7 @@
       "title": "IOC 주문 타입",
       "phase": "J-EXT",
       "priority": 115,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "engine/src/execution/atomic.py",
