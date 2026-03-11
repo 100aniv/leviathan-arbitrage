@@ -20,6 +20,23 @@ class MarketRegime(str, Enum):
     MEDIUM = "MEDIUM"  # 정상
     HIGH = "HIGH"      # 변동성 높음
     CRISIS = "CRISIS"  # 극단 상황
+    # HMM 3-state regimes (US-081)
+    CALM = "CALM"
+    NORMAL = "NORMAL"
+    VOLATILE = "VOLATILE"
+
+
+HMM_REGIME_MAP: dict[int, MarketRegime] = {
+    0: MarketRegime.CALM,
+    1: MarketRegime.NORMAL,
+    2: MarketRegime.VOLATILE,
+}
+
+THRESHOLD_TO_HMM: dict[MarketRegime, MarketRegime] = {
+    MarketRegime.LOW: MarketRegime.CALM,
+    MarketRegime.MEDIUM: MarketRegime.NORMAL,
+    MarketRegime.HIGH: MarketRegime.VOLATILE,
+}
 
 
 class RegimeDetector:
@@ -99,3 +116,78 @@ class RegimeDetector:
             self.history.clear()
         except Exception as exc:  # noqa: BLE001
             logger.error("regime_detector.save_history failed: %s", exc)
+
+
+class HMMRegimeDetector:
+    """GaussianHMM 3-state 레짐 분류기.
+
+    US-081: 설계 + 구조. US-083에서 학습 파이프라인 구현.
+    """
+
+    N_STATES = 3
+    COVARIANCE_TYPE = "full"
+    N_ITER = 100
+
+    def __init__(self) -> None:
+        self._model: Any | None = None
+        self.current_regime = MarketRegime.NORMAL
+        self.transition_matrix: np.ndarray | None = None
+        self._fitted = False
+
+    def _load_hmmlearn(self) -> Any:
+        """Lazy import hmmlearn — [ml] optional dep."""
+        try:
+            from hmmlearn.hmm import GaussianHMM
+            return GaussianHMM
+        except ImportError:
+            logger.warning("hmmlearn not installed. Install with: pip install leviathan-engine[ml]")
+            return None
+
+    def fit(self, features: np.ndarray) -> "HMMRegimeDetector":
+        """HMM 학습 (US-083에서 본격 구현).
+
+        Parameters:
+            features: shape (n_samples, n_features) — 피처 행렬
+        """
+        GaussianHMM = self._load_hmmlearn()
+        if GaussianHMM is None:
+            raise ImportError("hmmlearn required: pip install leviathan-engine[ml]")
+
+        self._model = GaussianHMM(
+            n_components=self.N_STATES,
+            covariance_type=self.COVARIANCE_TYPE,
+            n_iter=self.N_ITER,
+            random_state=42,
+        )
+        self._model.fit(features)
+        self.transition_matrix = self._model.transmat_
+        self._fitted = True
+        logger.info("HMM regime detector fitted: %d samples, %d features",
+                     features.shape[0], features.shape[1])
+        return self
+
+    def predict(self, features: np.ndarray) -> MarketRegime:
+        """현재 피처로 레짐 분류.
+
+        Parameters:
+            features: shape (1, n_features) or (n_samples, n_features)
+        Returns:
+            가장 최근 샘플의 MarketRegime
+        """
+        if not self._fitted or self._model is None:
+            return self.current_regime
+
+        states = self._model.predict(features)
+        state_id = int(states[-1])
+        regime = HMM_REGIME_MAP.get(state_id, MarketRegime.NORMAL)
+
+        if regime != self.current_regime:
+            logger.info("hmm_regime: %s → %s (state=%d)",
+                       self.current_regime.value, regime.value, state_id)
+            self.current_regime = regime
+
+        return regime
+
+    @property
+    def is_fitted(self) -> bool:
+        return self._fitted

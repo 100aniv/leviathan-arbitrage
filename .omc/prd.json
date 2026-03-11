@@ -1323,7 +1323,7 @@
       "title": "ML 의존성 + HMM 3-regime 설계",
       "phase": "K",
       "priority": 85,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/pyproject.toml",
         "engine/src/tuning/regime_detector.py"

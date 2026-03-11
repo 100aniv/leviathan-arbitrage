@@ -27,14 +27,14 @@
 ## 2. 현재 상태
 
 ```
-Phase:        J-EXT Wave 3 (엔진) ← CURRENT  [Wave 1 보안 ✅, Wave 2 UX ✅, Wave 3 Batch 1 ✅, Batch 2 ✅]
-테스트:       3,959 passed, 0 failed (Wave 3 Batch 2: +29 tests — TCA 19, TCA API 3, Rebalancer 7)
+Phase:        K (Regime Detection) ← CURRENT  [J-EXT Wave1~3 ✅]
+테스트:       3,988 passed, 0 failed (Phase K US-081: +29 HMM regime tests)
 커버리지:     88%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    (pending commit)
-다음 작업:    Phase K — US-081 (HMM 3-regime 설계)
-완료된 US:    US-065~076, US-105~120 (... + TCA모듈 + 인벤토리리밸런싱)
+최신 커밋:    8aba4fc
+다음 작업:    Phase K — US-082 (레짐 피처 엔지니어링)
+완료된 US:    US-065~076, US-105~120, US-081
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
@@ -499,7 +499,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ### Phase K: Regime Detection 기반 구축 — US-081~085
 
-- [ ] US-081: ML 의존성 + HMM 3-regime 설계 (hmmlearn/sklearn, MarketRegime enum 확장)
+- [x] US-081: ML 의존성 + HMM 3-regime 설계 (hmmlearn/sklearn [ml] dep, MarketRegime CALM/NORMAL/VOLATILE 확장, HMMRegimeDetector 클래스) ✅
 - [ ] US-082: 레짐 피처 엔지니어링 (volatility, spread, volume, momentum, order flow)
 - [ ] US-083: HMM 학습 파이프라인 (TimescaleDB → 피처 → GaussianHMM fit → 전이 행렬)
 - [ ] US-084: 레짐→시그널 통합 (MIN_EDGE_BPS regime별 조정: CALM:3, NORMAL:5, VOLATILE:8)
