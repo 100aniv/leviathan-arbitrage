@@ -15,6 +15,8 @@ from src.collectors.upbit_collector import UpbitCollector
 from src.collectors.bithumb_collector import BithumbCollector
 from src.collectors.coinone_collector import CoinoneCollector
 from src.collectors.binance_futures_collector import BinanceFuturesCollector
+from src.collectors.okx_futures_collector import OKXFuturesCollector
+from src.collectors.bybit_futures_collector import BybitFuturesCollector
 
 logger = structlog.get_logger(__name__)
 
@@ -27,7 +29,7 @@ class CollectorManager:
     """
 
     # Default exchanges to collect from
-    DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone", "binance_futures"]
+    DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone", "binance_futures", "okx_futures", "bybit_futures"]
 
     # Korean exchanges that trade primarily in KRW (not USDT)
     KOREAN_EXCHANGES = {"upbit", "bithumb", "coinone"}
@@ -67,6 +69,8 @@ class CollectorManager:
             "bithumb": BithumbCollector,
             "coinone": CoinoneCollector,
             "binance_futures": BinanceFuturesCollector,
+            "okx_futures": OKXFuturesCollector,
+            "bybit_futures": BybitFuturesCollector,
         }
         cls = factory.get(exchange_id)
         if cls is None:

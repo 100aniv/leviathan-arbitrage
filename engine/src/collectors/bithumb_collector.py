@@ -54,14 +54,27 @@ class BithumbCollector(BaseCollector):
         super().__init__(exchange_id="bithumb", symbols=symbols, on_orderbook=on_orderbook)
         self._last_update: dict[str, float] = {}
         self._snapshot_fetched = False
+        # Accumulated in-memory book: {symbol: {"bids": {price: qty}, "asks": {price: qty}}}
+        self._books: dict[str, dict[str, dict[str, str]]] = {}
+        self._stale_task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        """Start with REST snapshots, then WS stream."""
+        """Start with REST snapshots, then WS stream + per-symbol stale watcher."""
         self._running = True
-        # Fetch initial REST snapshots before WS
         await self._fetch_initial_snapshots()
-        # Then run normal WS loop
+        self._stale_task = asyncio.create_task(self._stale_watch_loop())
         await super().start()
+
+    async def stop(self) -> None:
+        """Stop the collector, cancelling the stale watch loop."""
+        if self._stale_task is not None:
+            self._stale_task.cancel()
+            try:
+                await self._stale_task
+            except asyncio.CancelledError:
+                pass
+            self._stale_task = None
+        await super().stop()
 
     async def _fetch_initial_snapshots(self) -> None:
         """Fetch REST orderbook snapshots for all symbols before WS starts."""
@@ -105,6 +118,12 @@ class BithumbCollector(BaseCollector):
                         bids.sort(key=lambda x: float(x[0]), reverse=True)
                         asks.sort(key=lambda x: float(x[0]))
 
+                        # Initialize accumulated book state from snapshot
+                        self._books[symbol] = {
+                            "bids": {b[0]: b[1] for b in bids},
+                            "asks": {a[0]: a[1] for a in asks},
+                        }
+
                         if self._on_orderbook:
                             await self._on_orderbook(self.exchange_id, symbol, bids, asks, is_snapshot=True)
                         self._last_update[symbol] = time.monotonic()
@@ -142,7 +161,7 @@ class BithumbCollector(BaseCollector):
         }
 
     def _parse_message(self, data: dict) -> tuple[str, list, list] | None:
-        """Parse Bithumb orderbookdepth message.
+        """Parse Bithumb orderbookdepth delta and apply to accumulated in-memory book.
 
         Bithumb format:
         {
@@ -152,7 +171,7 @@ class BithumbCollector(BaseCollector):
                     {"symbol": "BTC_KRW", "orderType": "ask",
                      "price": "50000000", "quantity": "0.1"},
                     {"symbol": "BTC_KRW", "orderType": "bid",
-                     "price": "49990000", "quantity": "0.2"},
+                     "price": "49990000", "quantity": "0"},  # qty=0 means delete
                     ...
                 ]
             }
@@ -172,27 +191,87 @@ class BithumbCollector(BaseCollector):
         raw_sym = entries[0].get("symbol", "")
         symbol = _denormalize_symbol(raw_sym)
 
-        bids: list[list[str]] = []
-        asks: list[list[str]] = []
+        # Ensure accumulated book exists (WS delta may arrive before REST snapshot)
+        if symbol not in self._books:
+            self._books[symbol] = {"bids": {}, "asks": {}}
+
+        book = self._books[symbol]
 
         for entry in entries:
             price = str(entry.get("price", "0"))
             qty = str(entry.get("quantity", "0"))
             order_type = entry.get("orderType", "")
+            side = "bids" if order_type == "bid" else "asks"
 
-            if order_type == "bid":
-                bids.append([price, qty])
-            elif order_type == "ask":
-                asks.append([price, qty])
+            if float(qty) == 0:
+                book[side].pop(price, None)  # Delete level
+            else:
+                book[side][price] = qty  # Upsert level
 
-        # Sort: bids descending, asks ascending
-        bids.sort(key=lambda x: float(x[0]), reverse=True)
-        asks.sort(key=lambda x: float(x[0]))
+        # Return sorted top-N from accumulated state
+        bids = sorted(
+            [[p, q] for p, q in book["bids"].items()],
+            key=lambda x: float(x[0]),
+            reverse=True,
+        )[:_SNAPSHOT_DEPTH]
+        asks = sorted(
+            [[p, q] for p, q in book["asks"].items()],
+            key=lambda x: float(x[0]),
+        )[:_SNAPSHOT_DEPTH]
 
-        # Track last update time
         self._last_update[symbol] = time.monotonic()
-
         return symbol, bids, asks
+
+    async def refresh_symbols(self, symbols: list[str]) -> int:
+        """Re-fetch REST snapshots for a specific set of symbols in parallel (max 5 concurrent).
+
+        Reinitializes self._books[symbol] for each symbol fetched.
+        Returns count of successfully refreshed symbols.
+        """
+        sem = asyncio.Semaphore(5)
+
+        async def _fetch_one(client: httpx.AsyncClient, symbol: str) -> bool:
+            async with sem:
+                try:
+                    coin = _coin_from_symbol(symbol)
+                    resp = await client.get(
+                        f"{_REST_BASE}/public/orderbook/{coin}_KRW",
+                        params={"count": _SNAPSHOT_DEPTH},
+                    )
+                    data = resp.json()
+                    if data.get("status") != "0000":
+                        return False
+
+                    ob_data = data.get("data", {})
+                    bids = [[str(item["price"]), str(item["quantity"])]
+                            for item in ob_data.get("bids", [])]
+                    asks = [[str(item["price"]), str(item["quantity"])]
+                            for item in ob_data.get("asks", [])]
+
+                    if not bids or not asks:
+                        return False
+
+                    bids.sort(key=lambda x: float(x[0]), reverse=True)
+                    asks.sort(key=lambda x: float(x[0]))
+
+                    self._books[symbol] = {
+                        "bids": {b[0]: b[1] for b in bids},
+                        "asks": {a[0]: a[1] for a in asks},
+                    }
+                    self._last_update[symbol] = time.monotonic()
+
+                    if self._on_orderbook:
+                        await self._on_orderbook(self.exchange_id, symbol, bids, asks, is_snapshot=True)
+
+                    return True
+                except Exception as exc:
+                    logger.warning("bithumb_refresh_symbol_error", symbol=symbol, error=str(exc))
+                    return False
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            results = await asyncio.gather(*[_fetch_one(client, s) for s in symbols])
+
+        return sum(1 for r in results if r)
 
     async def refresh_snapshots(self) -> int:
         """Re-fetch REST snapshots for all symbols to re-anchor accumulated deltas.
@@ -200,9 +279,18 @@ class BithumbCollector(BaseCollector):
         Returns count of successfully refreshed symbols.
         Called periodically by ShadowMode._delta_refresh_loop (US-066).
         """
-        self._snapshot_fetched = False
-        await self._fetch_initial_snapshots()
-        return sum(1 for s in self.symbols if not self.is_symbol_stale(s, max_age_s=10.0))
+        return await self.refresh_symbols(self.symbols)
+
+    async def _stale_watch_loop(
+        self, check_interval_s: float = 1.0, stale_threshold_s: float = 5.0
+    ) -> None:
+        """Check per-symbol staleness every second; re-sync stale symbols immediately."""
+        while self._running:
+            await asyncio.sleep(check_interval_s)
+            stale = [s for s in self.symbols if self.is_symbol_stale(s, max_age_s=stale_threshold_s)]
+            if stale:
+                logger.info("bithumb_stale_resync", count=len(stale))
+                await self.refresh_symbols(stale)
 
     def is_symbol_stale(self, symbol: str, max_age_s: float = 300.0) -> bool:
         """Check if a symbol's orderbook data is stale (no update in max_age_s seconds)."""

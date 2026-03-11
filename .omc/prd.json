@@ -1212,7 +1212,7 @@
       "title": "Bithumb REST 스냅샷 → 증분 orderbook 근본 해결",
       "phase": "I",
       "priority": 77,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/collectors/bithumb_collector.py"
       ],
@@ -1229,7 +1229,7 @@
       "title": "Coinone WebSocket 안정성 강화 + 재연결 로직 개선",
       "phase": "I",
       "priority": 78,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/collectors/coinone_collector.py"
       ],
@@ -1245,7 +1245,7 @@
       "title": "futures_futures 전략 활성화 (OKX/Bybit futures 수집기)",
       "phase": "I",
       "priority": 79,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/collectors/okx_futures.py",
         "engine/src/collectors/bybit_futures.py",

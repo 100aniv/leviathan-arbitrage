@@ -63,7 +63,7 @@ class RealDataSignalProducer:
     ) -> None:
         self._producer = multi_signal_producer
         self._scanner = triangular_scanner
-        self._futures_exchanges: set[str] = futures_exchanges or {"binance_futures"}
+        self._futures_exchanges: set[str] = futures_exchanges or {"binance_futures", "okx_futures", "bybit_futures"}
 
     # ------------------------------------------------------------------
     # Public interface

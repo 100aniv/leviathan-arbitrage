@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import random
 import time
 from typing import Any, Callable, Awaitable
 
@@ -142,9 +143,11 @@ class BaseCollector(abc.ABC):
             await self._on_orderbook(self.exchange_id, symbol, bids, asks)
 
     async def _backoff(self) -> None:
-        """Exponential backoff between reconnection attempts."""
-        logger.info("collector_reconnecting", exchange=self.exchange_id, delay_s=self._reconnect_delay)
-        await asyncio.sleep(self._reconnect_delay)
+        """Exponential backoff with ±25% jitter between reconnection attempts."""
+        jitter = random.uniform(0.75, 1.25)
+        delay = self._reconnect_delay * jitter
+        logger.info("collector_reconnecting", exchange=self.exchange_id, delay_s=round(delay, 2))
+        await asyncio.sleep(delay)
         self._reconnect_delay = min(self._reconnect_delay * 2, self.MAX_RECONNECT_DELAY)
 
     @property

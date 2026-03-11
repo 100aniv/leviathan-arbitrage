@@ -63,9 +63,9 @@ class TestCollectorManagerFutures:
         """binance_futures must be in DEFAULT_EXCHANGES."""
         assert "binance_futures" in CollectorManager.DEFAULT_EXCHANGES
 
-    def test_default_exchanges_has_eight_entries(self):
-        """All 8 exchanges registered (7 spot + 1 futures)."""
-        assert len(CollectorManager.DEFAULT_EXCHANGES) == 8
+    def test_default_exchanges_has_ten_entries(self):
+        """All 10 exchanges registered (7 spot + 3 futures)."""
+        assert len(CollectorManager.DEFAULT_EXCHANGES) == 10
 
     def test_factory_creates_binance_futures_collector(self):
         """_create_collector('binance_futures') returns a BinanceFuturesCollector."""

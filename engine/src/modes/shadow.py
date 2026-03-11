@@ -488,7 +488,7 @@ class ShadowMode:
         self._funding_rates: dict[str, dict[str, float]] = {}
 
         # Futures exchanges for identification
-        self._futures_exchanges: set[str] = {"binance_futures"}
+        self._futures_exchanges: set[str] = {"binance_futures", "okx_futures", "bybit_futures"}
 
         # RealDataSignalProducer: replaces inline _evaluate_* methods
         self._real_signal_producer: RealDataSignalProducer | None = None
