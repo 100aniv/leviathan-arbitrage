@@ -1,142 +1,118 @@
 'use client';
 
 import { useState } from 'react';
-import { ConfirmDialog } from './ui/ConfirmDialog';
+import { fetchApi } from '@/lib/api';
 
-type TradingMode = 'paper' | 'live' | 'backtest';
-
-interface ModeSwitchProps {
-  initialMode?: TradingMode;
-  onChange?: (mode: TradingMode) => void;
-}
-
-const MODE_CONFIG: Record<TradingMode, {
-  label: string;
-  dot: string;
-  activeText: string;
-  activeBorder: string;
-  activeBg: string;
-}> = {
-  paper: {
-    label: 'PAPER',
-    dot: 'bg-profit',
-    activeText: 'text-profit',
-    activeBorder: 'border-profit/50',
-    activeBg: 'bg-profit/10',
-  },
-  live: {
-    label: 'LIVE',
-    dot: 'bg-loss animate-pulse',
-    activeText: 'text-loss',
-    activeBorder: 'border-loss/50',
-    activeBg: 'bg-loss/10',
-  },
-  backtest: {
-    label: 'BACKTEST',
-    dot: 'bg-accent',
-    activeText: 'text-accent',
-    activeBorder: 'border-accent/50',
-    activeBg: 'bg-accent/10',
-  },
+const MODE_CONFIG: Record<string, { en: string; ko: string; color: string }> = {
+  shadow: { en: 'SHADOW', ko: '시뮬레이션', color: 'text-accent' },
+  paper:  { en: 'PAPER',  ko: '연습',       color: 'text-yellow-400' },
+  live:   { en: 'LIVE',   ko: '실거래',     color: 'text-loss' },
 };
 
-const MODES: TradingMode[] = ['paper', 'live', 'backtest'];
+interface ModeSwitchProps {
+  currentMode: string;
+}
 
-export function ModeSwitch({ initialMode = 'paper', onChange }: ModeSwitchProps) {
-  const [mode, setMode] = useState<TradingMode>(initialMode);
-  const [pendingMode, setPendingMode] = useState<TradingMode | null>(null);
+export function ModeSwitch({ currentMode }: ModeSwitchProps) {
+  const [mode, setMode]               = useState(currentMode || 'shadow');
   const [showConfirm, setShowConfirm] = useState(false);
-  const [isSwitching, setIsSwitching] = useState(false);
+  const [pendingMode, setPendingMode] = useState<string | null>(null);
+  const [error, setError]             = useState<string | null>(null);
+  const [loading, setLoading]         = useState(false);
 
-  const applyMode = async (target: TradingMode) => {
-    setIsSwitching(true);
-    try {
-      // POST mode change to engine
-      await fetch(
-        `${process.env.NEXT_PUBLIC_ENGINE_URL ?? 'http://localhost:8000'}/mode`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: target }),
-        }
-      );
-      setMode(target);
-      onChange?.(target);
-    } catch (err) {
-      console.error('[ModeSwitch] Failed to switch mode:', err);
-    } finally {
-      setIsSwitching(false);
-    }
-  };
-
-  const handleModeClick = (target: TradingMode) => {
-    if (target === mode || isSwitching) return;
-    if (target === 'live') {
-      setPendingMode(target);
+  const handleModeChange = async (newMode: string) => {
+    if (newMode === mode) return;
+    if (newMode === 'live') {
+      setPendingMode(newMode);
       setShowConfirm(true);
-    } else {
-      applyMode(target);
+      return;
     }
+    await switchMode(newMode);
   };
 
-  const handleConfirm = () => {
-    setShowConfirm(false);
-    if (pendingMode) {
-      applyMode(pendingMode);
+  const switchMode = async (targetMode: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchApi('/api/v1/settings/mode', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: targetMode }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 403) {
+          const detail = data.detail ?? data.error ?? 'LiveGate 조건 미충족';
+          setError(`LiveGate 실패: ${detail}`);
+        } else {
+          setError(data.error ?? data.detail ?? 'Mode switch failed');
+        }
+        return;
+      }
+      setMode(targetMode);
+    } catch {
+      setError('Network error');
+    } finally {
+      setLoading(false);
+      setShowConfirm(false);
       setPendingMode(null);
     }
   };
 
-  const handleCancel = () => {
-    setShowConfirm(false);
-    setPendingMode(null);
-  };
-
   return (
-    <>
-      <div
-        role="group"
-        aria-label="Trading mode"
-        className="flex items-stretch border border-terminal-border font-mono"
-      >
-        {MODES.map((m, i) => {
-          const cfg = MODE_CONFIG[m];
-          const isActive = mode === m;
-
-          return (
-            <button
-              key={m}
-              onClick={() => handleModeClick(m)}
-              disabled={isSwitching}
-              aria-pressed={isActive}
-              aria-label={`${cfg.label} mode`}
-              className={[
-                'flex items-center gap-2 px-3 py-2 text-xs uppercase tracking-widest transition-all duration-100 select-none',
-                i > 0 ? 'border-l border-terminal-border' : '',
-                isActive
-                  ? `${cfg.activeBg} ${cfg.activeText} ${cfg.activeBorder}`
-                  : `text-terminal-subtle hover:text-terminal-text hover:bg-terminal-muted/40 ${
-                      isSwitching ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-                    }`,
-              ].join(' ')}
-            >
-              <span className={`h-2 w-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
-              {cfg.label}
-            </button>
-          );
-        })}
+    <div className="relative">
+      <div className="flex items-center gap-2">
+        {Object.entries(MODE_CONFIG).map(([key, { en, ko, color }]) => (
+          <button
+            key={key}
+            onClick={() => handleModeChange(key)}
+            disabled={loading}
+            className={`px-2 py-0.5 text-[10px] font-mono tracking-wider border transition-colors disabled:opacity-50 flex flex-col items-center leading-none ${
+              key === mode
+                ? `${color} border-current bg-current/10`
+                : 'text-terminal-subtle border-terminal-border hover:border-terminal-text/30'
+            }`}
+          >
+            <span className="uppercase">{en}</span>
+            <span className="text-[8px] opacity-70 mt-0.5">{ko}</span>
+          </button>
+        ))}
       </div>
 
-      <ConfirmDialog
-        isOpen={showConfirm}
-        title="Switch to LIVE Trading"
-        message="Real orders will be placed using real funds. Confirm you have reviewed all strategy parameters and risk limits before enabling live trading."
-        confirmLabel="ENABLE LIVE TRADING"
-        cancelLabel="Stay in Paper"
-        danger="warning"
-        onConfirm={handleConfirm}
-        onCancel={handleCancel}
-      />
-    </>
+      {error && (
+        <div className="absolute top-full left-0 mt-1 p-2 bg-loss/10 border border-loss text-loss text-[10px] font-mono z-50 max-w-xs">
+          {error}
+        </div>
+      )}
+
+      {showConfirm && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="bg-terminal-surface border border-loss p-6 max-w-sm">
+            <h3 className="text-sm font-mono text-loss font-bold mb-2">⚠ 실거래 모드 전환</h3>
+            <p className="text-xs font-mono text-terminal-text mb-1">
+              실제 자금으로 거래를 시작합니다.
+            </p>
+            <p className="text-xs font-mono text-terminal-subtle mb-4">
+              LiveGate 체크를 통과해야 활성화됩니다.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => switchMode(pendingMode!)}
+                disabled={loading}
+                className="px-3 py-1 text-xs font-mono bg-loss text-black hover:bg-loss/80 disabled:opacity-50"
+              >
+                {loading ? '확인 중...' : '전환 확인'}
+              </button>
+              <button
+                onClick={() => { setShowConfirm(false); setPendingMode(null); }}
+                className="px-3 py-1 text-xs font-mono border border-terminal-border text-terminal-subtle hover:text-terminal-text"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

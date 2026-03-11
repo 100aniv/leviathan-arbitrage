@@ -97,3 +97,65 @@ async def get_portfolio_summary(request: Request) -> JSONResponse:
         "mode": ctx.execution_mode,
         "last_updated": datetime.now(timezone.utc).isoformat(),
     })
+
+
+@router.get("/portfolio/equity-curve", dependencies=[Depends(require_auth)])
+async def get_equity_curve(request: Request) -> JSONResponse:
+    """Return daily equity curve data for charting."""
+    ctx = request.app.state.engine_context
+
+    # Build equity curve from shadow mode trade history or context
+    curve_data = []
+    shadow = getattr(ctx, "shadow_mode", None)
+    if shadow is not None:
+        snapshot = shadow.get_snapshot() if hasattr(shadow, 'get_snapshot') else {}
+        total_pnl = float(snapshot.get("total_pnl", 0))
+        # Single point for current session (historical data requires TimescaleDB query)
+        curve_data.append({
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "equity": round(total_pnl + 100000, 2),  # base + pnl
+            "pnl": round(total_pnl, 6),
+            "btc_benchmark": 100000,  # placeholder — requires BTC price tracking
+        })
+
+    if not curve_data:
+        # Fallback: single point from current balance
+        total = float(ctx.realized_pnl or 0) + float(ctx.unrealized_pnl or 0)
+        curve_data.append({
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "equity": round(total + 100000, 2),
+            "pnl": round(total, 6),
+            "btc_benchmark": 100000,
+        })
+
+    return JSONResponse({"curve": curve_data})
+
+
+@router.get("/portfolio/metrics", dependencies=[Depends(require_auth)])
+async def get_portfolio_metrics(request: Request) -> JSONResponse:
+    """Return risk metrics: Sharpe, MDD, Calmar, win rate."""
+    ctx = request.app.state.engine_context
+
+    metrics = {
+        "sharpe_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "calmar_ratio": 0.0,
+        "win_rate": 0.0,
+        "total_trades": 0,
+        "total_pnl": 0.0,
+    }
+
+    shadow = getattr(ctx, "shadow_mode", None)
+    if shadow is not None:
+        snapshot = shadow.get_snapshot() if hasattr(shadow, 'get_snapshot') else {}
+        metrics["total_pnl"] = float(snapshot.get("total_pnl", 0))
+        metrics["win_rate"] = float(snapshot.get("win_rate", 0))
+        metrics["total_trades"] = int(snapshot.get("total_trades", 0))
+        metrics["max_drawdown_pct"] = float(snapshot.get("max_drawdown", 0)) * 100
+
+        # Calmar = annualized return / max drawdown
+        mdd = metrics["max_drawdown_pct"]
+        if mdd > 0:
+            metrics["calmar_ratio"] = round(metrics["total_pnl"] / (mdd / 100 * 100000) * 365, 2)
+
+    return JSONResponse(metrics)

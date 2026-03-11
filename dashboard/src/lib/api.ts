@@ -150,6 +150,24 @@ export const getShadowStats = () =>
 export const getPortfolioSummary = () =>
   request<PortfolioSummaryResponse>("/api/v1/portfolio-summary");
 
+export const getEquityCurve = () =>
+  request<{ curve: { date: string; equity: number; pnl: number; btc_benchmark: number }[] }>("/api/v1/portfolio/equity-curve");
+
+export const getPortfolioMetrics = () =>
+  request<{ sharpe_ratio: number; max_drawdown_pct: number; calmar_ratio: number; win_rate: number; total_trades: number; total_pnl: number }>("/api/v1/portfolio/metrics");
+
+// ─── Raw fetch helper (returns Response, caller handles parsing) ──────────────
+
+export async function fetchApi(path: string, options?: RequestInit): Promise<Response> {
+  return fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...getAuthHeaders(),
+      ...options?.headers,
+    },
+  });
+}
+
 export const logout = () => {
   localStorage.removeItem("leviathan_token");
   document.cookie = "leviathan_token=; path=/; max-age=0";

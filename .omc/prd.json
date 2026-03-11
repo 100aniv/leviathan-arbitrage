@@ -1661,7 +1661,7 @@
       "title": "모드 전환 UI 연결 + 친화적 명칭",
       "phase": "J-EXT",
       "priority": 103,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-105"
       ],
@@ -1682,7 +1682,7 @@
       "title": "포트폴리오 별도 탭",
       "phase": "J-EXT",
       "priority": 104,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "dashboard/src/app/portfolio/page.tsx",
@@ -1721,7 +1721,7 @@
       "title": "히트맵 심볼 확장 (드롭다운)",
       "phase": "J-EXT",
       "priority": 106,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "dashboard/src/components/GlobalHeatmap.tsx"

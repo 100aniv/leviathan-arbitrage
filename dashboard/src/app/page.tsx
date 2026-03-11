@@ -10,6 +10,7 @@ import { PortfolioSummary }  from '@/components/PortfolioSummary';
 import { RiskGauge }         from '@/components/RiskGauge';
 import { PerformanceTrend }  from '@/components/PerformanceTrend';
 import { EventFeed }         from '@/components/EventFeed';
+import { ModeSwitch }        from '@/components/ModeSwitch';
 import { useEngineWs }       from '@/hooks/useEngineWs';
 
 export default function OverviewPage() {
@@ -29,9 +30,12 @@ export default function OverviewPage() {
               {connected ? '● LIVE' : '● OFFLINE'}
             </span>
           </div>
-          <p className="text-xs font-mono text-terminal-subtle mt-0.5">Real-time arbitrage engine status</p>
+          <p className="text-xs font-mono text-terminal-subtle mt-1">Real-time arbitrage engine status</p>
         </div>
-        <KillSwitch />
+        <div className="flex items-center gap-3">
+          <ModeSwitch currentMode={data?.mode ?? 'shadow'} />
+          <KillSwitch />
+        </div>
       </div>
 
       {/* Portfolio summary: status badge + 4 KPI + exchange status bar */}
