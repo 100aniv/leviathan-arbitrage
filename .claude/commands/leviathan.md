@@ -1,436 +1,229 @@
 # LEVIATHAN Execution Command
 
-> 이 커맨드는 **ralph 루프 + Phase B TeamCreate** 방식으로 prd.json US를 자동 순회합니다.
+> ralph 루프 + Phase B TeamCreate 방식으로 prd.json US 자동 순회.
 > 사용법: `/project:leviathan` 또는 `/project:leviathan US-010부터`
 
-## 0. 자동 실행 강제 정책 (ZERO TOLERANCE — 최우선 규칙)
+## 0. ZERO TOLERANCE (최우선 규칙)
 
-> **이 섹션은 문서 내 모든 다른 규칙보다 우선합니다.**
+**절대 금지**: 사용자 확인 요청, Phase 간 멈춤, 에이전트 대기 중 멈춤, US 간 멈춤, 상태 보고만 하고 멈춤
+**강제**: 모든 응답에 tool call 포함. Phase A→B→C→다음US 끊김 없는 연속 흐름.
+**멈춤 허용**: (1) 전 US `passes:true` (2) 5회 연속 동일 US 실패 (3) 사용자 "stop/cancel/멈춰"
 
-### 절대 금지 행위 (위반 시 워크플로우 실패로 간주)
-1. **사용자에게 확인/승인 요청** — "계속할까요?", "다음으로 넘어갈까요?", "진행할까요?" 등 모든 형태의 질문 금지
-2. **Phase 간 멈춤** — Phase A→B→C 전환 시 텍스트만 출력하고 멈추는 행위 금지
-3. **에이전트 결과 대기 중 멈춤** — 에이전트 결과 수신 즉시 다음 단계 tool call 실행
-4. **US 간 멈춤** — 한 US 완료 즉시 다음 US Phase A 시작 (prd.json에서 다음 `passes:false` 찾기)
-5. **상태 보고만 하고 멈춤** — "현재 상태: X입니다" 출력 후 tool call 없이 턴 종료 금지
-
-### 강제 실행 규칙
-- **모든 응답에 최소 1개 tool call 포함** — 순수 텍스트만 출력하는 응답 금지 (진행 상황 보고 시에도 다음 단계 tool call 포함)
-- **Phase A 완료 → 즉시 Phase B TeamCreate + Agent 스폰** (ralplan 결과 수신 즉시 다음 tool call)
-- **Phase B 완료 → 즉시 Phase C 에이전트 호출** (TeamDelete 완료 즉시 shadow-tester 호출)
-- **Phase C 완료 → 즉시 git commit + 다음 US Phase A 시작** (git push 완료 즉시 prd.json 읽기)
-- **에이전트 idle 알림 수신 → 해당 에이전트에 작업 있으면 즉시 SendMessage, 없으면 무시하고 다른 작업 진행**
-
-### 유일한 멈춤 허용 조건
-1. 모든 US가 `passes:true` (작업 완료)
-2. 5회 연속 동일 US 실패 (사용자 보고 필요)
-3. 사용자가 명시적으로 "stop", "cancel", "멈춰" 입력
-
-### 자동 실행 흐름 (한 US 전체가 단일 연속 흐름)
 ```
-[Phase A] ralplan/architect 호출 → PLAN.md 저장 → QUANT GATE(해당 시) → checkpoint 저장 →
-[Phase B] 즉시 TeamCreate + Jennie+Lisa 스폰 → 에이전트 완료 대기 → pytest PASS → TeamDelete → checkpoint 저장 →
-[Phase C] 즉시 shadow-tester + code-reviewer 호출 → 결과 수신 → ssot-keeper → git commit+push → checkpoint 저장 →
-[다음 US] 즉시 prd.json 읽기 + 다음 US Phase A 시작
+Phase A(ralplan→PLAN.md→QUANT GATE→checkpoint) → Phase B(TeamCreate→pytest PASS→TeamDelete→checkpoint) → Phase C(shadow+review→SSOT→git push→checkpoint) → 다음 US Phase A
 ```
-
-> ⚠️ **위 흐름에서 사용자 입력을 기다리는 지점은 0개입니다.**
-> ⚠️ **텍스트 출력은 진행 상황 1줄 요약만. 장황한 설명 금지.**
 
 ---
 
-## 1. 소스 (반드시 읽을 것)
+## 1. 소스
 
 - `SSOT.md` — 유일한 설계 문서. 작업 전 반드시 읽기.
-- `.omc/prd.json` — 64 US 목록. `passes:false`인 첫 번째 US부터 시작.
-- `.claude/plans/jazzy-wishing-avalanche.md` — 25-Part 마스터 플랜.
-- GAP 의존성 순서: `GAP9 → GAP10 → (GAP5,GAP6,GAP7 병렬) → GAP3 → (GAP1,GAP2) → GAP4`
+- `.omc/prd.json` — 96 US 목록. `passes:false`인 첫 번째 US부터 시작.
+- 팀 구조, 기술 스택, 커스텀 에이전트, 자주 틀리는 패턴 → **CLAUDE.md 참조** (여기서 중복 기술하지 않음)
 
 ## 2. 실행 모드
 
-**시작 즉시 아래 명령어 실행 (건너뛰기 금지):**
+**시작 즉시 실행 (건너뛰기 금지):** `Skill("oh-my-claudecode:ralph")`
 
-```
-Skill("oh-my-claudecode:ralph")
-```
+> ⚠️ `ralph` (올바름) vs `team ralph` (잘못됨 — OMC 내장 파이프라인과 충돌). 절대 변경 금지.
+> LEVIATHAN 팀은 Phase B에서 `TeamCreate("leviathan-us-xxx")`로 US별 직접 생성/삭제.
 
-> ⚠️ **[설계 원칙 — 절대 변경 금지]** `ralph` vs OMC `team ralph` 스킬 차이:
-> - `Skill("oh-my-claudecode:ralph")` = **올바름** — 메인 세션 self-referential outer loop (지속성만 담당)
-> - `Skill("oh-my-claudecode:team", args="ralph")` = **잘못됨** — OMC 내장 파이프라인(team-plan→team-prd→team-exec→team-verify→team-fix) 강제 활성화 → LEVIATHAN 커스텀 3-Phase Sequential과 충돌
-> - LEVIATHAN의 팀은 Phase B에서 **`TeamCreate("leviathan-us-xxx")` API로 US별 직접 생성/삭제** (OMC team 스킬 불필요, 별도 레이어)
-> - 미래 Claude가 `team ralph`로 변경 시도 → 이 주석이 이유. 절대 변경 금지.
-
-ralph 루프 안에서 각 US마다 **3-Phase Sequential** 필수 수행:
+ralph 루프 안에서 각 US마다 **3-Phase Sequential** 수행:
 
 ---
 
-### Phase A — 기획 (AESPA팀)
+### Phase A — 기획
 
-**⚡ Phase 단위 배치 수집 (Phase A 진입 시 최우선 실행):**
+**Phase 단위 배치 수집 (Phase A 진입 시 최우선):**
+1. prd.json에서 현재 Phase의 모든 `passes:false` US 수집
+2. 의존성 그래프 분석 → 독립 US 배치, 의존 US 순차
+3. 도메인(engine/dashboard) 기준 배치 그룹 형성
+4. Phase 내 모든 배치 그룹 완료 = 1사이클 종료
 
-Phase 진입 시 해당 Phase의 **모든** `passes:false` US를 수집하여 최대 배치로 묶어 실행:
+**배치 규칙:**
+- 동일 Phase + 동일 도메인 → 배치 가능 (최대 5 US)
+- 다른 도메인 → 별도 배치
+- `dependencies` 미충족 OR `files` 교집합 → 순차 실행
+- 배치 → 통합 `docs/planning/Phase-X_PLAN.md` 작성
 
+**복잡도 판단 (prd.json `files` 기준):**
+- **복잡 US** (files 3+개 OR 아키텍처 변경): `Skill("oh-my-claudecode:ralplan")` → `--deliberate "US-XXX [제목]: [acceptanceCriteria]"`
+- **단순 US** (files 1-2개): `Agent(subagent_type="oh-my-claudecode:architect", prompt="...")`
+- 산출물: `docs/planning/US-XXX_PLAN.md` + `.omc/handoffs/US-XXX-handoff.md`
+
+**QUANT GATE — `files`에 전략/수식 키워드 포함 시에만:**
+키워드: `slippage|signal|strategy|executor|funding|futures|triangular|statistical|friction|cost_calculator|regime|hmm|xgboost|onnx|dex|gas_oracle`
 ```
-1. prd.json에서 현재 Phase의 모든 passes:false US 수집
-2. 의존성 그래프 분석 → 독립 US는 배치, 의존 US는 순차 그룹으로 분류
-3. 도메인 분석 → 동일 도메인(engine/dashboard) 기준 배치 그룹 형성
-4. Phase 내 모든 배치 그룹 완료 = 1 워크플로우 사이클 종료 → 다음 Phase로
+Agent(subagent_type="quant-validator", name="winter",
+      prompt="US-XXX 기획 검증: SSOT.md §4 대비 PLAN.md 정합성.
+              1) 파라미터 범위 2) 이중계산 여부 3) PnL 영향 4) 수식 일치. PASS/FAIL+근거")
 ```
+- PASS → Phase B. FAIL → PLAN 수정 후 재호출 (최대 2회)
 
-**배치 그룹 형성 규칙:**
-
-| 조건 | 배치 가능 | 예시 |
-|------|----------|------|
-| 동일 Phase AND 동일 도메인 (engine/src/같은 디렉토리) | O | US-058~062 (모두 Phase SR, Shadow 현실성) |
-| 동일 Phase BUT 다른 도메인 (engine vs dashboard) | X (별도 배치) | US-058(engine) + US-063(dashboard) |
-| US 간 의존성 (B가 A 결과 필요) | X (순차 실행) | US-060(슬리피지 모델) → US-061(슬리피지 기반 시그널) |
-
-**의존성 안전장치** (배치 전 반드시 확인):
-1. `prd.json`의 `dependencies` 필드 확인 — 의존 US가 `passes:false`면 배치 불가
-2. `files` 배열 교집합 확인 — 동일 파일 수정 US끼리는 순차 실행 (병렬 금지)
-3. 배치 크기 상한: **최대 5 US** (초과 시 분할)
-
-배치 판정 결과:
-- **배치 가능** → 배치 내 US들을 하나의 PLAN.md에 통합 기획 (`docs/planning/Phase-X_PLAN.md`)
-- **배치 불가** → 단일 US 모드로 진행 (기존 방식)
-- Phase 내 모든 배치 그룹 완료 시 1사이클 종료
-
-**복잡도 판단 (prd.json의 `files` 배열 기준):**
-
-**복잡 US** (files 3개 이상 OR 아키텍처 변경):
-→ `Skill` 도구로 `oh-my-claudecode:ralplan` 스킬을 **반드시 직접 호출** (단순 thinking으로 대체 불가):
-  - 인수: `--deliberate "US-XXX [제목] 구현 계획: [acceptanceCriteria 목록]"`
-  - architect(opus) + planner(opus) + analyst(opus) + critic(opus) 합의까지 반복
-  - 산출물: `docs/planning/US-XXX_PLAN.md` 저장
-  - 핸드오프: `.omc/handoffs/US-XXX-handoff.md`
-  - ralplan 완료 즉시 → **Phase B 진행 (멈추지 말 것)**
-
-**단순 US** (files 1-2개 AND 명확한 스펙):
-→ `oh-my-claudecode:architect` 에이전트 단일 위임:
-  - `Task(subagent_type="oh-my-claudecode:architect", model="opus", prompt="...")`
-  - 산출물 동일 (docs/planning/US-XXX_PLAN.md + .omc/handoffs/US-XXX-handoff.md)
-  - architect 완료 즉시 → **Phase B 진행 (멈추지 말 것)**
-
-**⚡ QUANT GATE — 전략/수식 관련 US에서만 (인프라/Docker/대시보드 US는 생략):**
-
-`prd.json`의 `files` 배열에 다음 키워드가 하나라도 포함된 경우:
-`slippage`, `signal`, `strategy`, `executor`, `funding`, `futures`, `triangular`, `statistical`, `friction`, `cost_calculator`
-
-→ ralplan/architect 완료 **직후** 반드시 호출:
-```
-Agent(subagent_type="quant-validator", name="winter", model="sonnet",
-      prompt="US-XXX 기획 검증: SSOT.md §4(수식 모델) 대비
-              docs/planning/US-XXX_PLAN.md 정합성 확인.
-              1) 파라미터 범위 합리성 (k, gamma, threshold, bps 등)
-              2) 이중 계산 여부 (slippage, fee 중복 경로)
-              3) PnL 영향 예측 (변경 전/후 net profit 비교)
-              4) SSOT.md §4 수식과 코드 구현 계획의 일치 여부
-              판정: PASS/FAIL + 근거")
-```
-- **PASS** → 즉시 Phase B 진행
-- **FAIL** → Phase B 진입 금지. PLAN.md 수정 후 winter 재호출 (최대 2회)
-
-> 상용 퀀트 회사 동일 패턴: 수식 Sign-off 없이 개발 착수 불가.
-> LEVIATHAN SR 스프린트에서 실제로 발생한 패턴 (PowerLaw k=5.0 이중계산, partial_fill=0.0).
-
-> ⚠️ **Phase A 완료 = 즉시 Phase B 시작. 사용자 입력 기다리지 말 것. 절대 멈추지 말 것.**
-
-**Phase A → Phase B 전환 (구체적 실행 순서 — 반드시 이 순서대로):**
-```
-1. ralplan/architect 결과 수신 → docs/planning/US-XXX_PLAN.md 파일 존재 확인
-2. QUANT GATE 해당 시 → quant-validator 호출 → PASS 확인 (FAIL 시 PLAN 수정 후 재호출)
-3. leviathan-progress.json 저장:
-   Bash: echo '{"current_us":"US-XXX","next_phase":"B","plan_file":"docs/planning/US-XXX_PLAN.md","timestamp":"'$(date -Iseconds)'"}' > .omc/state/leviathan-progress.json
-4. 즉시 Phase B 시작 → TeamCreate(team_name="leviathan-us-xxx") 호출
-```
-> ⚠️ **1~4 사이에 텍스트만 출력하고 tool call 없이 멈추는 행위 금지. 반드시 4번까지 연속 실행.**
+**A→B 전환 (순서 엄수):**
+1. PLAN.md 존재 확인
+2. QUANT GATE 해당 시 PASS 확인
+3. `leviathan-progress.json` 저장 (`next_phase:"B"`)
+4. 즉시 `TeamCreate(team_name="leviathan-us-xxx")`
 
 ---
 
-### Phase B — 개발 (BLACKPINK팀)
+### Phase B — 개발
 
-**TeamCreate 기반 팀 구성** (단독 구현 절대 금지):
+**TeamCreate 기반** (단독 구현 절대 금지):
 
-#### Step 1: 팀 생성 (Jisoo/Lead = main session)
-`TeamCreate(team_name="leviathan-us-xxx")` 호출. US 번호로 팀 이름 지정.
+#### Step 1: 팀 생성
+`TeamCreate(team_name="leviathan-us-xxx")`
 
-#### Step 2: Teammate 스폰 (한 응답에서 동시에 2-3명)
+#### Step 2: Teammate 스폰 (동시 2-3명)
 
-**필수 (모든 US):**
-- `Agent(subagent_type="oh-my-claudecode:executor", name="jennie", team_name="leviathan-us-xxx", prompt="[US-XXX] Backend: .omc/handoffs/US-XXX-handoff.md 읽고 engine/src/ 구현. 파일 경계: engine/src/**만 수정. dashboard/, tests/ 절대 수정 금지. acceptanceCriteria 전부 달성. 완료 시 SendMessage(recipient='lisa', content='구현 완료, 테스트 부탁')")`
-- `Agent(subagent_type="oh-my-claudecode:test-engineer", name="lisa", team_name="leviathan-us-xxx", prompt="[US-XXX] QA: engine/tests/ 테스트 작성. 파일 경계: tests/**만 수정. Jennie 완료 메시지 받으면 cd engine && python -m pytest tests/ -x --tb=short 실행. 0 failures 필수. 결과를 팀 리드에게 SendMessage로 보고")`
+**필수:**
+- **Jennie** (executor): `engine/src/` 구현. dashboard/tests/ 수정 금지. 완료 시 Lisa에게 SendMessage.
+- **Lisa** (test-engineer): `tests/` 테스트 작성 + `pytest -x --tb=short`. 결과를 Lead에게 보고.
 
-**Rosé(Frontend) 스폰 조건 (확대 적용):**
-- Phase D/H US → 항상 Rosé 추가
-- 백엔드 US라도 아래 조건 중 하나 해당 시 Rosé 추가 스폰:
-  - prd.json `files` 배열에 `"api/"` 포함 (대시보드 API 연동)
-  - prd.json `files` 배열에 `"shadow.py"` 포함 (대시보드 데이터 소스)
-  - `acceptanceCriteria`에 `"dashboard"`, `"UI"`, `"프론트"` 키워드 포함
-- `Agent(subagent_type="oh-my-claudecode:designer", name="rose", team_name="leviathan-us-xxx", prompt="[US-XXX] Frontend: dashboard/ 구현. 파일 경계: dashboard/**만 수정. engine/ 절대 수정 금지")`
+**Rosé(designer) 스폰 조건:**
+- Phase D/H US → 항상
+- `files`에 `"api/"`, `"shadow.py"`, `"dashboard/"` 포함
+- `acceptanceCriteria`에 `"dashboard"`, `"UI"`, `"프론트"` 키워드
+- `dashboard/` 구현. engine/ 수정 금지.
 
-**D-verify US (US-063, US-064) — Jennie/Lisa/Rosé 없이 메인 세션이 직접 Chrome 검증:**
-1. `tabs_context_mcp()` → 탭 확인 (새 탭 필요 시 `tabs_create_mcp()`)
-2. `preview_start("dashboard")` → npm run dev (port 3000) 시작
-3. `navigate(url="http://localhost:3000/login")` → JWT 로그인 검증
-4. 4페이지 순회 (각 페이지별):
-   - `preview_snapshot()` → 렌더링 확인
-   - `preview_network()` → API 200 응답 확인
-   - WebSocket 실시간 업데이트 확인
-5. `preview_resize(preset="mobile")` → 375x812 모바일 뷰 확인
-6. `preview_screenshot()` → 증거 캡처 (완료 기준)
-> D-verify US는 TeamCreate 없이 메인 세션 직접 실행. 에이전트 스폰 금지.
+**D-verify US (US-063, US-064) — 메인 세션 직접 Chrome 검증:**
+1. `preview_start("dashboard")` → localhost:3000
+2. 4페이지 순회: `preview_snapshot()` + `preview_network()` (API 200)
+3. `preview_resize(preset="mobile")` → 모바일 뷰 확인
+4. `preview_screenshot()` → 증거 캡처
 
-#### Step 2.5: 내부 통합 검증 (NEW — 백엔드/프론트 연동 확인)
+#### Step 2.5: 통합 검증
+- Jennie 완료 → 대시보드 반영 필요 판단 (API/Shadow 변경 시)
+- 필요 시 Rosé 추가 스폰 + Chrome 검증
+- **완료 기준**: pytest 0 failures **AND** 관련 대시보드 데이터 정상 표시
 
-> 백엔드 US라도 대시보드 반영 필요 여부를 판단하여 프론트 연동까지 검증.
-
-- **판단 기준**: Jennie 구현 완료 → "해당 기능이 대시보드에 반영 필요한가?" 판단
-  - API 엔드포인트 변경/추가 → 대시보드 연동 확인 필요
-  - Shadow 데이터 소스 변경 → 대시보드 데이터 표시 확인 필요
-- **필요 시**: Rosé 추가 스폰하여 프론트 연동 확인 (Phase D US 아니어도)
-- **Chrome 검증**: `preview_start("dashboard")` → 해당 기능 API 연동 확인
-- **프론트 US라도**: 백엔드 API 정상 동작 확인 (Jennie 또는 Lead가 curl/pytest)
-- **"기능 구현 완료" 재정의**: pytest 0 failures **AND** 관련 대시보드 페이지에서 데이터 정상 표시 확인
-
-#### Step 3: 통합 (Jisoo 조율)
-- Jennie → SendMessage(Lisa): "구현 완료, 테스트 부탁"
-- Lisa: pytest -x 실행 → 결과를 Jisoo에게 SendMessage
-- FAIL → Jisoo가 Jennie에게 SendMessage("수정 필요" + 로그) → Step 2 복귀 (최대 3회)
-- PASS → Step 4 진행
+#### Step 3: 통합
+- Lisa pytest → PASS: Step 4. FAIL: Jennie 수정 (최대 3회)
 
 #### Step 4: 팀 해산
-- `SendMessage(type="shutdown_request", recipient="jennie")`
-- `SendMessage(type="shutdown_request", recipient="lisa")`
-- (Rosé 존재 시) `SendMessage(type="shutdown_request", recipient="rose")`
-- 전원 승인 후 `TeamDelete()`
+- 전원 `shutdown_request` → `TeamDelete()`
 
-**파일 소유권 규칙 (충돌 방지):**
+**파일 소유권:** Jennie=`engine/src/`, Rosé=`dashboard/src/`, Lisa=`tests/`+`docker-compose.yml`, Lead=SSOT/`.omc/`
 
-| 에이전트 | 소유 영역 | 금지 영역 |
-|---------|----------|----------|
-| Jennie (Backend) | `engine/src/**/*.py` | `dashboard/`, `tests/` |
-| Rosé (Frontend) | `dashboard/src/**/*` | `engine/` |
-| Lisa (QA+Infra) | `tests/**/*.py`, `docker-compose.yml` | `engine/src/`, `dashboard/src/` |
-| Jisoo (Lead) | SSOT.md, .env, .omc/ | 직접 구현 금지 |
+**배치 모드:** 배치 내 US 순차 Phase B → 전부 완료 후 Phase C 일괄 실행. 동일 도메인은 팀 재사용 가능.
 
-통합 게이트: `cd engine && python -m pytest tests/ -x --tb=short` — 0 failures 필수
-실패 시 fix 루프 반복 (최대 3회)
-
-> ⚠️ **Phase B 완료(pytest 0 failures OR D-verify Chrome 검증 완료) 즉시 Phase C 시작. 멈추지 말 것.**
-
-**배치 모드 분기** (Phase A에서 배치 판정된 경우):
-- 배치 내 US들을 **순차적으로** Phase B 실행 (각 US별 TeamCreate → 구현 → pytest → TeamDelete)
-- 단, 같은 도메인 US끼리는 **동일 팀에서 연속 처리** 가능 (팀 재생성 불필요)
-- 배치 내 모든 US의 Phase B 완료 후 → Phase C를 **배치 단위로 일괄 실행**
-
-**Phase B → Phase C 전환 (구체적 실행 순서 — 반드시 이 순서대로):**
-```
-1. pytest PASS 확인 (Lisa 보고 수신)
-2. TeamDelete 완료 (Jennie+Lisa+Rosé 전원 shutdown)
-3. leviathan-progress.json 저장:
-   Bash: echo '{"current_us":"US-XXX","next_phase":"C","plan_file":"docs/planning/US-XXX_PLAN.md","test_result":"PASS","timestamp":"'$(date -Iseconds)'"}' > .omc/state/leviathan-progress.json
-4. 즉시 Phase C 시작 → shadow-tester(sakura) 호출
-```
-> ⚠️ **1~4 사이에 멈추지 말 것. TeamDelete 완료 즉시 Phase C 에이전트 호출.**
+**B→C 전환 (순서 엄수):**
+1. pytest PASS
+2. TeamDelete 완료
+3. `leviathan-progress.json` 저장 (`next_phase:"C"`)
+4. 즉시 shadow-tester(sakura) 호출
 
 ---
 
-### Phase C — 검증 (LE SSERAFIM + IVE + NEWJEANS)
+### Phase C — 검증
 
-**순서대로 실행** (하나라도 실패하면 Phase B로 복귀):
+**순서대로** (실패 시 Phase B fix 루프):
 
-#### C-1. Shadow 테스트 (LE SSERAFIM)
-- **Docker 필수**: Shadow 전 `docker compose up -d && docker compose ps` 실행하여 Redis/TimescaleDB/Prometheus healthy 확인
-- `Agent(subagent_type="shadow-tester", name="sakura", prompt="Shadow 10분: docker compose up -d 확인 후 cd engine && timeout 600 python -m src.main. PnL/WR/crash 보고")` **직접 호출**
-- **필수 조건**: `PnL > 0`, `crash = 0`
-- 실패 시 → Phase B fix 루프
+#### C-1. Shadow 테스트
+- **Docker 필수**: `docker compose up -d && docker compose ps` (실패 시 최대 2회 재시도)
+- `Agent(subagent_type="shadow-tester", name="sakura", prompt="Shadow 10분: docker compose up -d 확인 후 cd engine && timeout 600 python -m src.main. PnL/WR/crash 보고")`
+- 필수: `PnL > 0`, `crash = 0`
 
-#### C-2. 퀀트 검증 (IVE) — 전략/수식 변경 시에만
-- `Agent(subagent_type="quant-validator", name="wonyoung", prompt="SSOT.md §4 수식 대비 코드 검증. 슬리피지/마찰력 수학 검증")` **직접 호출**
-- 파라미터 민감도 분석
+#### C-2. 퀀트 검증 — 전략/수식 변경 시에만
+- `Agent(subagent_type="quant-validator", name="wonyoung", prompt="SSOT.md §4 수식 대비 코드 검증")`
 
-#### C-3. 코드 리뷰 (NEWJEANS)
-- `Agent(subagent_type="oh-my-claudecode:code-reviewer", name="minji", model="opus", prompt="변경 코드 전체 리뷰: 보안/로직/성능. docs/review/US-XXX_REVIEW.md 작성")` **직접 호출**
-- `Agent(subagent_type="oh-my-claudecode:critic", name="hanni", model="opus", prompt="설계 비판 + 개선안 제시")` **직접 호출**
+#### C-3. 코드 리뷰
+- `Agent(subagent_type="oh-my-claudecode:code-reviewer", name="minji", prompt="변경 코드 리뷰. docs/review/US-XXX_REVIEW.md 작성")`
+- `Agent(subagent_type="oh-my-claudecode:critic", name="hanni", prompt="설계 비판 + 개선안")`
+
+#### C-3.5. Chrome 검증 — Phase D/H US에서만
+- `Agent(subagent_type="browser-verifier", name="kazuha", prompt="Chrome DevTools MCP로 대시보드 검증: 페이지 렌더링, API 200, WebSocket, 모바일 뷰")`
 
 #### C-4. 완료 처리
+- `Agent(subagent_type="ssot-keeper", name="haerin", prompt="SSOT.md 업데이트")`
+- prd.json `passes: true` 마킹
+- `docker compose ps` → healthy 확인
+- `git add` + `git commit` + `git push`
+- 배치 모드: 전체 US 일괄 처리, 배치 단위 단일 커밋
 
-**단일 US 모드:**
-- `Agent(subagent_type="ssot-keeper", name="haerin", prompt="SSOT.md 해당 섹션 업데이트")` **직접 호출**
-- prd.json 해당 US `passes: true` 마킹
-- `docker compose ps` → 전 컨테이너 healthy 확인
-- `git add` + `git commit` + `git push` (gh CLI)
-
-**배치 US 모드** (Phase A에서 배치 판정된 경우):
-- 배치 내 **모든 US**의 Phase B+C 완료 후 일괄 처리:
-  1. `Agent(subagent_type="ssot-keeper", name="haerin", prompt="SSOT.md 배치 US 일괄 업데이트: US-XXX~US-YYY")` **직접 호출**
-  2. prd.json 배치 내 전체 US `passes: true` 마킹
-  3. `docker compose ps` → 전 컨테이너 healthy 확인
-  4. `git add -A && git commit -m "Phase [phase]: US-XXX~US-YYY [배치 설명]"` — **배치 단위 단일 커밋**
-  5. `git push` (gh CLI)
-- ⚠️ 배치 커밋 메시지 형식: `Phase SR US-058~062: [공통 변경 요약]`
-
-**Phase C → 다음 US 전환 (구체적 실행 순서 — 반드시 이 순서대로):**
-```
-1. Shadow PASS + Review 완료 확인
-2. ssot-keeper(haerin) → SSOT.md 업데이트
-3. prd.json 해당 US passes:true 마킹
-4. git add + git commit + git push
-5. leviathan-progress.json 저장:
-   Bash: echo '{"current_us":"US-XXX","next_phase":"A","next_us":"US-YYY","timestamp":"'$(date -Iseconds)'"}' > .omc/state/leviathan-progress.json
-6. 즉시 다음 US Phase A 시작 → prd.json에서 다음 passes:false US 찾기 → ralplan 호출
-```
-> ⚠️ **1~6 사이에 멈추지 말 것. git push 완료 즉시 다음 US 진행.**
+**C→다음US 전환 (순서 엄수):**
+1. Shadow PASS + Review 완료
+2. ssot-keeper SSOT.md 업데이트
+3. prd.json passes:true
+4. git commit + push
+5. `leviathan-progress.json` 저장 (`next_phase:"A", next_us:"US-YYY"`)
+6. 즉시 다음 US Phase A
 
 ---
 
-## 3. 완료 기준 (이것 없이 절대 완료 선언 금지)
+## 3. 완료 기준
 
 | 항목 | 조건 |
 |------|------|
 | pytest | 0 failures |
 | Shadow 10min | PnL > 0, crash = 0 |
 | SSOT.md | 해당 섹션 업데이트됨 |
-| prd.json | 해당 US `passes: true` |
-| US-XXX_PLAN.md | `docs/planning/`에 존재 |
-| US-XXX_REVIEW.md | `docs/review/`에 존재 |
+| prd.json | `passes: true` |
+| PLAN.md | `docs/planning/`에 존재 |
+| REVIEW.md | `docs/review/`에 존재 |
 | Docker | 전 컨테이너 healthy |
 | Git | commit + push 완료 |
+| **Phase D/H 추가** | Chrome 렌더링 + API 200 + WebSocket + 모바일 반응형 |
 
-**Phase D / D-verify US 추가 완료 기준:**
+> `npm run build` 성공만으로 Phase D/H 완료 선언 금지. Chrome 실제 렌더링 필수.
 
-| 항목 | 조건 |
-|------|------|
-| Chrome 브라우저 테스트 | `npm run dev` 후 Chrome에서 해당 페이지 렌더링 확인 (스크린샷 or preview_screenshot) |
-| API 연동 | 대시보드 ↔ 엔진 API 엔드포인트 200 응답 확인 |
-| WebSocket 피드 | 실시간 데이터 업데이트 렌더링 확인 |
-| 모바일 반응형 | Chrome DevTools 모바일 뷰포트(375x812)에서 레이아웃 정상 |
+## 4. 다음 US 전환
 
-> **중요**: `npm run build` 성공만으로 Phase D 완료 선언 금지. 반드시 Chrome 브라우저에서 실제 렌더링 검증 필수.
+완료 기준 **전부 충족** 후 자동 전환. 미충족 시 fix 루프 (최대 5회 → 사용자 보고).
 
-## 4. 다음 US 전환 조건
-
-위 완료 기준 **전부 충족** 후에만 다음 US 시작.
-충족 안 되면 fix 루프 반복. 최대 5회 실패 시 사용자에게 보고.
-
-> ⚠️ **완료 기준 전부 충족 즉시 → 사용자 확인 없이 자동으로 다음 `passes:false` US의 Phase A 시작.**
-> **"계속 진행할까요?" / "다음으로 넘어갈까요?" 절대 금지. 멈추지 말 것.**
-
-## 4.5 에스컬레이션 규칙 (문제 심각도별 대응)
-
-> 기존 fix 루프(최대 3회)를 넘어서는 구조적 문제 발생 시 상위 단계로 에스컬레이션.
+## 4.5 에스컬레이션
 
 | Level | 조건 | 대응 |
 |-------|------|------|
-| **L0** (팀 내 즉시 해결) | 단순 버그, 테스트 실패, 타입 에러 | 해당 팀에서 바로 수정 |
-| **L1** (개발↔검증 반복) | Phase B fix 루프 (최대 3회) | 기존 방식 유지 |
-| **L2** (Phase A 재기획) | fix 루프 3회 초과 OR 구조적 문제 발견 | Phase B/C 중단 → Phase A 복귀 → 새 PLAN.md 작성 후 Phase B 재시작 |
-| **L3** (PRD/SSOT 수정 필요) | SSOT↔PRD↔구현 간 모순 발견 | 즉시 작업 중단 → SSOT 수정 → PRD 수정 → Phase A 재기획 |
-| **L4** (Phase 재편성 필요) | 현재 Phase 범위로 해결 불가능한 문제 | 새 US 생성 → prd.json 추가 → 다음 Phase에 배정 OR 현재 Phase 확장 |
+| L0 | 단순 버그 | 팀 내 즉시 수정 |
+| L1 | fix 루프 3회 | 기존 방식 |
+| L2 | 3회 초과/구조적 문제 | Phase A 복귀 → 새 PLAN.md |
+| L3 | SSOT↔PRD↔코드 모순 | SSOT→PRD 수정 → Phase A 재기획 |
+| L4 | Phase 범위 초과 | 새 US → prd.json 추가 |
 
-**에스컬레이션 흐름:**
-```
-L0: Jennie/Lisa/Rosé가 팀 내부에서 해결
-L1: Jisoo(Lead)가 fix 루프 3회 내 해결
-L2: Lead가 Phase A architect에게 재기획 요청 → 새 PLAN.md
-L3: Lead가 ssot-keeper(haerin)에게 SSOT 수정 요청 → prd.json 동기화
-L4: Lead가 prd.json에 새 US 추가 → 다음 사이클에서 처리
-```
-
-> **자동화**: L0~L1은 기존 ralph 루프 내에서 자동 처리. L2~L4는 로그 출력 후 해당 단계로 자동 복귀.
-
----
+L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀.
 
 ## 5. 인프라 규칙
 
 - **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`
 - **Shadow**: `docker compose up -d && docker compose ps` 후 `cd engine && timeout 600 python -m src.main`
-- **Docker**: Shadow 실행 전 반드시 `docker compose up -d` — Redis/TimescaleDB/Prometheus 필수
-- **GitHub**: `gh` CLI로 push, PR, issue 관리
-- **거래소**: 8 native adapters (ccxt 미사용)
-- **슬리피지**: PowerLaw `impact = k * size^gamma` (k=0.0, gamma=0.5) — k=0.0이므로 PowerLaw 비활성. CEXOrderbookSlippage가 유일한 슬리피지 소스
-- **이중 슬리피지 금지**: SignalGenerator의 CEXOrderbookSlippage가 유일한 슬리피지 소스
+- **슬리피지**: CEXOrderbookSlippage가 유일한 소스. PowerLaw k=0.0 비활성. 이중 슬리피지 금지.
 
 ## 6. 컨텍스트 관리
 
-### 6.1 연속 실행 원칙
-
-**Phase A→B→C는 하나의 연속 흐름으로 실행.** Phase 간 `/clear` 없음.
-Phase 완료마다 `leviathan-progress.json`에 체크포인트 저장 (세션 복구용).
-
-> **왜 Phase 간 `/clear` 안 하나?** Claude는 `/clear`를 프로그래밍적으로 실행할 수 없음 (사용자 전용 명령어).
-> 자동화된 연속 실행과 `/clear`는 양립 불가. 멈추지 않는 것이 최우선.
-> Claude Code의 내장 auto-compression이 컨텍스트 한계 도달 시 자동 처리.
+**Phase A→B→C 연속 실행.** Phase 간 `/clear` 없음. `/compact` 절대 금지 (GitHub #3274, #19567, #18482).
 
 | 시점 | 동작 |
 |------|------|
-| **Phase A 완료** | PLAN.md 저장 + checkpoint → **즉시 Phase B TeamCreate** |
-| **Phase B 완료** | pytest PASS + TeamDelete + checkpoint → **즉시 Phase C shadow-tester** |
-| **Phase C 완료** | SSOT/prd.json/git push + checkpoint → **즉시 다음 US Phase A** |
+| Phase A 완료 | PLAN.md + checkpoint → 즉시 Phase B TeamCreate |
+| Phase B 완료 | pytest PASS + TeamDelete + checkpoint → 즉시 Phase C |
+| Phase C 완료 | SSOT/prd.json/git push + checkpoint → 즉시 다음 US |
 
-### 6.2 절대 금지
+**체크포인트**: `.omc/state/leviathan-progress.json` — 세션 복구 전용.
+세션 크래시/수동 `/clear` 시 → `/leviathan` 재호출 → progress 파일로 재개.
 
-- **`/compact` 어떤 시점에서도 절대 금지** (버그: GitHub #3274, #19567, #18482)
-- **Phase 진행 중 컨텍스트 조작 금지** (백그라운드 에이전트 결과 소실)
-- **Phase 간 멈춤 금지** — 체크포인트 저장 후 즉시 다음 Phase tool call 실행
-- **실패 사례 (US-060)**: Phase C 에이전트 실행 중 컨텍스트 압축 → Shadow 결과 미수집
+## 7. Phase F 최종 검수
 
-### 6.3 체크포인트 파일 (leviathan-progress.json)
+> **진입 가드**: Phase G/H/I/J/K/L/M 전부 `passes:true` 필수. 하나라도 미완료 시 Phase F 진입 금지.
 
-`.omc/state/leviathan-progress.json` — 각 Phase 완료 시 자동 저장:
-```json
-{"current_us": "US-066", "next_phase": "B", "plan_file": "docs/planning/US-066_PLAN.md", "timestamp": "2026-03-10T15:30:00+09:00"}
-```
-
-**용도**: 세션 복구 전용
-- 세션 크래시, 사용자 수동 `/clear`, 또는 네트워크 오류 시 → `/leviathan` 재호출하면 이 파일로 재개
-- 정상 실행 시에는 Phase 간 끊김 없이 연속 진행 (체크포인트는 보험)
-- §8의 시작 로직이 이 파일을 1순위로 확인
-
-### 6.4 사용자 수동 `/clear` 시 복구 흐름
-
-```
-사용자가 수동 /clear 실행
-  → 컨텍스트 초기화됨
-  → 사용자가 /leviathan 입력
-  → §8 시작 로직: leviathan-progress.json 읽기 (1순위)
-  → next_phase에 따라 해당 Phase부터 재개 (Phase A가 아니어도 됨)
-  → plan_file이 있으면 PLAN.md 읽어 컨텍스트 복원
-```
-> **정상 흐름에서는 /clear 불필요.** ralph 루프가 Phase A→B→C→다음 US를 끊김 없이 순회.
-
-## 7. Phase F 최종 검수 규칙
-
-> Phase F는 **모든 기능이 구현·검증된 후** 진입하는 **마지막 관문**. 자동차 출고 전 최종 품질검사와 동일.
-
-- **검사지 참조**: `docs/checklists/phase-f-final-audit.md` (10개 카테고리, 100+ 항목)
-- **5팀 분담 실행**:
-  - 기획팀(AESPA): 문서/운영 준비도 항목
-  - 개발팀(BLACKPINK): 엔진 코어 + 대시보드 UI/UX 항목
-  - 퀀트팀: 전략 + 실행 시뮬레이션 항목
-  - 테스트팀: 거래소 + 성능 + 인프라 항목
-  - 검증팀: 리스크 관리 + 모니터링 항목 + 최종 크로스체크
-- **게이트**: 전 항목 PASS 필수. 하나라도 FAIL 시 Live 전환(US-056) 절대 금지
-- **Progressive Shadow**: US-054 (1H→2H→6H→12H→24H→72H) 전 단계 통과 필수
-- **LiveGate**: US-055 6-check AND gate 전체 PASS 필수
+- **검사지**: `docs/checklists/phase-f-final-audit.md` (12개 카테고리, 178항목)
+- **5팀 분담**: 기획(문서/운영) + 개발(엔진/UI) + 퀀트(전략/시뮬레이션) + 테스트(거래소/성능/인프라) + 검증(리스크/모니터링)
+- **게이트**: 전 항목 PASS 필수. 1건 FAIL → Live 전환(US-056) 금지
+- **Progressive Shadow**: US-054 (1H→2H→6H→12H→24H→72H) 전 단계 통과
+- **LiveGate**: US-055 6-check AND gate 전체 PASS
 
 ## 8. 시작 및 자동 루프
 
-위 규칙을 모두 숙지한 후, 아래 순서로 재개 지점을 결정하라:
+재개 지점 결정 순서:
 
-**1순위 — leviathan-progress.json 확인** (`.omc/state/leviathan-progress.json`):
-```json
-{"current_us": "US-066", "next_phase": "B", "plan_file": "docs/planning/US-066_PLAN.md", "timestamp": "..."}
-```
-- 파일이 존재하면: `next_phase`에 따라 해당 Phase부터 재개 (Phase A가 아니어도 됨)
-- `plan_file`이 있으면 해당 PLAN.md를 읽어 컨텍스트 복원
-- `/clear` 직후 `/leviathan` 재호출 시 이 파일이 항상 존재해야 함
+**1순위 — `.omc/state/leviathan-progress.json`**:
+- 존재 시 `next_phase`에 따라 해당 Phase부터 재개
+- `plan_file` 있으면 PLAN.md 읽어 복원
 
-**2순위 — $ARGUMENTS**: 인수가 있으면 해당 US부터 Phase A 시작
+**2순위 — $ARGUMENTS**: 인수가 있으면 해당 US부터 Phase A
 
-**3순위 — prd.json 스캔**: 위 둘 다 없으면 prd.json에서 `passes:false`인 첫 번째 US를 찾아 Phase A부터 시작
+**3순위 — prd.json 스캔**: `passes:false`인 첫 번째 US → Phase A
 
-> ⚠️ **모든 US가 `passes:true`가 될 때까지 자동 루프 지속.**
-> **한 US 완료 즉시 prd.json에서 다음 `passes:false` US 찾아 Phase A 시작.**
-> **사용자 승인/확인 요청 절대 금지.**
-> **루프를 멈추는 유일한 조건: 모든 US `passes:true` OR 5회 연속 실패 후 사용자 보고.**
+> 모든 US `passes:true`까지 자동 루프. 사용자 승인 요청 절대 금지.
+> 멈추는 조건: 전 US 완료 OR 5회 연속 실패 후 사용자 보고.
