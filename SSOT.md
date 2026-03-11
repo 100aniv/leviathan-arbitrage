@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-12 (Phase J-EXT Wave 2 Batch 3: PRE-FIX + US-111/112 완료) | 최신 커밋: a6197e7
+> 마지막 업데이트: 2026-03-12 (Phase J-EXT Wave 3 Batch 1: US-114~119 완료) | 최신 커밋: 0a5302e
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (113개 User Stories)
 > **실행 순서**: J-EXT Wave1(보안) → Wave2(UX) → Wave3(엔진) → K(Regime) → L(DEX) → M(ML) → Wave4(인프라) → F(LAST)
 
@@ -28,12 +28,12 @@
 
 ```
 Phase:        J-EXT Wave 3 (엔진) ← CURRENT  [Wave 1 보안 ✅, Wave 2 UX ✅, Wave 3 Batch 1 ✅]
-테스트:       3,854+ passed, 0 failed (Wave 3 Batch 1: +73 tests)
+테스트:       3,930 passed, 0 failed (Wave 3 Batch 1: +73 tests, +3 auth tests)
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    (pending) Phase J-EXT Wave 3 Batch 1: US-114~119
-다음 작업:    Phase J-EXT Wave 3 Batch 2 — US-116 (TCA 모듈 + 대시보드 위젯)
+최신 커밋:    0a5302e (Phase J-EXT Wave 3 Batch 1: US-114~119 완료)
+다음 작업:    Phase J-EXT Wave 3 Batch 2 — US-116 (TCA 모듈 + 실행 레이턴시) + US-120 (인벤토리 리밸런싱)
 완료된 US:    US-065~076, US-105~119 (... + 동적포지션사이징 + 슬리피지피드백 + 텔레그램명령 + 상관관계모니터 + IOC원자실행)
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
@@ -489,12 +489,12 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-113: 용어 친화화 + 툴팁 ("War Room"→"대시보드", "MIN_EDGE_BPS"→"최소 수익 기준" + info 아이콘) ✅
 
 **Wave 3 — 엔진 강화**
-- [ ] US-114: 동적 포지션 사이징 (신뢰도(edge) × 레짐(RegimeDetector) × 유동성(DepthAnalyzer) 기반, CRISIS 25%, LOW vol 150%)
-- [ ] US-115: 슬리피지 피드백 루프 (실제 체결가 vs 예상가 비교 → EMA로 모델 파라미터 자동 조정)
+- [x] US-114: 동적 포지션 사이징 (신뢰도(edge) × 레짐(RegimeDetector) × 유동성(DepthAnalyzer) 기반, CRISIS 25%, LOW vol 150%) ✅
+- [x] US-115: 슬리피지 피드백 루프 (실제 체결가 vs 예상가 비교 → EMA로 모델 파라미터 자동 조정) ✅
 - [ ] US-116: TCA 모듈 + 실행 레이턴시 위젯 (Implementation shortfall, P50/P95/P99 레이턴시, 체결률)
-- [ ] US-117: 텔레그램 양방향 명령어 (/status, /kill, /mode, /balance — 단일 봇으로 통합)
-- [ ] US-118: 전략 간 상관관계 모니터링 (30-trade 롤링 상관계수, >0.7 시 소규모 전략 50% 축소)
-- [ ] US-119: IOC 주문 타입 (IOC 리밋 우선 → 타임아웃 시 마켓 폴백)
+- [x] US-117: 텔레그램 양방향 명령어 (/status, /kill, /mode, /balance — 단일 봇으로 통합) ✅
+- [x] US-118: 전략 간 상관관계 모니터링 (30-trade 롤링 상관계수, >0.7 시 소규모 전략 50% 축소) ✅
+- [x] US-119: IOC 주문 타입 (IOC 리밋 우선 → 타임아웃 시 마켓 폴백) ✅
 - [ ] US-120: 인벤토리 리밸런싱 통합 확인 (inventory_rebalancer.py 활성화 + 드리프트 알람)
 
 ### Phase K: Regime Detection 기반 구축 — US-081~085
@@ -571,6 +571,8 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | Phase J-EXT US-107 | ModeSwitch: PATCH /api/v1/settings/mode + LiveGate 확인 다이얼로그 | Live 전환 시 6-check LiveGate 통과 여부 사전 확인. 한글 명칭(시뮬레이션/연습/실거래)으로 비개발자 친화적 UX 개선 |
 | Phase J-EXT US-108 | 포트폴리오 탭 신설: equity-curve + metrics 별도 API | Overview 과부하 방지. EquityCurve.tsx + 자산배분 바 차트로 수익성 가시화. Sharpe/MDD/Calmar 3종 리스크 지표 통합 |
 | Phase J-EXT US-110 | GlobalHeatmap 심볼 필터: Major 8/Top 20/All/Custom + 로컬 저장 | All 모드에서 엔진 전체 175심볼 렌더링. Custom 설정은 localStorage 저장으로 세션 유지 |
+| Phase J-EXT W3-B1 | Telegram fail-closed auth: 빈 allowed_chat_ids → 전부 차단 | TelegramCommandHandler 요청 시 미설정 상황 fail-closed 원칙 적용. 인가된 chat_ids 없으면 명령어 거부 |
+| Phase J-EXT W3-B1 | CorrelationMonitor → Guardian check() #9 통합 | 5개 모듈(DynamicSizer, SlippageFeedbackLoop, CorrelationMonitor, TelegramCommandHandler, AtomicOrderExecutor) main.py wiring 필수화. CorrelationMonitor 결과는 Guardian check #9로 로그만 기록, DynamicSizer가 실제 포지션 축소 담당 |
 
 ---
 
@@ -614,6 +616,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 |------|------|--------|
 | **Phase D 대시보드 브라우저 미검증** | US-037~041, US-053 코드 레벨만 검증(`npm run build`). Chrome 렌더링, API 연동, WebSocket 실시간 피드, 모바일 반응형 미확인 | Phase D 재검증 US 추가 (Chrome 브라우저 테스트 필수) |
 | **Shadow 실행 시 Docker 미실행 위험** | Docker 없이 Shadow 실행 시 거래 로직은 유효하나 TimescaleDB/Redis 미저장 → 메트릭 유실 | Shadow 실행 전 `docker compose up -d` 필수 (leviathan.md에 명시) |
+| **AtomicOrderExecutor: place_ioc_limit() 미구현** | Native Adapter에서 IOC limit 주문 지원 부재 → 모든 거래소에서 US-119 IOC fallback(limit→market) 동작만 수행 | Phase K/L에서 거래소별 실제 API 연동 시 추가 (현재는 코드만 검증) |
 | ~~Bithumb 증분 Orderbook~~ | ~~스냅샷 없이 증분만 수신 → 허위 스프레드~~ | **RESOLVED (US-073)**: 누적 orderbook + REST re-sync + stale 5초 감지 |
 | 마찰 vs Gross Spread | 대부분 알트 spread 2-25bps, friction ~20bps | MIN_EDGE_BPS=5 + 고스프레드 심볼 집중 |
 

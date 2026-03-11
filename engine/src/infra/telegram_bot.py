@@ -40,6 +40,7 @@ class TelegramCommandHandler:
         self._alerter = alerter
         self._offset: int = 0
         self._running = False
+        self._consecutive_errors: int = 0
         # Auth: only allow commands from these chat IDs (fallback to TELEGRAM_CHAT_ID env)
         if allowed_chat_ids is not None:
             self._allowed_chat_ids = allowed_chat_ids
@@ -88,9 +89,9 @@ class TelegramCommandHandler:
 
     async def poll_updates(self) -> list[dict]:
         """Long-poll Telegram getUpdates API (timeout=30s)."""
-        if not self._alerter._bot_token or not self._alerter._enabled:
+        if not self._alerter.bot_token or not self._alerter.enabled:
             return []
-        url = f"https://api.telegram.org/bot{self._alerter._bot_token}/getUpdates"
+        url = f"https://api.telegram.org/bot{self._alerter.bot_token}/getUpdates"
         params: dict = {
             "offset": self._offset,
             "timeout": 30,
@@ -122,8 +123,11 @@ class TelegramCommandHandler:
                 msg = update.get("message", {})
                 chat_id = msg.get("chat", {}).get("id")
                 text = msg.get("text", "")
-                # Auth check: reject commands from unauthorized chats
-                if self._allowed_chat_ids and chat_id not in self._allowed_chat_ids:
+                # Auth check: fail-closed — no allowed_chat_ids means block ALL
+                if not self._allowed_chat_ids:
+                    logger.warning("telegram_no_allowed_chats", chat_id=chat_id)
+                    continue
+                if chat_id not in self._allowed_chat_ids:
                     logger.warning("telegram_unauthorized_command", chat_id=chat_id, text=text)
                     continue
                 if text.startswith("/"):

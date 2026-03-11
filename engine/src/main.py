@@ -96,6 +96,11 @@ class Engine:
         self._shadow_mode: Any = None
         self._live_gate: Any = None
         self._data_mode: str = DataMode.SYNTHETIC
+        # US-114/115/117/118: Wave 3 modules
+        self._correlation_monitor: Any = None
+        self._slippage_feedback: Any = None
+        self._dynamic_sizer: Any = None
+        self._telegram_cmd_handler: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -662,6 +667,16 @@ class Engine:
         except Exception as exc:
             logger.warning("RiskGuardian init failed: %s", exc)
 
+        # US-118: CorrelationMonitor → Guardian integration
+        try:
+            from src.risk.correlation_monitor import CorrelationMonitor
+            self._correlation_monitor = CorrelationMonitor(window=30, threshold=0.7)
+            if self._risk_guardian is not None:
+                self._risk_guardian.correlation_monitor = self._correlation_monitor
+            logger.info("CorrelationMonitor initialized (window=30, threshold=0.7)")
+        except Exception as exc:
+            logger.warning("CorrelationMonitor init failed (non-fatal): %s", exc)
+
     # ------------------------------------------------------------------
     # Step 7: Execution Engine
     # ------------------------------------------------------------------
@@ -686,6 +701,24 @@ class Engine:
             on_result=self._on_execution_result,
         )
         logger.info("AtomicExecutor + TradeRequestConsumer initialized")
+
+        # US-115: SlippageFeedbackLoop — tracks actual vs expected fills
+        try:
+            from src.risk.slippage import SlippageFeedbackLoop
+            self._slippage_feedback = SlippageFeedbackLoop(alpha=0.1, window=100)
+            logger.info("SlippageFeedbackLoop initialized (alpha=0.1, window=100)")
+        except Exception as exc:
+            logger.warning("SlippageFeedbackLoop init failed (non-fatal): %s", exc)
+
+        # US-114: DynamicSizer — wraps PositionSizer with confidence × regime × liquidity
+        try:
+            from src.execution.sizer import DynamicSizer, PositionSizer, SizerConfig
+            capital = self._settings.capital.initial_capital if self._settings else Decimal("70")
+            base_sizer = PositionSizer(SizerConfig(capital=capital, tier="alpha"))
+            self._dynamic_sizer = DynamicSizer(base_sizer=base_sizer)
+            logger.info("DynamicSizer initialized (wrapping PositionSizer)")
+        except Exception as exc:
+            logger.warning("DynamicSizer init failed (non-fatal): %s", exc)
 
     def _build_risk_check_fn(self):
         """Create a risk check callable for the trade consumer."""
@@ -725,6 +758,25 @@ class Engine:
             trade_request.strategy_id,
             execution_result.status.value,
         )
+        # US-115: Feed slippage data to feedback loop
+        if self._slippage_feedback is not None and hasattr(execution_result, 'legs'):
+            try:
+                for leg in execution_result.legs:
+                    if hasattr(leg, 'expected_price') and hasattr(leg, 'fill_price'):
+                        self._slippage_feedback.record_fill(
+                            expected_price=leg.expected_price,
+                            actual_price=leg.fill_price,
+                            side=leg.side if hasattr(leg, 'side') else "BUY",
+                        )
+            except Exception:
+                pass  # Non-critical: feedback tracking failure
+        # US-118: Feed trade PnL to correlation monitor
+        if self._correlation_monitor is not None:
+            try:
+                pnl = float(execution_result.pnl) if hasattr(execution_result, "pnl") else float(trade_request.expected_profit_usdt)
+                self._correlation_monitor.record_trade_pnl(trade_request.strategy_id, pnl)
+            except Exception:
+                pass  # Non-critical: correlation tracking failure
         # Record trade in context for dashboard API
         from datetime import datetime, timezone
         from uuid import uuid4
@@ -769,6 +821,10 @@ class Engine:
         self.context.position_manager = self._position_manager
         self.context.trade_consumer = self._trade_consumer
         self.context.engine = self
+        # Wave 3 modules
+        self.context.correlation_monitor = self._correlation_monitor
+        self.context.slippage_feedback = self._slippage_feedback
+        self.context.dynamic_sizer = self._dynamic_sizer
 
         # Populate strategies dict for backward compatibility
         if self._strategy_manager:
@@ -842,6 +898,31 @@ class Engine:
                     asyncio.create_task(self._paper_signal_simulator_loop(), name="multi_signal")
                 )
             logger.info("Data mode: %s", self._data_mode)
+
+        # US-117: TelegramCommandHandler — bidirectional bot commands
+        if self._telegram and self._telegram.enabled:
+            try:
+                from src.infra.telegram_bot import TelegramCommandHandler
+                from src.risk.kill_switch import halt_local
+
+                async def _kill_fn() -> str:
+                    halt_local()
+                    return "KillSwitch activated via Telegram"
+
+                async def _mode_fn() -> str:
+                    return f"Current mode: DATA_MODE={self._data_mode}"
+
+                self._telegram_cmd_handler = TelegramCommandHandler(
+                    alerter=self._telegram,
+                    kill_fn=_kill_fn,
+                    mode_fn=_mode_fn,
+                )
+                tasks.append(
+                    asyncio.create_task(self._telegram_cmd_handler.poll_loop(), name="telegram_cmd")
+                )
+                logger.info("TelegramCommandHandler started (5 commands)")
+            except Exception as exc:
+                logger.warning("TelegramCommandHandler init failed (non-fatal): %s", exc)
 
         self.state.background_tasks.extend(tasks)
         logger.info("Started %d background tasks", len(tasks))

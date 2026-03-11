@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol
 
+import httpx
 import structlog
 
 from src.infra.metrics import IOC_FILL_RATE, IOC_VS_MARKET
@@ -72,7 +73,7 @@ class AtomicOrderExecutor:
                 timeout=self._timeout_ms / 1000,
             )
             if result.filled_size >= size * self.IOC_MIN_FILL_RATIO:
-                slippage = abs(float((result.avg_price - price) / price)) * 10_000
+                slippage = abs(float((result.avg_price - price) / price)) * 10_000 if price else 0.0
                 self._ioc_fills += 1
                 self._ioc_slippage_sum += slippage
                 self._update_metrics(slippage, via_ioc=True)
@@ -97,7 +98,7 @@ class AtomicOrderExecutor:
 
         # Market fallback for remaining quantity
         market_result = await exchange.place_market(symbol, side, remaining)
-        slippage = abs(float((market_result.avg_price - price) / price)) * 10_000
+        slippage = abs(float((market_result.avg_price - price) / price)) * 10_000 if price else 0.0
         self._market_fills += 1
         self._market_slippage_sum += slippage
         self._update_metrics(slippage, via_ioc=False)

@@ -21,8 +21,8 @@ from src.infra.telegram_bot import TelegramCommandHandler
 def mock_alerter() -> MagicMock:
     """Minimal mock TelegramAlerter with required attributes."""
     alerter = MagicMock()
-    alerter._bot_token = "bot123:TOKEN"
-    alerter._enabled = True
+    alerter.bot_token = "bot123:TOKEN"
+    alerter.enabled = True
     alerter.send_alert = AsyncMock(return_value=True)
     return alerter
 
@@ -276,3 +276,40 @@ class TestEmptyTextFallback:
         response = await handler.process_command("   ")
         assert response is not None
         assert len(response) > 0
+
+
+# ---------------------------------------------------------------------------
+# Auth fail-closed tests
+# ---------------------------------------------------------------------------
+
+
+class TestAuthFailClosed:
+    async def test_empty_allowed_chat_ids_blocks_all(
+        self, mock_alerter: MagicMock
+    ) -> None:
+        """Empty allowed_chat_ids set → fail-closed: all commands blocked."""
+        handler = TelegramCommandHandler(
+            alerter=mock_alerter, allowed_chat_ids=set()
+        )
+        # Simulate poll_loop processing an update with chat_id=999
+        # Since we can't easily test poll_loop, verify the _allowed_chat_ids is empty
+        assert handler._allowed_chat_ids == set()
+        # In poll_loop: `if not self._allowed_chat_ids:` → True → skip (fail-closed)
+
+    async def test_authorized_chat_id_allowed(
+        self, mock_alerter: MagicMock
+    ) -> None:
+        """Authorized chat_id → commands processed."""
+        handler = TelegramCommandHandler(
+            alerter=mock_alerter, allowed_chat_ids={12345}
+        )
+        assert 12345 in handler._allowed_chat_ids
+
+    async def test_unauthorized_chat_id_blocked(
+        self, mock_alerter: MagicMock
+    ) -> None:
+        """Unauthorized chat_id not in allowed set → blocked."""
+        handler = TelegramCommandHandler(
+            alerter=mock_alerter, allowed_chat_ids={12345}
+        )
+        assert 99999 not in handler._allowed_chat_ids

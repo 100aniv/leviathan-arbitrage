@@ -18,12 +18,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 import structlog
 
 from src.infra.metrics import RISK_REJECTIONS_TOTAL
 from src.risk.circuit_breaker import CircuitBreaker
 from src.risk.kill_switch import is_halted
+
+if TYPE_CHECKING:
+    from src.risk.correlation_monitor import CorrelationMonitor
 
 logger = structlog.get_logger(__name__)
 
@@ -98,6 +102,8 @@ class RiskGuardian:
         self._max_rollback_threshold = max_rollback_threshold
         # Amendment 7: 0 = disabled (no correlation check)
         self._max_net_exposure_per_asset = max_net_exposure_per_asset
+        # US-118: optional correlation monitor — set externally after construction
+        self.correlation_monitor: CorrelationMonitor | None = None
 
     def check(self, proposal: TradeProposal, portfolio: PortfolioState) -> RiskCheckResult:
         """
@@ -272,6 +278,20 @@ class RiskGuardian:
                     f"({self._max_rollback_threshold * 100:.1f}% of position)"
                 ),
             )
+
+        # CHECK #9: Strategy correlation scale-down (US-118)
+        if self.correlation_monitor is not None:
+            events = self.correlation_monitor.check_correlations()
+            for evt in events:
+                if evt.strategy_id == proposal.strategy_id and evt.scale < 1.0:
+                    logger.warning(
+                        "risk_check_9_correlation_scale",
+                        strategy=proposal.strategy_id,
+                        scale=evt.scale,
+                        reason=evt.reason,
+                    )
+                    # Don't reject — just log. DynamicSizer handles actual scale-down.
+                    break
 
         logger.debug(
             "risk_check_approved",

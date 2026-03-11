@@ -77,6 +77,14 @@ class TelegramAlerter:
         # Sliding-window rate limiter: stores timestamps of recent sends.
         self._send_times: deque[float] = deque()
 
+    @property
+    def bot_token(self) -> str | None:
+        return self._bot_token
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
     # ---------------------------------------------------------------------------
     # Public API
     # ---------------------------------------------------------------------------

@@ -52,6 +52,10 @@ class EngineContext:
     risk_guardian: Any = None
     position_manager: Any = None
     trade_consumer: Any = None
+    # Wave 3 (US-114/115/118)
+    correlation_monitor: Any = None
+    slippage_feedback: Any = None
+    dynamic_sizer: Any = None
 
 
 class KillBody(BaseModel):
