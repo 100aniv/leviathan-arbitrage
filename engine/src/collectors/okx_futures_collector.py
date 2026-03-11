@@ -88,6 +88,10 @@ class OKXFuturesCollector(BaseCollector):
         raw_bids = entry.get("bids", [])
         raw_asks = entry.get("asks", [])
 
+        # Skip update frames with empty sides to avoid partial BBO
+        if action == "update" and (not raw_bids or not raw_asks):
+            return None
+
         bids = [[level[0], level[1]] for level in raw_bids]
         asks = [[level[0], level[1]] for level in raw_asks]
 

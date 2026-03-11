@@ -66,7 +66,7 @@ class BybitFuturesCollector(BaseCollector):
     def _parse_message(self, data: dict) -> tuple[str, list, list] | None:
         msg_type = data.get("type")
 
-        # snapshot or delta — treat both as a full replace
+        # snapshot — full replace; delta — skip if empty to avoid partial BBO
         if msg_type in ("snapshot", "delta"):
             topic: str = data.get("topic", "")
             # topic format: "orderbook.50.BTCUSDT"
@@ -79,6 +79,11 @@ class BybitFuturesCollector(BaseCollector):
             inner = data.get("data", {})
             bids: list = inner.get("b", [])
             asks: list = inner.get("a", [])
+
+            # Skip delta frames with empty sides to avoid partial BBO
+            if msg_type == "delta" and (not bids or not asks):
+                return None
+
             return symbol, bids, asks
 
         # op: "subscribe" ack, pong frames, etc. — ignore

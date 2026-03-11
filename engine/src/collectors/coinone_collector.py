@@ -91,6 +91,7 @@ class CoinoneCollector(BaseCollector):
             self._ws = ws
             self._connected = True
             self._reconnect_delay = self.INITIAL_RECONNECT_DELAY
+            self._last_message_time = time.monotonic()  # Reset to prevent watchdog false trigger
             logger.info("collector_connected", exchange=self.exchange_id)
 
             # Subscribe per-symbol

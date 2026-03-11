@@ -251,6 +251,14 @@ class BithumbCollector(BaseCollector):
                     if not bids or not asks:
                         return False
 
+                    # Price sanity check (same as _fetch_initial_snapshots)
+                    top_bid = float(bids[0][0]) if bids else 0
+                    top_ask = float(asks[0][0]) if asks else 0
+                    if top_ask > 0 and (top_bid / top_ask > 10 or top_bid / top_ask < 0.1):
+                        logger.warning("bithumb_refresh_price_insane",
+                                     symbol=symbol, bid=top_bid, ask=top_ask)
+                        return False
+
                     bids.sort(key=lambda x: float(x[0]), reverse=True)
                     asks.sort(key=lambda x: float(x[0]))
 
@@ -282,15 +290,21 @@ class BithumbCollector(BaseCollector):
         return await self.refresh_symbols(self.symbols)
 
     async def _stale_watch_loop(
-        self, check_interval_s: float = 1.0, stale_threshold_s: float = 5.0
+        self, check_interval_s: float = 30.0, stale_threshold_s: float = 30.0
     ) -> None:
-        """Check per-symbol staleness every second; re-sync stale symbols immediately."""
+        """Check per-symbol staleness every 30s; re-sync stale symbols with cooldown."""
+        _last_resync = 0.0
+        _COOLDOWN_S = 60.0  # Minimum interval between batch re-syncs
         while self._running:
             await asyncio.sleep(check_interval_s)
+            now = time.monotonic()
+            if now - _last_resync < _COOLDOWN_S:
+                continue
             stale = [s for s in self.symbols if self.is_symbol_stale(s, max_age_s=stale_threshold_s)]
             if stale:
                 logger.info("bithumb_stale_resync", count=len(stale))
                 await self.refresh_symbols(stale)
+                _last_resync = now
 
     def is_symbol_stale(self, symbol: str, max_age_s: float = 300.0) -> bool:
         """Check if a symbol's orderbook data is stale (no update in max_age_s seconds)."""
