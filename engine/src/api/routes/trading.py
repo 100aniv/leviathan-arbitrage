@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from src.api.auth import require_auth
@@ -78,14 +78,48 @@ async def get_pnl(request: Request) -> JSONResponse:
 
 
 @router.get("/trades", dependencies=[Depends(require_auth)])
-async def list_trades(request: Request, strategy: str | None = None, limit: int = 50) -> JSONResponse:
-    """Return trade history, optionally filtered by strategy_id."""
+async def list_trades(
+    request: Request,
+    strategy: str | None = None,
+    exchange: str | None = None,
+    symbol: str | None = None,
+    from_date: str | None = Query(default=None, alias="from"),
+    to_date: str | None = Query(default=None, alias="to"),
+    limit: int = 50,
+) -> JSONResponse:
+    """Return trade history with optional filters."""
     ctx = request.app.state.engine_context
     trades = list(ctx.trade_history)
     if strategy:
         trades = [t for t in trades if t.get("strategy_id") == strategy]
+    if exchange:
+        trades = [t for t in trades if t.get("buy_exchange") == exchange or t.get("sell_exchange") == exchange]
+    if symbol:
+        trades = [t for t in trades if t.get("symbol") == symbol]
+    if from_date:
+        trades = [t for t in trades if t.get("timestamp", "") >= from_date]
+    if to_date:
+        # Append end-of-day time if only date provided (e.g. "2026-03-12" → "2026-03-12T23:59:59.999999")
+        to_cmp = to_date if "T" in to_date else f"{to_date}T23:59:59.999999"
+        trades = [t for t in trades if t.get("timestamp", "") <= to_cmp]
     trades = sorted(trades, key=lambda t: t.get("timestamp", ""), reverse=True)
     return JSONResponse(trades[:limit])
+
+
+@router.get("/trades/{trade_id}", dependencies=[Depends(require_auth)])
+async def get_trade_detail(request: Request, trade_id: str) -> JSONResponse:
+    """Return detailed trade info including reason and fee breakdown."""
+    ctx = request.app.state.engine_context
+    for trade in ctx.trade_history:
+        if trade.get("id") == trade_id:
+            detail = dict(trade)
+            detail.setdefault("reason", "Cross-exchange spread detected")
+            detail.setdefault("spread_bps", 0.0)
+            detail.setdefault("fee_usd", 0.0)
+            detail.setdefault("net_pnl", detail.get("pnl", 0.0))
+            detail.setdefault("expected_pnl", 0.0)
+            return JSONResponse(detail)
+    raise HTTPException(status_code=404, detail="Trade not found")
 
 
 @router.get("/strategy-metrics", dependencies=[Depends(require_auth)])

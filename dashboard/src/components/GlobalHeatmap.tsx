@@ -85,27 +85,19 @@ export function GlobalHeatmap() {
   const [showCustomBox, setShowCustomBox] = useState(false);
   const [allSymbols,    setAllSymbols]    = useState<string[]>(TOP_20);
 
-  // Fetch all symbols from API when 'all' preset is selected
+  // Derive all symbols from exchangeStatus when 'all' preset is selected
   useEffect(() => {
-    if (symbolSet !== 'all') return;
-    const token = typeof window !== 'undefined' ? (localStorage.getItem('leviathan_token') ?? '') : '';
-    const base = process.env.NEXT_PUBLIC_ENGINE_URL ?? 'http://localhost:8000';
-    fetch(`${base}/api/v1/exchanges`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then((data: Record<string, { symbols?: string[] }>) => {
-        const syms = new Set<string>();
-        Object.values(data).forEach(ex => {
-          (ex.symbols ?? []).forEach(s => {
-            const sym = s.replace(/\/USDT$|USDT$/, '');
-            if (sym) syms.add(sym);
-          });
-        });
-        if (syms.size > 0) setAllSymbols(Array.from(syms).sort());
-      })
-      .catch(() => {});
-  }, [symbolSet]);
+    if (symbolSet !== 'all' || !exchangeStatus) return;
+    const syms = new Set<string>();
+    Object.values(exchangeStatus).forEach((ex) => {
+      const exData = ex as unknown as { symbols?: string[] };
+      (exData.symbols ?? []).forEach((s: string) => {
+        const sym = s.replace(/\/USDT$|USDT$/, '');
+        if (sym) syms.add(sym);
+      });
+    });
+    if (syms.size > 0) setAllSymbols(Array.from(syms).sort());
+  }, [symbolSet, exchangeStatus]);
 
   const activeSymbols = useMemo<string[]>(() => {
     switch (symbolSet) {

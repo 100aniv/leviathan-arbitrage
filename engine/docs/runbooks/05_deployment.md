@@ -37,11 +37,15 @@ if not result.passed:
 
 ### 1.2 Exchange health verification
 
+10개 거래소 (spot 7 + futures 3) 모두 확인:
+
 ```bash
 # All exchanges must report >= 95% health score
+# 지원 거래소: binance, bybit, okx, bitget, upbit, bithumb, coinone,
+#              binance_futures, okx_futures, bybit_futures (총 10개)
 python3 -c "
 import asyncio
-from engine.src.infra.exchange import get_all_adapters
+from src.infra.exchange import get_all_adapters
 
 async def main():
     for a in get_all_adapters():
@@ -51,6 +55,17 @@ async def main():
 
 asyncio.run(main())
 "
+```
+
+Docker 컨테이너 상태 확인 (9개 컨테이너):
+
+```bash
+docker compose ps
+# 확인 대상: leviathan-timescaledb, leviathan-redis, leviathan-dashboard,
+#            leviathan-grafana, leviathan-prometheus, leviathan-redis-exporter
+#            leviathan-nginx, leviathan-monitoring, leviathan-auto-tuner
+docker compose ps --format "table {{.Name}}\t{{.Status}}" | grep -v healthy | grep -v "Up "
+# 출력 없으면 전체 정상
 ```
 
 ### 1.3 Database continuity
@@ -326,20 +341,56 @@ for c in result.checks:
     print(f"  {c.name}: {c.value}")
 ```
 
-### Step 5.2 — Execution smoke test
+### Step 5.2 — API 엔드포인트 smoke test
 
-```python
-# 10 paper trades to verify atomic executor
-from engine.src.execution.paper import PaperExecutor
+```bash
+# JWT 토큰 발급 후 주요 엔드포인트 확인
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=${DASHBOARD_USER}&password=${DASHBOARD_PASSWORD}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
-executor = PaperExecutor(...)
-for i in range(10):
-    result = await executor.execute_paper_trade(...)
-    assert result.status in ("SUCCESS", "ROLLED_BACK"), f"Unexpected: {result.status}"
-print("10/10 paper trades completed")
+# 주요 API 엔드포인트 목록
+ENDPOINTS=(
+  "GET /health"
+  "GET /status"
+  "GET /mode"
+  "GET /exchanges"
+  "GET /positions"
+  "GET /pnl"
+  "GET /trades"
+  "GET /strategies"
+  "GET /alerts"
+  "GET /funding-rates"
+  "GET /shadow/stats"
+  "GET /portfolio-summary"   # US-072 추가
+  "GET /attribution"
+  "GET /settings"
+  "GET /risk/metrics"
+)
+
+for ep in "${ENDPOINTS[@]}"; do
+  METHOD=$(echo $ep | awk '{print $1}')
+  PATH=$(echo $ep | awk '{print $2}')
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer $TOKEN" \
+    -X $METHOD "http://localhost:8000$PATH")
+  echo "$STATUS $ep"
+done
+# 모든 엔드포인트 200 또는 인증 없는 경우 401 이어야 함
 ```
 
-### Step 5.3 — Metrics baseline
+### Step 5.3 — 전략 활성화 확인
+
+```bash
+# 활성 전략 목록 확인 (futures_futures 포함 7개 이상)
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8000/strategies | \
+  python3 -c "import sys,json; [print(s['id'], s.get('status')) for s in json.load(sys.stdin)]"
+# 예상: cross_exchange, spot_futures, futures_futures, triangular,
+#       funding_rate, statistical_arb, latency_arb 7개 (cex_dex: DEX_RPC_URL 설정 시 추가)
+```
+
+### Step 5.4 — Metrics baseline
 
 ```promql
 # Prometheus — verify post-deploy baselines
@@ -357,7 +408,7 @@ histogram_quantile(0.99, leviathan_execution_latency_ms_bucket)
 histogram_quantile(0.99, leviathan_db_write_latency_ms_bucket)
 ```
 
-### Step 5.4 — Confirm Telegram alerts working
+### Step 5.5 — Confirm Telegram alerts working
 
 ```bash
 # Trigger a test alert

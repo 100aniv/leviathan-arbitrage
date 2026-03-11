@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-12 (Phase J-EXT Wave 2 Batch 1: US-107/108/110 완료) | 최신 커밋: `a08cdcc`
+> 마지막 업데이트: 2026-03-12 (Phase J-EXT Wave 2 Batch 3: PRE-FIX + US-111/112 완료) | 최신 커밋: (pending)
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (113개 User Stories)
 > **실행 순서**: J-EXT Wave1(보안) → Wave2(UX) → Wave3(엔진) → K(Regime) → L(DEX) → M(ML) → Wave4(인프라) → F(LAST)
 
@@ -27,14 +27,14 @@
 ## 2. 현재 상태
 
 ```
-Phase:        J-EXT Wave 2 (UX) ← CURRENT  [Wave 1 보안 ✅ 완료]
-테스트:       3,833 passed, 0 failed
+Phase:        J-EXT Wave 2 (UX) ← CURRENT  [Wave 1 보안 ✅, Wave 2 Batch 1-3 ✅]
+테스트:       3,854 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    a08cdcc Phase J-EXT US-106: WebSocket JWT 인증 + 대시보드 토큰 전달
-다음 작업:    Phase J-EXT Wave 2 — US-109 (오버뷰 개선)
-완료된 US:    US-065~076, US-105~108, US-110 (Shadow 데이터 브리지 + 대시보드 UI 완성 + 계좌/잔고 + 수집기 강화 + futures_futures 활성화 + 완성도 감사 + JWT 보안 강화 + WS JWT 인증 + 모드 전환 UI + 포트폴리오 탭 + 히트맵 심볼 확장)
+최신 커밋:    (pending) Phase J-EXT Wave 2 Batch 3: PRE-FIX + US-111 + US-112
+다음 작업:    Phase J-EXT Wave 3 — US-114 (동적 포지션 사이징)
+완료된 US:    US-065~076, US-105~113 (Shadow 데이터 브리지 + 대시보드 UI 완성 + 계좌/잔고 + 수집기 강화 + futures_futures 활성화 + 완성도 감사 + JWT 보안 강화 + WS JWT 인증 + 모드 전환 UI + 포트폴리오 탭 + 오버뷰 개선 + 히트맵 심볼 확장 + 거래 설명 + 필터/CSV + 용어 친화화)
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
@@ -484,8 +484,8 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-108: 포트폴리오 별도 탭 (portfolio/page.tsx + EquityCurve.tsx 신규, GET /portfolio/equity-curve + /portfolio/metrics, Sharpe/MDD/Calmar 리스크 메트릭스, 자산배분 바 차트) ✅
 - [x] US-109: 오버뷰 개선 (ROI%, 시스템 성능 위젯, "Shadow Monitor"→현재 모드명 동적 변경) ✅
 - [x] US-110: 히트맵 심볼 확장 (GlobalHeatmap.tsx Major 8/Top 20/All/Custom 드롭다운, All 시 엔진 전체 심볼 표시, Custom 드롭다운 로컬 저장) ✅
-- [ ] US-111: 거래 설명 기능 ("왜 이 거래를?" — 가격차이, 예상수익, 수수료, 실제수익)
-- [ ] US-112: 트레이드 필터링 + CSV 내보내기 (날짜/전략/거래소/페어 필터 + CSV 다운로드)
+- [x] US-111: 거래 설명 기능 ("왜 이 거래를?" — GET /trades/{id} + TradeDetail 사이드 패널, reason/spread_bps/fee_usd/net_pnl)
+- [x] US-112: 트레이드 필터링 + CSV 내보내기 (날짜/전략/거래소/심볼 필터 + RFC 4180 CSV 다운로드)
 - [x] US-113: 용어 친화화 + 툴팁 ("War Room"→"대시보드", "MIN_EDGE_BPS"→"최소 수익 기준" + info 아이콘) ✅
 
 **Wave 3 — 엔진 강화**

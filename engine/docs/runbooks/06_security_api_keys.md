@@ -97,6 +97,7 @@ git 히스토리에 키가 이미 포함된 경우 Section 5 (침해 대응)를 
 
 ```bash
 # engine/.env.example
+# === Spot 거래소 (7개) ===
 BINANCE_API_KEY=
 BINANCE_API_SECRET=
 BINANCE_TESTNET=false
@@ -120,11 +121,34 @@ UPBIT_API_SECRET=
 BITHUMB_API_KEY=
 BITHUMB_API_SECRET=
 
+COINONE_API_KEY=
+COINONE_API_SECRET=
+
+# === Futures 거래소 (3개) — spot 키 공유 가능, 전용 서브계정 권장 ===
+# Binance Futures: BINANCE_API_KEY 공유 (선물 거래 권한 포함)
+BINANCE_FUTURES_TESTNET=false
+
+# OKX Futures: OKX_API_KEY 공유 (선물 거래 권한 포함)
+OKX_FUTURES_TESTNET=false
+
+# Bybit Futures: BYBIT_API_KEY 공유 (Unified Trading Account 사용 시 자동)
+BYBIT_FUTURES_TESTNET=false
+
+# === 활성 거래소 목록 ===
+TRADING_ACTIVE_EXCHANGES=["binance","bybit","okx","bitget","upbit","bithumb","coinone","binance_futures","okx_futures","bybit_futures"]
+
+# === 인프라 ===
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 
 DATABASE_URL=postgresql+asyncpg://leviathan:leviathan@localhost:5432/leviathan
 REDIS_URL=redis://localhost:6379/0
+
+# === 엔진 설정 ===
+ENGINE_ENV=dev
+JWT_SECRET=
+DASHBOARD_USER=
+DASHBOARD_PASSWORD=
 ```
 
 ---
@@ -263,9 +287,33 @@ Rate limit: 기본 10 req/sec (초과 시 429 에러)
 IP 화이트리스트: 필수
 주의: Bithumb은 서브계정 미지원
 Rate limit: 기본 20 req/sec
+주의: 증분 orderbook에서 소형코인 가격 2-10x 오차 발생 가능 (fake spread) — spot_futures 전략 비활성
 ```
 
-### 2.7 Monitoring-only (Read-only) 키
+### 2.7 Coinone (한국)
+
+**필요 권한:** `trade`; 출금 비활성화
+
+```
+거래소 설정 페이지: https://coinone.co.kr/developer/app
+IP 화이트리스트: 필수
+수수료: API 할인 적용 시 0.20% → 0.02% (COINONE_FEE_RATE 확인)
+Rate limit: 기본 10 req/sec
+```
+
+### 2.8 Futures 거래소 (binance_futures, okx_futures, bybit_futures)
+
+Futures 거래소는 해당 spot 거래소의 API 키를 공유한다. 별도 서브계정 권장.
+
+```
+binance_futures: BINANCE_API_KEY + 선물 거래(Futures) 권한 활성화 필요
+okx_futures:    OKX_API_KEY + Trade 권한 (선물 포함)
+bybit_futures:  BYBIT_API_KEY + Unified Trading Account 사용 시 자동 포함
+
+주의: 선물 거래소 키에서도 출금(Withdraw) 권한은 반드시 비활성화
+```
+
+### 2.9 Monitoring-only (Read-only) 키
 
 트레이딩 키와 별도로 모니터링 전용 read-only 키를 발급하여 Grafana/Prometheus 연동에 사용한다:
 
@@ -542,13 +590,15 @@ pgrep -f "python.*leviathan" || echo "Engine stopped"
 
 ```
 순서: 가장 큰 잔고를 보유한 거래소부터 우선 처리
+(Futures 거래소는 Spot과 동일 키 공유 — Spot 키 폐기 시 Futures도 자동 무효화)
 
-Binance:  https://www.binance.com/en/my/settings/api-management → 키 삭제
-Bybit:    https://www.bybit.com/app/user/api-management → 키 삭제
-OKX:      https://www.okx.com/account/my-api → 키 삭제
-Bitget:   https://www.bitget.com/account/newapi → 키 삭제
-Upbit:    https://upbit.com/service_center/open_api_info → 키 삭제
-Bithumb:  https://www.bithumb.com/u1/US127 → 키 삭제
+Binance / Binance Futures:  https://www.binance.com/en/my/settings/api-management → 키 삭제
+Bybit / Bybit Futures:      https://www.bybit.com/app/user/api-management → 키 삭제
+OKX / OKX Futures:         https://www.okx.com/account/my-api → 키 삭제
+Bitget:                     https://www.bitget.com/account/newapi → 키 삭제
+Upbit:                      https://upbit.com/service_center/open_api_info → 키 삭제
+Bithumb:                    https://www.bithumb.com/u1/US127 → 키 삭제
+Coinone:                    https://coinone.co.kr/developer/app → 키 삭제
 ```
 
 **Step 3 — 미체결 주문 전량 취소**

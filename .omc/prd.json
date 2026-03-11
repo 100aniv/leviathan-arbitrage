@@ -1737,7 +1737,7 @@
       "title": "거래 설명 기능 (왜 이 거래를?)",
       "phase": "J-EXT",
       "priority": 107,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "dashboard/src/app/trades/page.tsx",
@@ -1754,7 +1754,7 @@
       "title": "트레이드 필터링 + CSV 내보내기",
       "phase": "J-EXT",
       "priority": 108,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "dashboard/src/app/trades/page.tsx",

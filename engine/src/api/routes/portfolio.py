@@ -91,7 +91,7 @@ async def get_portfolio_summary(request: Request) -> JSONResponse:
     return JSONResponse({
         "total_balance_usdt": round(total_balance, 2),
         "total_pnl": round(total_pnl, 6),
-        "daily_pnl": round(total_pnl, 6),  # session PnL — equals total within a single run
+        "pnl_scope": "session",
         "active_positions": position_count,
         "exchange_balances": exchange_balances,
         "mode": ctx.execution_mode,
@@ -104,6 +104,8 @@ async def get_equity_curve(request: Request) -> JSONResponse:
     """Return daily equity curve data for charting."""
     ctx = request.app.state.engine_context
 
+    initial_capital = ctx.runtime_settings.get("initial_capital", 100000)
+
     # Build equity curve from shadow mode trade history or context
     curve_data = []
     shadow = getattr(ctx, "shadow_mode", None)
@@ -113,9 +115,9 @@ async def get_equity_curve(request: Request) -> JSONResponse:
         # Single point for current session (historical data requires TimescaleDB query)
         curve_data.append({
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-            "equity": round(total_pnl + 100000, 2),  # base + pnl
+            "equity": round(total_pnl + initial_capital, 2),
             "pnl": round(total_pnl, 6),
-            "btc_benchmark": 100000,  # placeholder — requires BTC price tracking
+            "btc_benchmark": None,  # requires BTC price tracking — not implemented
         })
 
     if not curve_data:
@@ -123,9 +125,9 @@ async def get_equity_curve(request: Request) -> JSONResponse:
         total = float(ctx.realized_pnl or 0) + float(ctx.unrealized_pnl or 0)
         curve_data.append({
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-            "equity": round(total + 100000, 2),
+            "equity": round(total + initial_capital, 2),
             "pnl": round(total, 6),
-            "btc_benchmark": 100000,
+            "btc_benchmark": None,
         })
 
     return JSONResponse({"curve": curve_data})
@@ -136,10 +138,10 @@ async def get_portfolio_metrics(request: Request) -> JSONResponse:
     """Return risk metrics: Sharpe, MDD, Calmar, win rate."""
     ctx = request.app.state.engine_context
 
-    metrics = {
-        "sharpe_ratio": 0.0,
+    metrics: dict[str, Any] = {
+        "sharpe_ratio": None,
         "max_drawdown_pct": 0.0,
-        "calmar_ratio": 0.0,
+        "calmar_ratio": None,
         "win_rate": 0.0,
         "total_trades": 0,
         "total_pnl": 0.0,
@@ -153,9 +155,17 @@ async def get_portfolio_metrics(request: Request) -> JSONResponse:
         metrics["total_trades"] = int(snapshot.get("total_trades", 0))
         metrics["max_drawdown_pct"] = float(snapshot.get("max_drawdown", 0)) * 100
 
-        # Calmar = annualized return / max drawdown
+        # Calmar = annualized return / max drawdown (requires ≥1 day of session data)
         mdd = metrics["max_drawdown_pct"]
         if mdd > 0:
-            metrics["calmar_ratio"] = round(metrics["total_pnl"] / (mdd / 100 * 100000) * 365, 2)
+            initial_capital = ctx.runtime_settings.get("initial_capital", 100000)
+            session_start_ts = ctx.runtime_settings.get("session_start_ts")
+            if session_start_ts is not None:
+                elapsed_days = (datetime.now(timezone.utc).timestamp() - float(session_start_ts)) / 86400
+            else:
+                elapsed_days = 0
+            if elapsed_days >= 1:
+                annualized_return_pct = (metrics["total_pnl"] / initial_capital * 100) / elapsed_days * 365
+                metrics["calmar_ratio"] = round(annualized_return_pct / mdd, 2)
 
     return JSONResponse(metrics)

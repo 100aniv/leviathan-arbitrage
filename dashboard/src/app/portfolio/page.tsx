@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { EquityCurve } from '@/components/EquityCurve';
-import { fetchApi } from '@/lib/api';
+import { getPortfolioMetrics, getPortfolioSummary, getEquityCurve } from '@/lib/api';
 
 interface PortfolioMetrics {
-  sharpe_ratio:      number;
+  sharpe_ratio:      number | null;
   max_drawdown_pct:  number;
-  calmar_ratio:      number;
+  calmar_ratio:      number | null;
   win_rate:          number;
   total_trades:      number;
   total_pnl:         number;
@@ -33,22 +33,19 @@ const PIE_COLORS = [
 export default function PortfolioPage() {
   const [metrics, setMetrics] = useState<PortfolioMetrics | null>(null);
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
-  const [curve,   setCurve]   = useState<{ date: string; equity: number; btc_benchmark: number }[]>([]);
+  const [curve,   setCurve]   = useState<{ date: string; equity: number; btc_benchmark: number | null }[]>([]);
 
   useEffect(() => {
     async function load() {
       try {
-        const [mRes, sRes, cRes] = await Promise.all([
-          fetchApi('/api/v1/portfolio/metrics'),
-          fetchApi('/api/v1/portfolio-summary'),
-          fetchApi('/api/v1/portfolio/equity-curve'),
+        const [metricsData, summaryData, curveData] = await Promise.all([
+          getPortfolioMetrics().catch(() => null),
+          getPortfolioSummary().catch(() => null),
+          getEquityCurve().catch(() => null),
         ]);
-        if (mRes.ok) setMetrics(await mRes.json());
-        if (sRes.ok) setSummary(await sRes.json());
-        if (cRes.ok) {
-          const d = await cRes.json();
-          setCurve(d.curve ?? []);
-        }
+        if (metricsData) setMetrics(metricsData as PortfolioMetrics);
+        if (summaryData) setSummary(summaryData);
+        if (curveData) setCurve(curveData.curve ?? []);
       } catch { /* ignore — engine may be offline */ }
     }
     load();

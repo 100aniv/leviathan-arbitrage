@@ -147,6 +147,11 @@ export interface Trade {
   pnl: number;
   timestamp: string;
   status: string;
+  reason?: string;
+  spread_bps?: number;
+  fee_usd?: number;
+  net_pnl?: number;
+  expected_pnl?: number;
 }
 
 export interface Alert {

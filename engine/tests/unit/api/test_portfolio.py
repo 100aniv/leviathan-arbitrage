@@ -125,13 +125,14 @@ class TestPortfolioCalculations:
 
 class TestPortfolioFields:
     def test_pnl_fields(self, client, context, auth_headers):
-        """PnL fields reflect context realized + unrealized."""
+        """PnL fields reflect context realized + unrealized. daily_pnl removed in MEDIUM-7."""
         context.realized_pnl = Decimal("100.50")
         context.unrealized_pnl = Decimal("25.25")
 
         data = client.get("/api/v1/portfolio-summary", headers=auth_headers).json()
         assert abs(data["total_pnl"] - 125.75) < 0.001
-        assert abs(data["daily_pnl"] - 125.75) < 0.001
+        assert "daily_pnl" not in data
+        assert data.get("pnl_scope") == "session"
 
     def test_mode_field(self, client, context, auth_headers):
         """Mode field reflects execution_mode from context."""

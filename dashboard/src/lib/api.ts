@@ -99,11 +99,22 @@ export const getMode = () =>
 
 // ─── Trades ───────────────────────────────────────────────────────────────────
 
-export const getTrades = (strategy?: string, limit?: number) => {
-  const params = new URLSearchParams();
-  if (strategy) params.set("strategy", strategy);
-  if (limit) params.set("limit", String(limit));
-  return request<Trade[]>(`/api/v1/trades?${params}`);
+export const getTrades = (params?: {
+  strategy?: string;
+  exchange?: string;
+  symbol?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+}) => {
+  const qs = new URLSearchParams();
+  if (params?.strategy) qs.set("strategy", params.strategy);
+  if (params?.exchange) qs.set("exchange", params.exchange);
+  if (params?.symbol) qs.set("symbol", params.symbol);
+  if (params?.from) qs.set("from", params.from);
+  if (params?.to) qs.set("to", params.to);
+  if (params?.limit) qs.set("limit", String(params.limit));
+  return request<Trade[]>(`/api/v1/trades?${qs}`);
 };
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────
@@ -151,10 +162,10 @@ export const getPortfolioSummary = () =>
   request<PortfolioSummaryResponse>("/api/v1/portfolio-summary");
 
 export const getEquityCurve = () =>
-  request<{ curve: { date: string; equity: number; pnl: number; btc_benchmark: number }[] }>("/api/v1/portfolio/equity-curve");
+  request<{ curve: { date: string; equity: number; pnl: number; btc_benchmark: number | null }[] }>("/api/v1/portfolio/equity-curve");
 
 export const getPortfolioMetrics = () =>
-  request<{ sharpe_ratio: number; max_drawdown_pct: number; calmar_ratio: number; win_rate: number; total_trades: number; total_pnl: number }>("/api/v1/portfolio/metrics");
+  request<{ sharpe_ratio: number | null; max_drawdown_pct: number; calmar_ratio: number | null; win_rate: number; total_trades: number; total_pnl: number }>("/api/v1/portfolio/metrics");
 
 // ─── Raw fetch helper (returns Response, caller handles parsing) ──────────────
 

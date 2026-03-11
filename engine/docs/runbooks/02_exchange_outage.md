@@ -3,6 +3,7 @@
 **Severity:** HIGH
 **SLA:** Detection within 2 minutes. Failover decision within 10 minutes. Full recovery within 2 hours.
 **Related code:** `engine/src/risk/circuit_breaker.py`, `engine/src/infra/exchange/__init__.py`
+**지원 거래소 (10개):** binance, bybit, okx, bitget, upbit, bithumb, coinone, binance_futures, okx_futures, bybit_futures
 
 ---
 
@@ -92,7 +93,18 @@ logger.warning("exchange_disabled", exchange="bitget", reason="outage_detected")
 Or via environment variable restart (zero-downtime not guaranteed):
 
 ```bash
-DISABLED_EXCHANGES=bitget python -m engine.src.main --mode shadow
+# engine/.env에서 TRADING_ACTIVE_EXCHANGES 수정 (장애 거래소 제거)
+# 현재 기본값: binance,bybit,okx,bitget,upbit,bithumb,coinone,binance_futures,okx_futures,bybit_futures
+TRADING_ACTIVE_EXCHANGES=["binance","bybit","okx","upbit","bithumb","coinone","binance_futures"] \
+    python -m src.main
+```
+
+Docker로 실행 중인 경우:
+
+```bash
+# 컨테이너 재시작 (환경변수 변경 적용)
+docker compose restart leviathan-engine
+docker compose logs -f leviathan-engine | grep -E "exchange|collector"
 ```
 
 ### Step 2.3 — Redistribute pairs to healthy exchanges
@@ -100,10 +112,13 @@ DISABLED_EXCHANGES=bitget python -m engine.src.main --mode shadow
 Check which symbol pairs have alternative liquidity:
 
 ```python
-# Identify pairs that can be traded on other exchanges
+# 10개 거래소 중 대체 거래소 식별
+# spot: binance, bybit, okx, bitget, upbit, bithumb, coinone
+# futures: binance_futures, okx_futures, bybit_futures
 available_pairs = {
-    "BTC/USDT": ["bybit", "okx", "binance"],
-    "ETH/USDT": ["bybit", "okx"],
+    "BTC/USDT": ["bybit", "okx", "binance", "binance_futures", "okx_futures"],
+    "ETH/USDT": ["bybit", "okx", "binance", "bybit_futures"],
+    "BTC/KRW":  ["upbit", "bithumb", "coinone"],
     # ...
 }
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -59,7 +59,6 @@ async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
     ctx = request.app.state.engine_context
     valid_modes = {"shadow", "paper", "live"}
     if body.mode not in valid_modes:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=f"Invalid mode. Must be one of: {valid_modes}")
 
     livegate_result = None

@@ -640,3 +640,259 @@ class TestWebSocketAuth:
         with pytest.raises(Exception):
             with client.websocket_connect("/ws/strategies") as ws:
                 ws.receive_json()
+
+
+# ---------------------------------------------------------------------------
+# Helper: auth headers for protected routes
+# ---------------------------------------------------------------------------
+
+def _auth_headers() -> dict[str, str]:
+    from src.api.auth import create_token
+    return {"Authorization": f"Bearer {create_token('testuser')}"}
+
+
+# ---------------------------------------------------------------------------
+# US-107: Mode switch endpoint — PATCH /api/v1/settings/mode
+# ---------------------------------------------------------------------------
+
+class TestModeSwitch:
+    """Test PATCH /api/v1/settings/mode endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_switch_to_shadow_mode(self):
+        ctx = _make_context(execution_mode="paper")
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.patch(
+                "/api/v1/settings/mode",
+                json={"mode": "shadow"},
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 200
+        assert resp.json()["mode"] == "shadow"
+        assert ctx.execution_mode == "shadow"
+
+    @pytest.mark.asyncio
+    async def test_switch_to_paper_mode(self):
+        ctx = _make_context(execution_mode="shadow")
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.patch(
+                "/api/v1/settings/mode",
+                json={"mode": "paper"},
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 200
+        assert resp.json()["mode"] == "paper"
+
+    @pytest.mark.asyncio
+    async def test_switch_to_invalid_mode_returns_400(self):
+        ctx = _make_context()
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.patch(
+                "/api/v1/settings/mode",
+                json={"mode": "invalid_mode"},
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_switch_to_live_without_engine_returns_403(self):
+        ctx = _make_context(engine=None)
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.patch(
+                "/api/v1/settings/mode",
+                json={"mode": "live"},
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_switch_mode_without_auth_returns_401(self):
+        ctx = _make_context()
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.patch(
+                "/api/v1/settings/mode",
+                json={"mode": "shadow"},
+            )
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_switch_to_live_with_passing_livegate(self):
+        engine = MagicMock()
+        livegate = MagicMock()
+        result = MagicMock()
+        result.passed = True
+        livegate.evaluate.return_value = result
+        engine._live_gate = livegate
+        ctx = _make_context(engine=engine, execution_mode="shadow")
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.patch(
+                "/api/v1/settings/mode",
+                json={"mode": "live"},
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 200
+        assert resp.json()["mode"] == "live"
+        assert ctx.execution_mode == "live"
+
+    @pytest.mark.asyncio
+    async def test_switch_to_live_with_failing_livegate_returns_403(self):
+        engine = MagicMock()
+        livegate = MagicMock()
+        result = MagicMock()
+        result.passed = False
+        livegate.evaluate.return_value = result
+        engine._live_gate = livegate
+        ctx = _make_context(engine=engine, execution_mode="shadow")
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.patch(
+                "/api/v1/settings/mode",
+                json={"mode": "live"},
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 403
+        body = resp.json()
+        assert "LiveGate" in body.get("error", "")
+
+
+# ---------------------------------------------------------------------------
+# US-108: Portfolio endpoint tests
+# ---------------------------------------------------------------------------
+
+class TestPortfolioEndpoints:
+    """Test portfolio equity-curve and metrics endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_equity_curve_returns_200(self):
+        ctx = _make_context()
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/portfolio/equity-curve",
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "curve" in data
+        assert isinstance(data["curve"], list)
+
+    @pytest.mark.asyncio
+    async def test_equity_curve_contains_required_fields(self):
+        ctx = _make_context()
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/portfolio/equity-curve",
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 200
+        point = resp.json()["curve"][0]
+        assert "date" in point
+        assert "equity" in point
+        assert "pnl" in point
+
+    @pytest.mark.asyncio
+    async def test_equity_curve_with_shadow_mode(self):
+        shadow = MagicMock()
+        shadow.get_snapshot.return_value = {"total_pnl": 1234.56}
+        ctx = _make_context(shadow_mode=shadow)
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/portfolio/equity-curve",
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 200
+        curve = resp.json()["curve"]
+        assert len(curve) >= 1
+        assert curve[0]["pnl"] == 1234.56
+
+    @pytest.mark.asyncio
+    async def test_equity_curve_without_auth_returns_401(self):
+        ctx = _make_context()
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/v1/portfolio/equity-curve")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_portfolio_metrics_returns_200(self):
+        ctx = _make_context()
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/portfolio/metrics",
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "sharpe_ratio" in data
+        assert "max_drawdown_pct" in data
+        assert "calmar_ratio" in data
+        assert "win_rate" in data
+
+    @pytest.mark.asyncio
+    async def test_portfolio_metrics_with_shadow_data(self):
+        shadow = MagicMock()
+        shadow.get_snapshot.return_value = {
+            "total_pnl": 500.0,
+            "win_rate": 0.75,
+            "total_trades": 100,
+            "max_drawdown": 0.02,
+        }
+        ctx = _make_context(shadow_mode=shadow)
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/portfolio/metrics",
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_pnl"] == 500.0
+        assert data["win_rate"] == 0.75
+        assert data["total_trades"] == 100
+
+    @pytest.mark.asyncio
+    async def test_portfolio_metrics_without_auth_returns_401(self):
+        ctx = _make_context()
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/v1/portfolio/metrics")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_portfolio_metrics_default_values_without_shadow(self):
+        ctx = _make_context(shadow_mode=None)
+        app = create_app(ctx)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/portfolio/metrics",
+                headers=_auth_headers(),
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        # HIGH-3: sharpe_ratio is None when no snapshot data
+        assert data["sharpe_ratio"] is None
+        assert data["total_trades"] == 0

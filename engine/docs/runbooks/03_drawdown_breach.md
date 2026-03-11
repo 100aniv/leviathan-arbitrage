@@ -160,7 +160,7 @@ config.min_edge_bps = 10
 
 ### Step 3.4 — Re-verify slippage model calibration
 
-Compare actual slippage vs. PowerLawSlippage model:
+슬리피지 소스: **SignalGenerator의 CEXOrderbookSlippage만** 사용. PaperExecutor에 추가 슬리피지 적용 금지 (이중계산 방지).
 
 ```sql
 SELECT
@@ -169,7 +169,8 @@ SELECT
 FROM execution_log
 WHERE ts > NOW() - INTERVAL '7 days'
   AND status = 'SUCCESS';
--- Expected: slippage_fraction < 0.30 (model: base 10bps * k=1.0 * size^0.5)
+-- Expected: slippage_fraction < 0.30 (CEXOrderbookSlippage 기반)
+-- 주의: PowerLawSlippage(k=5.0)는 ~100bps 왕복 → PaperExecutor 적용 절대 금지
 ```
 
 ---
