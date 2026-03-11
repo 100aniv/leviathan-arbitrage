@@ -147,8 +147,10 @@ Engine.run()
 | **RiskGauge** | Overview | 리스크 지표 (Max Drawdown 게이지 + Kill Switch/Circuit Breaker 상태) | ✅ 완성 |
 | **PerformanceTrend** | Overview | 세션 성과 추세 (시간대별 PnL 꺾은선 그래프) | ✅ 완성 |
 | **EventFeed** | Overview | 거래/신호/경고 실시간 피드 (WebSocket 브로드캐스트) | ✅ 완성 |
-| **GlobalHeatmap** | Overview | 거래소×심볼 스프레드 히트맵 (REST polling fallback) | ✅ 개선 |
+| **GlobalHeatmap** | Overview | 거래소×심볼 스프레드 히트맵 (Major 8/Top 20/All/Custom 드롭다운, 로컬 저장) | ✅ 개선 (US-110) |
 | **OrderbookView** | Overview | 실시간 오더북 (Binance spot 기본, 거래소 선택 가능) | ✅ 개선 |
+| **ModeSwitch** | Overview 헤더 | 실행 모드 전환 UI (시뮬레이션/연습/실거래 한글 명칭, Live 전환 시 LiveGate 다이얼로그) | ✅ 신규 (US-107) |
+| **EquityCurve** | Portfolio 탭 | 자본 곡선 그래프 + Sharpe/MDD/Calmar 리스크 메트릭스 | ✅ 신규 (US-108) |
 | Attribution | Attribution 페이지 | 전략별/거래소별 수익 기여도 분석 | ✅ 완성 |
 | Funding Rate | Funding 페이지 | 펀딩레이트 수익 추적 + 거래소별 비교 | ✅ 완성 |
 | System Health | System 페이지 | 인프라 상태 (Docker, DB, Redis, Prometheus) | ✅ 완성 |
@@ -159,6 +161,9 @@ Engine.run()
 |--------|------|------|------|
 | GET | `/api/v1/shadow/stats` | JWT | Shadow 실시간 메트릭 (PnL, WR, MDD, 전략별 breakdown) |
 | GET | `/api/v1/portfolio-summary` | JWT | 총자산 + 거래소별 잔고 (VirtualBalanceTracker 기반, exchange_status fallback) |
+| GET | `/api/v1/portfolio/equity-curve` | JWT | 자본 곡선 시계열 데이터 (US-108) |
+| GET | `/api/v1/portfolio/metrics` | JWT | Sharpe/MDD/Calmar 리스크 메트릭스 (US-108) |
+| PATCH | `/api/v1/settings/mode` | JWT | 실행 모드 전환 (shadow/paper/live, LiveGate 체크 포함) (US-107) |
 | GET | `/exchanges` | JWT | 거래소 연결 상태 + 잔고 (balance.USDT) |
 | GET | `/risk/metrics` | JWT | Kill Switch/Circuit Breaker 상태 + MDD |
 | WS | `/ws` | JWT (query/cookie) | 실시간 state_update 브로드캐스트 (1s 간격, shadow_stats 포함) |
@@ -477,11 +482,11 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 **Wave 2 — 대시보드 UX**
 - [x] US-107: 모드 전환 UI 연결 + 친화적 명칭 (ModeSwitch.tsx 신규, PATCH /api/v1/settings/mode, shadow→"시뮬레이션"/paper→"연습"/live→"실거래", Live 전환 시 LiveGate 확인 다이얼로그) ✅
 - [x] US-108: 포트폴리오 별도 탭 (portfolio/page.tsx + EquityCurve.tsx 신규, GET /portfolio/equity-curve + /portfolio/metrics, Sharpe/MDD/Calmar 리스크 메트릭스, 자산배분 바 차트) ✅
-- [ ] US-109: 오버뷰 개선 (ROI%, 시스템 성능 위젯, "Shadow Monitor"→현재 모드명 동적 변경)
+- [x] US-109: 오버뷰 개선 (ROI%, 시스템 성능 위젯, "Shadow Monitor"→현재 모드명 동적 변경) ✅
 - [x] US-110: 히트맵 심볼 확장 (GlobalHeatmap.tsx Major 8/Top 20/All/Custom 드롭다운, All 시 엔진 전체 심볼 표시, Custom 드롭다운 로컬 저장) ✅
 - [ ] US-111: 거래 설명 기능 ("왜 이 거래를?" — 가격차이, 예상수익, 수수료, 실제수익)
 - [ ] US-112: 트레이드 필터링 + CSV 내보내기 (날짜/전략/거래소/페어 필터 + CSV 다운로드)
-- [ ] US-113: 용어 친화화 + 툴팁 ("War Room"→"대시보드", "MIN_EDGE_BPS"→"최소 수익 기준" + info 아이콘)
+- [x] US-113: 용어 친화화 + 툴팁 ("War Room"→"대시보드", "MIN_EDGE_BPS"→"최소 수익 기준" + info 아이콘) ✅
 
 **Wave 3 — 엔진 강화**
 - [ ] US-114: 동적 포지션 사이징 (신뢰도(edge) × 레짐(RegimeDetector) × 유동성(DepthAnalyzer) 기반, CRISIS 25%, LOW vol 150%)
@@ -563,6 +568,9 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | Phase I US-074 | 지터 백오프 공통화 + Coinone watchdog | 재연결 지터(jitter backoff) 패턴 공통화. Coinone watchdog 120초, app PING 25분으로 장시간 연결 안정성 확보. symbol stale 감지 추가 |
 | Phase I US-075 | OKX/Bybit futures -SWAP 접미사 + DEFAULT_EXCHANGES 8→10 | okx_futures/bybit_futures 수집기 신설. 심볼 형식: BTC-USDT-SWAP (OKX), BTCUSDT (Bybit). futures_futures 전략 활성화 조건(2+ 선물 거래소) 충족 |
 | Phase J-EXT US-106 | WS JWT: query param ?token= 우선 + cookie leviathan_token fallback | 브라우저 WebSocket API가 커스텀 헤더 미지원. 업계 표준(Socket.IO, Slack). accept()→close(4003) 패턴으로 미인증 연결 즉시 거부 |
+| Phase J-EXT US-107 | ModeSwitch: PATCH /api/v1/settings/mode + LiveGate 확인 다이얼로그 | Live 전환 시 6-check LiveGate 통과 여부 사전 확인. 한글 명칭(시뮬레이션/연습/실거래)으로 비개발자 친화적 UX 개선 |
+| Phase J-EXT US-108 | 포트폴리오 탭 신설: equity-curve + metrics 별도 API | Overview 과부하 방지. EquityCurve.tsx + 자산배분 바 차트로 수익성 가시화. Sharpe/MDD/Calmar 3종 리스크 지표 통합 |
+| Phase J-EXT US-110 | GlobalHeatmap 심볼 필터: Major 8/Top 20/All/Custom + 로컬 저장 | All 모드에서 엔진 전체 175심볼 렌더링. Custom 설정은 localStorage 저장으로 세션 유지 |
 
 ---
 

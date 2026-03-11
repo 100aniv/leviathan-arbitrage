@@ -115,12 +115,20 @@ function InactiveState() {
 
 // ─── Shadow Panel ─────────────────────────────────────────────────────────────
 
+const MODE_TITLES: Record<string, string> = {
+  shadow: '시뮬레이션 모니터',
+  paper: '연습 모니터',
+  live: '실거래 모니터',
+};
+
 interface ShadowPanelProps {
   /** Pre-fetched shadow_stats from WebSocket — used when available */
   wsStats?: ShadowStats | null;
+  mode?: string;
 }
 
-export function ShadowPanel({ wsStats }: ShadowPanelProps = {}) {
+export function ShadowPanel({ wsStats, mode }: ShadowPanelProps = {}) {
+  const panelTitle = MODE_TITLES[mode ?? 'shadow'] ?? '{panelTitle}';
   const { data: restData, error, isLoading } = useApi<ShadowStats>(
     '/shadow/stats',
     getShadowStats,
@@ -147,7 +155,7 @@ export function ShadowPanel({ wsStats }: ShadowPanelProps = {}) {
     return (
       <div className="bg-terminal-surface border border-terminal-border p-4">
         <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle block mb-3">
-          Shadow Monitor
+          {panelTitle}
         </span>
         <InactiveState />
       </div>
@@ -161,7 +169,7 @@ export function ShadowPanel({ wsStats }: ShadowPanelProps = {}) {
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">
-          Shadow Monitor
+          {panelTitle}
         </span>
         <div className="flex items-center gap-2">
           {isActive && stats && (

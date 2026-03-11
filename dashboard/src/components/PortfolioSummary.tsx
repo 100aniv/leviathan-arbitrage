@@ -119,11 +119,16 @@ export function PortfolioSummary() {
     return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
+  const initialCapital = (totalBalance ?? 0) - (totalPnl ?? 0);
+  const roiPct = initialCapital > 0 ? ((totalPnl ?? 0) / initialCapital * 100) : 0;
+  const roiStr = totalPnl === null ? '—' : `${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(2)}%`;
+
   const kpis = [
-    { label: 'Total Balance',    value: fmtBalance(totalBalance), color: undefined as string | undefined },
-    { label: 'Today PnL',        value: fmtPnl(todayPnl),        color: todayPnl  === null ? undefined : todayPnl  >= 0 ? '#00ff88' : '#ff4d4d' },
-    { label: 'Total PnL',        value: fmtPnl(totalPnl),        color: totalPnl  === null ? undefined : totalPnl  >= 0 ? '#00ff88' : '#ff4d4d' },
-    { label: 'Active Positions', value: positions === null ? '—' : String(positions), color: undefined },
+    { label: '총 자산',          value: fmtBalance(totalBalance), color: undefined as string | undefined },
+    { label: '오늘 수익',        value: fmtPnl(todayPnl),        color: todayPnl  === null ? undefined : todayPnl  >= 0 ? '#00ff88' : '#ff4d4d' },
+    { label: '총 수익',          value: fmtPnl(totalPnl),        color: totalPnl  === null ? undefined : totalPnl  >= 0 ? '#00ff88' : '#ff4d4d' },
+    { label: '활성 포지션',      value: positions === null ? '—' : String(positions), color: undefined },
+    { label: '수익률',           value: roiStr,                   color: totalPnl  === null ? undefined : roiPct   >= 0 ? '#00ff88' : '#ff4d4d' },
   ];
 
   return (
@@ -141,8 +146,8 @@ export function PortfolioSummary() {
         <StatusBadge running={running} killSwitch={killSwitch} />
       </div>
 
-      {/* 4 KPI cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* 5 KPI cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {kpis.map(({ label, value, color }) => (
           <div key={label} className="bg-terminal-bg border border-terminal-border/50 rounded-lg p-3">
             <p className="text-[10px] font-mono text-terminal-subtle uppercase tracking-wider mb-1">{label}</p>

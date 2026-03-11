@@ -16,7 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {/* Top header — desktop only */}
           <header className="hidden md:flex items-center justify-between px-6 py-3 border-b border-terminal-border bg-terminal-surface/50 backdrop-blur shrink-0">
             <h1 className="text-xs font-mono text-terminal-subtle uppercase tracking-widest">
-              War Room Dashboard
+              LEVIATHAN 대시보드
             </h1>
             <div className="flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-profit animate-pulse" aria-hidden />

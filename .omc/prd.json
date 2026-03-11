@@ -1702,7 +1702,7 @@
       "title": "오버뷰 개선 (ROI%, 성능위젯, 동적 모드명)",
       "phase": "J-EXT",
       "priority": 105,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-107"
       ],
@@ -1771,7 +1771,7 @@
       "title": "용어 친화화 + 툴팁",
       "phase": "J-EXT",
       "priority": 109,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "dashboard/src/app/overview/page.tsx",
