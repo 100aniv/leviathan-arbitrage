@@ -56,6 +56,8 @@ class EngineContext:
     correlation_monitor: Any = None
     slippage_feedback: Any = None
     dynamic_sizer: Any = None
+    tca_analyzer: Any = None  # US-116
+    rebalancer: Any = None  # US-120
 
 
 class KillBody(BaseModel):
@@ -138,6 +140,8 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     app.include_router(attribution_router)
     app.include_router(shadow_router)
     app.include_router(portfolio_router)
+    from src.api.routes.tca import router as tca_router
+    app.include_router(tca_router)
 
     # ---------------------------------------------------------------------------
     # Prometheus short-path alias

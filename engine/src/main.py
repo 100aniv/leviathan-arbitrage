@@ -101,6 +101,9 @@ class Engine:
         self._slippage_feedback: Any = None
         self._dynamic_sizer: Any = None
         self._telegram_cmd_handler: Any = None
+        self._tca_analyzer: Any = None  # US-116
+        self._rebalancer: Any = None  # US-120
+        self._balance_tracker: Any = None  # US-120
 
     # ------------------------------------------------------------------
     # Public API
@@ -720,6 +723,33 @@ class Engine:
         except Exception as exc:
             logger.warning("DynamicSizer init failed (non-fatal): %s", exc)
 
+        # US-116: TCAAnalyzer
+        try:
+            from src.analysis.tca import TCAAnalyzer
+            self._tca_analyzer = TCAAnalyzer(window_size=1000)
+            logger.info("TCAAnalyzer initialized (window=1000)")
+        except Exception as exc:
+            logger.warning("TCAAnalyzer init failed (non-fatal): %s", exc)
+
+        # US-120: InventoryRebalancer
+        try:
+            from src.core.inventory_rebalancer import InventoryRebalancer
+            from src.core.balance_tracker import BalanceTracker
+            self._balance_tracker = BalanceTracker()
+            self._rebalancer = InventoryRebalancer(
+                tracker=self._balance_tracker,
+                deviation_threshold=float(os.getenv("REBALANCER_DEVIATION_THRESHOLD", "0.30")),
+                check_interval_s=float(os.getenv("REBALANCER_CHECK_INTERVAL_S", "14400")),
+                min_transfer_usd=float(os.getenv("REBALANCER_MIN_TRANSFER_USD", "50")),
+            )
+            logger.info(
+                "InventoryRebalancer initialized (threshold=%.0f%%, interval=%.0fh, balance_feed=NOT_CONNECTED)",
+                self._rebalancer.deviation_threshold * 100,
+                self._rebalancer.check_interval_s / 3600,
+            )
+        except Exception as exc:
+            logger.warning("InventoryRebalancer init failed (non-fatal): %s", exc)
+
     def _build_risk_check_fn(self):
         """Create a risk check callable for the trade consumer."""
         from src.risk.guardian import PortfolioState, TradeProposal
@@ -777,6 +807,37 @@ class Engine:
                 self._correlation_monitor.record_trade_pnl(trade_request.strategy_id, pnl)
             except Exception:
                 pass  # Non-critical: correlation tracking failure
+        # US-116: Feed TCA data
+        if self._tca_analyzer is not None:
+            try:
+                legs = getattr(execution_result, 'legs', [])
+                for idx, leg in enumerate(legs):
+                    trade = getattr(leg, 'trade', None)
+                    if trade is not None:
+                        # Latency: use execution_result duration if available, else 0
+                        latency_ms = float(
+                            getattr(execution_result, 'execution_duration_ms', 0)
+                            or getattr(execution_result, 'duration_ms', 0)
+                            or 0
+                        )
+                        # Expected price: use trade_request leg price (always populated)
+                        expected = 0.0
+                        if idx < len(trade_request.legs):
+                            expected = float(trade_request.legs[idx].price or 0)
+                        if expected <= 0:
+                            expected = float(getattr(getattr(leg, 'order', None), 'price', 0) or 0)
+                        if expected <= 0:
+                            logger.debug("TCA: skipping leg %d — no expected price", idx)
+                            continue
+                        self._tca_analyzer.record_execution(
+                            expected_price=expected,
+                            fill_price=float(trade.price),
+                            latency_ms=latency_ms,
+                            filled_ratio=float(getattr(leg, 'filled_ratio', 1.0)),
+                            strategy_id=trade_request.strategy_id,
+                        )
+            except Exception:
+                pass  # Non-critical: TCA tracking failure
         # Record trade in context for dashboard API
         from datetime import datetime, timezone
         from uuid import uuid4
@@ -797,6 +858,40 @@ class Engine:
             })
         except Exception as exc:
             logger.debug("Failed to record trade to context: %s", exc)
+
+    async def _rebalancer_loop(self) -> None:
+        """US-120: Periodic inventory rebalancing check + Telegram alert."""
+        while self.state.running:
+            try:
+                await asyncio.sleep(self._rebalancer.check_interval_s)
+
+                if self._rebalancer.has_critical_imbalance() and self._telegram:
+                    try:
+                        await self._telegram.send_alert(
+                            "🚨 인벤토리 심각한 불균형 감지! 즉시 확인 필요.",
+                            level="CRITICAL",
+                        )
+                    except Exception:
+                        pass
+
+                suggestions = self._rebalancer.check_and_suggest()
+                if suggestions and self._telegram:
+                    lines = [f"⚠️ 인벤토리 리밸런싱 필요 ({len(suggestions)}건)"]
+                    for s in suggestions:
+                        lines.append(
+                            f"  {s.from_exchange} → {s.to_exchange}: "
+                            f"${s.amount_usd:.0f} ({s.reason})"
+                        )
+                    try:
+                        await self._telegram.send_alert("\n".join(lines), level="WARNING")
+                    except Exception:
+                        pass
+
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.warning("rebalancer_loop error: %s", exc)
+                await asyncio.sleep(60)
 
     def _record_alert(self, alert_type: str, severity: str, message: str, metadata: dict | None = None) -> None:
         """Record a system alert for the dashboard API."""
@@ -825,6 +920,8 @@ class Engine:
         self.context.correlation_monitor = self._correlation_monitor
         self.context.slippage_feedback = self._slippage_feedback
         self.context.dynamic_sizer = self._dynamic_sizer
+        self.context.tca_analyzer = self._tca_analyzer
+        self.context.rebalancer = self._rebalancer
 
         # Populate strategies dict for backward compatibility
         if self._strategy_manager:
@@ -923,6 +1020,12 @@ class Engine:
                 logger.info("TelegramCommandHandler started (5 commands)")
             except Exception as exc:
                 logger.warning("TelegramCommandHandler init failed (non-fatal): %s", exc)
+
+        # US-120: Inventory rebalancer background loop
+        if self._rebalancer is not None:
+            tasks.append(asyncio.create_task(
+                self._rebalancer_loop(), name="rebalancer"
+            ))
 
         self.state.background_tasks.extend(tasks)
         logger.info("Started %d background tasks", len(tasks))

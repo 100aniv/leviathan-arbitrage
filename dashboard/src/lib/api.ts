@@ -17,6 +17,7 @@ import type {
   AttributionResponse,
   ShadowStats,
   PortfolioSummaryResponse,
+  TCASummary,
 } from "@/types";
 
 const BASE_URL =
@@ -184,3 +185,8 @@ export const logout = () => {
   document.cookie = "leviathan_token=; path=/; max-age=0";
   window.location.href = "/login";
 };
+
+// ─── TCA ─────────────────────────────────────────────────────────────────────
+
+export const getTCASummary = () =>
+  request<TCASummary>("/api/v1/tca/summary");

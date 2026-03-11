@@ -3,6 +3,7 @@
 import { useApi } from '@/hooks/useApi';
 import { getHealth, getStatus, getExchangeStatus } from '@/lib/api';
 import type { HealthResponse, StatusResponse, ExchangeStatus, ContainerStatus } from '@/types';
+import { TCAWidget } from '@/components/TCAWidget';
 
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86400);
@@ -289,6 +290,9 @@ export default function SystemPage() {
           ))}
         </div>
       </div>
+
+      {/* TCA — Execution Quality (US-116) */}
+      <TCAWidget />
     </div>
   );
 }

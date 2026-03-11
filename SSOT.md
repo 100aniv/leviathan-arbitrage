@@ -27,14 +27,14 @@
 ## 2. 현재 상태
 
 ```
-Phase:        J-EXT Wave 3 (엔진) ← CURRENT  [Wave 1 보안 ✅, Wave 2 UX ✅, Wave 3 Batch 1 ✅]
-테스트:       3,930 passed, 0 failed (Wave 3 Batch 1: +73 tests, +3 auth tests)
-커버리지:     89%
+Phase:        J-EXT Wave 3 (엔진) ← CURRENT  [Wave 1 보안 ✅, Wave 2 UX ✅, Wave 3 Batch 1 ✅, Batch 2 ✅]
+테스트:       3,959 passed, 0 failed (Wave 3 Batch 2: +29 tests — TCA 19, TCA API 3, Rebalancer 7)
+커버리지:     88%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    0a5302e (Phase J-EXT Wave 3 Batch 1: US-114~119 완료)
-다음 작업:    Phase J-EXT Wave 3 Batch 2 — US-116 (TCA 모듈 + 실행 레이턴시) + US-120 (인벤토리 리밸런싱)
-완료된 US:    US-065~076, US-105~119 (... + 동적포지션사이징 + 슬리피지피드백 + 텔레그램명령 + 상관관계모니터 + IOC원자실행)
+최신 커밋:    (pending commit)
+다음 작업:    Phase K — US-081 (HMM 3-regime 설계)
+완료된 US:    US-065~076, US-105~120 (... + TCA모듈 + 인벤토리리밸런싱)
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
@@ -491,11 +491,11 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 **Wave 3 — 엔진 강화**
 - [x] US-114: 동적 포지션 사이징 (신뢰도(edge) × 레짐(RegimeDetector) × 유동성(DepthAnalyzer) 기반, CRISIS 25%, LOW vol 150%) ✅
 - [x] US-115: 슬리피지 피드백 루프 (실제 체결가 vs 예상가 비교 → EMA로 모델 파라미터 자동 조정) ✅
-- [ ] US-116: TCA 모듈 + 실행 레이턴시 위젯 (Implementation shortfall, P50/P95/P99 레이턴시, 체결률)
+- [x] US-116: TCA 모듈 + 실행 레이턴시 위젯 (TCAAnalyzer + PercentileTracker, GET /api/v1/tca/summary JWT, TCAWidget.tsx System 탭) ✅
 - [x] US-117: 텔레그램 양방향 명령어 (/status, /kill, /mode, /balance — 단일 봇으로 통합) ✅
 - [x] US-118: 전략 간 상관관계 모니터링 (30-trade 롤링 상관계수, >0.7 시 소규모 전략 50% 축소) ✅
 - [x] US-119: IOC 주문 타입 (IOC 리밋 우선 → 타임아웃 시 마켓 폴백) ✅
-- [ ] US-120: 인벤토리 리밸런싱 통합 확인 (inventory_rebalancer.py 활성화 + 드리프트 알람)
+- [x] US-120: 인벤토리 리밸런싱 통합 확인 (main.py wiring + _rebalancer_loop 4h 주기 + Telegram CRITICAL/WARNING 알람) ✅
 
 ### Phase K: Regime Detection 기반 구축 — US-081~085
 

@@ -259,3 +259,15 @@ export interface PortfolioSummaryResponse {
   mode: string;
   last_updated: string;
 }
+
+// ─── TCA Types ──────────────────────────────────────────────────────────────
+
+export interface TCASummary {
+  is_p50_bps: number;
+  is_p95_bps: number;
+  latency_p50_ms: number;
+  latency_p95_ms: number;
+  latency_p99_ms: number;
+  fill_rate_pct: number;
+  sample_count: number;
+}

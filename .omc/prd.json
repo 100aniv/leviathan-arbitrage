@@ -1823,7 +1823,7 @@
       "title": "TCA 모듈 + 실행 레이턴시 위젯",
       "phase": "J-EXT",
       "priority": 112,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "engine/src/analysis/tca.py",
@@ -1893,7 +1893,7 @@
       "title": "인벤토리 리밸런싱 통합 확인",
       "phase": "J-EXT",
       "priority": 116,
-      "passes": false,
+      "passes": true,
       "dependencies": [],
       "files": [
         "engine/src/execution/inventory_rebalancer.py",
