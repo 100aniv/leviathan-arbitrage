@@ -226,7 +226,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **엔진**: Python 3.12+ (AsyncIO) + Rust (PyO3) — `engine/src/`
 - **대시보드**: Next.js 14 (App Router) — `dashboard/src/app/`
 - **DB**: TimescaleDB + Redis — `docker-compose.yml`
-- **거래소**: 8 native WS adapters (ccxt 미사용) — `engine/src/collectors/`
+- **거래소**: 10 native WS adapters (7 spot + 3 futures, ccxt 미사용) — `engine/src/collectors/`
 - **전략 8개**: `engine/src/strategies/` (cross_exchange, spot_futures, futures_futures, triangular, funding_rate, statistical_arb, latency_arb, cex_dex)
 - **API**: `engine/src/api/` (FastAPI + JWT)
 - **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`

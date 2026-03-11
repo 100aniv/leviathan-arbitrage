@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-11 (US-072 완료 → Phase H 전체 완료) | 최신 커밋: `360b602`
+> 마지막 업데이트: 2026-03-11 (US-076 완료 → Phase I 완료, Phase J 시작) | 최신 커밋: `96a872a`
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획, Phase G~F) | 기존 플랜: `.claude/plans/jazzy-wishing-avalanche.md` (기반, Phase A~SR) | PRD: `.omc/prd.json` (96개 User Stories)
 
 ---
@@ -14,26 +14,27 @@
 |------|------|
 | 엔진 | Python 3.12+ (AsyncIO) + Rust (PyO3 hot-path) |
 | 대시보드 | Next.js 14 (App Router) + JWT 인증 + 실시간 WS 피드 |
-| 거래소 | 8개 네이티브 WebSocket 어댑터 (7 spot + Binance Futures, ccxt 미사용) |
+| 거래소 | 10개 네이티브 WebSocket 어댑터 (7 spot + Binance/OKX/Bybit Futures, ccxt 미사용) |
 | 전략 | 8개 (7개 기본 + CexDex 조건부) |
 | 인프라 | Docker Compose 8 컨테이너, TimescaleDB + Redis + Prometheus + Grafana |
 | 실행 모드 | Backtest → Paper → Shadow → Live |
 
-**거래소 목록**: Binance, Binance Futures, Bybit, OKX, Bitget, Upbit, Bithumb, Coinone (8개 네이티브 어댑터)
+**거래소 목록**: Binance, Binance Futures, Bybit, Bybit Futures, OKX, OKX Futures, Bitget, Upbit, Bithumb, Coinone (10개 네이티브 어댑터)
 
 ---
 
 ## 2. 현재 상태
 
 ```
-Phase:        I (거래소/전략 완성도) ← CURRENT  [Phase H ✅ 완료]
-테스트:       3,668 passed, 0 failed
+Phase:        J (운영 안정성) ← CURRENT  [Phase I ✅ 완료]
+테스트:       3,747 passed, 0 failed
 커버리지:     89%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    360b602 Phase H US-065: Shadow→Dashboard 데이터 브리지
-다음 작업:    Phase I — US-073 (Bithumb REST 스냅샷 → 증분 orderbook 근본 해결)
-완료된 US:    US-065~072 (Shadow 데이터 브리지 + 대시보드 UI 완성 + 계좌/잔고 정보)
+최신 커밋:    96a872a Phase I US-076: 전략/거래소 완성도 전수 감사 완료
+다음 작업:    Phase J — US-077 (문서 정합성 감사)
+완료된 US:    US-065~076 (Shadow 데이터 브리지 + 대시보드 UI 완성 + 계좌/잔고 + 수집기 강화 + futures_futures 활성화 + 완성도 감사)
+Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
 ### Shadow 현실성 GAP (Phase SR)
@@ -173,7 +174,7 @@ Engine.run()
 |---|------|------|------|---------|------------|
 | 1 | cross_exchange | `strategies/cross_exchange.py` | **활성** | ~~GAP 1,2~~ RESOLVED | 5-25% |
 | 2 | spot_futures | `strategies/spot_futures.py` | 대기(CONDITIONAL) | 비용>basis (시장 조건), 신호 파이프라인 검증 완료 | 8-30% |
-| 3 | futures_futures | `strategies/futures_futures.py` | 대기(CONDITIONAL) | 선물 거래소 1개(binance_futures), 2+ 필요 | 5-15% |
+| 3 | futures_futures | `strategies/futures_futures.py` | **활성** | OKX/Bybit futures 수집기 추가로 2+ 선물 거래소 확보 (US-075) | 5-15% |
 | 4 | triangular | `strategies/triangular.py` | 대기(CONDITIONAL) | ~~GAP 7,4~~ RESOLVED, 실시장 cycle 희소 | 2-10% |
 | 5 | funding_rate | `strategies/funding_rate.py` | **검증됨** | 4거래소×8심볼 수집 성공, diff<threshold 시 정상 필터 | 15-30% |
 | 6 | statistical_arb | `strategies/statistical_arb.py` | **검증됨** | ~~GAP 3~~ RESOLVED, 2 trades 실행, WFE 음수 주의 | 11-16% |
@@ -235,12 +236,12 @@ P(rollback): 30-trade 롤링 윈도우, cold-start 5%
 | 거래소 | Maker | Taker | 비고 |
 |--------|-------|-------|------|
 | Binance | 0.10% | 0.10% | |
-| Bybit | 0.01% | 0.06% | |
+| Bybit | 0.10% | 0.10% | Spot VIP0 |
 | OKX | 0.08% | 0.10% | |
 | Bitget | 0.10% | 0.10% | |
-| Upbit | 0.25% | 0.25% | KRW 마켓 |
+| Upbit | 0.05% | 0.139% | KRW 마켓 |
 | Bithumb | 0.25% | 0.25% | KRW 마켓 |
-| Coinone | 0.20% | 0.20% | API 할인 시 0.02% |
+| Coinone | 0.02% | 0.02% | API 할인 적용 (기본 0.20%) |
 
 ### 4.3 리스크 모델
 
@@ -279,17 +280,20 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ## 5. 거래소 어댑터
 
-### 7개 네이티브 WebSocket 어댑터 (ccxt 미사용)
+### 10개 네이티브 WebSocket 어댑터 (ccxt 미사용)
 
 | 거래소 | WS 엔드포인트 | 심볼 형식 | 상태 | 비고 |
 |--------|-------------|---------|------|------|
 | Binance | `wss://stream.binance.com:9443` | `BTC/USDT` | 연결됨 | 멀티스트림 지원 |
+| Binance Futures | `wss://fstream.binance.com` | `BTCUSDT` | 연결됨 | futures_futures 활성 |
 | Bybit | `wss://stream.bybit.com/v5/public/spot` | `BTC/USDT` | 준비 | |
+| Bybit Futures | `wss://stream.bybit.com/v5/public/linear` | `BTCUSDT` | 준비 | US-075, futures_futures 활성 |
 | OKX | `wss://ws.okx.com:8443/ws/v5/public` | `BTC/USDT` | 준비 | |
+| OKX Futures | `wss://ws.okx.com:8443/ws/v5/public` | `BTC-USDT-SWAP` | 준비 | US-075, -SWAP 접미사 |
 | Bitget | `wss://ws.bitget.com/v2/ws/public` | `BTC/USDT` | 준비 | |
 | Upbit | `wss://api.upbit.com/websocket/v1` | `BTC/KRW` | 연결됨 | 배치 구독 |
-| Bithumb | `wss://pubwss.bithumb.com/pub/ws` | `BTC/KRW` | 연결됨 | 배치 구독 |
-| Coinone | `wss://stream.coinone.co.kr` | `BTC/KRW` | 준비 | 30min PING |
+| Bithumb | `wss://pubwss.bithumb.com/pub/ws` | `BTC/KRW` | 연결됨 | 누적 orderbook + REST re-sync (US-073) |
+| Coinone | `wss://stream.coinone.co.kr` | `BTC/KRW` | 준비 | watchdog 120s + app PING 25min (US-074) |
 
 ### KRW 자동 매핑
 
@@ -298,10 +302,10 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - `ShadowMode._on_orderbook()`: KRW → USDT 역환산 (dual-source: Upbit+Bithumb API, 30s 갱신)
 - Sanity: +/-10%, 120s staleness, 5-reject lockout escape
 
-### Bithumb 데이터 품질 이슈
+### Bithumb 데이터 품질 이슈 (US-073 근본 해결)
 
 증분 orderbook에서 초기 스냅샷 없이 수신 → 소형코인(NOM +62%, SXP +12%)에서 허위 스프레드 발생.
-현재 완화: `max_spread_pct=5.0` 필터. 근본 해결: REST 스냅샷 후 증분 적용 (미완료).
+**근본 해결 완료 (US-073)**: REST 스냅샷 후 증분 적용 (누적 book). stale 5초 감지 + parallel re-sync. `max_spread_pct=5.0` 필터 유지.
 
 ---
 
@@ -454,10 +458,10 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ### Phase I: 거래소/전략 완성도 — US-073~076
 
-- [ ] US-073: Bithumb REST 스냅샷 → 증분 orderbook 근본 해결
-- [ ] US-074: Coinone WebSocket 안정성 강화 + 재연결 로직 개선
-- [ ] US-075: futures_futures 전략 활성화 (OKX/Bybit futures 수집기)
-- [ ] US-076: 전략/거래소 완성도 전수 감사
+- [x] US-073: Bithumb REST 스냅샷 → 증분 orderbook 근본 해결 (누적 book, stale 5초 감지, parallel re-sync)
+- [x] US-074: Coinone WS 안정성 강화 (지터 백오프, watchdog 120초, app PING 25분, symbol stale 감지)
+- [x] US-075: futures_futures 전략 활성화 (OKX/Bybit futures 수집기, DEFAULT_EXCHANGES 8→10)
+- [x] US-076: 전략/거래소 완성도 전수 감사
 
 ### Phase J: 운영 안정성 + 문서 동기화 — US-057, US-077~079
 
@@ -525,6 +529,9 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | Phase H US-070 | Attribution/Funding/System 페이지 실 컨텐츠 구현 | 3개 빈 페이지를 함수형 컴포넌트로 변환. REST API 연동 (getAttributionData, getFundingMetrics, getSystemHealth). 테스트 통합 (81 total) |
 | Phase H US-071 | GlobalHeatmap + OrderbookView REST polling fallback | API 장애 시 mock 데이터로 fallback. 거래소 드롭다운 선택기 추가. 재시도 로직 (exponential backoff) |
 | Phase H US-072 | VirtualBalanceTracker 기반 포트폴리오 요약 API | /api/v1/portfolio-summary 신설. Shadow 모드에서 VirtualBalanceTracker 직접 조회, 비Shadow 시 exchange_status fallback. PortfolioSummary.tsx로 거래소별 잔고 breakdown + mode badge 표시 |
+| Phase I US-073 | Bithumb 누적 orderbook 방식 채택 | REST 스냅샷 후 증분 적용(full_snapshot→updates). 허위 스프레드 근본 해결. stale 5초 감지 + parallel re-sync로 데이터 신뢰성 확보 |
+| Phase I US-074 | 지터 백오프 공통화 + Coinone watchdog | 재연결 지터(jitter backoff) 패턴 공통화. Coinone watchdog 120초, app PING 25분으로 장시간 연결 안정성 확보. symbol stale 감지 추가 |
+| Phase I US-075 | OKX/Bybit futures -SWAP 접미사 + DEFAULT_EXCHANGES 8→10 | okx_futures/bybit_futures 수집기 신설. 심볼 형식: BTC-USDT-SWAP (OKX), BTCUSDT (Bybit). futures_futures 전략 활성화 조건(2+ 선물 거래소) 충족 |
 
 ---
 
@@ -568,7 +575,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 |------|------|--------|
 | **Phase D 대시보드 브라우저 미검증** | US-037~041, US-053 코드 레벨만 검증(`npm run build`). Chrome 렌더링, API 연동, WebSocket 실시간 피드, 모바일 반응형 미확인 | Phase D 재검증 US 추가 (Chrome 브라우저 테스트 필수) |
 | **Shadow 실행 시 Docker 미실행 위험** | Docker 없이 Shadow 실행 시 거래 로직은 유효하나 TimescaleDB/Redis 미저장 → 메트릭 유실 | Shadow 실행 전 `docker compose up -d` 필수 (leviathan.md에 명시) |
-| Bithumb 증분 Orderbook | 스냅샷 없이 증분만 수신 → 허위 스프레드 | max_spread_pct=5.0 + StaleOrderbookDetector cross-exchange validation(10%) + periodic REST refresh(60s) + per-trade loss cap($50) + blacklist(TTL 300s) |
+| ~~Bithumb 증분 Orderbook~~ | ~~스냅샷 없이 증분만 수신 → 허위 스프레드~~ | **RESOLVED (US-073)**: 누적 orderbook + REST re-sync + stale 5초 감지 |
 | 마찰 vs Gross Spread | 대부분 알트 spread 2-25bps, friction ~20bps | MIN_EDGE_BPS=5 + 고스프레드 심볼 집중 |
 
 ### MEDIUM
