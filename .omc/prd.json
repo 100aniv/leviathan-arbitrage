@@ -1195,7 +1195,7 @@
       "title": "계좌 정보/총자산/거래소별 잔고 표시",
       "phase": "H",
       "priority": 76,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/api/routes/portfolio.py",
         "dashboard/src/components/PortfolioSummary.tsx"

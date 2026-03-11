@@ -16,6 +16,7 @@ import type {
   ExchangeStatus,
   AttributionResponse,
   ShadowStats,
+  PortfolioSummaryResponse,
 } from "@/types";
 
 const BASE_URL =
@@ -143,6 +144,11 @@ export const getAttribution = () =>
 
 export const getShadowStats = () =>
   request<ShadowStats>("/api/v1/shadow/stats");
+
+// ─── Portfolio ───────────────────────────────────────────────────────────────
+
+export const getPortfolioSummary = () =>
+  request<PortfolioSummaryResponse>("/api/v1/portfolio-summary");
 
 export const logout = () => {
   localStorage.removeItem("leviathan_token");

@@ -235,3 +235,22 @@ export interface AttributionResponse {
   by_pair: AttributionBreakdown[];
   by_hour: AttributionBreakdown[];
 }
+
+// ─── Portfolio Summary Types ─────────────────────────────────────────────────
+
+export interface ExchangeBalance {
+  exchange_id: string;
+  balance_usdt: number;
+  connected: boolean;
+  pct_of_total: number;
+}
+
+export interface PortfolioSummaryResponse {
+  total_balance_usdt: number;
+  total_pnl: number;
+  daily_pnl: number;
+  active_positions: number;
+  exchange_balances: ExchangeBalance[];
+  mode: string;
+  last_updated: string;
+}
