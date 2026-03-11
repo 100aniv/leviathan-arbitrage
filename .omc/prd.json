@@ -1293,7 +1293,7 @@
       "title": "장기 Shadow 안정성 테스트 (1H→6H→12H)",
       "phase": "J",
       "priority": 82,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "1H Shadow: crash=0, PnL>0",
         "6H Shadow: crash=0, 메모리 안정 (RSS 증가 < 50MB)",
