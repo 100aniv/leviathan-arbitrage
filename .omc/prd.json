@@ -23,11 +23,11 @@
     "H": "Dashboard Integration Complete",
     "I": "Exchange/Strategy Completeness",
     "J": "Merged into Phase F (US-057/077/079 이동, US-078 삭제)",
-    "J-EXT": "Security + UX + Engine + Infra Enhancement (6-Perspective GAP Analysis)",
-    "F": "Final Audit — 72H Shadow to Live (LAST)",
+    "J-EXT": "Security + UX + Engine Enhancement (Wave1~3 먼저) + Infra (Wave4: K/L/M 완료 후)",
     "K": "Regime Detection (ML-based HMM)",
     "L": "DEX Real-time + Gas Integration",
-    "M": "ML Signal Pipeline (XGBoost/ONNX)"
+    "M": "ML Signal Pipeline (XGBoost/ONNX)",
+    "F": "Final Audit — 72H Shadow to Live (LAST)"
   },
   "gap_dependency_order": "GAP9 -> GAP10 -> (GAP5,GAP6,GAP7 parallel) -> GAP3 -> GAP1,GAP2 -> GAP4",
   "stories": [
@@ -1911,6 +1911,7 @@
       "phase": "J-EXT",
       "priority": 117,
       "passes": false,
+      "notes": "Wave 4 인프라 — K/L/M 완료 후 실행 (Phase F 직전)",
       "dependencies": [],
       "files": [
         "docker-compose.yml",
@@ -1930,6 +1931,7 @@
       "phase": "J-EXT",
       "priority": 118,
       "passes": false,
+      "notes": "Wave 4 인프라 — K/L/M 완료 후 실행 (Phase F 직전)",
       "dependencies": [],
       "files": [
         "docker-compose.yml",
