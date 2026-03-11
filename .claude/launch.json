@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "cwd": "dashboard"
+    },
+    {
+      "name": "engine",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "src.main"],
+      "port": 8000,
+      "cwd": "engine"
+    },
+    {
+      "name": "engine-api",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "src.api.server:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"],
+      "port": 8000,
+      "cwd": "engine"
+    }
+  ]
+}

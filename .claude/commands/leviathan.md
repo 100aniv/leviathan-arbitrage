@@ -18,7 +18,7 @@ Phase A(ralplan→PLAN.md→QUANT GATE→checkpoint) → Phase B(TeamCreate→py
 ## 1. 소스
 
 - `SSOT.md` — 유일한 설계 문서. 작업 전 반드시 읽기.
-- `.omc/prd.json` — 96 US 목록. `passes:false`인 첫 번째 US부터 시작.
+- `.omc/prd.json` — 114 US 목록. `passes:false`인 첫 번째 US부터 시작.
 - 팀 구조, 기술 스택, 커스텀 에이전트, 자주 틀리는 패턴 → **CLAUDE.md 참조** (여기서 중복 기술하지 않음)
 
 ## 2. 실행 모드
@@ -205,7 +205,7 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀.
 
 ## 7. Phase F 최종 검수
 
-> **진입 가드**: Phase G/H/I/J/K/L/M 전부 `passes:true` 필수. 하나라도 미완료 시 Phase F 진입 금지.
+> **진입 가드**: Phase G/H/I/J/J-EXT/K/L/M 전부 `passes:true` 필수. 하나라도 미완료 시 Phase F 진입 금지.
 
 - **검사지**: `docs/checklists/phase-f-final-audit.md` (12개 카테고리, 178항목)
 - **5팀 분담**: 기획(문서/운영) + 개발(엔진/UI) + 퀀트(전략/시뮬레이션) + 테스트(거래소/성능/인프라) + 검증(리스크/모니터링)

@@ -17,6 +17,7 @@ network or engine subsystems required.
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -66,11 +67,12 @@ def transport(app):
 class TestAuthLogin:
     @pytest.mark.asyncio
     async def test_login_with_correct_credentials_returns_token(self, transport, app):
-        from src.api.auth import DASHBOARD_USER, DASHBOARD_PASSWORD
+        from src.api.auth import DASHBOARD_USER
+        # Password defaults to "leviathan" when DASHBOARD_PASSWORD env not set
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/auth/login",
-                json={"username": DASHBOARD_USER, "password": DASHBOARD_PASSWORD},
+                json={"username": DASHBOARD_USER, "password": os.environ.get("DASHBOARD_PASSWORD", "leviathan")},
             )
         assert resp.status_code == 200
         body = resp.json()

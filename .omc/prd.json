@@ -4,7 +4,7 @@
   "created": "2026-03-08",
   "updated": "2026-03-11",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 96,
+  "total_stories": 114,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -23,6 +23,7 @@
     "H": "Dashboard Integration Complete",
     "I": "Exchange/Strategy Completeness",
     "J": "Operational Stability",
+    "J-EXT": "Security + UX + Engine + Infra Enhancement (6-Perspective GAP Analysis)",
     "F": "Final Audit — 72H Shadow to Live (LAST)",
     "K": "Regime Detection (ML-based HMM)",
     "L": "DEX Real-time + Gas Integration",
@@ -1626,6 +1627,333 @@
         "Paper → Shadow 모드에서 ML 시그널 검증",
         "기존 시그널 대비 PnL 개선 확인 후 활성화",
         "Canary 10% → 50% → 100% 단계적 전환"
+      ]
+    },
+    {
+      "id": "US-105",
+      "title": "JWT 시크릿 기본값 제거 + bcrypt 비밀번호 해싱",
+      "phase": "J-EXT",
+      "priority": 101,
+      "passes": true,
+      "dependencies": [],
+      "files": [
+        "engine/src/api/auth.py",
+        "engine/src/api/server.py",
+        "engine/pyproject.toml"
+      ],
+      "acceptanceCriteria": [
+        "JWT_SECRET 미설정 시 prod/staging 서버 시작 거부",
+        "dev/test에서 ephemeral 랜덤 시크릿 자동 생성 (경고 로그)",
+        "DASHBOARD_PASSWORD bcrypt 해싱 후 비교 (평문 비교 제거)",
+        "bcrypt 미설치 시 SHA-256 폴백 (테스트 환경용)",
+        "기존 로그인 테스트 전부 PASS"
+      ]
+    },
+    {
+      "id": "US-106",
+      "title": "WebSocket 피드 JWT 인증",
+      "phase": "J-EXT",
+      "priority": 102,
+      "passes": false,
+      "dependencies": [
+        "US-105"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/api/websocket.py",
+        "engine/tests/unit/test_api_server_routes.py"
+      ],
+      "acceptanceCriteria": [
+        "/ws/feed 연결 시 ?token= 쿼리 파라미터 또는 Authorization 헤더 JWT 검증",
+        "유효 토큰 없으면 WS 연결 즉시 종료 (403)",
+        "기존 WS 기능 정상 동작"
+      ]
+    },
+    {
+      "id": "US-107",
+      "title": "모드 전환 UI 연결 + 친화적 명칭",
+      "phase": "J-EXT",
+      "priority": 103,
+      "passes": false,
+      "dependencies": [
+        "US-105"
+      ],
+      "files": [
+        "dashboard/src/components/ModeSwitch.tsx",
+        "dashboard/src/app/page.tsx",
+        "dashboard/src/app/overview/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "ModeSwitch Overview 헤더에 통합",
+        "모드 표시: 시뮬레이션(shadow)/연습(paper)/실거래(live)",
+        "Live 전환 시 확인 다이얼로그 + LiveGate 체크 결과 표시",
+        "API PATCH /api/v1/settings/mode 연동"
+      ]
+    },
+    {
+      "id": "US-108",
+      "title": "포트폴리오 별도 탭",
+      "phase": "J-EXT",
+      "priority": 104,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "dashboard/src/app/portfolio/page.tsx",
+        "dashboard/src/components/EquityCurve.tsx",
+        "engine/src/api/routes/portfolio.py"
+      ],
+      "acceptanceCriteria": [
+        "Equity curve 차트 (일별 잔고 추이)",
+        "자산배분 파이차트 (거래소별)",
+        "일별/주별 수익률 히트맵",
+        "Sharpe/MDD/Calmar 리스크 메트릭스",
+        "vs BTC Hold 벤치마크 비교선"
+      ]
+    },
+    {
+      "id": "US-109",
+      "title": "오버뷰 개선 (ROI%, 성능위젯, 동적 모드명)",
+      "phase": "J-EXT",
+      "priority": 105,
+      "passes": false,
+      "dependencies": [
+        "US-107"
+      ],
+      "files": [
+        "dashboard/src/components/PortfolioSummary.tsx",
+        "dashboard/src/app/overview/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "ROI % KPI 추가 (총수익/초기자본)",
+        "시스템 성능 위젯 (CPU/Memory/평균레이턴시/WS업타임)",
+        "Shadow Monitor 패널 제목이 현재 모드명으로 동적 변경"
+      ]
+    },
+    {
+      "id": "US-110",
+      "title": "히트맵 심볼 확장 (드롭다운)",
+      "phase": "J-EXT",
+      "priority": 106,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "dashboard/src/components/GlobalHeatmap.tsx"
+      ],
+      "acceptanceCriteria": [
+        "Major 8 / Top 20 / All / Custom 드롭다운 선택",
+        "All 선택 시 엔진의 175개 심볼 표시",
+        "Custom 입력 시 콤마 구분 심볼 지정"
+      ]
+    },
+    {
+      "id": "US-111",
+      "title": "거래 설명 기능 (왜 이 거래를?)",
+      "phase": "J-EXT",
+      "priority": 107,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "dashboard/src/app/trades/page.tsx",
+        "dashboard/src/components/TradeDetail.tsx",
+        "engine/src/api/routes/trading.py"
+      ],
+      "acceptanceCriteria": [
+        "거래 클릭 시 상세 패널: 감지된 가격 차이, 예상수익, 실제수수료, 실제수익",
+        "API 거래 데이터에 reason/spread_bps/fee_usd/net_pnl 필드 포함"
+      ]
+    },
+    {
+      "id": "US-112",
+      "title": "트레이드 필터링 + CSV 내보내기",
+      "phase": "J-EXT",
+      "priority": 108,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "dashboard/src/app/trades/page.tsx",
+        "engine/src/api/routes/trading.py"
+      ],
+      "acceptanceCriteria": [
+        "날짜 범위 / 전략 / 거래소 / 페어 필터",
+        "CSV 내보내기 버튼 (필터 적용 상태 그대로)",
+        "API GET /api/v1/trades?from=&to=&strategy=&exchange= 파라미터 지원"
+      ]
+    },
+    {
+      "id": "US-113",
+      "title": "용어 친화화 + 툴팁",
+      "phase": "J-EXT",
+      "priority": 109,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "dashboard/src/app/overview/page.tsx",
+        "dashboard/src/components/PortfolioSummary.tsx",
+        "dashboard/src/app/settings/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "War Room → 대시보드 명칭 변경",
+        "MIN_EDGE_BPS → 최소 수익 기준 레이블",
+        "핵심 수치에 info 아이콘 + 설명 툴팁 추가"
+      ]
+    },
+    {
+      "id": "US-114",
+      "title": "동적 포지션 사이징 (신뢰도 × 레짐 × 유동성)",
+      "phase": "J-EXT",
+      "priority": 110,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "engine/src/execution/sizer.py",
+        "engine/tests/unit/test_sizer.py"
+      ],
+      "acceptanceCriteria": [
+        "size = base_size × confidence(edge) × regime_multiplier × liquidity_factor",
+        "CRISIS 레짐: 25%, LOW_VOL: 150%, NORMAL: 100%",
+        "단위 테스트: edge 5bps vs 50bps 사이즈 비율 차이 확인"
+      ]
+    },
+    {
+      "id": "US-115",
+      "title": "슬리피지 피드백 루프",
+      "phase": "J-EXT",
+      "priority": 111,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "engine/src/execution/paper.py",
+        "engine/src/risk/slippage.py"
+      ],
+      "acceptanceCriteria": [
+        "체결 후 실제 체결가 vs 예상 슬리피지 비교",
+        "EMA(alpha=0.1)로 슬리피지 모델 파라미터 자동 조정",
+        "조정 이벤트 Prometheus 메트릭 기록"
+      ]
+    },
+    {
+      "id": "US-116",
+      "title": "TCA 모듈 + 실행 레이턴시 위젯",
+      "phase": "J-EXT",
+      "priority": 112,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "engine/src/analysis/tca.py",
+        "dashboard/src/components/TCAWidget.tsx"
+      ],
+      "acceptanceCriteria": [
+        "Implementation shortfall (예상가 vs 체결가 차이) 계산",
+        "P50/P95/P99 실행 레이턴시 집계",
+        "체결률(fill_rate) 추적",
+        "대시보드 System 탭에 TCA 위젯 표시"
+      ]
+    },
+    {
+      "id": "US-117",
+      "title": "텔레그램 양방향 명령어",
+      "phase": "J-EXT",
+      "priority": 113,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "engine/src/infra/telegram_bot.py"
+      ],
+      "acceptanceCriteria": [
+        "/status → 엔진 상태 + 오늘 PnL + 활성 전략 수",
+        "/kill → KillSwitch 즉시 발동",
+        "/mode → 현재 실행 모드 반환",
+        "/balance → 거래소별 잔고 요약",
+        "알 수 없는 명령어 → 도움말 메시지"
+      ]
+    },
+    {
+      "id": "US-118",
+      "title": "전략 간 상관관계 모니터링",
+      "phase": "J-EXT",
+      "priority": 114,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "engine/src/risk/correlation_monitor.py",
+        "engine/src/risk/guardian.py"
+      ],
+      "acceptanceCriteria": [
+        "30-trade 롤링 윈도우로 전략 쌍 PnL 상관계수 계산",
+        "상관계수 > 0.7 시 소규모 전략 포지션 50% 자동 축소",
+        "Prometheus 메트릭: strategy_correlation_gauge"
+      ]
+    },
+    {
+      "id": "US-119",
+      "title": "IOC 주문 타입",
+      "phase": "J-EXT",
+      "priority": 115,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "engine/src/execution/atomic.py",
+        "engine/src/collectors/binance_adapter.py"
+      ],
+      "acceptanceCriteria": [
+        "IOC 리밋 주문 우선 시도",
+        "부분 체결 또는 타임아웃 시 마켓 오더 폴백",
+        "체결 품질 비교: IOC vs 마켓 평균 슬리피지"
+      ]
+    },
+    {
+      "id": "US-120",
+      "title": "인벤토리 리밸런싱 통합 확인",
+      "phase": "J-EXT",
+      "priority": 116,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "engine/src/execution/inventory_rebalancer.py",
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "inventory_rebalancer.py 활성화 상태 확인",
+        "드리프트 임계값 초과 시 텔레그램 알람 발송",
+        "main.py 시작 시 리밸런서 등록 확인"
+      ]
+    },
+    {
+      "id": "US-121",
+      "title": "Loki + Promtail 로그 집계",
+      "phase": "J-EXT",
+      "priority": 117,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "docker-compose.yml",
+        "infra/loki/loki-config.yaml",
+        "infra/promtail/promtail-config.yaml"
+      ],
+      "acceptanceCriteria": [
+        "Loki + Promtail 컨테이너 docker-compose.yml 추가",
+        "Grafana Loki 데이터소스 연동",
+        "전 컨테이너 로그 Loki에서 검색 가능",
+        "크로스 컨테이너 로그 쿼리 예제 동작"
+      ]
+    },
+    {
+      "id": "US-122",
+      "title": "WAL 백업 + PITR",
+      "phase": "J-EXT",
+      "priority": 118,
+      "passes": false,
+      "dependencies": [],
+      "files": [
+        "docker-compose.yml",
+        "infra/postgres/postgresql.conf",
+        "infra/backup/wal-backup.sh"
+      ],
+      "acceptanceCriteria": [
+        "WAL 아카이빙 활성화 (archive_mode=on)",
+        "RPO < 1시간 달성",
+        "주간 복원 검증 스크립트 (wal-backup.sh)",
+        "pg_dump 일1회 + WAL 연속 백업 병행"
       ]
     }
   ]

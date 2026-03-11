@@ -252,11 +252,12 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **다음 Phase**: H (대시보드 통합, US-072 남음) → I → J → K → L → M → F(최종검수, LAST)
-- **Tests**: 3,656 passed, 0 failures
-- **PRD**: `.omc/prd.json` (96개 US, 21 Phases)
+- **Phase 순서**: G✅ → H✅ → I✅ → J(진행중) → J-EXT(신규, 18 US) → K → L → M → F(최종검수, LAST)
+- **Tests**: 3,747 passed, 0 failures
+- **PRD**: `.omc/prd.json` (114개 US, 22 Phases)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: US-072 (계좌 정보/총자산/거래소별 잔고 — Phase H)
+- **다음 작업**: Phase J US-077~079 + US-057 → Phase J-EXT US-105~122
+- **GAP 분석**: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합 분석)
 
 ## 실행 워크플로우 (ralph autopilot)
 

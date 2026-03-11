@@ -1,8 +1,8 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-11 (US-076 완료 → Phase I 완료, Phase J 시작) | 최신 커밋: `96a872a`
-> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획, Phase G~F) | 기존 플랜: `.claude/plans/jazzy-wishing-avalanche.md` (기반, Phase A~SR) | PRD: `.omc/prd.json` (96개 User Stories)
+> 마지막 업데이트: 2026-03-11 (Phase J-EXT 신설: 6-관점 GAP 분석 기반 18개 US 추가) | 최신 커밋: `96a872a`
+> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (114개 User Stories)
 
 ---
 
@@ -469,6 +469,37 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] US-078: 장기 Shadow 안정성 테스트 (1H→6H→12H)
 - [ ] US-079: 운영 Runbook 업데이트 + 장애 대응 매뉴얼
 - [ ] US-057: 운영 문서 최종화
+
+### Phase J-EXT: 보안+UX+엔진+인프라 강화 (6-관점 GAP 분석) — US-105~122
+
+> 6개 관점(UX, 퀀트, DevOps, PM, 보안, 경쟁분석) 통합 GAP 분석 결과.
+> 상세: `.claude/plans/modular-seeking-wreath.md`
+
+**Wave 1 — 보안 (간단, 먼저)**
+- [x] US-105: JWT 시크릿 기본값 제거 + bcrypt 비밀번호 해싱 (기본값 fallback 제거 → 미설정 시 서버 거부, 평문→bcrypt) ✅
+- [ ] US-106: WebSocket 피드 JWT 인증 (WS 핸드셰이크 시 토큰 검증)
+
+**Wave 2 — 대시보드 UX**
+- [ ] US-107: 모드 전환 UI 연결 + 친화적 명칭 (ModeSwitch→Overview 헤더, "시뮬레이션/연습/실거래", Live 전환 시 LiveGate 체크)
+- [ ] US-108: 포트폴리오 별도 탭 (equity curve, 자산배분 파이차트, 일별/주별 수익률, Sharpe/MDD/Calmar, vs BTC Hold 벤치마크)
+- [ ] US-109: 오버뷰 개선 (ROI%, 시스템 성능 위젯, "Shadow Monitor"→현재 모드명 동적 변경)
+- [ ] US-110: 히트맵 심볼 확장 (Major 8 / Top 20 / All / Custom 드롭다운)
+- [ ] US-111: 거래 설명 기능 ("왜 이 거래를?" — 가격차이, 예상수익, 수수료, 실제수익)
+- [ ] US-112: 트레이드 필터링 + CSV 내보내기 (날짜/전략/거래소/페어 필터 + CSV 다운로드)
+- [ ] US-113: 용어 친화화 + 툴팁 ("War Room"→"대시보드", "MIN_EDGE_BPS"→"최소 수익 기준" + info 아이콘)
+
+**Wave 3 — 엔진 강화**
+- [ ] US-114: 동적 포지션 사이징 (신뢰도(edge) × 레짐(RegimeDetector) × 유동성(DepthAnalyzer) 기반, CRISIS 25%, LOW vol 150%)
+- [ ] US-115: 슬리피지 피드백 루프 (실제 체결가 vs 예상가 비교 → EMA로 모델 파라미터 자동 조정)
+- [ ] US-116: TCA 모듈 + 실행 레이턴시 위젯 (Implementation shortfall, P50/P95/P99 레이턴시, 체결률)
+- [ ] US-117: 텔레그램 양방향 명령어 (/status, /kill, /mode, /balance — 단일 봇으로 통합)
+- [ ] US-118: 전략 간 상관관계 모니터링 (30-trade 롤링 상관계수, >0.7 시 소규모 전략 50% 축소)
+- [ ] US-119: IOC 주문 타입 (IOC 리밋 우선 → 타임아웃 시 마켓 폴백)
+- [ ] US-120: 인벤토리 리밸런싱 통합 확인 (inventory_rebalancer.py 활성화 + 드리프트 알람)
+
+**Wave 4 — 인프라**
+- [ ] US-121: Loki + Promtail 로그 집계 (Grafana 연동, 크로스 컨테이너 검색)
+- [ ] US-122: WAL 백업 + PITR (RPO <1시간, 주간 복원 검증)
 
 ### Phase K: Regime Detection 기반 구축 — US-081~085
 

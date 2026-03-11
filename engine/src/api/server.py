@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from src.api.auth import DASHBOARD_USER, DASHBOARD_PASSWORD, create_token
+from src.api.auth import DASHBOARD_USER, verify_password, create_token
 from src.api.middleware import IPWhitelistMiddleware, RateLimitMiddleware
 from src.api.websocket import ConnectionManager
 
@@ -105,7 +105,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
 
     @app.post("/api/auth/login")
     async def login(body: LoginBody):  # type: ignore[return]
-        if body.username != DASHBOARD_USER or body.password != DASHBOARD_PASSWORD:
+        if body.username != DASHBOARD_USER or not verify_password(body.password):
             raise HTTPException(status_code=401, detail="Invalid credentials")
         token = create_token(body.username)
         return JSONResponse({"access_token": token, "token_type": "bearer"})
