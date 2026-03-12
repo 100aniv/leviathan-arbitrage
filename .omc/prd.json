@@ -1488,7 +1488,7 @@
       "title": "CEX-DEX Shadow 검증",
       "phase": "L",
       "priority": 94,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-089"
       ],

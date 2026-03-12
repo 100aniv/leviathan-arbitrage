@@ -27,14 +27,14 @@
 ## 2. 현재 상태
 
 ```
-Phase:        L (DEX 실시간 통합) ← CURRENT  [J-EXT Wave1~3 ✅, Phase K ✅]
-테스트:       4,105 passed, 0 failed (Phase L: +62 DEX tests)
+Phase:        M (ML 시그널 파이프라인) ← CURRENT  [J-EXT Wave1~3 ✅, Phase K ✅, Phase L ✅]
+테스트:       4,105+ passed, 0 failed (Phase L 완료: +86 DEX tests)
 커버리지:     88%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    (pending)
-다음 작업:    Phase L — US-090 (CEX-DEX Shadow 검증)
-완료된 US:    US-065~076, US-105~120, US-081~089
+다음 작업:    Phase M — US-091 (XGBoost 시그널 스코어러)
+완료된 US:    US-065~076, US-105~120, US-081~090
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
