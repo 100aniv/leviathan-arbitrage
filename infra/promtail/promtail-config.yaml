@@ -1,0 +1,52 @@
+# =============================================================================
+# Promtail Configuration — LEVIATHAN Container Log Shipping (US-121)
+# =============================================================================
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    tenant_id: leviathan
+    batchwait: 1s
+    batchsize: 1048576
+
+scrape_configs:
+  # -------------------------------------------------------------------------
+  # Docker container logs via mounted socket
+  # -------------------------------------------------------------------------
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=leviathan"]
+    relabel_configs:
+      # Use container name as label
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: "container"
+      # Add compose service name
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label: "service"
+      # Add compose project
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        target_label: "project"
+    pipeline_stages:
+      # Parse JSON logs from containers using json-file driver
+      - docker: {}
+      # Extract log level if present
+      - regex:
+          expression: '(?P<level>(DEBUG|INFO|WARNING|ERROR|CRITICAL|FATAL))'
+      - labels:
+          level:
+      # Drop debug logs to save storage
+      - match:
+          selector: '{level="DEBUG"}'
+          action: drop
+          drop_counter_reason: debug_logs

@@ -27,14 +27,15 @@
 ## 2. 현재 상태
 
 ```
-Phase:        M ✅ (ML 시그널 파이프라인 완료)  [J-EXT Wave1~3 ✅, Phase K ✅, Phase L ✅, Phase M ✅]
-테스트:       4,200+ passed, 0 failed (US-096: Production Canary +19 tests, ML 142 total)
+Phase:        F (최종 검수) ← CURRENT  [J-EXT ✅, K ✅, L ✅, M ✅, Wave4 ✅]
+테스트:       4,200+ passed, 0 failed
 커버리지:     88%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    (pending)
-다음 작업:    Wave4 인프라 (US-121~122) → Phase F (최종 검수)
-완료된 US:    US-065~076, US-105~120, US-081~096
+다음 작업:    Phase F — US-054 (프로그레시브 Shadow 72H)
+완료된 US:    US-065~076, US-105~122, US-081~096
+인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Docker 11 services
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 

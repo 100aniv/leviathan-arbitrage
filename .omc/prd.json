@@ -1910,7 +1910,7 @@
       "title": "Loki + Promtail 로그 집계",
       "phase": "J-EXT",
       "priority": 117,
-      "passes": false,
+      "passes": true,
       "notes": "Wave 4 인프라 — K/L/M 완료 후 실행 (Phase F 직전)",
       "dependencies": [],
       "files": [
@@ -1930,7 +1930,7 @@
       "title": "WAL 백업 + PITR",
       "phase": "J-EXT",
       "priority": 118,
-      "passes": false,
+      "passes": true,
       "notes": "Wave 4 인프라 — K/L/M 완료 후 실행 (Phase F 직전)",
       "dependencies": [],
       "files": [
