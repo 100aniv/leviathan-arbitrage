@@ -12,8 +12,11 @@ Supports:
 from __future__ import annotations
 
 import asyncio
+import logging
 from decimal import Decimal
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from web3 import AsyncWeb3
 from web3.providers import AsyncHTTPProvider
@@ -289,3 +292,53 @@ class UniswapV3Adapter:
         assert self._pool_fee is not None
         # Uniswap V3 fee is in hundredths of a basis point (e.g., 3000 = 0.30%)
         return self._pool_fee // 100
+
+    async def get_spot_price(self) -> Decimal:
+        """Return spot price from slot0 sqrtPriceX96.
+
+        Equivalent to get_pool_price but uses configured token symbols.
+        price = (sqrtPriceX96 / 2^96)^2 * 10^(decimals0 - decimals1)
+        """
+        return await self.get_pool_price(
+            self._config.token_in_symbol,
+            self._config.token_out_symbol,
+        )
+
+    async def _get_liquidity(self) -> int:
+        """Return current in-range liquidity from pool contract."""
+        return await self._pool.functions.liquidity().call()
+
+    async def estimate_slippage(
+        self,
+        trade_size_usd: Decimal,
+        is_buy: bool = True,
+    ) -> Decimal:
+        """유동성 기반 VWAP 슬리피지 추정.
+
+        liquidity → constant product approximation → 슬리피지 bps.
+
+        Parameters:
+            trade_size_usd: 거래 규모 (USD)
+            is_buy: 매수 여부
+        Returns:
+            슬리피지 bps (e.g., Decimal("5.0") = 5bps)
+        """
+        try:
+            liquidity = await self._get_liquidity()
+            spot_price = await self.get_spot_price()
+
+            if liquidity <= 0 or spot_price <= 0:
+                return Decimal("10")  # fallback 10bps
+
+            # Constant product: slippage ≈ trade_size / (2 * liquidity_usd)
+            liquidity_usd = Decimal(str(liquidity)) * spot_price / Decimal("1e18")
+            if liquidity_usd <= 0:
+                return Decimal("10")
+
+            slippage_fraction = trade_size_usd / (Decimal("2") * liquidity_usd)
+            slippage_bps = slippage_fraction * Decimal("10000")
+
+            return min(slippage_bps, Decimal("100"))  # cap at 100bps
+        except Exception as exc:
+            logger.warning("uniswap_v3: slippage estimation failed: %s", exc)
+            return Decimal("10")  # fallback

@@ -1431,7 +1431,7 @@
       "title": "CostCalculator DEX 확장",
       "phase": "L",
       "priority": 91,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-086"
       ],
@@ -1450,7 +1450,7 @@
       "title": "Uniswap V3 실시간 가격/슬리피지",
       "phase": "L",
       "priority": 92,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-086"
       ],
