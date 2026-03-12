@@ -1507,7 +1507,7 @@
       "title": "ML 피처 파이프라인 확장",
       "phase": "M",
       "priority": 95,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-085"
       ],
