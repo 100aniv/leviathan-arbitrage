@@ -37,6 +37,7 @@ legacy = [
 ml = [
     "hmmlearn>=0.3",
     "scikit-learn>=1.4",
+    "xgboost>=2.0",
 ]
 dex = [
     "web3>=6.15",

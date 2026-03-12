@@ -1526,7 +1526,7 @@
       "title": "XGBoost 학습 루프",
       "phase": "M",
       "priority": 96,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-091"
       ],

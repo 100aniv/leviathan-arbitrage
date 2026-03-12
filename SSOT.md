@@ -28,13 +28,13 @@
 
 ```
 Phase:        M (ML 시그널 파이프라인) ← CURRENT  [J-EXT Wave1~3 ✅, Phase K ✅, Phase L ✅]
-테스트:       4,128+ passed, 0 failed (US-091: ML Feature Pipeline + Feature Store +23 tests)
+테스트:       4,145+ passed, 0 failed (US-092: XGBoost trainer +17 tests)
 커버리지:     88%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    (pending)
-다음 작업:    Phase M — US-092 (XGBoost 학습 루프)
-완료된 US:    US-065~076, US-105~120, US-081~091
+다음 작업:    Phase M — US-093 (ONNX 내보내기)
+완료된 US:    US-065~076, US-105~120, US-081~092
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
