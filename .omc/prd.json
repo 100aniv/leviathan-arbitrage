@@ -1339,7 +1339,7 @@
       "title": "레짐 피처 엔지니어링",
       "phase": "K",
       "priority": 86,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-081"
       ],

@@ -4,7 +4,13 @@ from src.tuning.backtest import BacktestEngine, BacktestResult, StrategyParams
 from src.tuning.data_loader import DataLoader, OHLCVWindow, SpreadRecord
 from src.tuning.evaluator import EvaluationReport, OutOfSampleEvaluator
 from src.tuning.optimizer import ObjectiveType, TunerConfig, WalkForwardOptimizer
-from src.tuning.regime_detector import MarketRegime, RegimeDetector
+from src.tuning.regime_detector import (
+    HMM_REGIME_MAP,
+    THRESHOLD_TO_HMM,
+    HMMRegimeDetector,
+    MarketRegime,
+    RegimeDetector,
+)
 
 __all__ = [
     "AdaptiveThreshold",
@@ -21,4 +27,7 @@ __all__ = [
     "WalkForwardOptimizer",
     "MarketRegime",
     "RegimeDetector",
+    "HMMRegimeDetector",
+    "HMM_REGIME_MAP",
+    "THRESHOLD_TO_HMM",
 ]

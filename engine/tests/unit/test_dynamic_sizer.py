@@ -67,7 +67,7 @@ class TestRegimeMultiplier:
         assert DynamicSizer.regime_multiplier(MarketRegime.NORMAL) == pytest.approx(1.0)
 
     def test_low_vol_150(self) -> None:
-        assert DynamicSizer.regime_multiplier(MarketRegime.LOW_VOL) == pytest.approx(1.5)
+        assert DynamicSizer.regime_multiplier(MarketRegime.LOW) == pytest.approx(1.5)
 
 
 # ---------------------------------------------------------------------------

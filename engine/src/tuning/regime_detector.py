@@ -133,6 +133,7 @@ class HMMRegimeDetector:
         self.current_regime = MarketRegime.NORMAL
         self.transition_matrix: np.ndarray | None = None
         self._fitted = False
+        self._feature_pipeline: Any | None = None  # US-082: RegimeFeaturePipeline
 
     def _load_hmmlearn(self) -> Any:
         """Lazy import hmmlearn — [ml] optional dep."""
@@ -166,7 +167,7 @@ class HMMRegimeDetector:
                      features.shape[0], features.shape[1])
         return self
 
-    def predict(self, features: np.ndarray) -> MarketRegime:
+    def predict(self, features: np.ndarray | list) -> MarketRegime:
         """현재 피처로 레짐 분류.
 
         Parameters:
@@ -177,7 +178,10 @@ class HMMRegimeDetector:
         if not self._fitted or self._model is None:
             return self.current_regime
 
-        states = self._model.predict(features)
+        arr = np.asarray(features)
+        states = self._model.predict(arr)
+        if len(states) == 0:
+            return self.current_regime
         state_id = int(states[-1])
         regime = HMM_REGIME_MAP.get(state_id, MarketRegime.NORMAL)
 
@@ -187,6 +191,25 @@ class HMMRegimeDetector:
             self.current_regime = regime
 
         return regime
+
+    def set_feature_pipeline(self, pipeline: Any) -> None:
+        """피처 파이프라인 연결 (US-082)."""
+        self._feature_pipeline = pipeline
+
+    def predict_from_raw(
+        self,
+        returns: np.ndarray,
+        spreads: np.ndarray,
+        volumes: np.ndarray,
+        bid_volumes: np.ndarray | None = None,
+        ask_volumes: np.ndarray | None = None,
+    ) -> "MarketRegime":
+        """Raw 시계열 → 피처 추출 → 레짐 분류."""
+        if self._feature_pipeline is None:
+            logger.warning("hmm_regime: no feature pipeline set, using threshold fallback")
+            return self.current_regime
+        features = self._feature_pipeline.extract(returns, spreads, volumes, bid_volumes, ask_volumes)
+        return self.predict(features)
 
     @property
     def is_fitted(self) -> bool:

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
+from src.tuning.regime_detector import MarketRegime
+
 
 class CapitalTier(StrEnum):
     ALPHA = "alpha"          # $70
@@ -133,18 +135,14 @@ class PositionSizer:
 # ---------------------------------------------------------------------------
 
 
-class MarketRegime(StrEnum):
-    CRISIS = "crisis"
-    HIGH = "high"
-    NORMAL = "normal"
-    LOW_VOL = "low_vol"
-
-
 REGIME_MULTIPLIER: dict[MarketRegime, float] = {
     MarketRegime.CRISIS: 0.25,
     MarketRegime.HIGH: 0.75,
-    MarketRegime.NORMAL: 1.0,
-    MarketRegime.LOW_VOL: 1.5,
+    MarketRegime.VOLATILE: 0.75,   # HMM equivalent of HIGH
+    MarketRegime.MEDIUM: 1.0,
+    MarketRegime.NORMAL: 1.0,      # HMM equivalent of MEDIUM
+    MarketRegime.LOW: 1.5,
+    MarketRegime.CALM: 1.5,        # HMM equivalent of LOW
 }
 
 
