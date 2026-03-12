@@ -79,6 +79,7 @@ class SignalGenerator:
         config: SignalConfig | None = None,
         event_bus: Any | None = None,
         stale_detector: StaleOrderbookDetector | None = None,
+        regime_detector: Any | None = None,  # US-084
     ) -> None:
         self._hub = price_hub
         self._calc = cost_calculator
@@ -86,6 +87,7 @@ class SignalGenerator:
         self._event_bus = event_bus
         self._stale_detector = stale_detector
         self._last_signal: dict[str, float] = {}  # dedup_key -> last emit timestamp
+        self._regime_detector = regime_detector  # US-084
 
     def _dedup_key(self, buy_ex: str, sell_ex: str, symbol: str) -> str:
         return f"{symbol}:{buy_ex}:{sell_ex}"
@@ -219,8 +221,13 @@ class SignalGenerator:
         notional = buy_price * trade_size
         net_edge = friction.net_profit / notional if notional > 0 else Decimal("0")
 
-        # Min edge gate
-        if net_edge < self._config.min_edge:
+        # Min edge gate — US-084: regime-adaptive threshold
+        effective_min_edge = self._config.min_edge
+        if self._regime_detector is not None:
+            from src.tuning.regime_detector import REGIME_MIN_EDGE
+            regime = self._regime_detector.current_regime
+            effective_min_edge = REGIME_MIN_EDGE.get(regime, self._config.min_edge)
+        if net_edge < effective_min_edge:
             return None
 
         # Max rollback cost gate

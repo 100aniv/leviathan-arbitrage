@@ -1377,7 +1377,7 @@
       "title": "레짐→시그널 통합",
       "phase": "K",
       "priority": 88,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-083"
       ],

@@ -33,8 +33,8 @@ Phase:        K (Regime Detection) ← CURRENT  [J-EXT Wave1~3 ✅]
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    8aba4fc
-다음 작업:    Phase K — US-084 (레짐→시그널 통합)
-완료된 US:    US-065~076, US-105~120, US-081~083
+다음 작업:    Phase K — US-085 (Walk-forward 레짐 검증)
+완료된 US:    US-065~076, US-105~120, US-081~084
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
@@ -502,7 +502,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-081: ML 의존성 + HMM 3-regime 설계 (hmmlearn/sklearn [ml] dep, MarketRegime CALM/NORMAL/VOLATILE 확장, HMMRegimeDetector 클래스) ✅
 - [x] US-082: 레짐 피처 엔지니어링 (RegimeFeaturePipeline 10-feature: vol×3, spread×2, volume×2, momentum×2, order_flow×1 + normalize + fill_missing) ✅
 - [x] US-083: HMM 학습 파이프라인 (HMMTrainer: fetch→extract→fit→캐시, 주간 배치 스케줄러, predict <2ms) ✅
-- [ ] US-084: 레짐→시그널 통합 (MIN_EDGE_BPS regime별 조정: CALM:3, NORMAL:5, VOLATILE:8)
+- [x] US-084: 레짐→시그널 통합 (REGIME_MIN_EDGE: CALM:3bps, NORMAL:5bps, VOLATILE:8bps, CRISIS:15bps + SignalGenerator regime_detector 파라미터) ✅
 - [ ] US-085: Walk-forward 레짐 검증 (레짐 전환 vs 성과 상관분석)
 
 ### Phase L: DEX 실시간 + 가스비 통합 — US-086~090

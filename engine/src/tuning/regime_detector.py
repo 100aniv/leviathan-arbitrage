@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 from enum import Enum
 from typing import Any, Protocol
 
@@ -36,6 +37,16 @@ THRESHOLD_TO_HMM: dict[MarketRegime, MarketRegime] = {
     MarketRegime.LOW: MarketRegime.CALM,
     MarketRegime.MEDIUM: MarketRegime.NORMAL,
     MarketRegime.HIGH: MarketRegime.VOLATILE,
+}
+
+REGIME_MIN_EDGE: dict[MarketRegime, Decimal] = {
+    MarketRegime.CALM: Decimal("0.0003"),      # 3 bps
+    MarketRegime.NORMAL: Decimal("0.0005"),     # 5 bps
+    MarketRegime.VOLATILE: Decimal("0.0008"),   # 8 bps
+    MarketRegime.LOW: Decimal("0.0003"),        # threshold alias → CALM
+    MarketRegime.MEDIUM: Decimal("0.0005"),     # threshold alias → NORMAL
+    MarketRegime.HIGH: Decimal("0.0008"),       # threshold alias → VOLATILE
+    MarketRegime.CRISIS: Decimal("0.0015"),     # 15 bps — 극단 상황
 }
 
 
