@@ -608,11 +608,18 @@ class Engine:
             from src.strategies.cex_dex import CexDexStrategy
             dex_adapter = self._build_dex_adapter()
             if dex_adapter is not None:
+                dex_cost = None
+                try:
+                    from src.friction.dex_cost import DEXCostCalculator
+                    dex_cost = DEXCostCalculator()
+                except Exception:
+                    pass
                 strategies.append(
                     CexDexStrategy(
                         "cex_dex_v1", cost_calc, dex_adapter,
                         cex_exchange_id=list(self._exchanges.keys())[0] if self._exchanges else "binance",
                         symbol="BTC/USDT",
+                        dex_cost_calculator=dex_cost,
                     )
                 )
         except Exception as exc:
@@ -631,9 +638,18 @@ class Engine:
         dex_rpc = os.getenv("DEX_RPC_URL", "")
         if not dex_rpc:
             return None
-        # Future: return a real Uniswap/Curve adapter here
-        logger.info("DEX_RPC_URL set but no concrete DEX adapter implemented yet")
-        return None
+        pool = os.getenv("DEX_POOL_ADDRESS", "")
+        if not pool:
+            logger.info("DEX_RPC_URL set but DEX_POOL_ADDRESS missing")
+            return None
+        try:
+            from src.infra.dex.uniswap_v3 import UniswapV3Adapter
+            adapter = UniswapV3Adapter(rpc_url=dex_rpc, pool_address=pool)
+            logger.info("UniswapV3Adapter initialized: pool=%s", pool[:10] + "...")
+            return adapter
+        except Exception as exc:
+            logger.warning("DEX adapter init failed: %s", exc)
+            return None
 
     # ------------------------------------------------------------------
     # Step 6: Risk Management

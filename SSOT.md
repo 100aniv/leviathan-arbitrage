@@ -33,8 +33,8 @@ Phase:        L (DEX 실시간 통합) ← CURRENT  [J-EXT Wave1~3 ✅, Phase K 
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    (pending)
-다음 작업:    Phase L — US-089 (CEX-DEX Spread Scanner)
-완료된 US:    US-065~076, US-105~120, US-081~088
+다음 작업:    Phase L — US-090 (CEX-DEX Shadow 검증)
+완료된 US:    US-065~076, US-105~120, US-081~089
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 

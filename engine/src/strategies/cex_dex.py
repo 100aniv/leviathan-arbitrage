@@ -195,6 +195,7 @@ class CexDexStrategy(BaseStrategy):
         cex_exchange_id: str,
         symbol: str,
         config: CexDexConfig | None = None,
+        dex_cost_calculator=None,  # US-089: DEXCostCalculator
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
         self._dex = dex_adapter
@@ -202,6 +203,7 @@ class CexDexStrategy(BaseStrategy):
         self._symbol = symbol
         self._config = config or CexDexConfig()
         self._amm = AMMSlippageModel()
+        self._dex_cost = dex_cost_calculator  # US-089
 
     @property
     def config(self) -> CexDexConfig:
@@ -246,9 +248,30 @@ class CexDexStrategy(BaseStrategy):
 
         gas_pct = gas_cost_usd / notional if notional > 0 else Decimal("0")
 
-        # Step 3: Compute spread and net edge
+        # Step 3: Compute spread and net edge (US-089: DEXCostCalculator 통합)
         raw_spread_pct = abs(cex_mid - dex_price) / cex_mid
-        net_edge_pct = raw_spread_pct - self._config.friction_cost_pct - gas_pct
+        size = min(signal.volume, self._config.max_position_size)
+
+        if self._dex_cost is not None:
+            # US-089: DEXCostCalculator로 실제 비용 계산
+            dex_cost_result = self._dex_cost.calculate(
+                notional_usd=notional,
+                fee_tier=self._config.dex_fee_bps * 100,  # 30 → 3000 (Uniswap V3 tier)
+                gas_cost_usd=gas_cost_usd,
+            )
+            total_cost_pct = dex_cost_result.total_cost_bps / Decimal("10000")
+            # AMM slippage (price impact) — only with DEXCostCalculator path
+            amm_slip = Decimal("0")
+            try:
+                reserves = await self._dex.get_pool_reserves()
+                if reserves[0] > 0 and reserves[1] > 0:
+                    amm_slip = self._amm.price_impact(reserves[0], reserves[1], size)
+            except Exception:
+                pass  # AMM slippage 미적용 시 보수적으로 0
+            net_edge_pct = raw_spread_pct - total_cost_pct - amm_slip
+        else:
+            total_cost_pct = self._config.friction_cost_pct + gas_pct
+            net_edge_pct = raw_spread_pct - total_cost_pct
         min_edge_pct = self._config.min_edge_bps / Decimal("10000")
 
         if net_edge_pct <= min_edge_pct:
@@ -267,9 +290,7 @@ class CexDexStrategy(BaseStrategy):
             dex_side = OrderSide.BUY
             direction = "buy_dex_sell_cex"
 
-        # Step 5: Cap to max position size
-        size = min(signal.volume, self._config.max_position_size)
-
+        # Step 5: size already capped in Step 3 (AMM slippage calc)
         self._metrics.trade_requests_generated += 1
 
         return TradeRequest(
@@ -310,6 +331,61 @@ class CexDexStrategy(BaseStrategy):
     async def on_fill(self, trade: Trade) -> None:
         """Handle fill and update metrics."""
         await super().on_fill(trade)
+
+    async def scan_spread(self, symbol: str, cex_mid: Decimal) -> dict:
+        """CEX vs DEX 스프레드 스캔 (외부 호출용).
+
+        Returns:
+            dict with raw_spread_bps, net_spread_bps, gas_cost_usd, direction, tradeable
+        """
+        try:
+            tokens = symbol.split("/")
+            token_in = tokens[0] if tokens else symbol
+            token_out = tokens[1] if len(tokens) > 1 else "USDT"
+            dex_price = await self._dex.get_pool_price(token_in, token_out)
+        except Exception:
+            return {"error": "dex_price_unavailable"}
+
+        if dex_price <= Decimal("0") or cex_mid <= Decimal("0"):
+            return {"error": "invalid_price"}
+
+        raw_spread_pct = abs(cex_mid - dex_price) / cex_mid
+        raw_spread_bps = raw_spread_pct * Decimal("10000")
+
+        # Gas estimate
+        try:
+            gas_cost_usd = await self._dex.estimate_gas(Decimal("1"))
+        except Exception:
+            gas_cost_usd = Decimal("0")
+
+        # Net spread
+        notional = cex_mid  # 1 unit
+        if self._dex_cost is not None:
+            dex_cost_result = self._dex_cost.calculate(
+                notional_usd=notional,
+                fee_tier=self._config.dex_fee_bps * 100,
+                gas_cost_usd=gas_cost_usd,
+            )
+            total_cost_bps = dex_cost_result.total_cost_bps
+        else:
+            gas_pct = gas_cost_usd / notional if notional > 0 else Decimal("0")
+            total_cost_bps = (self._config.friction_cost_pct + gas_pct) * Decimal("10000")
+
+        net_spread_bps = raw_spread_bps - total_cost_bps
+        direction = "buy_cex_sell_dex" if cex_mid < dex_price else "buy_dex_sell_cex"
+        min_edge_bps = self._config.min_edge_bps
+
+        return {
+            "symbol": symbol,
+            "cex_mid": str(cex_mid),
+            "dex_price": str(dex_price),
+            "raw_spread_bps": str(raw_spread_bps),
+            "net_spread_bps": str(net_spread_bps),
+            "gas_cost_usd": str(gas_cost_usd),
+            "total_cost_bps": str(total_cost_bps),
+            "direction": direction,
+            "tradeable": net_spread_bps > min_edge_bps,
+        }
 
     def compute_amm_output(
         self,

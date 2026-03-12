@@ -1468,7 +1468,7 @@
       "title": "CEX-DEX 스프레드 스캐너",
       "phase": "L",
       "priority": 93,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-087",
         "US-088"
