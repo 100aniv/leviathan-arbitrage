@@ -1,4 +1,5 @@
 """ML pipeline modules for LEVIATHAN."""
+from src.ml.canary import CanaryStage, MLCanary
 from src.ml.feature_pipeline import MLFeaturePipeline, RegimeFeaturePipeline
 from src.ml.feature_store import DriftReport, FeatureStore
 from src.ml.hmm_trainer import HMMTrainer
@@ -13,6 +14,8 @@ __all__ = [
     "XGBTrainer",
     "ONNXExporter",
     "ONNXSignalScorer",
+    "MLCanary",
+    "CanaryStage",
     "FeatureStore",
     "DriftReport",
 ]

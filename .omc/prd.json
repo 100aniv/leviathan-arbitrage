@@ -1602,7 +1602,7 @@
       "title": "Production Canary (ML 시그널)",
       "phase": "M",
       "priority": 100,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-095"
       ],
