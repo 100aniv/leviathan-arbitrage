@@ -1564,7 +1564,7 @@
       "title": "ONNX Runtime 추론 통합",
       "phase": "M",
       "priority": 98,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-093"
       ],

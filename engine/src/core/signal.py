@@ -80,6 +80,7 @@ class SignalGenerator:
         event_bus: Any | None = None,
         stale_detector: StaleOrderbookDetector | None = None,
         regime_detector: Any | None = None,  # US-084
+        ml_scorer: Any | None = None,  # US-094: ONNXSignalScorer
     ) -> None:
         self._hub = price_hub
         self._calc = cost_calculator
@@ -88,6 +89,7 @@ class SignalGenerator:
         self._stale_detector = stale_detector
         self._last_signal: dict[str, float] = {}  # dedup_key -> last emit timestamp
         self._regime_detector = regime_detector  # US-084
+        self._ml_scorer = ml_scorer  # US-094
 
     def _dedup_key(self, buy_ex: str, sell_ex: str, symbol: str) -> str:
         return f"{symbol}:{buy_ex}:{sell_ex}"
