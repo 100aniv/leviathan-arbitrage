@@ -38,6 +38,9 @@ ml = [
     "hmmlearn>=0.3",
     "scikit-learn>=1.4",
 ]
+dex = [
+    "web3>=6.15",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

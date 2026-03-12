@@ -33,7 +33,7 @@ Phase:        L (DEX 실시간 통합) ← CURRENT  [J-EXT Wave1~3 ✅, Phase K 
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    2b949ae
-다음 작업:    Phase L — US-086 (실시간 가스비 오라클)
+다음 작업:    Phase L — US-087+088 (CostCalculator DEX + Uniswap V3)
 완료된 US:    US-065~076, US-105~120, US-081~085
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
@@ -507,7 +507,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ### Phase L: DEX 실시간 + 가스비 통합 — US-086~090
 
-- [ ] US-086: 실시간 가스비 오라클 (Ethereum/Solana/Polygon, 30초 캐시)
+- [x] US-086: 실시간 가스비 오라클 (GasOracle: 6 chains, 30초 캐시, RPC→fallback, [dex] optional dep) ✅
 - [ ] US-087: CostCalculator DEX 확장 (LP fee + gas + MEV 추정 + bridge cost)
 - [ ] US-088: Uniswap V3 실시간 가격/슬리피지 (slot0 → 가격, liquidity → VWAP)
 - [ ] US-089: CEX-DEX 스프레드 스캐너 (net spread 가스비 차감 후)

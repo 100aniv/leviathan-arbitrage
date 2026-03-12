@@ -1415,7 +1415,7 @@
       "title": "실시간 가스비 오라클",
       "phase": "L",
       "priority": 90,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/infra/dex/gas_oracle.py",
         "engine/pyproject.toml"
