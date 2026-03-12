@@ -259,3 +259,226 @@ class WalkForwardAnalyzer:
                 max_dd = dd
 
         return max_dd
+
+
+from src.tuning.regime_detector import MarketRegime, REGIME_MIN_EDGE
+
+
+@dataclass
+class RegimeWindowResult:
+    """레짐별 성과 분석 결과."""
+    regime: str
+    trade_count: int = 0
+    total_pnl: float = 0.0
+    win_rate: float = 0.0
+    avg_pnl_per_trade: float = 0.0
+    sharpe: float = 0.0
+
+
+@dataclass
+class RegimeCorrelation:
+    """레짐 전환 vs 성과 상관분석 결과."""
+    regime_results: dict[str, RegimeWindowResult] = field(default_factory=dict)
+    regime_transition_count: int = 0
+    pnl_improvement_pct: float = 0.0
+    correlation_score: float = 0.0
+    walk_forward_pass: bool = False
+
+
+class RegimeWalkForwardAnalyzer:
+    """레짐 기반 Walk-forward 검증.
+
+    레짐 전환 시점 vs 성과 상관분석, regime-adaptive vs fixed min_edge 비교.
+    """
+
+    # Walk-forward PASS 조건
+    MIN_WIN_RATE = 0.5          # 모든 레짐에서 50% 이상
+    MIN_IMPROVEMENT_PCT = 0.0   # regime-adaptive PnL >= fixed PnL
+
+    def __init__(self, regime_detector: Any | None = None) -> None:
+        self._detector = regime_detector
+
+    def analyze_regime_correlation(
+        self,
+        trades: list[dict],
+        regime_history: list[dict],
+    ) -> RegimeCorrelation:
+        """레짐 전환 시점 vs 성과 상관분석.
+
+        Parameters:
+            trades: [{"ts": datetime, "pnl": float, "edge_bps": float}, ...]
+            regime_history: [{"timestamp": datetime, "regime": str}, ...]
+        Returns:
+            RegimeCorrelation 결과
+        """
+        result = RegimeCorrelation()
+
+        if not trades or not regime_history:
+            return result
+
+        # 레짐 전환 횟수 계산
+        result.regime_transition_count = max(0, len(regime_history) - 1)
+
+        # 각 거래를 해당 시점의 레짐으로 분류
+        regime_trades: dict[str, list[dict]] = {}
+        sorted_regimes = sorted(regime_history, key=lambda r: r["timestamp"])
+
+        for trade in trades:
+            trade_regime = self._find_regime_at(trade["ts"], sorted_regimes)
+            regime_trades.setdefault(trade_regime, []).append(trade)
+
+        # 레짐별 성과 계산
+        for regime_name, rtrades in regime_trades.items():
+            pnls = [t["pnl"] for t in rtrades]
+            wins = sum(1 for p in pnls if p > 0)
+            rwr = RegimeWindowResult(
+                regime=regime_name,
+                trade_count=len(rtrades),
+                total_pnl=sum(pnls),
+                win_rate=wins / len(rtrades) if rtrades else 0.0,
+                avg_pnl_per_trade=sum(pnls) / len(rtrades) if rtrades else 0.0,
+                sharpe=self._simple_sharpe(pnls),
+            )
+            result.regime_results[regime_name] = rwr
+
+        # regime-adaptive vs fixed 비교
+        effect = self.simulate_regime_effect(trades, regime_history)
+        result.pnl_improvement_pct = effect.get("improvement_pct", 0.0)
+
+        # 상관계수: 레짐 변동성 수준 vs PnL (단순 순위 상관)
+        result.correlation_score = self._compute_correlation(result.regime_results)
+
+        # Walk-forward PASS 조건
+        result.walk_forward_pass = self.validate_walk_forward(result)
+
+        return result
+
+    def simulate_regime_effect(
+        self,
+        trades: list[dict],
+        regime_history: list[dict],
+    ) -> dict:
+        """백테스트에서 regime 효과 측정.
+
+        fixed min_edge (5bps) vs regime-adaptive min_edge 비교.
+
+        Returns:
+            {"fixed_pnl": float, "adaptive_pnl": float, "improvement_pct": float}
+        """
+        if not trades:
+            return {"fixed_pnl": 0.0, "adaptive_pnl": 0.0, "improvement_pct": 0.0}
+
+        sorted_regimes = sorted(regime_history, key=lambda r: r["timestamp"]) if regime_history else []
+        fixed_min_edge = 5.0  # 5 bps fixed baseline
+
+        fixed_pnl = 0.0
+        adaptive_pnl = 0.0
+
+        for trade in trades:
+            edge = trade.get("edge_bps", 0.0)
+            pnl = trade["pnl"]
+
+            # Fixed: 5bps 고정 필터
+            if edge >= fixed_min_edge:
+                fixed_pnl += pnl
+
+            # Adaptive: 레짐별 필터
+            regime_name = self._find_regime_at(trade["ts"], sorted_regimes) if sorted_regimes else "NORMAL"
+            try:
+                regime = MarketRegime(regime_name)
+                adaptive_edge = float(REGIME_MIN_EDGE.get(regime, REGIME_MIN_EDGE[MarketRegime.NORMAL])) * 10000
+            except (ValueError, KeyError):
+                adaptive_edge = 5.0
+
+            if edge >= adaptive_edge:
+                adaptive_pnl += pnl
+
+        improvement = ((adaptive_pnl - fixed_pnl) / abs(fixed_pnl) * 100) if abs(fixed_pnl) > 1e-12 else 0.0
+
+        return {
+            "fixed_pnl": fixed_pnl,
+            "adaptive_pnl": adaptive_pnl,
+            "improvement_pct": improvement,
+        }
+
+    def validate_walk_forward(self, correlation: RegimeCorrelation) -> bool:
+        """Walk-forward PASS 조건 검증.
+
+        1. 모든 레짐에서 win_rate > 50% (거래 있는 레짐만)
+        2. regime-adaptive PnL >= fixed PnL (improvement >= 0)
+        3. 최소 1개 레짐에 거래 존재
+        """
+        if not correlation.regime_results:
+            return False
+
+        # 모든 레짐에서 win_rate >= MIN_WIN_RATE
+        for rr in correlation.regime_results.values():
+            if rr.trade_count > 0 and rr.win_rate < self.MIN_WIN_RATE:
+                return False
+
+        # regime-adaptive >= fixed
+        if correlation.pnl_improvement_pct < self.MIN_IMPROVEMENT_PCT:
+            return False
+
+        return True
+
+    @staticmethod
+    def _find_regime_at(ts: datetime, sorted_regimes: list[dict]) -> str:
+        """주어진 시점의 레짐을 찾음."""
+        if not sorted_regimes:
+            return "NORMAL"
+
+        result = sorted_regimes[0].get("regime", "NORMAL")
+        for entry in sorted_regimes:
+            if entry["timestamp"] <= ts:
+                result = entry.get("regime", "NORMAL")
+            else:
+                break
+        return result
+
+    @staticmethod
+    def _simple_sharpe(pnls: list[float]) -> float:
+        """간단한 Sharpe 비율 (비연환)."""
+        if len(pnls) < 2:
+            return 0.0
+        mean = sum(pnls) / len(pnls)
+        var = sum((p - mean) ** 2 for p in pnls) / (len(pnls) - 1)
+        std = math.sqrt(var) if var > 0 else 0.0
+        return mean / std if std > 0 else 0.0
+
+    @staticmethod
+    def _compute_correlation(regime_results: dict[str, RegimeWindowResult]) -> float:
+        """레짐 변동성 수준 vs PnL 상관계수.
+
+        기대: CALM에서 작은 PnL, VOLATILE에서 큰 PnL (높은 min_edge로 필터 강화).
+        Returns: -1~1 범위의 상관계수.
+        """
+        # 레짐 순서: CALM/LOW < NORMAL/MEDIUM < VOLATILE/HIGH < CRISIS
+        regime_order = {
+            "CALM": 1, "LOW": 1,
+            "NORMAL": 2, "MEDIUM": 2,
+            "VOLATILE": 3, "HIGH": 3,
+            "CRISIS": 4,
+        }
+
+        points: list[tuple[float, float]] = []
+        for name, rr in regime_results.items():
+            if rr.trade_count > 0:
+                order = regime_order.get(name, 2)
+                points.append((float(order), rr.avg_pnl_per_trade))
+
+        if len(points) < 2:
+            return 0.0
+
+        # Pearson correlation
+        n = len(points)
+        sx = sum(p[0] for p in points)
+        sy = sum(p[1] for p in points)
+        sxy = sum(p[0] * p[1] for p in points)
+        sx2 = sum(p[0] ** 2 for p in points)
+        sy2 = sum(p[1] ** 2 for p in points)
+
+        denom = math.sqrt((n * sx2 - sx ** 2) * (n * sy2 - sy ** 2))
+        if denom == 0:
+            return 0.0
+        return (n * sxy - sx * sy) / denom

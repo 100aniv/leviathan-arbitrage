@@ -1396,7 +1396,7 @@
       "title": "Walk-forward 레짐 검증",
       "phase": "K",
       "priority": 89,
-      "passes": false,
+      "passes": true,
       "dependencies": [
         "US-084"
       ],
