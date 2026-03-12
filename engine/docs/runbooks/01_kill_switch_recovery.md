@@ -3,6 +3,7 @@
 **Severity:** CRITICAL
 **SLA:** Acknowledge within 5 minutes. Position verification within 15 minutes. Resume decision within 60 minutes.
 **Related code:** `engine/src/risk/kill_switch.py`, `engine/src/execution/executor.py`
+**Docker services (14):** engine, timescaledb, redis, dashboard, nginx, grafana, prometheus, redis-exporter, monitoring, auto-tuner, db-backup, loki, promtail, wal-backup
 
 ---
 
@@ -21,10 +22,24 @@ verification, and the controlled resume procedure.
 Check structured logs for the trigger event:
 
 ```bash
-# Tail recent critical-level log entries
-journalctl -u leviathan --since "1 hour ago" | grep -E "kill_switch|halt_local|CRITICAL"
+# Docker 컨테이너 로그에서 확인 (권장)
+docker compose logs --tail=200 leviathan-engine | grep -E "kill_switch|halt_local|CRITICAL"
 
-# Or from structlog JSON output
+# Loki에서 구조화 로그 쿼리 (logcli 설치 필요)
+logcli query '{container="leviathan-engine"} |= "kill_switch"' \
+  --addr=http://localhost:3100 \
+  --since=1h \
+  --output=jsonl | python3 -c "
+import sys, json
+for line in sys.stdin:
+    try:
+        e = json.loads(line)
+        if 'kill_switch' in e.get('line', '') or 'halt_local' in e.get('line', ''):
+            print(e['line'])
+    except: pass
+"
+
+# structlog JSON 파일 직접 파싱 (레거시 / 파일 로깅 활성화 시)
 cat /var/log/leviathan/engine.log | python3 -c "
 import sys, json
 for line in sys.stdin:
@@ -106,14 +121,28 @@ Action: Manually close positions via exchange UI or API
 
 ### Step 2.4 — TimescaleDB reconciliation
 
-```sql
--- Check last execution records for unreconciled trades
+```bash
+# Docker 컨테이너로 직접 실행
+docker compose exec timescaledb psql -U leviathan -d leviathan -c "
 SELECT strategy_id, status, ts, net_pnl
 FROM execution_log
 WHERE ts > NOW() - INTERVAL '2 hours'
   AND status NOT IN ('SUCCESS', 'ROLLED_BACK')
 ORDER BY ts DESC
 LIMIT 20;
+"
+```
+
+또는 로컬 psql 클라이언트로:
+
+```bash
+psql "postgresql://leviathan:leviathan@localhost:5432/leviathan" -c "
+SELECT strategy_id, status, ts, net_pnl
+FROM execution_log
+WHERE ts > NOW() - INTERVAL '2 hours'
+  AND status NOT IN ('SUCCESS', 'ROLLED_BACK')
+ORDER BY ts DESC LIMIT 20;
+"
 ```
 
 ---

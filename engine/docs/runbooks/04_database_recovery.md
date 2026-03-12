@@ -3,6 +3,10 @@
 **Severity:** HIGH (data loss risk) / MEDIUM (engine continues in-memory fallback)
 **SLA:** Detection within 5 minutes. Fallback active within 10 minutes. Full restore within 4 hours.
 **Related code:** `engine/src/infra/db/market_recorder.py`, `engine/src/infra/db/migrations/`
+**Docker services:** `leviathan-timescaledb` (port 5432), `leviathan-db-backup` (daily pg_dump), `leviathan-wal-backup` (WAL archiving)
+**Volumes:** `timescaledb_data`, `wal_archive`, `db_backups`
+**Connection string (Docker internal):** `postgresql+asyncpg://leviathan:leviathan@timescaledb:5432/leviathan`
+**Connection string (host):** `postgresql://leviathan:leviathan@localhost:5432/leviathan`
 
 ---
 
@@ -17,58 +21,72 @@ This runbook covers backup/restore, WAL recovery, integrity checks, and connecti
 
 ## 1. TimescaleDB Backup Procedures
 
-### 1.1 Continuous backup setup (recommended)
+### 1.1 Docker-native backup containers
 
-Configure `pg_basebackup` + WAL archiving for point-in-time recovery (PITR):
+`docker-compose.yml`에 두 개의 백업 컨테이너가 정의되어 있다:
+
+| 컨테이너 | 방식 | 주기 | 보존 |
+|----------|------|------|------|
+| `leviathan-db-backup` | `pg_dump` (논리 백업) | 수동/스케줄 실행 | 7일 |
+| `leviathan-wal-backup` | WAL 아카이브 연속 백업 | 연속 (WAL 세그먼트 단위) | 7일 |
+
+백업 볼륨 경로:
+- 논리 백업: `db_backups` 볼륨 → `/backups/*.dump`
+- WAL 아카이브: `wal_archive` 볼륨 → `/var/lib/postgresql/wal_archive/`
+
+### 1.2 논리 백업 수동 실행 (db-backup 컨테이너)
 
 ```bash
-# /etc/postgresql/postgresql.conf additions
-archive_mode = on
-archive_command = 'cp %p /mnt/wal_archive/%f'
-wal_level = replica
+# db-backup 컨테이너 수동 실행 (restart: "no" 이므로 필요 시 직접 실행)
+docker compose run --rm leviathan-db-backup
 
-# Restart PostgreSQL after config change
-sudo systemctl restart postgresql
+# 백업 파일 확인
+docker run --rm \
+  -v "$(docker volume inspect leviathan_db_backups -f '{{ .Mountpoint }}'):/backups" \
+  alpine ls -lht /backups/*.dump 2>/dev/null || \
+docker compose exec timescaledb ls -lht /backups/ 2>/dev/null
+
+# 호스트에서 직접 확인
+docker volume inspect leviathan_db_backups
+# Mountpoint 경로에서 .dump 파일 확인
 ```
 
-### 1.2 Scheduled logical backup (daily)
+### 1.3 WAL 백업 수동 실행 (wal-backup 컨테이너)
 
 ```bash
-#!/bin/bash
-# /usr/local/bin/leviathan_backup.sh
-set -e
+# WAL 백업 수동 트리거
+docker compose run --rm leviathan-wal-backup
 
-DATE=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="/mnt/backups/leviathan"
-DB_NAME="leviathan"
-DB_USER="leviathan_user"
+# WAL 아카이브 상태 확인
+docker compose exec timescaledb psql -U leviathan -d leviathan -c "
+SELECT
+  pg_walfile_name(pg_current_wal_lsn()) AS current_wal,
+  pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')) AS total_wal_size;
+"
 
-# Dump all tables (logical backup)
-pg_dump -U "$DB_USER" -Fc "$DB_NAME" > "$BACKUP_DIR/leviathan_${DATE}.dump"
-
-# Compress and retain 30 days
-find "$BACKUP_DIR" -name "*.dump" -mtime +30 -delete
-
-echo "Backup complete: leviathan_${DATE}.dump"
+# 아카이브 디렉토리 내용 확인
+docker compose exec timescaledb ls -lht /var/lib/postgresql/wal_archive/ | head -20
 ```
 
-Schedule via cron:
-```bash
-# crontab -e
-0 2 * * * /usr/local/bin/leviathan_backup.sh >> /var/log/leviathan/backup.log 2>&1
-```
-
-### 1.3 Verify backup integrity
+### 1.4 Verify backup integrity
 
 ```bash
-# Test restore to a temp DB
-pg_restore -l /mnt/backups/leviathan/leviathan_YYYYMMDD_HHMMSS.dump | head -50
+# 최신 dump 파일 목록 확인
+DUMP_PATH=$(docker volume inspect leviathan_db_backups --format '{{.Mountpoint}}')
+ls -lht "${DUMP_PATH}"/*.dump 2>/dev/null | head -5
 
-# Or restore to validation instance
-createdb leviathan_validate
-pg_restore -U postgres -d leviathan_validate /mnt/backups/leviathan/leviathan_YYYYMMDD_HHMMSS.dump
-psql -U postgres -d leviathan_validate -c "SELECT COUNT(*) FROM execution_log;"
-dropdb leviathan_validate
+# pg_restore로 목차 확인 (실제 복원 없이 검증)
+LATEST_DUMP=$(ls -t "${DUMP_PATH}"/*.dump 2>/dev/null | head -1)
+echo "Latest dump: $LATEST_DUMP"
+docker run --rm \
+  -v "${DUMP_PATH}:/backups:ro" \
+  timescale/timescaledb:latest-pg16 \
+  pg_restore -l "/backups/$(basename $LATEST_DUMP)" | head -30
+
+# Loki에서 백업 성공/실패 로그 확인
+logcli query '{container="leviathan-db-backup"} |= "Backup"' \
+  --addr=http://localhost:3100 --since=24h 2>/dev/null || \
+docker compose logs --tail=50 leviathan-db-backup 2>/dev/null
 ```
 
 ---
@@ -78,24 +96,35 @@ dropdb leviathan_validate
 ### Step 2.1 — Stop the engine
 
 ```bash
-sudo systemctl stop leviathan-engine
-# Confirm all processes stopped
-pgrep -f "leviathan" && echo "STILL RUNNING" || echo "Stopped"
+# Docker로 실행 중인 경우
+docker compose stop leviathan-engine
+
+# 확인
+docker compose ps leviathan-engine | grep -v "Up" && echo "Engine stopped"
 ```
 
 ### Step 2.2 — Restore from latest backup
 
 ```bash
-# Find latest backup
-LATEST=$(ls -t /mnt/backups/leviathan/*.dump | head -1)
+# 백업 볼륨 마운트포인트 확인
+DUMP_PATH=$(docker volume inspect leviathan_db_backups --format '{{.Mountpoint}}')
+LATEST=$(ls -t "${DUMP_PATH}"/*.dump 2>/dev/null | head -1)
 echo "Restoring from: $LATEST"
 
-# Drop and recreate DB
-psql -U postgres -c "DROP DATABASE IF EXISTS leviathan;"
-psql -U postgres -c "CREATE DATABASE leviathan OWNER leviathan_user;"
+# TimescaleDB 컨테이너에서 DB 재생성 및 복원
+docker compose exec timescaledb bash -c "
+  psql -U leviathan -d postgres -c 'DROP DATABASE IF EXISTS leviathan;'
+  psql -U leviathan -d postgres -c 'CREATE DATABASE leviathan OWNER leviathan;'
+  pg_restore -U leviathan -d leviathan /backups/\$(ls -t /backups/*.dump | head -1 | xargs basename)
+  echo 'Restore complete'
+"
 
-# Restore
-pg_restore -U postgres -d leviathan "$LATEST"
+# 또는 호스트에서 직접 실행
+docker run --rm \
+  -v "${DUMP_PATH}:/backups:ro" \
+  --network leviathan_leviathan \
+  timescale/timescaledb:latest-pg16 \
+  pg_restore -h timescaledb -U leviathan -d leviathan "/backups/$(basename $LATEST)"
 echo "Restore complete"
 ```
 
@@ -118,47 +147,72 @@ SELECT add_retention_policy('market_ticks', INTERVAL '30 days', if_not_exists =>
 
 ## 3. WAL Recovery Steps
 
-Use WAL recovery for point-in-time restore (fewer data loss than logical backup):
+`leviathan-wal-backup` 컨테이너와 `wal_archive` 볼륨을 사용하는 PITR(Point-in-Time Recovery) 절차.
 
-### Step 3.1 — Prepare recovery configuration
+### Step 3.1 — WAL 아카이브 상태 확인
 
 ```bash
-# Create recovery.conf (PostgreSQL < 12) or postgresql.conf additions (>= 12)
-cat >> /etc/postgresql/postgresql.conf << 'EOF'
-restore_command = 'cp /mnt/wal_archive/%f %p'
-recovery_target_time = '2026-03-07 14:00:00'  # target time in UTC
+# WAL 아카이브 볼륨 마운트포인트
+WAL_PATH=$(docker volume inspect leviathan_wal_archive --format '{{.Mountpoint}}')
+echo "WAL archive path: $WAL_PATH"
+
+# 가장 최근 WAL 세그먼트 확인
+ls -lht "${WAL_PATH}"/ | head -10
+
+# TimescaleDB 컨테이너 내부에서 확인
+docker compose exec timescaledb ls -lht /var/lib/postgresql/wal_archive/ | head -10
+```
+
+### Step 3.2 — Prepare recovery configuration
+
+```bash
+# TimescaleDB 컨테이너를 중단하고 복구 설정 주입
+docker compose stop leviathan-timescaledb
+
+# postgresql.conf에 복구 옵션 추가 (infra/postgres/postgresql.conf)
+# 프로젝트 루트의 infra/postgres/postgresql.conf 파일 편집:
+cat >> /path/to/infra/postgres/postgresql.conf << 'EOF'
+restore_command = 'cp /var/lib/postgresql/wal_archive/%f %p'
+recovery_target_time = '2026-03-07 14:00:00'  # 복구 목표 시각 (UTC)
 recovery_target_action = 'promote'
 EOF
 
-# Create recovery signal file
-touch /var/lib/postgresql/data/recovery.signal
+# recovery.signal 파일 생성 (timescaledb_data 볼륨 내)
+DATA_PATH=$(docker volume inspect leviathan_timescaledb_data --format '{{.Mountpoint}}')
+touch "${DATA_PATH}/recovery.signal"
+echo "recovery.signal created at: ${DATA_PATH}/recovery.signal"
 ```
 
-### Step 3.2 — Restore base backup then apply WAL
+### Step 3.3 — WAL 복구 실행
 
 ```bash
-# Stop PostgreSQL
-sudo systemctl stop postgresql
+# TimescaleDB 재시작 (WAL 자동 적용)
+docker compose start leviathan-timescaledb
 
-# Restore base backup to data directory
-rsync -av /mnt/backups/base_backup/ /var/lib/postgresql/data/
+# 복구 진행 모니터링
+docker compose logs -f leviathan-timescaledb | grep -E "recovery|redo|WAL|LOG"
 
-# Start PostgreSQL (will apply WAL automatically)
-sudo systemctl start postgresql
-
-# Monitor recovery progress
-tail -f /var/log/postgresql/postgresql.log | grep -E "recovery|redo|WAL"
+# Loki에서 복구 로그 확인 (logcli 설치 시)
+logcli query '{container="leviathan-timescaledb"}' \
+  --addr=http://localhost:3100 --since=10m | grep -E "recovery|WAL"
 ```
 
-### Step 3.3 — Confirm recovery target reached
+### Step 3.4 — Confirm recovery target reached
 
 ```bash
-# Check PostgreSQL is no longer in recovery mode
-psql -U postgres -c "SELECT pg_is_in_recovery();"
-# Should return: f (false)
+# 복구 완료 확인 (pg_is_in_recovery() = f 이어야 함)
+docker compose exec timescaledb psql -U leviathan -d postgres -c \
+  "SELECT pg_is_in_recovery();"
+# 결과: f (false) — 복구 완료
 
-psql -U postgres -d leviathan -c "SELECT MAX(ts) FROM execution_log;"
-# Should match expected recovery target time
+# 복구 후 최신 데이터 시각 확인
+docker compose exec timescaledb psql -U leviathan -d leviathan -c \
+  "SELECT MAX(ts) FROM execution_log;"
+# 복구 목표 시각과 일치해야 함
+
+# recovery.signal 파일 자동 삭제 확인
+DATA_PATH=$(docker volume inspect leviathan_timescaledb_data --format '{{.Mountpoint}}')
+ls "${DATA_PATH}/recovery.signal" 2>/dev/null && echo "WARNING: still in recovery" || echo "Recovery complete"
 ```
 
 ---
@@ -328,12 +382,19 @@ WHERE datname = 'leviathan'
 ### Step 6.4 — Connection string verification
 
 ```bash
-# Test connection manually
-psql "postgresql://leviathan_user:PASSWORD@localhost:5432/leviathan" \
-  -c "SELECT version();"
+# Docker 컨테이너 내부에서 직접 연결 테스트
+docker compose exec timescaledb psql -U leviathan -d leviathan -c "SELECT version();"
 
-# Check pg_hba.conf allows engine host
-grep leviathan /etc/postgresql/pg_hba.conf
+# 호스트에서 포트 포워딩으로 테스트 (포트 5432 노출 확인)
+psql "postgresql://leviathan:leviathan@localhost:5432/leviathan" -c "SELECT version();"
+
+# 엔진 컨테이너의 DATABASE_URL 환경변수 확인
+docker compose exec leviathan-engine env | grep DATABASE_URL
+# 예상: DATABASE_URL=postgresql+asyncpg://leviathan:leviathan@timescaledb:5432/leviathan
+# 주의: Docker 내부에서는 hostname이 'timescaledb' (localhost가 아님)
+
+# pg_hba.conf 확인 (컨테이너 내부)
+docker compose exec timescaledb cat /var/lib/postgresql/data/pg_hba.conf | grep leviathan
 ```
 
 ---

@@ -57,32 +57,43 @@ asyncio.run(main())
 "
 ```
 
-Docker 컨테이너 상태 확인 (9개 컨테이너):
+Docker 컨테이너 상태 확인 (14개 컨테이너):
 
 ```bash
 docker compose ps
-# 확인 대상: leviathan-timescaledb, leviathan-redis, leviathan-dashboard,
-#            leviathan-grafana, leviathan-prometheus, leviathan-redis-exporter
-#            leviathan-nginx, leviathan-monitoring, leviathan-auto-tuner
-docker compose ps --format "table {{.Name}}\t{{.Status}}" | grep -v healthy | grep -v "Up "
-# 출력 없으면 전체 정상
+# 확인 대상 (14개):
+#   핵심: leviathan-engine, leviathan-timescaledb, leviathan-redis
+#   프론트: leviathan-dashboard, leviathan-nginx
+#   모니터링: leviathan-grafana, leviathan-prometheus, leviathan-redis-exporter
+#   운영: leviathan-monitoring, leviathan-auto-tuner
+#   백업: leviathan-db-backup, leviathan-wal-backup
+#   로그: leviathan-loki, leviathan-promtail
+docker compose ps --format "table {{.Name}}\t{{.Status}}" | grep -v " healthy" | grep -v "Up "
+# 출력 없으면 전체 정상 (db-backup, wal-backup은 restart:"no" → Exited 정상)
 ```
 
 ### 1.3 Database continuity
 
 ```bash
-# Check backup ran within last 24 hours
-ls -lht /mnt/backups/leviathan/*.dump | head -3
+# Docker db-backup 컨테이너 최근 실행 로그 확인
+docker compose logs --tail=20 leviathan-db-backup 2>/dev/null || echo "db-backup: not yet run"
 
-# Check query latency
-psql -U leviathan_user -d leviathan -c "
-SELECT now() - MAX(ts) AS data_age FROM execution_log;
-"
-# data_age should be < 10 minutes for active trading
+# 백업 볼륨에서 최신 dump 파일 확인 (최근 24시간 내)
+DUMP_PATH=$(docker volume inspect leviathan_db_backups --format '{{.Mountpoint}}' 2>/dev/null)
+[ -n "$DUMP_PATH" ] && ls -lht "${DUMP_PATH}"/*.dump 2>/dev/null | head -3 || echo "No dumps found"
 
-# Check replication lag if replica present
-psql -U postgres -c "SELECT now() - pg_last_xact_replay_timestamp() AS replication_lag;"
-# Should be < 10 seconds
+# WAL 아카이브 최신 세그먼트 확인
+docker compose exec timescaledb ls -lht /var/lib/postgresql/wal_archive/ 2>/dev/null | head -5
+
+# DB 마지막 데이터 시각 확인
+docker compose exec timescaledb psql -U leviathan -d leviathan -c \
+  "SELECT now() - MAX(ts) AS data_age FROM execution_log;"
+# data_age < 10분이어야 함 (활성 거래 중)
+
+# Loki에서 DB 관련 에러 확인
+logcli query '{container="leviathan-engine"} |= "database_error"' \
+  --addr=http://localhost:3100 --since=1h 2>/dev/null || \
+docker compose logs --tail=50 leviathan-engine | grep -E "database_error|db_connected"
 ```
 
 ### 1.4 Kill switch clear
@@ -186,31 +197,59 @@ asyncio.run(wait_for_clear())
 ### Step 2.4 — Deploy new version
 
 ```bash
-cd /opt/leviathan
+cd /path/to/arbitrage_OMC
 
 # Pull new code
 git fetch origin
 git checkout v1.X.Y  # or merge branch
 
-# Install updated dependencies
-cd engine && pip install -e ".[dev]" --quiet
+# Docker 이미지 빌드 및 재배포 (권장)
+docker compose build leviathan-engine leviathan-dashboard
 
-# Run DB migrations if any
-python -m engine.src.infra.db.migrations.run
+# Run DB migrations if any (엔진 컨테이너에서 실행)
+docker compose run --rm leviathan-engine python -m src.infra.db.migrations.run
 
-# Restart engine with new code
-sudo systemctl restart leviathan-engine
+# 핵심 서비스 순차 재시작 (의존성 순서 준수)
+docker compose up -d leviathan-timescaledb leviathan-redis
+sleep 15
+docker compose up -d leviathan-engine
+sleep 10
+docker compose up -d leviathan-dashboard leviathan-nginx
+sleep 5
 
-# Watch startup logs
-journalctl -u leviathan -f --since "now" &
+# 로그 관련 서비스 (loki, promtail) 재시작
+docker compose up -d leviathan-loki leviathan-promtail
+
+# 모니터링/운영 서비스 재시작
+docker compose up -d leviathan-prometheus leviathan-grafana leviathan-redis-exporter
+docker compose up -d leviathan-monitoring leviathan-auto-tuner
+
+# 백업 서비스 재확인 (restart: "no" → 수동 실행만)
+# docker compose run --rm leviathan-db-backup   # 배포 후 즉시 백업 원할 시
+# docker compose run --rm leviathan-wal-backup  # WAL 백업 수동 트리거
+
+# 전체 상태 확인
+docker compose ps
 ```
 
 ### Step 2.5 — Verify startup
 
 ```bash
-# Engine should reach READY state within 30 seconds
-timeout 60 bash -c 'until journalctl -u leviathan --since "1 min ago" | grep -q "engine_ready"; do sleep 2; done'
+# Engine이 30초 내 READY 상태 도달 확인
+timeout 60 bash -c '
+  until docker compose logs --tail=5 leviathan-engine 2>/dev/null | grep -q "engine_ready"; do
+    sleep 3
+  done
+'
 echo "Engine READY"
+
+# 14개 컨테이너 전체 정상 확인
+docker compose ps --format "table {{.Name}}\t{{.Status}}"
+# db-backup, wal-backup은 Exited(0) 정상
+
+# Loki 수집 확인 (promtail → loki 파이프라인)
+curl -s http://localhost:3100/ready && echo "Loki: ready" || echo "Loki: not ready"
+logcli labels --addr=http://localhost:3100 2>/dev/null | grep container || true
 ```
 
 ---
@@ -285,31 +324,41 @@ Immediate rollback if ANY of:
 ### Step 4.2 — Revert to previous version
 
 ```bash
-# Emergency rollback
-cd /opt/leviathan
+# Emergency rollback — Docker 이미지 태그 기반
+cd /path/to/arbitrage_OMC
 
-# Get previous working commit
-git log --oneline -10  # identify last known-good commit
+# 직전 커밋으로 체크아웃
+git log --oneline -10   # last known-good commit 식별
 GOOD_COMMIT="abc1234"
-
 git checkout $GOOD_COMMIT
-cd engine && pip install -e ".[dev]" --quiet
 
-# Restart with previous version
-sudo systemctl restart leviathan-engine
+# 이미지 재빌드 후 재배포
+docker compose build leviathan-engine
+docker compose up -d leviathan-engine
+
+# 또는 이전 이미지 태그가 있다면 직접 지정
+# docker compose stop leviathan-engine
+# docker tag leviathan-engine:previous leviathan-engine:latest
+# docker compose up -d leviathan-engine
 ```
 
 ### Step 4.3 — Verify rollback
 
 ```bash
-# Confirm version
-python -c "import engine; print(engine.__version__)"
+# 엔진 시작 확인
+timeout 60 bash -c '
+  until docker compose logs --tail=5 leviathan-engine 2>/dev/null | grep -q "engine_ready"; do
+    sleep 3
+  done
+'
+echo "Engine READY after rollback"
 
-# Run smoke test
-python -m pytest engine/tests/unit/ -x -q --tb=short 2>&1 | tail -10
+# 유닛 테스트 실행
+cd /path/to/arbitrage_OMC/engine && \
+  python -m pytest tests/unit/ -x -q --tb=short 2>&1 | tail -10
 
-# Confirm engine starts clean
-timeout 60 bash -c 'until journalctl -u leviathan --since "1 min ago" | grep -q "engine_ready"; do sleep 2; done'
+# Loki에서 롤백 후 에러 확인
+docker compose logs --tail=50 leviathan-engine | grep -iE "error|critical|traceback"
 ```
 
 ### Step 4.4 — Post-rollback checklist

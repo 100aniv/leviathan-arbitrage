@@ -17,7 +17,7 @@
 | 대시보드 | Next.js 14 (App Router) + JWT 인증 + 실시간 WS 피드 |
 | 거래소 | 10개 네이티브 WebSocket 어댑터 (7 spot + Binance/OKX/Bybit Futures, ccxt 미사용) |
 | 전략 | 8개 (7개 기본 + CexDex 조건부) |
-| 인프라 | Docker Compose 8 컨테이너, TimescaleDB + Redis + Prometheus + Grafana |
+| 인프라 | Docker Compose 14 서비스, TimescaleDB + Redis + Prometheus + Grafana + Loki + WAL백업 |
 | 실행 모드 | Backtest → Paper → Shadow → Live |
 
 **거래소 목록**: Binance, Binance Futures, Bybit, Bybit Futures, OKX, OKX Futures, Bitget, Upbit, Bithumb, Coinone (10개 네이티브 어댑터)
@@ -28,7 +28,7 @@
 
 ```
 Phase:        F (최종 검수) ← CURRENT  [J-EXT ✅, K ✅, L ✅, M ✅, Wave4 ✅]
-테스트:       4,200+ passed, 0 failed
+테스트:       4,229+ passed, 0 failed
 커버리지:     88%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
@@ -319,7 +319,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ## 6. 인프라
 
-### Docker Compose (8 컨테이너)
+### Docker Compose (14 서비스)
 
 | 서비스 | 이미지 | 포트 | 역할 |
 |--------|--------|------|------|
@@ -331,6 +331,12 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | prometheus | prom/prometheus:v2.50.1 | 9090 | 메트릭 수집 (30일 보관) |
 | grafana | grafana/grafana:10.3.3 | 3001 | 메트릭 시각화 |
 | nginx | nginx:alpine | 80, 443 | TLS 종단 + 역방향 프록시 |
+| monitoring | leviathan-engine:latest | — | Telegram 인프라 모니터링 데몬 |
+| auto-tuner | leviathan-engine:latest | — | Optuna 자동 튜닝 스케줄러 |
+| db-backup | leviathan-engine:latest | — | TimescaleDB 자동 백업 |
+| loki | grafana/loki | 3100 | 로그 집계 (크로스 컨테이너 검색) |
+| promtail | grafana/promtail | — | 로그 수집 → Loki 전달 |
+| wal-backup | leviathan-engine:latest | — | WAL 아카이빙 + PITR (RPO <1시간) |
 
 ### 모니터링 스택
 
@@ -346,7 +352,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 96개 User Stories)
+## 7. 남은 작업 (`.omc/prd.json` 113개 User Stories, 108개 완료, 5개 미완)
 
 > **실행 방식**: 3-Phase Sequential — Phase A(기획/OMC) → Phase B(개발/Agent Teams) → Phase C(검증/OMC)
 > **자동화**: `ralph autopilot` → prd.json 순회 → 각 US 자동 실행
@@ -509,29 +515,29 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 ### Phase L: DEX 실시간 + 가스비 통합 — US-086~090
 
 - [x] US-086: 실시간 가스비 오라클 (GasOracle: 6 chains, 30초 캐시, RPC→fallback, [dex] optional dep) ✅
-- [ ] US-087: CostCalculator DEX 확장 (LP fee + gas + MEV 추정 + bridge cost)
-- [ ] US-088: Uniswap V3 실시간 가격/슬리피지 (slot0 → 가격, liquidity → VWAP)
-- [ ] US-089: CEX-DEX 스프레드 스캐너 (net spread 가스비 차감 후)
-- [ ] US-090: CEX-DEX Shadow 검증
+- [x] US-087: CostCalculator DEX 확장 (LP fee + gas + MEV 추정 + bridge cost) ✅
+- [x] US-088: Uniswap V3 실시간 가격/슬리피지 (slot0 → 가격, liquidity → VWAP) ✅
+- [x] US-089: CEX-DEX 스프레드 스캐너 (net spread 가스비 차감 후) ✅
+- [x] US-090: CEX-DEX Shadow 검증 ✅
 
 ### Phase M: 로컬 ML 시그널 파이프라인 — US-091~096
 
-- [ ] US-091: ML 피처 파이프라인 (orderbook/volatility/volume/regime/execution)
-- [ ] US-092: XGBoost 학습 루프 (주간 배치, optuna HPO)
-- [ ] US-093: ONNX 내보내기 + 버전관리 (onnxmltools, opset 관리)
-- [ ] US-094: ONNX Runtime 추론 통합 (<1ms 보장, SignalGenerator 연동)
-- [ ] US-095: ML 시그널 백테스트 (walk-forward A/B 비교)
-- [ ] US-096: Production Canary (Paper→Shadow ML 시그널 검증)
+- [x] US-091: ML 피처 파이프라인 (orderbook/volatility/volume/regime/execution) ✅
+- [x] US-092: XGBoost 학습 루프 (주간 배치, optuna HPO) ✅
+- [x] US-093: ONNX 내보내기 + 버전관리 (onnxmltools, opset 관리) ✅
+- [x] US-094: ONNX Runtime 추론 통합 (<1ms 보장, SignalGenerator 연동) ✅
+- [x] US-095: ML 시그널 백테스트 (walk-forward A/B 비교) ✅
+- [x] US-096: Production Canary (Paper→Shadow ML 시그널 검증) ✅
 
 ### Phase J-EXT Wave 4 — 인프라 (K/L/M 완료 후 실행) — US-121~122
 
-- [ ] US-121: Loki + Promtail 로그 집계 (Grafana 연동, 크로스 컨테이너 검색)
-- [ ] US-122: WAL 백업 + PITR (RPO <1시간, 주간 복원 검증)
+- [x] US-121: Loki + Promtail 로그 집계 (Grafana 연동, 크로스 컨테이너 검색) ✅
+- [x] US-122: WAL 백업 + PITR (RPO <1시간, 주간 복원 검증) ✅
 
 ### Phase F: 최종 검수 — US-054~057, US-077, US-079~080 (LAST — 전 Phase 완료 후 진입)
 
-- [ ] US-054: Progressive Shadow 재실행 (J-EXT/K/L/M 포함된 최신 엔진, 72H 전 단계) — 기존: 580T/67.2%WR/+$2203.92
-- [ ] US-077: 문서 정합성 최종 감사 (SSOT↔PRD↔구현 전수 조사)
+- [x] US-054: Progressive Shadow 재실행 (J-EXT/K/L/M 포함된 최신 엔진, 72H 전 단계) ✅
+- [x] US-077: 문서 정합성 최종 감사 (SSOT↔PRD↔구현 전수 조사) ✅
 - [ ] US-057: 운영 문서 최종화
 - [ ] US-079: 운영 Runbook 업데이트 + 장애 대응 매뉴얼
 - [ ] US-055: LiveGate 자동 평가 확인

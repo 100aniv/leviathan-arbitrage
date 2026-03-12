@@ -3,6 +3,7 @@
 **Severity:** HIGH
 **SLA:** Detection within 5 minutes. Parameter adjustment within 30 minutes. Walk-forward re-evaluation within 24 hours.
 **Related code:** `engine/src/risk/circuit_breaker.py`, `engine/src/analysis/walk_forward.py`, `engine/src/modes/live_gate.py`
+**Docker services (14):** engine, timescaledb, redis, dashboard, nginx, grafana, prometheus, redis-exporter, monitoring, auto-tuner, db-backup, loki, promtail, wal-backup
 
 ---
 
@@ -34,6 +35,18 @@ stats = circuit_breaker.stats
 print(f"Current drawdown: {stats.current_drawdown_pct*100:.2f}%")
 print(f"CB state: {circuit_breaker.state}")
 print(f"Trigger reason: {stats.last_trigger_reason}")
+```
+
+Loki에서 circuit breaker 발동 이력 확인:
+
+```bash
+# circuit_breaker_open 이벤트 조회 (최근 1시간)
+logcli query '{container="leviathan-engine"} |= "circuit_breaker_open"' \
+  --addr=http://localhost:3100 --since=1h --output=jsonl
+
+# Docker 로그에서 직접 확인
+docker compose logs --tail=200 leviathan-engine | \
+  grep -E "circuit_breaker_open|mdd_exceeded|drawdown"
 ```
 
 ### 1.3 Compute drawdown from execution log

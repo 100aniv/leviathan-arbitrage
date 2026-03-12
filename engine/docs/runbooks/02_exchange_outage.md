@@ -52,6 +52,15 @@ async def check_health():
 Look for collector disconnect events in logs:
 
 ```bash
+# Docker 컨테이너 로그 (권장)
+docker compose logs --tail=100 leviathan-engine | \
+  grep -E "ws_disconnect|reconnect_attempt|collector_error"
+
+# Loki 쿼리 (logcli 설치 필요, Loki 포트 3100)
+logcli query '{container="leviathan-engine"} |= "ws_disconnect"' \
+  --addr=http://localhost:3100 --since=1h
+
+# 레거시: 파일 로그 직접 확인
 grep -E "ws_disconnect|reconnect_attempt|collector_error" /var/log/leviathan/engine.log | tail -50
 ```
 
@@ -104,7 +113,8 @@ Docker로 실행 중인 경우:
 ```bash
 # 컨테이너 재시작 (환경변수 변경 적용)
 docker compose restart leviathan-engine
-docker compose logs -f leviathan-engine | grep -E "exchange|collector"
+sleep 10
+docker compose logs --tail=50 leviathan-engine | grep -E "exchange|collector|engine_ready"
 ```
 
 ### Step 2.3 — Redistribute pairs to healthy exchanges
