@@ -28,13 +28,13 @@
 
 ```
 Phase:        M (ML 시그널 파이프라인) ← CURRENT  [J-EXT Wave1~3 ✅, Phase K ✅, Phase L ✅]
-테스트:       4,172+ passed, 0 failed (US-094: ONNX Runtime +14 tests)
+테스트:       4,185+ passed, 0 failed (US-095: ML backtest +13 tests)
 커버리지:     88%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    (pending)
-다음 작업:    Phase M — US-095 (ML 시그널 백테스트)
-완료된 US:    US-065~076, US-105~120, US-081~094
+다음 작업:    Phase M — US-096 (Production Canary)
+완료된 US:    US-065~076, US-105~120, US-081~095
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
