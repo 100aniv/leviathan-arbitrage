@@ -38,6 +38,9 @@ ml = [
     "hmmlearn>=0.3",
     "scikit-learn>=1.4",
     "xgboost>=2.0",
+    "onnxmltools>=1.12",
+    "onnxruntime>=1.17",
+    "onnx>=1.15",
 ]
 dex = [
     "web3>=6.15",
