@@ -147,7 +147,7 @@ async def get_strategy_metrics(request: Request) -> JSONResponse:
     return JSONResponse({"strategies": metrics})
 
 
-@router.get("/status")
+@router.get("/status", dependencies=[Depends(require_auth)])
 async def get_status(request: Request) -> JSONResponse:
     """Return overall engine status."""
     ctx = request.app.state.engine_context

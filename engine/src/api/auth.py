@@ -47,6 +47,15 @@ except ImportError:
     _HAS_BCRYPT = False
     logger.warning("bcrypt not installed — using SHA-256 fallback (install bcrypt for production)")
 
+if _ENGINE_ENV in ("prod", "staging") and not _HAS_BCRYPT:
+    raise RuntimeError(
+        "bcrypt is required in production/staging — run: pip install bcrypt"
+    )
+if _ENGINE_ENV in ("prod", "staging") and not os.environ.get("DASHBOARD_PASSWORD"):
+    raise RuntimeError(
+        "DASHBOARD_PASSWORD must be set in production/staging"
+    )
+
 if _HAS_BCRYPT:
     # Hash the password from env at startup (so plaintext is never compared at runtime)
     _DASHBOARD_PASSWORD_HASH: bytes = bcrypt.hashpw(

@@ -1,0 +1,21 @@
+#!/bin/bash
+# LEVIATHAN pre-commit hook: block .env file commits
+# Prevents accidental commit of secrets (API keys, tokens, passwords)
+
+STAGED_ENV_FILES=$(git diff --cached --name-only | grep -E '\.env$|\.env\.local$|\.env\.[a-z]+$')
+
+if [ -n "$STAGED_ENV_FILES" ]; then
+    echo "=========================================="
+    echo "ERROR: .env files must NOT be committed!"
+    echo "=========================================="
+    echo ""
+    echo "Blocked files:"
+    echo "$STAGED_ENV_FILES"
+    echo ""
+    echo "These files may contain API keys, tokens, or passwords."
+    echo "Use 'git reset HEAD <file>' to unstage them."
+    echo ""
+    exit 1
+fi
+
+exit 0

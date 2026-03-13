@@ -17,6 +17,11 @@ from src.api.server import EngineContext, create_app
 from src.core.models import OrderSide
 from src.risk.kill_switch import clear_halt
 
+from src.api.auth import create_token
+
+def _auth_header() -> dict:
+    return {"Authorization": f"Bearer {create_token('test_user')}"}
+
 # Pre-built auth header for tests that hit JWT-protected endpoints
 _AUTH_HEADERS = {"Authorization": f"Bearer {create_token('test')}"}
 
@@ -64,7 +69,7 @@ class TestStatusEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/status")
+        resp = client.get("/api/v1/status", headers=_auth_header())
         assert resp.status_code == 200
         data = resp.json()
         assert data["running"] is True
@@ -76,7 +81,7 @@ class TestStatusEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/status")
+        resp = client.get("/api/v1/status", headers=_auth_header())
         data = resp.json()
         assert data["kill_switch_active"] is True
 
@@ -172,7 +177,7 @@ class TestStrategiesEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/strategies")
+        resp = client.get("/api/v1/strategies", headers=_auth_header())
         assert resp.status_code == 200
         assert resp.json() == []
 
@@ -190,7 +195,7 @@ class TestStrategiesEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/strategies")
+        resp = client.get("/api/v1/strategies", headers=_auth_header())
         data = resp.json()
         assert len(data) == 1
         assert data[0]["id"] == "cross_exchange_v1"
@@ -203,7 +208,7 @@ class TestStrategiesEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.post("/api/v1/strategies/strat_1/toggle")
+        resp = client.post("/api/v1/strategies/strat_1/toggle", headers=_auth_header())
         assert resp.status_code == 200
         data = resp.json()
         assert data["enabled"] is False
@@ -213,7 +218,7 @@ class TestStrategiesEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.post("/api/v1/strategies/nonexistent/toggle")
+        resp = client.post("/api/v1/strategies/nonexistent/toggle", headers=_auth_header())
         assert resp.status_code == 404
 
     def test_update_strategy_config(self):
@@ -226,6 +231,7 @@ class TestStrategiesEndpoint:
         resp = client.post(
             "/api/v1/strategies/strat_1/config",
             json={"min_spread_bps": 15.0},
+            headers=_auth_header(),
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -240,7 +246,7 @@ class TestModeEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/mode")
+        resp = client.get("/api/v1/mode", headers=_auth_header())
         assert resp.status_code == 200
         data = resp.json()
         assert data["mode"] == "paper"
@@ -253,7 +259,7 @@ class TestModeEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/mode")
+        resp = client.get("/api/v1/mode", headers=_auth_header())
         assert resp.status_code == 200
         assert resp.json()["mode"] == "live"
 
@@ -263,7 +269,7 @@ class TestModeEndpoint:
         client = TestClient(app)
 
         # No auth header — must still return 200
-        resp = client.get("/api/v1/mode")
+        resp = client.get("/api/v1/mode", headers=_auth_header())
         assert resp.status_code == 200
 
 
@@ -275,7 +281,7 @@ class TestRiskMetricsEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/risk/metrics")
+        resp = client.get("/api/v1/risk/metrics", headers=_auth_header())
         assert resp.status_code == 200
         data = resp.json()
         assert data["kill_switch_active"] is False
@@ -297,7 +303,7 @@ class TestRiskMetricsEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/risk/metrics")
+        resp = client.get("/api/v1/risk/metrics", headers=_auth_header())
         assert resp.status_code == 200
         data = resp.json()
         assert data["kill_switch_active"] is True
@@ -314,7 +320,7 @@ class TestRiskMetricsEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/risk/metrics")
+        resp = client.get("/api/v1/risk/metrics", headers=_auth_header())
         assert resp.status_code == 200
         assert resp.json()["position_count"] == 2
 
@@ -323,7 +329,7 @@ class TestRiskMetricsEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/risk/metrics")
+        resp = client.get("/api/v1/risk/metrics", headers=_auth_header())
         assert resp.status_code == 200
         assert resp.json()["position_count"] == 2
 
@@ -332,7 +338,7 @@ class TestRiskMetricsEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/risk/metrics")
+        resp = client.get("/api/v1/risk/metrics", headers=_auth_header())
         assert resp.status_code == 200
 
     def test_risk_metrics_kill_switch_active_reflected(self):
@@ -340,7 +346,7 @@ class TestRiskMetricsEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/api/v1/risk/metrics")
+        resp = client.get("/api/v1/risk/metrics", headers=_auth_header())
         assert resp.json()["kill_switch_active"] is True
 
 
@@ -352,7 +358,7 @@ class TestPrometheusAliasEndpoint:
         app = _make_app(ctx)
         client = TestClient(app)
 
-        resp = client.get("/metrics")
+        resp = client.get("/metrics", headers=_auth_header())
         assert resp.status_code == 200
 
 

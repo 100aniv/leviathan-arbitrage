@@ -5,6 +5,7 @@ Uses redis.asyncio with hiredis parser for performance.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -44,8 +45,10 @@ class RedisClient:
 
     async def connect(self) -> None:
         """Create connection pool and verify connectivity via PING."""
+        redis_password = self._config.password or os.environ.get("REDIS_PASSWORD") or None
         self._pool = aioredis.ConnectionPool.from_url(
             f"redis://{self._config.host}:{self._config.port}/{self._config.db}",
+            password=redis_password,
             max_connections=self._config.max_connections,
             socket_timeout=self._config.socket_timeout,
             socket_connect_timeout=self._config.socket_connect_timeout,

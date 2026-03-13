@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-12 (Phase J-EXT Wave 3 Batch 1: US-114~119 완료) | 최신 커밋: 0a5302e
-> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (113개 User Stories)
-> **실행 순서**: J-EXT Wave1(보안) → Wave2(UX) → Wave3(엔진) → K(Regime) → L(DEX) → M(ML) → Wave4(인프라) → TF(LAST)
+> 마지막 업데이트: 2026-03-13 (TF Semi-Final 완료 — 33개 신규 US 발견, 6개 신규 Phase 생성) | 최신 커밋: (pending)
+> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (146개 User Stories)
+> **실행 순서**: A~M ✅ → TF Semi-Final ✅(FAIL→회귀) → **S1(보안)** → S2(엔진) → S3(인프라) → S4(대시보드) → S5(데이터) → S6(문서) → TF Semi-Final 재검증 → TF Final → Live
 
 ---
 
@@ -27,15 +27,17 @@
 ## 2. 현재 상태
 
 ```
-Phase:        TF (최종 검수) ← CURRENT  [J-EXT ✅, K ✅, L ✅, M ✅, Wave4 ✅]
-테스트:       4,229+ passed, 0 failed
+Phase:        S1 Security Hardening ← CURRENT  [TF Semi-Final FAIL → 6개 Phase 회귀]
+테스트:       1,505 passed, 1 failed (backoff jitter 테스트)
 커버리지:     88%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    (pending)
-다음 작업:    TF Semi-Final — US-054 (프로그레시브 Shadow 72H)
-완료된 US:    US-065~076, US-105~122, US-081~096
-인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Docker 11 services
+다음 작업:    Phase S1 US-123 (전 엔드포인트 JWT 인증 강제)
+완료된 US:    111/146 (기존 111개 + TF Semi-Final 발견 33개 신규 US + 기존 미완 2개)
+TF Semi-Final: FAIL — CRITICAL 9건, HIGH 12건, MEDIUM 19건, LOW 19건 발견
+               보고서: docs/checklists/tf-semi-final.md
+인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Docker 14 services
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
@@ -352,7 +354,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 113개 User Stories, 108개 완료, 5개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 146개 User Stories, 111개 완료, 35개 미완)
 
 > **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -534,15 +536,121 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-121: Loki + Promtail 로그 집계 (Grafana 연동, 크로스 컨테이너 검색) ✅
 - [x] US-122: WAL 백업 + PITR (RPO <1시간, 주간 복원 검증) ✅
 
-### TF (Task Force): 최종 검수 — US-054~057, US-077, US-079~080 (LAST — 전 Phase 완료 후 TF 소집)
+### TF Semi-Final: 상용화 검증 — **FAIL (2026-03-13 완료)**
 
-- [x] US-054: Progressive Shadow 재실행 (J-EXT/K/L/M 포함된 최신 엔진, 72H 전 단계) ✅
-- [x] US-077: 문서 정합성 최종 감사 (SSOT↔PRD↔구현 전수 조사) ✅
-- [ ] US-057: 운영 문서 최종화
-- [ ] US-079: 운영 Runbook 업데이트 + 장애 대응 매뉴얼
-- [ ] US-055: LiveGate 자동 평가 확인
-- [ ] US-056: Live 모드 전환 (사용자 승인)
-- [ ] US-080: 종합 검사지 기반 최종 감사 (178항목 체크리스트)
+> **결과**: CRITICAL 9건, HIGH 12건, MEDIUM 19건, LOW 19건 발견 → 29개 신규 US, 6개 Phase 생성.
+> **보고서**: `docs/checklists/tf-semi-final.md`
+> **판정**: S1~S6 Phase 개발 완료 후 TF Semi-Final 재검증 필요.
+
+**[단계 0] Smoke Test Gate** — PARTIAL
+- [x] Docker 핵심 8/10 healthy (auto-tuner, monitoring 재시작 반복)
+- [x] 엔진 기동 확인
+- [ ] pytest 1 failure (backoff jitter 테스트) → US-128
+
+**[단계 1] 정합성 확인** — PARTIAL
+- [x] SSOT↔prd.json Phase/US 상태 일치
+- [x] 거래소 10개 어댑터 목록 일치
+- [ ] prd.json files 23개 경로 불일치 → US-149
+- [ ] CLAUDE.md 3곳 stale → US-150
+
+**[단계 2] 체크리스트 수립** — DONE
+- [x] `docs/checklists/tf-semi-final.md` 작성 완료
+
+**[단계 3] 교차 검증 (7명 전문가 병렬)** — DONE
+- [x] 엔진 (Jeongyeon): HIGH 1건 + MEDIUM 5건 + LOW 2건
+- [x] 인프라 (Momo): CRITICAL 5건 + HIGH 3건 + MEDIUM 2건 + LOW 3건
+- [x] 퀀트 (Dahyun): HIGH 3건 + MEDIUM 3건 + LOW 2건
+- [x] 데이터 (Sana): CRITICAL 1건 + FAIL 2건 + PARTIAL 3건
+- [x] UI/UX (Mina): FAIL 3건 + PARTIAL 9건
+- [x] 보안 (Security): CRITICAL 3건 + HIGH 4건 + MEDIUM 3건 + LOW 2건
+- [x] 정합성 (Karina): prd.json 23 path + CLAUDE.md 3 stale
+
+**[단계 4] 회귀 판정** — 개발 회귀 결정
+- [x] 29개 신규 US 생성 (US-123~US-151)
+- [x] 6개 신규 Phase 생성 (S1~S6)
+- [x] prd.json 업데이트 (113→142 stories)
+- [ ] S1~S6 개발 완료 후 TF Semi-Final 재검증
+
+### Phase S1: Security Hardening — US-123~128, US-152 (TF Semi-Final 발견)
+
+- [ ] US-152: **API 키 로테이션** + .gitignore 강화 + pre-commit hook (QA MISSED CRITICAL)
+- [ ] US-123: 전 엔드포인트 JWT 인증 강제 (/kill, /strategies, /mode, /metrics 등)
+- [ ] US-124: JWT 시크릿 강화 + prod fail-fast (DASHBOARD_PASSWORD, bcrypt)
+- [ ] US-125: Nginx IP whitelist 활성화 + X-Forwarded-For 프록시 신뢰 검증
+- [ ] US-126: Redis 인증 + dangerous commands 비활성화
+- [ ] US-127: CSP 헤더 강화 (Nginx + Next.js, unsafe-inline/eval 제거)
+- [ ] US-128: pytest backoff 테스트 수정 (jitter ±25% 허용)
+
+### Phase S2: Engine Wiring Completion — US-129~134, US-153~155 (TF Semi-Final 발견)
+
+- [ ] US-129: RiskGuardian PortfolioState 실제 값 주입 (5/9 체크 무력화 해소)
+- [ ] US-130: DynamicSizer 실행 경로 연결 (signal→sizer)
+- [ ] US-131: RegimeDetector + ONNX Scorer main.py 주입
+- [ ] US-132: SlippageFeedbackLoop LegResult 필드 수정
+- [ ] US-133: AtomicOrderExecutor(IOC) main.py 연결
+- [ ] US-134: TCA/Correlation ExecutionResult 필드 통일
+- [ ] US-153: **주문 레벨 중복 방지** (Idempotency Key) (QA MISSED CRITICAL)
+- [ ] US-154: RiskGuardian max_concurrent_positions 체크 추가 (QA MISSED HIGH)
+- [ ] US-155: Graceful shutdown 시 오픈 포지션 정리 (QA MISSED HIGH)
+
+### Phase S3: Infrastructure Hardening — US-135~139 (TF Semi-Final 발견)
+
+- [ ] US-135: DB 스키마 통합 + 자동 마이그레이션 (3-way divergence 해소)
+- [ ] US-136: .env MIN_EDGE_BPS 동기화 + preflight 체크 + PowerLaw k 기본값 수정
+- [ ] US-137: Nginx WS 포트 수정 + 백업 자동재시작
+- [ ] US-138: Alertmanager 연결 + Grafana datasource 정리
+- [ ] US-139: Docker 리소스 제한 + 모니터링 healthcheck
+
+### Phase S4: Dashboard Completion — US-140~144 (TF Semi-Final 발견)
+
+- [ ] US-140: API prefix 통일 + SWR key 수정
+- [ ] US-141: System 페이지 실데이터 연동 (mock 제거)
+- [ ] US-142: Heatmap/OrderbookView 실데이터 + 175 심볼 연동
+- [ ] US-143: Strategy/Portfolio/EquityCurve mock 제거 + spec 일치
+- [ ] US-144: 대시보드 테스트 SWR v2 수정 + 모바일 최적화
+
+### Phase S5: Data Pipeline & Auto-Tuner — US-145~148 (TF Semi-Final 발견)
+
+- [ ] US-145: Auto-Tuner TimescaleDB async loader 구현 (NotImplementedError 제거)
+- [ ] US-146: ScheduledTuner main.py 연결
+- [ ] US-147: Attribution TimescaleDB 연동 + materialized views
+- [ ] US-148: Shadow MDD 비율 계산 + InventoryRebalancer balance feed
+
+### Phase S6: Documentation Sync — US-149~151 (TF Semi-Final 발견)
+
+- [ ] US-149: prd.json 23개 파일 경로 수정
+- [ ] US-150: CLAUDE.md 현행화
+- [ ] US-151: SSOT.md 수식/체크 항목 코드 동기화
+
+### TF Final: 라이브 전환 (Semi-Final 통과 후)
+
+> **진입 가드**: TF Semi-Final 전 단계 PASS. 미비점 0건.
+> **목표**: Progressive Shadow 72H 통과 → Master Inspection → Live Kick-Off.
+
+**[단계 1] 전체 시스템 체크리스트**
+- [ ] Semi-Final 전문가 리스폰 + 전체 프로그램 응집도/결합도 점검
+- [ ] 모든 기능이 main.py에서 동시 동작 확인 (8전략 + 10거래소 + 리스크 + 모니터링)
+- [ ] 엔드투엔드 데이터 흐름: WS수신→신호생성→전략평가→실행→PnL기록→대시보드표시
+
+**[단계 2] Progressive Shadow (72H)**
+- [ ] Stage 1: 1H → 기본 동작 확인 (crash=0, 신호 흐름 정상)
+- [ ] Stage 2: 2H → 승률/PnL 추세 안정성 (WR>50%, PnL 양수)
+- [ ] Stage 3: 6H → 전략별 메트릭 분리 + 마찰력 정확도 검증
+- [ ] Stage 4: 12H → 메모리 누수/리소스 사용량 안정성
+- [ ] Stage 5: 24H → Sharpe>2.0, MDD<5%, 일일 PnL 양수
+- [ ] Stage 6: 72H → LiveGate 6-check 전체 PASS → Live 전환 승인
+
+**[단계 3] Master Inspection**
+- [ ] 전체 시스템의 '결' 맞춤 (UI 프레임, API 응답 일관성, 로그 포맷)
+- [ ] LiveGate 6-check 자동 평가 확인 (Sharpe≥2.5, MDD<5%, 신호≥100/day, KillSwitch/CB/Health)
+- [ ] Preflight 10항목 통과
+
+**[단계 4] Live Kick-Off**
+- [ ] Nayeon(TF 리더) 최종 서명
+- [ ] 사장님 승인
+- [ ] EXECUTION_MODE=live 전환
+- [ ] 소액 실 거래 1건 이상 성공 확인
+- [ ] Telegram 실시간 알림 수신 확인
 
 ---
 

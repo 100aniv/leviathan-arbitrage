@@ -6,6 +6,7 @@ Provides:
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import time
@@ -25,15 +26,42 @@ logger = logging.getLogger(__name__)
 
 _API_PREFIX = "/api/v1/"
 
+TRUSTED_PROXIES = set(
+    os.environ.get("TRUSTED_PROXIES", "127.0.0.1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16").split(",")
+)
+
+
+def _is_trusted_proxy(ip: str) -> bool:
+    """Check if IP is in trusted proxy list (supports CIDR notation)."""
+    try:
+        client = ipaddress.ip_address(ip)
+        for proxy in TRUSTED_PROXIES:
+            proxy = proxy.strip()
+            try:
+                if '/' in proxy:
+                    if client in ipaddress.ip_network(proxy, strict=False):
+                        return True
+                else:
+                    if client == ipaddress.ip_address(proxy):
+                        return True
+            except ValueError:
+                continue
+    except ValueError:
+        return False
+    return False
+
 
 def _get_client_ip(request: Request) -> str:
-    """Return the real client IP, honoring X-Forwarded-For from trusted proxies."""
+    """Return the real client IP, honoring X-Forwarded-For only from trusted proxies.
+
+    When client is None (embedded/test), X-Forwarded-For is used as fallback.
+    When client is present, X-Forwarded-For is only trusted if that IP is a trusted proxy.
+    """
+    direct_ip = request.client.host if request.client else None
     forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
+    if forwarded_for and (direct_ip is None or _is_trusted_proxy(direct_ip)):
         return forwarded_for.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return "unknown"
+    return direct_ip or "unknown"
 
 
 def _parse_allowed_ips(raw: str) -> frozenset[str]:

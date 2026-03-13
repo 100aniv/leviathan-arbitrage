@@ -83,9 +83,10 @@ class MonitorDaemon:
             return False
 
         url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        redis_password = os.getenv("REDIS_PASSWORD")
         client = None
         try:
-            client = aioredis.from_url(url, socket_connect_timeout=5)
+            client = aioredis.from_url(url, password=redis_password, socket_connect_timeout=5)
             await client.ping()
             return True
         except Exception as exc:

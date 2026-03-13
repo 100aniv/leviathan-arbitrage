@@ -258,11 +258,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: G✅ → H✅ → I✅ → J-EXT✅ → K✅ → L✅ → M✅ → Wave4✅ → TF(최종검수, LAST)
-- **Tests**: 3,747 passed, 0 failures
-- **PRD**: `.omc/prd.json` (113개 US, Phase J→TF 병합됨)
+- **Phase 순서**: A~M✅ → TF Semi-Final(FAIL→회귀) → S1(보안) → S2(엔진) → S3(인프라) → S4(대시보드) → S5(데이터) → S6(문서) → TF재검증 → TF Final → Live
+- **Tests**: 1,505 passed, 1 failed (backoff jitter test)
+- **PRD**: `.omc/prd.json` (146개 US, 111 pass / 35 fail)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: Phase J-EXT US-106 (WebSocket JWT 인증) → Wave2 UX → Wave3 엔진 → K → L → M → Wave4 인프라 → F
+- **다음 작업**: Phase S1 US-152 (API 키 로테이션) → US-123~128 (JWT/Nginx/Redis/CSP/pytest) → S2~S6 → TF재검증
 - **GAP 분석**: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합 분석)
 
 ## 실행 워크플로우 (ralph autopilot)

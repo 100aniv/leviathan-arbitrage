@@ -41,7 +41,7 @@ async def trigger_kill_switch(body: KillSwitchRequest, request: Request) -> JSON
     return JSONResponse({"status": "halted", "reason": body.reason})
 
 
-@router.get("/mode")
+@router.get("/mode", dependencies=[Depends(require_auth)])
 async def engine_mode(request: Request) -> JSONResponse:
     """Return current engine execution mode — public endpoint for dashboard status bar."""
     ctx = request.app.state.engine_context
@@ -53,7 +53,7 @@ async def engine_mode(request: Request) -> JSONResponse:
     })
 
 
-@router.get("/risk/metrics")
+@router.get("/risk/metrics", dependencies=[Depends(require_auth)])
 async def risk_metrics(request: Request) -> JSONResponse:
     """Return current risk metrics — public endpoint for dashboard status bar."""
     ctx = request.app.state.engine_context
@@ -94,7 +94,7 @@ async def risk_metrics(request: Request) -> JSONResponse:
     })
 
 
-@router.get("/metrics")
+@router.get("/metrics", dependencies=[Depends(require_auth)])
 async def prometheus_metrics() -> PlainTextResponse:
     """Expose Prometheus metrics in text format."""
     try:

@@ -77,7 +77,7 @@ def test_parse_allowed_ips_empty_entries_ignored():
 def test_get_client_ip_from_forwarded_for():
     mock_request = MagicMock()
     mock_request.headers = {"x-forwarded-for": "10.0.0.5, 192.168.1.1"}
-    mock_request.client = None
+    mock_request.client.host = "127.0.0.1"  # trusted proxy
     assert _get_client_ip(mock_request) == "10.0.0.5"
 
 
@@ -313,3 +313,57 @@ async def test_create_app_health_not_blocked(monkeypatch):
     # health route exists in the router; if 404 it means routing is fine but path differs
     assert resp.status_code in (200, 404)  # not 403
     assert resp.status_code != 403
+
+
+# ---------------------------------------------------------------------------
+# JWT auth enforcement on all sensitive endpoints (US-123)
+# ---------------------------------------------------------------------------
+
+
+class TestEndpointAuthEnforcement:
+    """Verify all sensitive endpoints require JWT authentication (US-123)."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method,path", [
+        ("GET", "/status"),
+        ("POST", "/kill"),
+        ("GET", "/strategies"),
+        ("POST", "/strategies/test_id/toggle"),
+        ("GET", "/api/v1/strategies"),
+        ("POST", "/api/v1/strategies/test_id/toggle"),
+        ("POST", "/api/v1/strategies/test_id/config"),
+        ("GET", "/api/v1/mode"),
+        ("GET", "/api/v1/risk/metrics"),
+        ("GET", "/api/v1/metrics"),
+        ("GET", "/api/v1/status"),
+    ])
+    async def test_endpoint_returns_401_without_token(self, method: str, path: str) -> None:
+        """Each protected endpoint must return 401 when no JWT token is provided."""
+        app = create_app(EngineContext())
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            if method == "GET":
+                response = await client.get(path)
+            else:
+                response = await client.post(path, json={})
+        assert response.status_code in (401, 403), (
+            f"{method} {path} returned {response.status_code}, expected 401/403"
+        )
+
+    @pytest.mark.asyncio
+    async def test_login_endpoint_remains_public(self) -> None:
+        """Login must be reachable without a token (returns 401 on wrong creds, not 403)."""
+        app = create_app(EngineContext())
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/api/auth/login",
+                json={"username": "wrong", "password": "wrong"},
+            )
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_health_endpoint_remains_public(self) -> None:
+        """Health check must be accessible without authentication."""
+        app = create_app(EngineContext())
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/health")
+        assert response.status_code == 200

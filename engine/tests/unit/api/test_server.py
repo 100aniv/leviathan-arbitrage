@@ -45,19 +45,19 @@ class TestHealthRoute:
 
 
 class TestStatusRoute:
-    def test_status_returns_200(self, client):
-        assert client.get("/api/v1/status").status_code == 200
+    def test_status_returns_200(self, client, auth_headers):
+        assert client.get("/api/v1/status", headers=auth_headers).status_code == 200
 
-    def test_status_includes_required_fields(self, client):
-        data = client.get("/api/v1/status").json()
+    def test_status_includes_required_fields(self, client, auth_headers):
+        data = client.get("/api/v1/status", headers=auth_headers).json()
         assert "running" in data
         assert "kill_switch_active" in data
         assert "environment" in data
 
-    def test_status_reflects_context_state(self, client, context):
+    def test_status_reflects_context_state(self, client, context, auth_headers):
         context.running = True
         context.kill_switch_active = True
-        data = client.get("/api/v1/status").json()
+        data = client.get("/api/v1/status", headers=auth_headers).json()
         assert data["running"] is True
         assert data["kill_switch_active"] is True
 
@@ -80,41 +80,42 @@ class TestPositionsRoute:
 
 
 class TestStrategiesRoute:
-    def test_strategies_returns_200(self, client):
-        assert client.get("/api/v1/strategies").status_code == 200
+    def test_strategies_returns_200(self, client, auth_headers):
+        assert client.get("/api/v1/strategies", headers=auth_headers).status_code == 200
 
-    def test_strategies_returns_list(self, client):
-        assert isinstance(client.get("/api/v1/strategies").json(), list)
+    def test_strategies_returns_list(self, client, auth_headers):
+        assert isinstance(client.get("/api/v1/strategies", headers=auth_headers).json(), list)
 
-    def test_strategies_returns_registered(self, client, context):
+    def test_strategies_returns_registered(self, client, context, auth_headers):
         context.strategies["arb_v1"] = {"id": "arb_v1", "enabled": True, "trades": 0}
-        data = client.get("/api/v1/strategies").json()
+        data = client.get("/api/v1/strategies", headers=auth_headers).json()
         ids = [s["id"] for s in data]
         assert "arb_v1" in ids
 
-    def test_toggle_existing_strategy(self, client, context):
+    def test_toggle_existing_strategy(self, client, context, auth_headers):
         context.strategies["arb_v1"] = {"id": "arb_v1", "enabled": True, "trades": 0}
-        response = client.post("/api/v1/strategies/arb_v1/toggle")
+        response = client.post("/api/v1/strategies/arb_v1/toggle", headers=auth_headers)
         assert response.status_code == 200
 
-    def test_toggle_flips_enabled(self, client, context):
+    def test_toggle_flips_enabled(self, client, context, auth_headers):
         context.strategies["arb_v1"] = {"id": "arb_v1", "enabled": True, "trades": 0}
-        client.post("/api/v1/strategies/arb_v1/toggle")
+        client.post("/api/v1/strategies/arb_v1/toggle", headers=auth_headers)
         assert context.strategies["arb_v1"]["enabled"] is False
 
-    def test_toggle_nonexistent_returns_404(self, client):
-        assert client.post("/api/v1/strategies/missing/toggle").status_code == 404
+    def test_toggle_nonexistent_returns_404(self, client, auth_headers):
+        assert client.post("/api/v1/strategies/missing/toggle", headers=auth_headers).status_code == 404
 
-    def test_config_update_returns_200(self, client, context):
+    def test_config_update_returns_200(self, client, context, auth_headers):
         context.strategies["arb_v1"] = {"id": "arb_v1", "enabled": True, "config": {}}
         response = client.post(
             "/api/v1/strategies/arb_v1/config",
             json={"min_spread": "0.001"},
+            headers=auth_headers,
         )
         assert response.status_code == 200
 
-    def test_config_update_nonexistent_returns_404(self, client):
-        response = client.post("/api/v1/strategies/missing/config", json={})
+    def test_config_update_nonexistent_returns_404(self, client, auth_headers):
+        response = client.post("/api/v1/strategies/missing/config", json={}, headers=auth_headers)
         assert response.status_code == 404
 
 
@@ -150,9 +151,9 @@ class TestPnLRoute:
 
 
 class TestMetricsRoute:
-    def test_metrics_returns_200(self, client):
-        assert client.get("/api/v1/metrics").status_code == 200
+    def test_metrics_returns_200(self, client, auth_headers):
+        assert client.get("/api/v1/metrics", headers=auth_headers).status_code == 200
 
-    def test_metrics_content_type_is_text(self, client):
-        response = client.get("/api/v1/metrics")
+    def test_metrics_content_type_is_text(self, client, auth_headers):
+        response = client.get("/api/v1/metrics", headers=auth_headers)
         assert "text/plain" in response.headers["content-type"]

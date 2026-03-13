@@ -2,9 +2,9 @@
   "project": "LEVIATHAN Arbitrage Engine",
   "version": "2.0",
   "created": "2026-03-08",
-  "updated": "2026-03-12",
+  "updated": "2026-03-13",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 113,
+  "total_stories": 146,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -27,7 +27,13 @@
     "K": "Regime Detection (ML-based HMM)",
     "L": "DEX Real-time + Gas Integration",
     "M": "ML Signal Pipeline (XGBoost/ONNX)",
-    "F": "Final Audit — 72H Shadow to Live (LAST)"
+    "F": "Final Audit — 72H Shadow to Live (LAST)",
+    "S1": "Security Hardening (TF Semi-Final 발견)",
+    "S2": "Engine Wiring Completion (TF Semi-Final 발견)",
+    "S3": "Infrastructure Hardening (TF Semi-Final 발견)",
+    "S4": "Dashboard Completion (TF Semi-Final 발견)",
+    "S5": "Data Pipeline & Auto-Tuner (TF Semi-Final 발견)",
+    "S6": "Documentation Sync (TF Semi-Final 발견)"
   },
   "gap_dependency_order": "GAP9 -> GAP10 -> (GAP5,GAP6,GAP7 parallel) -> GAP3 -> GAP1,GAP2 -> GAP4",
   "stories": [
@@ -1944,6 +1950,583 @@
         "주간 복원 검증 스크립트 (wal-backup.sh)",
         "pg_dump 일1회 + WAL 연속 백업 병행"
       ]
+    },
+    {
+      "id": "US-123",
+      "title": "전 엔드포인트 JWT 인증 강제",
+      "phase": "S1",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "/kill POST → 401 without token",
+        "/strategies GET → 401 without token",
+        "/strategies/{id}/toggle POST → 401 without token",
+        "/strategies/{id}/config POST → 401 without token",
+        "/mode GET → 401 without token",
+        "/risk/metrics GET → 401 without token",
+        "/status GET → 401 without token",
+        "/metrics GET → 401 without token",
+        "pytest tests/unit/test_api_auth.py 전부 PASS"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/api/routes/strategies.py",
+        "engine/src/api/routes/risk.py",
+        "engine/src/api/routes/trading.py"
+      ],
+      "source": "Security CRITICAL #2, HIGH #6, #7"
+    },
+    {
+      "id": "US-124",
+      "title": "JWT 시크릿 강화 + prod fail-fast",
+      "phase": "S1",
+      "priority": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "ENGINE_ENV=prod + 기본 JWT_SECRET → RuntimeError",
+        "ENGINE_ENV=prod + DASHBOARD_PASSWORD 미설정 → RuntimeError",
+        "ENGINE_ENV=prod + bcrypt 미설치 → RuntimeError",
+        "main.py 기본값 제거, .env 필수화"
+      ],
+      "files": [
+        "engine/src/api/auth.py"
+      ],
+      "source": "Security CRITICAL #3, MEDIUM #8, #9"
+    },
+    {
+      "id": "US-125",
+      "title": "Nginx IP whitelist + X-Forwarded-For 프록시 신뢰",
+      "phase": "S1",
+      "priority": 3,
+      "passes": true,
+      "acceptanceCriteria": [
+        "ip-whitelist.conf에서 allow all 제거, RFC-1918 + 명시 IP만 허용",
+        "middleware.py _get_client_ip()가 TRUSTED_PROXIES에서만 X-Forwarded-For 신뢰",
+        "스푸핑 테스트: 외부 IP + X-Forwarded-For: 127.0.0.1 → 차단 확인"
+      ],
+      "files": [
+        "infra/nginx/ip-whitelist.conf",
+        "engine/src/api/middleware.py"
+      ],
+      "source": "Security HIGH #4, #5"
+    },
+    {
+      "id": "US-126",
+      "title": "Redis 인증 + dangerous commands 비활성화",
+      "phase": "S1",
+      "priority": 4,
+      "passes": true,
+      "acceptanceCriteria": [
+        "redis.conf에 requirepass 설정",
+        "docker-compose.yml에 REDIS_PASSWORD 환경변수",
+        "엔진 Redis 클라이언트에 password 파라미터 전달",
+        "CONFIG/FLUSHALL/FLUSHDB rename-command 비활성화"
+      ],
+      "files": [
+        "docker-compose.yml",
+        "infra/redis/redis.conf",
+        "engine/src/infra/redis/client.py"
+      ],
+      "source": "Infra CRITICAL #2, MEDIUM #10"
+    },
+    {
+      "id": "US-127",
+      "title": "CSP 헤더 강화 (Nginx + Next.js)",
+      "phase": "S1",
+      "priority": 5,
+      "passes": true,
+      "acceptanceCriteria": [
+        "nginx.conf CSP에서 unsafe-inline/unsafe-eval 제거, nonce 기반",
+        "dashboard next.config.js에 CSP headers() 설정",
+        "Chrome DevTools에서 CSP violation 0건 확인"
+      ],
+      "files": [
+        "infra/nginx/nginx.conf",
+        "dashboard/next.config.js"
+      ],
+      "source": "Security MEDIUM #10, UI/UX FAIL #1"
+    },
+    {
+      "id": "US-128",
+      "title": "pytest backoff 테스트 수정",
+      "phase": "S1",
+      "priority": 6,
+      "passes": true,
+      "acceptanceCriteria": [
+        "test_backoff_doubles_delay_each_call이 jitter(±25%) 허용하도록 수정",
+        "pytest 0 failures (현재 1 failure 해결)"
+      ],
+      "files": [
+        "engine/tests/unit/test_base_collector.py"
+      ],
+      "source": "Smoke Test 1 failure"
+    },
+    {
+      "id": "US-129",
+      "title": "RiskGuardian PortfolioState 실제 값 주입",
+      "phase": "S2",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "_build_risk_check_fn()이 실제 used_capital, current_drawdown_pct 전달",
+        "RiskGuardian 9개 체크 중 capital/drawdown/exposure 체크가 실제 동작 확인",
+        "과도한 포지션 시 REJECT 반환 테스트"
+      ],
+      "files": [
+        "engine/src/main.py",
+        "engine/src/risk/guardian.py"
+      ],
+      "source": "Engine HIGH: PortfolioState always zero"
+    },
+    {
+      "id": "US-130",
+      "title": "DynamicSizer 실행 경로 연결",
+      "phase": "S2",
+      "priority": 2,
+      "passes": false,
+      "acceptanceCriteria": [
+        "SignalGenerator 또는 ExecutionManager에서 compute_dynamic_size() 호출",
+        "edge_bps/regime/bid_depth에 따라 포지션 크기 변동 확인",
+        "단위 테스트에서 sigmoid(5bps)→~0.38, sigmoid(50bps)→~0.98 검증"
+      ],
+      "files": [
+        "engine/src/execution/sizer.py",
+        "engine/src/core/signal.py",
+        "engine/src/main.py"
+      ],
+      "source": "Engine MEDIUM + Data FAIL: DynamicSizer disconnected"
+    },
+    {
+      "id": "US-131",
+      "title": "RegimeDetector + ONNX Scorer main.py 주입",
+      "phase": "S2",
+      "priority": 3,
+      "passes": false,
+      "acceptanceCriteria": [
+        "main.py에서 HMMRegimeDetector를 SignalGenerator에 전달",
+        "main.py에서 ONNXSignalScorer를 SignalGenerator에 전달",
+        "레짐별 MIN_EDGE 동적 변경 로그 확인",
+        "ONNX 없을 때 graceful fallback (에러 아님)"
+      ],
+      "files": [
+        "engine/src/main.py",
+        "engine/src/core/signal.py"
+      ],
+      "source": "Engine MEDIUM: RegimeDetector/ONNX not wired"
+    },
+    {
+      "id": "US-132",
+      "title": "SlippageFeedbackLoop LegResult 필드 수정",
+      "phase": "S2",
+      "priority": 4,
+      "passes": false,
+      "acceptanceCriteria": [
+        "LegResult에 expected_price, fill_price 필드 추가",
+        "PaperExecutor가 fill 시 expected_price/fill_price 기록",
+        "SlippageFeedbackLoop.record()이 EMA 업데이트 확인",
+        "get_adjusted_slippage() 반환값이 거래 후 변동"
+      ],
+      "files": [
+        "engine/src/execution/paper.py",
+        "engine/src/risk/slippage.py"
+      ],
+      "source": "Engine MEDIUM: SlippageFeedbackLoop dead wiring"
+    },
+    {
+      "id": "US-133",
+      "title": "AtomicOrderExecutor(IOC) main.py 연결",
+      "phase": "S2",
+      "priority": 5,
+      "passes": false,
+      "acceptanceCriteria": [
+        "main.py에서 AtomicOrderExecutor 인스턴스화",
+        "Live 모드에서 IOC 주문 전송 경로 확인",
+        "Paper/Shadow에서는 기존 PaperExecutor 유지"
+      ],
+      "files": [
+        "engine/src/main.py",
+        "engine/src/execution/atomic.py"
+      ],
+      "source": "Engine MEDIUM: IOC not wired"
+    },
+    {
+      "id": "US-134",
+      "title": "TCA/Correlation ExecutionResult 필드 통일",
+      "phase": "S2",
+      "priority": 6,
+      "passes": false,
+      "acceptanceCriteria": [
+        "ExecutionResult/LegResult에 TCA가 참조하는 필드 모두 존재",
+        "CorrelationMonitor가 사용하는 필드 일치 확인",
+        "record_execution() 호출 시 KeyError 0건"
+      ],
+      "files": [
+        "engine/src/analysis/tca.py",
+        "engine/src/risk/correlation_monitor.py",
+        "engine/src/execution/paper.py"
+      ],
+      "source": "Engine LOW: nonexistent fields"
+    },
+    {
+      "id": "US-135",
+      "title": "DB 스키마 통합 + 자동 마이그레이션",
+      "phase": "S3",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "docker/init.sql = engine migration_sql() = 실DB 스키마 일치",
+        "docker compose up 시 자동 마이그레이션 적용",
+        "materialized views (strategy_daily_pnl 등) 실DB에 생성 확인"
+      ],
+      "files": [
+        "docker/init.sql",
+        "engine/src/infra/timescale.py",
+        "docker-compose.yml"
+      ],
+      "source": "Infra CRITICAL #3, Data PARTIAL #7"
+    },
+    {
+      "id": "US-136",
+      "title": ".env 동기화 + MIN_EDGE_BPS preflight",
+      "phase": "S3",
+      "priority": 2,
+      "passes": false,
+      "acceptanceCriteria": [
+        "root .env와 engine/.env의 MIN_EDGE_BPS 일치 (5)",
+        "main.py MIN_EDGE_BPS 기본값 40→5 변경",
+        "PowerLawSlippage 기본 k=5.0→0.0 변경",
+        "preflight 체크: 두 .env 파일 불일치 시 WARNING 로그"
+      ],
+      "files": [
+        ".env",
+        "engine/.env",
+        "engine/src/main.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Infra CRITICAL #4, Quant HIGH #1, #8"
+    },
+    {
+      "id": "US-137",
+      "title": "Nginx WS 포트 + 백업 자동재시작",
+      "phase": "S3",
+      "priority": 3,
+      "passes": false,
+      "acceptanceCriteria": [
+        "nginx.conf WebSocket proxy_pass 포트 8000→8001 수정 (또는 엔진 WS 포트 확인)",
+        "db-backup, wal-backup에 restart: unless-stopped 설정",
+        "docker compose up 후 백업 컨테이너 healthy"
+      ],
+      "files": [
+        "infra/nginx/nginx.conf",
+        "docker-compose.yml"
+      ],
+      "source": "Infra HIGH #1, #2"
+    },
+    {
+      "id": "US-138",
+      "title": "Alertmanager 연결 + Grafana datasource 정리",
+      "phase": "S3",
+      "priority": 4,
+      "passes": false,
+      "acceptanceCriteria": [
+        "Prometheus alerting_rules.yml → Alertmanager 전달 확인",
+        "Telegram/Slack receiver 설정",
+        "Grafana datasource 중복 제거, 단일 Prometheus 소스"
+      ],
+      "files": [
+        "infra/prometheus/alertmanager.yml",
+        "infra/grafana/datasources.yml",
+        "docker-compose.yml"
+      ],
+      "source": "Infra HIGH #3, LOW #11"
+    },
+    {
+      "id": "US-139",
+      "title": "Docker 리소스 제한 + 모니터링 healthcheck",
+      "phase": "S3",
+      "priority": 5,
+      "passes": false,
+      "acceptanceCriteria": [
+        "Redis, TimescaleDB에 mem_limit 설정",
+        "Promtail healthcheck 추가",
+        "auto-tuner/monitoring 재시작 원인 수정, healthy 상태 유지"
+      ],
+      "files": [
+        "docker-compose.yml"
+      ],
+      "source": "Infra MEDIUM #9, LOW #12, #13"
+    },
+    {
+      "id": "US-140",
+      "title": "API prefix 통일 + SWR key 수정",
+      "phase": "S4",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "lib/api.ts: /kill→/api/v1/kill, /strategies→/api/v1/strategies 통일",
+        "PnLChart SWR key /trading/pnl→/api/v1/pnl 수정",
+        "전 API 호출에서 prefix 일관성 확인"
+      ],
+      "files": [
+        "dashboard/src/lib/api.ts",
+        "dashboard/src/components/PnLChart.tsx"
+      ],
+      "source": "UI/UX FAIL #2, #3"
+    },
+    {
+      "id": "US-141",
+      "title": "System 페이지 실데이터 연동",
+      "phase": "S4",
+      "priority": 2,
+      "passes": false,
+      "acceptanceCriteria": [
+        "MOCK_CONTAINERS 제거, /api/v1/system/containers 실 API 연동",
+        "Resource Usage: Prometheus 쿼리 또는 /api/v1/system/resources 연동",
+        "하드코딩 숫자(29.4%, 1.3GB) 제거"
+      ],
+      "files": [
+        "dashboard/src/app/system/page.tsx"
+      ],
+      "source": "UI/UX PARTIAL: System page mockup"
+    },
+    {
+      "id": "US-142",
+      "title": "Heatmap/OrderbookView 실데이터 + 심볼 연동",
+      "phase": "S4",
+      "priority": 3,
+      "passes": false,
+      "acceptanceCriteria": [
+        "GlobalHeatmap: genMockGrid() 제거, WS market_data 또는 REST spread API 연동",
+        "OrderbookView: FALLBACK_SYMBOLS 5개→API /api/v1/symbols 동적 로드 (175개)",
+        "mock 데이터 0건 (랜덤 생성 코드 제거)"
+      ],
+      "files": [
+        "dashboard/src/components/GlobalHeatmap.tsx",
+        "dashboard/src/components/OrderbookView.tsx"
+      ],
+      "source": "UI/UX PARTIAL: mock data"
+    },
+    {
+      "id": "US-143",
+      "title": "Strategy/Portfolio/EquityCurve 완성",
+      "phase": "S4",
+      "priority": 4,
+      "passes": false,
+      "acceptanceCriteria": [
+        "StrategyPanel: MOCK_STRATEGIES 제거, API 0개 시 빈 상태 UI",
+        "Portfolio Daily Returns: placeholder→실 차트 또는 명시적 미지원 표기",
+        "EquityCurve: Sharpe/MDD/Calmar 지표 포함 (SSOT §3.4 spec 일치)"
+      ],
+      "files": [
+        "dashboard/src/components/StrategyPanel.tsx",
+        "dashboard/src/app/portfolio/page.tsx",
+        "dashboard/src/components/EquityCurve.tsx"
+      ],
+      "source": "UI/UX PARTIAL: mock + spec mismatch"
+    },
+    {
+      "id": "US-144",
+      "title": "대시보드 테스트 수정 + 모바일 최적화",
+      "phase": "S4",
+      "priority": 5,
+      "passes": false,
+      "acceptanceCriteria": [
+        "SWR v2 mock에 isValidating 추가, TS 에러 40개→0개",
+        "TradeDetail 패널 모바일: w-80→full-screen 처리",
+        "npx tsc --noEmit 0 errors (테스트 포함)"
+      ],
+      "files": [
+        "dashboard/src/__tests__/"
+      ],
+      "source": "UI/UX PARTIAL: 40 TS errors + mobile"
+    },
+    {
+      "id": "US-145",
+      "title": "Auto-Tuner TimescaleDB async loader 구현",
+      "phase": "S5",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "_run_with_timescaledb()의 NotImplementedError 제거",
+        "asyncpg로 execution_log 조회 → Optuna 입력 데이터 변환",
+        "TUNER_DATA_SOURCE=timescaledb 설정 시 실데이터 기반 최적화 동작"
+      ],
+      "files": [
+        "engine/src/tuning/auto_tuner.py"
+      ],
+      "source": "Data CRITICAL: NotImplementedError"
+    },
+    {
+      "id": "US-146",
+      "title": "ScheduledTuner main.py 연결",
+      "phase": "S5",
+      "priority": 2,
+      "passes": false,
+      "acceptanceCriteria": [
+        "main.py에서 ScheduledTuner import + start_scheduler() 호출",
+        "엔진 시작 시 'Scheduled tuner started' 로그 확인",
+        "매주 일요일 02:00 UTC에 최적화 실행 로그 확인 (테스트에서 cron 트리거)"
+      ],
+      "files": [
+        "engine/src/main.py",
+        "engine/src/tuning/auto_tuner.py"
+      ],
+      "source": "Data FAIL: ScheduledTuner not wired"
+    },
+    {
+      "id": "US-147",
+      "title": "Attribution TimescaleDB 연동 + materialized views",
+      "phase": "S5",
+      "priority": 3,
+      "passes": false,
+      "acceptanceCriteria": [
+        "PerformanceAttribution이 TimescaleDB execution_log 조회",
+        "엔진 재시작 후에도 과거 거래 이력 조회 가능",
+        "materialized views DDL이 init.sql에 포함, DB에 실제 생성"
+      ],
+      "files": [
+        "engine/src/analysis/attribution.py",
+        "docker/init.sql"
+      ],
+      "source": "Data PARTIAL: in-memory only"
+    },
+    {
+      "id": "US-148",
+      "title": "Shadow MDD 비율 계산 + InventoryRebalancer balance feed",
+      "phase": "S5",
+      "priority": 4,
+      "passes": false,
+      "acceptanceCriteria": [
+        "shadow.py _compute_drawdown()에서 비율 기반 MDD도 추적 (mdd_pct 필드)",
+        "ShadowStats.max_drawdown_pct 추가 (0~1 범위)",
+        "InventoryRebalancer에 BalanceTracker 실잔고 피드 연결 (Live 모드 시)"
+      ],
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/execution/rebalancer.py"
+      ],
+      "source": "Quant HIGH #7, Data WARN: balance feed"
+    },
+    {
+      "id": "US-149",
+      "title": "prd.json 23개 파일 경로 수정",
+      "phase": "S6",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "prd.json의 모든 files 경로가 실제 파일 경로와 일치",
+        "검증 스크립트: 모든 files 항목이 os.path.exists() True"
+      ],
+      "files": [
+        ".omc/prd.json"
+      ],
+      "source": "Alignment: 23 path mismatches"
+    },
+    {
+      "id": "US-150",
+      "title": "CLAUDE.md 현행화",
+      "phase": "S6",
+      "priority": 2,
+      "passes": false,
+      "acceptanceCriteria": [
+        "테스트 수 현행화 (3,747→실제 수)",
+        "Phase 순서 현행화 (S1~S6 추가)",
+        "다음 작업 현행화",
+        "Upbit 수수료 표기 수정 (Maker 0.05% 명시)"
+      ],
+      "files": [
+        ".claude/CLAUDE.md"
+      ],
+      "source": "Alignment: 3 stale items + Quant MEDIUM #2"
+    },
+    {
+      "id": "US-151",
+      "title": "SSOT.md 수식/체크 항목 코드 동기화",
+      "phase": "S6",
+      "priority": 3,
+      "passes": false,
+      "acceptanceCriteria": [
+        "SSOT §4.3 RiskGuardian 9-check 목록을 실제 코드와 동기화",
+        "SSOT KillSwitch Tier 설명을 코드의 실행 단계 기반으로 수정",
+        "SSOT CircuitBreaker: 지수 백오프→고정 300s cooldown으로 수정 (또는 코드 구현)",
+        "SSOT ETH 네트워크 비용: $5.60→L2 최저경로 기준 명시"
+      ],
+      "files": [
+        "SSOT.md"
+      ],
+      "source": "Quant MEDIUM #3,#5,#6, LOW #4,#5"
+    },
+    {
+      "id": "US-152",
+      "title": "API 키 로테이션 + .gitignore 강화 + pre-commit hook",
+      "phase": "S1",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "모든 거래소 API 키 로테이션 (Binance, Upbit, Bithumb, Coinone)",
+        "Telegram/GitHub/Exa 토큰 로테이션",
+        "engine/.env 명시적 .gitignore 추가",
+        "pre-commit hook: .env 파일 커밋 시 차단",
+        "git log에 API 키 이력 없음 확인"
+      ],
+      "files": [
+        ".gitignore",
+        ".env",
+        "engine/.env"
+      ],
+      "source": "Nayeon+Chaeyoung MISSED CRITICAL: API key management"
+    },
+    {
+      "id": "US-153",
+      "title": "주문 레벨 중복 방지 (Idempotency Key)",
+      "phase": "S2",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "AtomicOrderExecutor에 idempotency key (exchange+symbol+signal_id+timestamp)",
+        "동일 signal_id 재처리 시 중복 주문 차단",
+        "네트워크 재시도 시 기존 주문 상태 확인 후 스킵",
+        "단위 테스트: 동일 신호 2회 전송 → 1건만 실행"
+      ],
+      "files": [
+        "engine/src/execution/atomic.py",
+        "engine/src/core/signal.py"
+      ],
+      "source": "Chaeyoung MISSED CRITICAL: No order-level idempotency"
+    },
+    {
+      "id": "US-154",
+      "title": "RiskGuardian max_concurrent_positions 체크 추가",
+      "phase": "S2",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "RiskGuardian에 동시 포지션 수 체크 추가 (기본 max=20)",
+        "175 심볼 동시 진입 시도 시 20개 초과분 REJECT",
+        "config/환경변수로 max 조정 가능"
+      ],
+      "files": [
+        "engine/src/risk/guardian.py"
+      ],
+      "source": "Chaeyoung MISSED HIGH: No concurrent position count check"
+    },
+    {
+      "id": "US-155",
+      "title": "Graceful shutdown 시 오픈 포지션 정리",
+      "phase": "S2",
+      "priority": 2,
+      "passes": false,
+      "acceptanceCriteria": [
+        "Engine.stop()에서 SIGTERM 수신 시 오픈 주문 취소",
+        "Live 모드: 미체결 주문 전량 취소 후 셧다운",
+        "취소 실패 시 Telegram 알림 + 로그",
+        "shutdown 후 pending_orders == 0 확인"
+      ],
+      "files": [
+        "engine/src/main.py",
+        "engine/src/execution/atomic.py"
+      ],
+      "source": "Chaeyoung MISSED HIGH: No position closure on shutdown"
     }
   ]
 }

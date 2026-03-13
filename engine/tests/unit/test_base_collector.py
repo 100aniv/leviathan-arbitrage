@@ -149,12 +149,19 @@ class TestStopMethod:
 class TestBackoffLogic:
     async def test_backoff_doubles_delay_each_call(self):
         collector = ConcreteCollector(exchange_id="binance", symbols=["BTC/USDT"])
-        expected_delays = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0]
+        base_delays = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0]
 
         with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-            for expected in expected_delays:
+            for base in base_delays:
                 await collector._backoff()
-                mock_sleep.assert_called_with(expected)
+                actual = mock_sleep.call_args[0][0]
+                # jitter ±25%: actual should be within [base*0.75, base*1.25].
+                # The MAX cap applies only to stored _reconnect_delay, not the sleep value.
+                low = base * 0.75
+                high = base * 1.25
+                assert low <= actual <= high, (
+                    f"Expected {base}±25% (range [{low}, {high}]), got {actual}"
+                )
 
     async def test_backoff_caps_at_max_reconnect_delay(self):
         collector = ConcreteCollector(exchange_id="binance", symbols=["BTC/USDT"])
@@ -163,7 +170,9 @@ class TestBackoffLogic:
 
         with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             await collector._backoff()
-            mock_sleep.assert_called_with(64.0)
+            actual = mock_sleep.call_args[0][0]
+            # jitter ±25% on base delay of 64.0
+            assert 64.0 * 0.75 <= actual <= 64.0 * 1.25
 
         # Next call should still be capped at 60
         assert collector._reconnect_delay == BaseCollector.MAX_RECONNECT_DELAY

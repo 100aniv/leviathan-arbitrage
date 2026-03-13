@@ -8,12 +8,12 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from src.api.auth import DASHBOARD_USER, verify_password, create_token, verify_ws_token
+from src.api.auth import DASHBOARD_USER, require_auth, verify_password, create_token, verify_ws_token
 from src.api.middleware import IPWhitelistMiddleware, RateLimitMiddleware
 from src.api.websocket import ConnectionManager
 
@@ -166,7 +166,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     # Short-path aliases (integration-layer convenience routes)
     # ---------------------------------------------------------------------------
 
-    @app.get("/status")
+    @app.get("/status", dependencies=[Depends(require_auth)])
     async def short_status():  # type: ignore[return]
         return JSONResponse({
             "running": context.running,
@@ -176,7 +176,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
             "uptime_seconds": 0,
         })
 
-    @app.post("/kill")
+    @app.post("/kill", dependencies=[Depends(require_auth)])
     async def short_kill(body: KillBody):  # type: ignore[return]
         context.kill_switch_active = True
         context.running = False
@@ -187,11 +187,11 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
             pass
         return JSONResponse({"status": "halted", "reason": body.reason})
 
-    @app.get("/strategies")
+    @app.get("/strategies", dependencies=[Depends(require_auth)])
     async def short_strategies():  # type: ignore[return]
         return JSONResponse(list(context.strategies.values()))
 
-    @app.post("/strategies/{strategy_id}/toggle")
+    @app.post("/strategies/{strategy_id}/toggle", dependencies=[Depends(require_auth)])
     async def short_toggle(strategy_id: str):  # type: ignore[return]
         strategy = context.strategies.get(strategy_id)
         if strategy is None:

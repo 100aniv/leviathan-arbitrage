@@ -25,6 +25,11 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 
 from src.api.server import EngineContext, create_app
+from src.api.auth import create_token
+
+
+def _auth_header() -> dict:
+    return {"Authorization": f"Bearer {create_token('test_user')}"}
 
 
 # ---------------------------------------------------------------------------
@@ -106,13 +111,13 @@ class TestStatusEndpoint:
     @pytest.mark.asyncio
     async def test_status_returns_200(self, transport):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/status")
+            resp = await client.get("/status", headers=_auth_header())
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
     async def test_status_body_contains_running_field(self, transport):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/status")
+            resp = await client.get("/status", headers=_auth_header())
         body = resp.json()
         assert "running" in body
         assert body["running"] is True
@@ -120,13 +125,13 @@ class TestStatusEndpoint:
     @pytest.mark.asyncio
     async def test_status_body_contains_kill_switch_active(self, transport):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/status")
+            resp = await client.get("/status", headers=_auth_header())
         assert resp.json()["kill_switch_active"] is False
 
     @pytest.mark.asyncio
     async def test_status_body_contains_strategy_count(self, transport):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/status")
+            resp = await client.get("/status", headers=_auth_header())
         assert resp.json()["strategy_count"] == 1
 
 
@@ -142,7 +147,7 @@ class TestKillEndpoint:
         transport = ASGITransport(app=app)
         with patch("src.risk.kill_switch.halt_local", MagicMock()):
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post("/kill", json={"reason": "test"})
+                resp = await client.post("/kill", json={"reason": "test"}, headers=_auth_header())
         assert resp.status_code == 200
         assert resp.json()["status"] == "halted"
 
@@ -153,7 +158,7 @@ class TestKillEndpoint:
         transport = ASGITransport(app=app)
         with patch("src.risk.kill_switch.halt_local", MagicMock()):
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                await client.post("/kill", json={"reason": "manual"})
+                await client.post("/kill", json={"reason": "manual"}, headers=_auth_header())
         assert ctx.kill_switch_active is True
         assert ctx.running is False
 
@@ -164,7 +169,7 @@ class TestKillEndpoint:
         transport = ASGITransport(app=app)
         with patch("src.risk.kill_switch.halt_local", MagicMock()):
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post("/kill", json={})
+                resp = await client.post("/kill", json={}, headers=_auth_header())
         assert resp.json()["reason"] == "manual"
 
 
@@ -176,14 +181,14 @@ class TestStrategiesShortPath:
     @pytest.mark.asyncio
     async def test_list_strategies_returns_list(self, transport):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/strategies")
+            resp = await client.get("/strategies", headers=_auth_header())
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
     @pytest.mark.asyncio
     async def test_list_strategies_contains_registered_strategy(self, transport):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/strategies")
+            resp = await client.get("/strategies", headers=_auth_header())
         strategies = resp.json()
         ids = [s["id"] for s in strategies]
         assert "arb1" in ids
@@ -191,7 +196,7 @@ class TestStrategiesShortPath:
     @pytest.mark.asyncio
     async def test_toggle_strategy_returns_toggled_state(self, transport):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/strategies/arb1/toggle")
+            resp = await client.post("/strategies/arb1/toggle", headers=_auth_header())
         assert resp.status_code == 200
         body = resp.json()
         assert body["id"] == "arb1"
@@ -200,7 +205,7 @@ class TestStrategiesShortPath:
     @pytest.mark.asyncio
     async def test_toggle_nonexistent_strategy_returns_404(self, transport):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/strategies/nonexistent/toggle")
+            resp = await client.post("/strategies/nonexistent/toggle", headers=_auth_header())
         assert resp.status_code == 404
 
 
@@ -212,7 +217,7 @@ class TestMetricsEndpoint:
     @pytest.mark.asyncio
     async def test_metrics_returns_200(self, transport):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/metrics")
+            resp = await client.get("/metrics", headers=_auth_header())
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
@@ -222,7 +227,7 @@ class TestMetricsEndpoint:
         transport = ASGITransport(app=app)
         with patch("prometheus_client.generate_latest", side_effect=ImportError):
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/metrics")
+                resp = await client.get("/metrics", headers=_auth_header())
         assert resp.status_code == 200
 
 
@@ -240,7 +245,7 @@ class TestApiV1StrategiesDict:
         app = create_app(ctx)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/strategies")
+            resp = await client.get("/api/v1/strategies", headers=_auth_header())
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
@@ -252,7 +257,7 @@ class TestApiV1StrategiesDict:
         app = create_app(ctx)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/strategies")
+            resp = await client.get("/api/v1/strategies", headers=_auth_header())
         data = resp.json()
         assert any(s.get("id") == "s1" for s in data)
 
@@ -265,7 +270,7 @@ class TestApiV1StrategiesDict:
         app = create_app(ctx)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/strategies/s1/toggle")
+            resp = await client.post("/api/v1/strategies/s1/toggle", headers=_auth_header())
         assert resp.status_code == 200
         assert resp.json()["enabled"] is False
 
@@ -275,7 +280,7 @@ class TestApiV1StrategiesDict:
         app = create_app(ctx)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/strategies/missing/toggle")
+            resp = await client.post("/api/v1/strategies/missing/toggle", headers=_auth_header())
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
@@ -290,6 +295,7 @@ class TestApiV1StrategiesDict:
             resp = await client.post(
                 "/api/v1/strategies/s1/config",
                 json={"min_spread_bps": 15},
+                headers=_auth_header(),
             )
         assert resp.status_code == 200
         body = resp.json()
@@ -304,6 +310,7 @@ class TestApiV1StrategiesDict:
             resp = await client.post(
                 "/api/v1/strategies/missing/config",
                 json={"key": "val"},
+                headers=_auth_header(),
             )
         assert resp.status_code == 404
 
@@ -337,7 +344,7 @@ class TestApiV1StrategiesManagerPath:
         app = create_app(ctx)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/strategies")
+            resp = await client.get("/api/v1/strategies", headers=_auth_header())
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
@@ -350,7 +357,7 @@ class TestApiV1StrategiesManagerPath:
         app = create_app(ctx)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/strategies/s1/toggle")
+            resp = await client.post("/api/v1/strategies/s1/toggle", headers=_auth_header())
         assert resp.status_code == 200
         manager.stop_strategy.assert_called_once_with("s1")
 
@@ -361,7 +368,7 @@ class TestApiV1StrategiesManagerPath:
         app = create_app(ctx)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/strategies/s1/toggle")
+            resp = await client.post("/api/v1/strategies/s1/toggle", headers=_auth_header())
         assert resp.status_code == 200
         manager.start_strategy.assert_called_once_with("s1")
 
@@ -373,7 +380,7 @@ class TestApiV1StrategiesManagerPath:
         app = create_app(ctx)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/strategies/missing/toggle")
+            resp = await client.post("/api/v1/strategies/missing/toggle", headers=_auth_header())
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
@@ -390,6 +397,7 @@ class TestApiV1StrategiesManagerPath:
             resp = await client.post(
                 "/api/v1/strategies/s1/config",
                 json={"param": 42},
+                headers=_auth_header(),
             )
         assert resp.status_code == 200
         manager.reconfigure.assert_called_once_with("s1", {"param": 42})
@@ -405,6 +413,7 @@ class TestApiV1StrategiesManagerPath:
             resp = await client.post(
                 "/api/v1/strategies/missing/config",
                 json={},
+                headers=_auth_header(),
             )
         assert resp.status_code == 404
 
@@ -419,7 +428,7 @@ class TestApiV1StrategiesManagerPath:
         app = create_app(ctx)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/strategies")
+            resp = await client.get("/api/v1/strategies", headers=_auth_header())
         assert resp.status_code == 200
         data = resp.json()
         assert any(s.get("id") == "fallback" for s in data)

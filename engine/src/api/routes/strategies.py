@@ -37,14 +37,14 @@ def _get_strategy_list(ctx: Any) -> list[dict[str, Any]]:
     return list(ctx.strategies.values())
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_auth)])
 async def list_strategies(request: Request) -> JSONResponse:
     """Return status of all registered strategies."""
     ctx = request.app.state.engine_context
     return JSONResponse(_get_strategy_list(ctx))
 
 
-@router.post("/{strategy_id}/toggle")
+@router.post("/{strategy_id}/toggle", dependencies=[Depends(require_auth)])
 async def toggle_strategy(strategy_id: str, request: Request) -> JSONResponse:
     """Enable or disable a strategy by ID."""
     ctx = request.app.state.engine_context
@@ -73,7 +73,7 @@ async def toggle_strategy(strategy_id: str, request: Request) -> JSONResponse:
     return JSONResponse({"id": strategy_id, "enabled": strategy["enabled"]})
 
 
-@router.post("/{strategy_id}/config")
+@router.post("/{strategy_id}/config", dependencies=[Depends(require_auth)])
 async def update_strategy_config(
     strategy_id: str,
     request: Request,
