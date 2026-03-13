@@ -50,7 +50,17 @@
       "Bash(test -f /Users/100aniv/Development/arbitrage_OMC/SSOT.md)",
       "Bash(test -f /Users/100aniv/Development/arbitrage_OMC/.claude/settings.local.json)",
       "Bash(test -f /Users/100aniv/Development/arbitrage_OMC/.claude/plans/jazzy-wishing-avalanche.md)",
-      "Bash(find /Users/100aniv/Development/arbitrage_OMC -name leviathan.md -not -path */.git/*)"
+      "Bash(find /Users/100aniv/Development/arbitrage_OMC -name leviathan.md -not -path */.git/*)",
+      "WebFetch(domain:zeonedge.com)",
+      "WebSearch",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:resources.anthropic.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.anthropic.com)",
+      "WebFetch(domain:www.infoq.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:www.thecaio.ai)"
     ],
     "deny": [],
     "ask": []

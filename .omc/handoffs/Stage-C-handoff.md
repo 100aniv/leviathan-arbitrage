@@ -2,56 +2,76 @@
 
 **Phase**: S1 (Security Hardening)
 **Date**: 2026-03-13
-**Status**: Stage C complete, ready for Stage D (Shadow test)
+**Status**: Stage C COMPLETE → Stage D 진입 필요
 
-## Completed US (7/7)
-- US-152: Pre-commit .env hook
-- US-123: JWT auth on all endpoints (11 protected + /health public + /metrics Prometheus-exempt)
-- US-124: Prod fail-fast for bcrypt + DASHBOARD_PASSWORD
-- US-125: Nginx IP whitelist RFC-1918 + XFF trusted proxy validation
-- US-126: Redis AUTH via --requirepass CLI flag + rename dangerous commands
-- US-127: CSP hardening (no unsafe-eval) in Nginx + Next.js
-- US-128: Pytest auth coverage (13 new tests + all existing tests updated)
+## 재개 명령
+```
+/leviathan
+```
+leviathan-progress.json에서 `next_stage: "D"` 감지 → 자동으로 Stage D 시작
 
-## Changed Files
-### Source
-- `engine/src/api/server.py` — auth on short-path endpoints, /metrics exempt for Prometheus
-- `engine/src/api/routes/trading.py` — auth on /api/v1/status
-- `engine/src/api/routes/strategies.py` — auth on 3 endpoints
-- `engine/src/api/routes/risk.py` — auth on 3 endpoints
-- `engine/src/api/auth.py` — prod fail-fast checks
-- `engine/src/api/middleware.py` — trusted proxy validation
-- `engine/src/infra/redis/client.py` — Redis password from env
-- `engine/src/infra/monitor_daemon.py` — Redis password for health check
+## 완료된 Stage
+- [x] Stage A: Entry Gate + PLAN.md (`docs/planning/Phase-S1_PLAN.md`)
+- [x] Stage B: TeamCreate (Yujin+Gaeul+Wonyoung) → 4240 tests PASS
+- [x] Stage C: BLACKPINK 4명 리뷰 → 4 CRITICAL/HIGH 수정 → git commit `e858179`
+- [ ] Stage D: Shadow 10min+ (미시작)
+- [ ] Stage E: Exit Gate + SSOT + git push (미시작)
 
-### Infrastructure
-- `docker-compose.yml` — Redis --requirepass CLI, REDIS_PASSWORD propagation
-- `infra/redis/redis.conf` — rename-command blocks (requirepass via CLI)
-- `infra/nginx/ip-whitelist.conf` — removed allow all
-- `infra/nginx/nginx.conf` — CSP without unsafe-eval
-- `dashboard/next.config.js` — CSP + security headers
-- `.githooks/pre-commit` — blocks .env commits
+## 완료된 US (7/7 — S1 전체)
+- [x] US-152: Pre-commit .env hook
+- [x] US-123: JWT auth on all endpoints
+- [x] US-124: Prod fail-fast (bcrypt + DASHBOARD_PASSWORD)
+- [x] US-125: Nginx IP whitelist + XFF trusted proxy
+- [x] US-126: Redis AUTH (--requirepass CLI)
+- [x] US-127: CSP hardening (no unsafe-eval)
+- [x] US-128: Pytest auth coverage (13 new tests)
 
-### Tests
-- `tests/unit/api/test_server.py` — auth headers on all protected tests
-- `tests/unit/test_api_server_routes.py` — auth headers on all protected tests
-- `tests/unit/test_api_security.py` — updated parametrized auth test list
-- `tests/unit/test_api_auth.py` — 13 new auth enforcement tests
-- `tests/unit/test_base_collector.py` — fixed backoff jitter tolerance
-- `tests/integration/test_api_integration.py` — auth headers on all protected tests
+## Stage C 리뷰에서 수정한 항목
+1. CRITICAL: `/api/v1/status` in trading.py → auth 추가
+2. HIGH: redis.conf requirepass → docker-compose --requirepass CLI로 이동
+3. HIGH: monitor_daemon.py → REDIS_PASSWORD 추가
+4. MEDIUM: `/metrics` short-path → Prometheus용 auth 제거
 
-## Pytest Result
-- 4240+ passed, 0 failures (pending re-run after Stage C fixes)
+## Stage D 수행 내용
+- `docker compose up -d && docker compose ps` (전 컨테이너 healthy 확인)
+- Shadow 10min+: `cd engine && timeout 600 python -m src.main`
+- 검증: PnL > 0, crash = 0, 10분 이상 무중단
+- JWT auth가 비인증 API 호출 차단하는지 확인
 
-## Code Review Result
-- 4 reviewers (Jennie, Lisa, Rose, Jisoo)
-- CRITICAL: 1 found + fixed (trading.py /api/v1/status)
-- HIGH: 2 found + fixed (redis.conf, monitor_daemon)
-- Pre-existing issues: 10 deferred to new US
-- Review doc: `docs/review/Phase-S1_REVIEW.md`
+## 전체 PRD 진행 상태
+- **118 pass / 28 fail / 146 total**
+- S1 ✅ → S2(9개) → S3(5개) → S4(5개) → S5(4개) → S6(3개) → F(2개) → TF 재검증
 
-## Stage D Notes
-- Shadow test should verify JWT auth blocks unauthenticated API calls
-- Redis AUTH should work via --requirepass CLI flag
-- /metrics endpoint is intentionally public for Prometheus scraping
-- /health is intentionally public for liveness probes
+## 변경된 파일 목록 (27개)
+### Source (8)
+- engine/src/api/server.py, auth.py, middleware.py
+- engine/src/api/routes/trading.py, strategies.py, risk.py
+- engine/src/infra/redis/client.py, monitor_daemon.py
+
+### Infra (4)
+- docker-compose.yml, infra/redis/redis.conf
+- infra/nginx/nginx.conf, ip-whitelist.conf
+
+### Frontend (1)
+- dashboard/next.config.js
+
+### Config (1)
+- .githooks/pre-commit
+
+### Tests (6)
+- tests/unit/api/test_server.py, test_api_server_routes.py
+- tests/unit/test_api_security.py, test_base_collector.py
+- tests/unit/test_api_auth.py (NEW)
+- tests/integration/test_api_integration.py
+
+### Docs (5)
+- .claude/CLAUDE.md, .omc/prd.json, SSOT.md
+- docs/planning/Phase-S1_PLAN.md, docs/review/Phase-S1_REVIEW.md
+
+## 리뷰에서 발견된 pre-existing issues (새 US 필요)
+- Docker ports 0.0.0.0 바인딩 → 127.0.0.1로
+- DB 하드코딩 credentials → ${VAR:?} 패턴
+- CORS allow_methods=["*"] → 명시적 메서드
+- JWT WS query param → cookie/subprotocol only
+- Rate limiter → Redis 백엔드
+- /health에서 kill_switch_active 노출 제거

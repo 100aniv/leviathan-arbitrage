@@ -6,15 +6,14 @@
 ## 0. ZERO TOLERANCE (최우선 규칙)
 
 **절대 금지**: 사용자 확인 요청, Stage 간 멈춤, 에이전트 대기 중 멈춤, US 간 멈춤, 상태 보고만 하고 멈춤
-**강제**: 모든 응답에 tool call 포함. Stage A→B→C→(세션초기화)→D→E→다음Phase 끊김 없는 연속 흐름.
+**강제**: 모든 응답에 tool call 포함. Stage A→B→C→D→E→다음Phase 끊김 없는 연속 흐름.
 **멈춤 허용**: (1) 전 US `passes:true` (2) 5회 연속 동일 US 실패 (3) 사용자 "stop/cancel/멈춰" (4) Stage E 완료 후 사장님 승인 대기
 
 ```
 Stage A(Entry Gate→기획→QUANT GATE→checkpoint)
   → Stage B(TeamCreate→pytest PASS→TeamDelete→checkpoint)
   → Stage C(코드리뷰+품질+보안→git commit→checkpoint)
-  → ⚡ 세션 초기화 (omc cancel --force)
-  → Stage D(fresh context→Shadow 10min+→모니터링→checkpoint)
+  → Stage D(Shadow 10min+→모니터링→checkpoint)
   → Stage E(Exit Gate→SSOT+prd.json→git push→텔레그램→사장님 승인)
   → 다음 Phase Stage A
 ```
@@ -69,7 +68,7 @@ Agent(subagent_type="oh-my-claudecode:architect", name="karina", model="opus",
 **복잡도 판단 (prd.json `files` 기준):**
 - **복잡 US** (files 3+개 OR 아키텍처 변경): `Skill("oh-my-claudecode:ralplan")` → `--deliberate "US-XXX [제목]: [acceptanceCriteria]"`
 - **단순 US** (files 1-2개): `Agent(subagent_type="oh-my-claudecode:architect", prompt="...")`
-- 산출물: `docs/planning/Phase-X_PLAN.md` + `.omc/handoffs/Stage-A-handoff.md`
+- 산출물: `docs/planning/Phase-X_PLAN.md`
 
 **QUANT GATE — `files`에 전략/수식 키워드 포함 시에만:**
 키워드: `slippage|signal|strategy|executor|funding|futures|triangular|statistical|friction|cost_calculator|regime|hmm|xgboost|onnx|dex|gas_oracle`
@@ -183,45 +182,25 @@ Agent(subagent_type="browser-verifier", name="haerin",
 #### C-5. 완료 처리
 - 리뷰 결과 수집 → CRITICAL/HIGH 이슈 발견 시 Stage B fix 루프
 - `git add` + `git commit` (**push는 아직 안 함**)
-- `.omc/handoffs/Stage-C-handoff.md` 작성 (Stage D 컨텍스트 전달용)
+- Stage D 진행 준비 완료 확인
 
 **활성 팀**: BLACKPINK(검증, 4명) + ITZY(퀀트, 해당 시)
 
-**산출물**: `docs/review/Phase-X_REVIEW.md` + `.omc/handoffs/Stage-C-handoff.md`
+**산출물**: `docs/review/Phase-X_REVIEW.md`
 
 **C→D 전환 (순서 엄수):**
 1. 코드리뷰 CRITICAL/HIGH 0건
 2. 보안리뷰 CRITICAL 0건
 3. git commit 완료 (push 아직)
-4. Stage-C-handoff.md 작성 완료
-5. `leviathan-progress.json` 저장 (`next_stage:"D"`)
-6. **세션 초기화**: `Skill("oh-my-claudecode:cancel", args="--force")` 또는 `/clear`
-
----
-
-### ⚡ 세션 초기화 (Stage C → Stage D 사이)
-
-Stage A→B→C는 동일 세션 (코드 컨텍스트 유지).
-Stage C 완료 후 **세션 초기화** → Stage D는 **fresh context**에서 시작.
-
-**목적**: 자기 코드를 자기가 리뷰하는 편향 방지 (context pollution prevention).
-**컨텍스트 전달**: `.omc/handoffs/Stage-C-handoff.md`로 필수 정보만 전달.
-
-**Handoff 문서 포함 내용:**
-- 완료된 US 목록 + 변경 파일 목록
-- pytest 결과 요약
-- 코드리뷰 결과 요약 (이슈 0건 확인)
-- 다음 Stage D 주의사항
+4. `leviathan-progress.json` 저장 (`next_stage:"D"`)
+5. 즉시 Stage D 진행
 
 ---
 
 ### Stage D — Shadow 테스트
 
-**(fresh session — Stage-C-handoff.md 읽어 컨텍스트 복원)**
-
-#### D-0. 컨텍스트 복원
-- `.omc/handoffs/Stage-C-handoff.md` 읽기
-- `leviathan-progress.json` 확인 (`next_stage:"D"`)
+> Stage D의 shadow-tester/qa-tester/scientist는 독립 Agent로 실행되므로 fresh context가 자동 보장됨.
+> 세션 초기화 없이 A→B→C→D→E 연속 실행 (ralph 루프 유지).
 
 #### D-1. Docker 확인
 - `docker compose up -d && docker compose ps` (실패 시 최대 2회 재시도)
@@ -453,26 +432,24 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승�
 
 ## 6. 컨텍스트 관리
 
-**Stage A→B→C 연속 실행 → 세션 초기화 → Stage D→E 연속 실행.**
+**Stage A→B→C→D→E 연속 실행 (세션 초기화 없음, ralph 루프 유지).**
 `/compact` 절대 금지 (GitHub #3274, #19567, #18482).
 
 | 시점 | 동작 |
 |------|------|
 | Stage A 완료 | PLAN.md + checkpoint → 즉시 Stage B TeamCreate |
 | Stage B 완료 | pytest PASS + TeamDelete + checkpoint → 즉시 Stage C |
-| Stage C 완료 | 코드리뷰 + git commit + handoff → **세션 초기화** |
-| Stage D 시작 | handoff 읽기 → fresh context에서 Shadow |
+| Stage C 완료 | 코드리뷰 + git commit → 즉시 Stage D |
+| Stage D 시작 | Shadow 테스트 (Agent가 fresh context 보장) |
 | Stage D 완료 | Shadow PASS + checkpoint → 즉시 Stage E |
 | Stage E 완료 | SSOT/prd.json/git push + 텔레그램 → **사장님 승인 대기** |
 
 **체크포인트**: `.omc/state/leviathan-progress.json` — 세션 복구 전용.
 세션 크래시/수동 `/clear` 시 → `/leviathan` 재호출 → progress 파일로 재개.
 
-**Handoff 문서**: `.omc/handoffs/Stage-{X}-handoff.md` — Stage 간 컨텍스트 전달용.
-
 **컨텍스트 60% 이상 시:**
 1. 현재 진행 중인 Stage 완료까지 마무리
-2. `/clear` 시도 → 성공 시 handoff 문서로 재개
+2. `/clear` 시도 → 성공 시 progress.json으로 재개
 3. `/clear` 불가능한 경우에만 → WORKFLOW_TELEGRAM으로 사장님 알림
 4. **`/compact` 절대 금지** — 결과 소실 위험
 
@@ -480,6 +457,28 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승�
 
 > **진입 가드**: Phase G/H/I/J-EXT/K/L/M 전부 `passes:true` 필수. 하나라도 미완료 시 TF 소집 금지.
 > TF는 기존 팀원을 TF 전용 역할로 재소집(리스폰). 개발 세션과 **완전 분리** (fresh context).
+
+### TF 핵심 원칙: 회귀 구조
+
+> **TF는 검사 프로세스이지, 새 Phase를 만드는 단계가 아니다.**
+> TF Semi-Final/Final FAIL 시 → **회귀 Phase 생성** (원본 Phase의 미비점 보완).
+> 회귀 Phase는 SSOT.md에서 **TF 섹션 위, 원본 Phase 다음**에 위치한다.
+> 각 회귀 US에는 `(← 원본 Phase US-XXX 사유)` 역추적 주석을 붙인다.
+
+```
+SSOT.md §7 구조:
+  Phase A~M (원본, 모두 ✅)
+    ↓
+  회귀 Phase S1~S6 (← 원본 Phase 보완)   ← TF 위에!
+    ↓
+  TF Semi-Final (검증 프로세스)
+    ↓
+  TF Final → Live
+```
+
+> **통합 추적 문서**: TF 프로세스 상세(단계 0~4) + 회귀 매핑(원본↔회귀 역추적) + 진행 현황은
+> `docs/checklists/tf-semi-final-consolidated_YYYYMMDD.md`에 관리.
+> SSOT.md의 TF 섹션은 판정 요약 + 문서 참조만 기록한다.
 
 ### TF 팀 [TWICE] (9명)
 
@@ -523,14 +522,19 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승�
 [단계 4] 최종 확인 + 회귀 (The Feedback Loop)
 - Karina → Nayeon 보고
 - Chaeyoung/Tzuyu QA 감사단 압박 면접
-- 미비점 → 새 US/Phase로 로드맵 추가 → 개발 회귀
-- 전 조건 충족 → Final 진출
+- FAIL 시:
+  1. 미비점 분석 → 원본 Phase별 회귀 US 생성
+  2. 회귀 Phase를 SSOT.md에서 TF 섹션 위에 배치 (원본 Phase 다음)
+  3. 각 회귀 US에 `(← 원본 Phase US-XXX 사유)` 역추적 주석
+  4. 통합 추적 문서 생성: `docs/checklists/tf-semi-final-consolidated_YYYYMMDD.md`
+  5. 회귀 Phase 개발 → 5-Stage(A~E) 사이클 → TF 재검증
+- PASS 시: 전 조건 충족 → Final 진출
 ```
 
 ### TF Final
 
 ```
-[전제]: Semi-Final 통과 상태에서만 진행
+[전제]: Semi-Final 통과 상태에서만 진행 (회귀 Phase 전부 완료 + 재검증 PASS)
 
 [단계 1] 전체 시스템 체크리스트
 - Semi-Final과 동일 전문가 리스폰
@@ -540,7 +544,7 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승�
 [단계 2] Progressive Shadow (72H)
 - 1H → 6H → 24H → 72H 점진적 실행
 - 각 단계 통과 후 다음 진행
-- 실패 시 Semi-Final로 회귀
+- 실패 시 Semi-Final로 회귀 (동일 회귀 구조 적용)
 
 [단계 3] Master Inspection
 - 전체 시스템의 '결' 맞춤
@@ -579,7 +583,7 @@ WORKFLOW_TELEGRAM_CHAT_ID=<채팅 ID>
 **1순위 — `.omc/state/leviathan-progress.json`**:
 - 존재 시 `next_stage`에 따라 해당 Stage부터 재개
 - `plan_file` 있으면 PLAN.md 읽어 복원
-- Stage D 재개 시 `.omc/handoffs/Stage-C-handoff.md` 읽기
+- Stage D 재개 시 progress.json의 Stage D 메타데이터로 복원
 
 **2순위 — $ARGUMENTS**: 인수가 있으면 해당 US부터 Stage A
 

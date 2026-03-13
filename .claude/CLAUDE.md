@@ -258,11 +258,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → TF Semi-Final(FAIL→회귀) → S1(보안) → S2(엔진) → S3(인프라) → S4(대시보드) → S5(데이터) → S6(문서) → TF재검증 → TF Final → Live
-- **Tests**: 1,505 passed, 1 failed (backoff jitter test)
-- **PRD**: `.omc/prd.json` (146개 US, 111 pass / 35 fail)
+- **Phase 순서**: A~M✅ → 회귀 S1~S6 (TF Semi-Final 발견, 원본 Phase 보완) → TF Semi-Final 재검증 → TF Final → Live
+- **Tests**: 4,240 passed, 0 failed
+- **PRD**: `.omc/prd.json` (146개 US, 118 pass / 28 fail)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: Phase S1 US-152 (API 키 로테이션) → US-123~128 (JWT/Nginx/Redis/CSP/pytest) → S2~S6 → TF재검증
+- **다음 작업**: Phase S2 US-129 (RiskGuardian PortfolioState 실제 값 주입) → US-130~134 → S3~S6 → TF재검증
 - **GAP 분석**: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합 분석)
 
 ## 실행 워크플로우 (ralph autopilot)
@@ -270,11 +270,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 **5-Stage Sequential 연속 실행** (leviathan.md 참조):
 1. **Stage A** (기획): Entry Gate 정합성 → ralplan → PLAN.md → QUANT GATE → checkpoint → **즉시 Stage B**
 2. **Stage B** (개발): TeamCreate(IVE) → pytest PASS → TeamDelete → checkpoint → **즉시 Stage C**
-3. **Stage C** (검증): code-reviewer + critic + security-reviewer → git commit → handoff → **⚡세션 초기화**
-4. **Stage D** (Shadow): fresh context → handoff 복원 → Shadow 10min+ → QA → checkpoint → **즉시 Stage E**
+3. **Stage C** (검증): code-reviewer + critic + security-reviewer → git commit → checkpoint → **즉시 Stage D**
+4. **Stage D** (Shadow): Shadow 10min+ → QA → checkpoint → **즉시 Stage E**
 5. **Stage E** (정합성): Exit Gate → SSOT + prd.json → git push → **텔레그램 → 사장님 승인 대기**
 
-**세션 관리**: Stage A→B→C 동일 세션 → `omc cancel --force` → Stage D→E fresh context.
+**세션 관리**: Stage A→B→C→D→E 연속 실행 (세션 초기화 없음, ralph 루프 유지).
 **`/compact` 절대 금지**. 컨텍스트 60% 시 `/clear` 시도 → 실패 시 텔레그램 알림.
 **체크포인트 복구**: `.omc/state/leviathan-progress.json` — 세션 크래시 시 `/leviathan` 재호출로 자동 재개.
 **에스컬레이션**: L0(팀 내) → L1(fix 루프) → L2(Stage A 재기획) → L3(SSOT 수정) → L4(Phase 재편) → **L5(텔레그램→사장님)**
