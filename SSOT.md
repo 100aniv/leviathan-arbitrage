@@ -354,8 +354,8 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ## 7. 남은 작업 (`.omc/prd.json` 113개 User Stories, 108개 완료, 5개 미완)
 
-> **실행 방식**: 3-Phase Sequential — Phase A(기획/OMC) → Phase B(개발/Agent Teams) → Phase C(검증/OMC)
-> **자동화**: `ralph autopilot` → prd.json 순회 → 각 US 자동 실행
+> **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
+> **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
 
 ### Phase A: 인프라 재정비 (US-001~009) — ☑ ALL PASS
 

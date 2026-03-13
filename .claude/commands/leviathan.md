@@ -1,17 +1,25 @@
 # LEVIATHAN Execution Command
 
-> ralph 루프 + Phase B TeamCreate 방식으로 prd.json US 자동 순회.
+> ralph 루프 + Stage B TeamCreate 방식으로 prd.json US 자동 순회.
 > 사용법: `/project:leviathan` 또는 `/project:leviathan US-010부터`
 
 ## 0. ZERO TOLERANCE (최우선 규칙)
 
-**절대 금지**: 사용자 확인 요청, Phase 간 멈춤, 에이전트 대기 중 멈춤, US 간 멈춤, 상태 보고만 하고 멈춤
-**강제**: 모든 응답에 tool call 포함. Phase A→B→C→다음US 끊김 없는 연속 흐름.
-**멈춤 허용**: (1) 전 US `passes:true` (2) 5회 연속 동일 US 실패 (3) 사용자 "stop/cancel/멈춰"
+**절대 금지**: 사용자 확인 요청, Stage 간 멈춤, 에이전트 대기 중 멈춤, US 간 멈춤, 상태 보고만 하고 멈춤
+**강제**: 모든 응답에 tool call 포함. Stage A→B→C→(세션초기화)→D→E→다음Phase 끊김 없는 연속 흐름.
+**멈춤 허용**: (1) 전 US `passes:true` (2) 5회 연속 동일 US 실패 (3) 사용자 "stop/cancel/멈춰" (4) Stage E 완료 후 사장님 승인 대기
 
 ```
-Phase A(ralplan→PLAN.md→QUANT GATE→checkpoint) → Phase B(TeamCreate→pytest PASS→TeamDelete→checkpoint) → Phase C(shadow+review→SSOT→git push→checkpoint) → 다음 US Phase A
+Stage A(Entry Gate→기획→QUANT GATE→checkpoint)
+  → Stage B(TeamCreate→pytest PASS→TeamDelete→checkpoint)
+  → Stage C(코드리뷰+품질+보안→git commit→checkpoint)
+  → ⚡ 세션 초기화 (omc cancel --force)
+  → Stage D(fresh context→Shadow 10min+→모니터링→checkpoint)
+  → Stage E(Exit Gate→SSOT+prd.json→git push→텔레그램→사장님 승인)
+  → 다음 Phase Stage A
 ```
+
+> **용어 규칙**: "Stage" = 워크플로우 단계 (A~E), "Phase" = 로드맵/PRD 단계 (G/H/I/K/L/M/F). 혼용 금지.
 
 ---
 
@@ -26,15 +34,27 @@ Phase A(ralplan→PLAN.md→QUANT GATE→checkpoint) → Phase B(TeamCreate→py
 **시작 즉시 실행 (건너뛰기 금지):** `Skill("oh-my-claudecode:ralph")`
 
 > ⚠️ `ralph` (올바름) vs `team ralph` (잘못됨 — OMC 내장 파이프라인과 충돌). 절대 변경 금지.
-> LEVIATHAN 팀은 Phase B에서 `TeamCreate("leviathan-us-xxx")`로 US별 직접 생성/삭제.
+> LEVIATHAN 팀은 Stage B에서 `TeamCreate("leviathan-phase-X")`로 Phase별 직접 생성/삭제.
 
-ralph 루프 안에서 각 US마다 **3-Phase Sequential** 수행:
+ralph 루프 안에서 **Phase(로드맵) 단위**로 **5-Stage Sequential** 수행:
+
+> **핵심 원칙**: Stage 사이클은 Phase(로드맵) 단위로 돈다. US 단위가 아님.
+> Phase 진입 시 해당 Phase의 모든 `passes:false` US를 배치 수집 → Stage A~E 1사이클로 처리.
 
 ---
 
-### Phase A — 기획
+### Stage A — 기획 (Entry Gate)
 
-**Phase 단위 배치 수집 (Phase A 진입 시 최우선):**
+**[Entry Gate] — 정합성 검사 (Stage A 최우선):**
+```
+Agent(subagent_type="oh-my-claudecode:architect", name="karina", model="opus",
+      prompt="SSOT.md + prd.json + CLAUDE.md 3문서 정합성 검사.
+              1) Phase 순서 일치 2) US 상태 일치 3) 기술스택 일치 4) 팀구조 일치.
+              불일치 항목 목록 + 수정 지시. 자동 수정 금지.")
+```
+- 불일치 발견 → 수정 후 재검사 (최대 2회). 통과 시 기획 진행.
+
+**[기획] Phase 단위 배치 수집:**
 1. prd.json에서 현재 Phase의 모든 `passes:false` US 수집
 2. 의존성 그래프 분석 → 독립 US 배치, 의존 US 순차
 3. 도메인(engine/dashboard) 기준 배치 그룹 형성
@@ -49,43 +69,50 @@ ralph 루프 안에서 각 US마다 **3-Phase Sequential** 수행:
 **복잡도 판단 (prd.json `files` 기준):**
 - **복잡 US** (files 3+개 OR 아키텍처 변경): `Skill("oh-my-claudecode:ralplan")` → `--deliberate "US-XXX [제목]: [acceptanceCriteria]"`
 - **단순 US** (files 1-2개): `Agent(subagent_type="oh-my-claudecode:architect", prompt="...")`
-- 산출물: `docs/planning/US-XXX_PLAN.md` + `.omc/handoffs/US-XXX-handoff.md`
+- 산출물: `docs/planning/Phase-X_PLAN.md` + `.omc/handoffs/Stage-A-handoff.md`
 
 **QUANT GATE — `files`에 전략/수식 키워드 포함 시에만:**
 키워드: `slippage|signal|strategy|executor|funding|futures|triangular|statistical|friction|cost_calculator|regime|hmm|xgboost|onnx|dex|gas_oracle`
 ```
-Agent(subagent_type="quant-validator", name="winter",
-      prompt="US-XXX 기획 검증: SSOT.md §4 대비 PLAN.md 정합성.
+Agent(subagent_type="quant-validator", name="yeji", model="opus",
+      prompt="Phase X 기획 검증: SSOT.md §4 대비 PLAN.md 정합성.
               1) 파라미터 범위 2) 이중계산 여부 3) PnL 영향 4) 수식 일치. PASS/FAIL+근거")
 ```
-- PASS → Phase B. FAIL → PLAN 수정 후 재호출 (최대 2회)
+- PASS → Stage B. FAIL → PLAN 수정 후 재호출 (최대 2회)
+
+**활성 팀**: AESPA(기획) + ITZY(퀀트, 해당 시)
 
 **A→B 전환 (순서 엄수):**
 1. PLAN.md 존재 확인
 2. QUANT GATE 해당 시 PASS 확인
-3. `leviathan-progress.json` 저장 (`next_phase:"B"`)
-4. 즉시 `TeamCreate(team_name="leviathan-us-xxx")`
+3. `leviathan-progress.json` 저장 (`next_stage:"B"`)
+4. 즉시 `TeamCreate(team_name="leviathan-phase-X")`
 
 ---
 
-### Phase B — 개발
+### Stage B — 개발 (TeamCreate)
 
 **TeamCreate 기반** (단독 구현 절대 금지):
 
 #### Step 1: 팀 생성
-`TeamCreate(team_name="leviathan-us-xxx")`
+`TeamCreate(team_name="leviathan-phase-X")`
 
-#### Step 2: Teammate 스폰 (동시 2-3명)
+#### Step 2: Teammate 스폰 (동시 2-6명)
 
 **필수:**
-- **Jennie** (executor): `engine/src/` 구현. dashboard/tests/ 수정 금지. 완료 시 Lisa에게 SendMessage.
-- **Lisa** (test-engineer): `tests/` 테스트 작성 + `pytest -x --tb=short`. 결과를 Lead에게 보고.
+- **Yujin** (executor): `engine/src/` 백엔드/엔진 구현 #1. dashboard/tests/ 수정 금지. 완료 시 Wonyoung에게 SendMessage.
+- **Wonyoung** (test-engineer): `tests/` 단위+통합 테스트 작성 + `pytest -x --tb=short`. 결과를 Lead에게 보고.
 
-**Rosé(designer) 스폰 조건:**
+**Rei(designer) 스폰 조건:**
 - Phase D/H US → 항상
 - `files`에 `"api/"`, `"shadow.py"`, `"dashboard/"` 포함
 - `acceptanceCriteria`에 `"dashboard"`, `"UI"`, `"프론트"` 키워드
-- `dashboard/` 구현. engine/ 수정 금지.
+- `dashboard/src/` 구현. engine/ 수정 금지.
+
+**병렬 개발 스폰 (독립 모듈 동시 개발 시):**
+- **Gaeul** (executor): 병렬 백엔드 #2
+- **Leeseo** (executor): 병렬 백엔드 #3 (대규모 시)
+- **Liz** (executor): 병렬 백엔드 #4 (최대 병렬 시)
 
 **D-verify US (US-063, US-064) — 메인 세션 직접 Chrome 검증:**
 1. `preview_start("dashboard")` → localhost:3000
@@ -94,83 +121,316 @@ Agent(subagent_type="quant-validator", name="winter",
 4. `preview_screenshot()` → 증거 캡처
 
 #### Step 2.5: 통합 검증
-- Jennie 완료 → 대시보드 반영 필요 판단 (API/Shadow 변경 시)
-- 필요 시 Rosé 추가 스폰 + Chrome 검증
+- Yujin 완료 → 대시보드 반영 필요 판단 (API/Shadow 변경 시)
+- 필요 시 Rei 추가 스폰 + Chrome 검증
 - **완료 기준**: pytest 0 failures **AND** 관련 대시보드 데이터 정상 표시
 
 #### Step 3: 통합
-- Lisa pytest → PASS: Step 4. FAIL: Jennie 수정 (최대 3회)
+- Wonyoung pytest → PASS: Step 4. FAIL: Yujin 수정 (최대 3회)
 
 #### Step 4: 팀 해산
 - 전원 `shutdown_request` → `TeamDelete()`
 
-**파일 소유권:** Jennie=`engine/src/`, Rosé=`dashboard/src/`, Lisa=`tests/`+`docker-compose.yml`, Lead=SSOT/`.omc/`
+**파일 소유권:** Yujin/Gaeul/Leeseo/Liz=`engine/src/`, Rei=`dashboard/src/`, Wonyoung=`tests/`+`docker-compose.yml`, Lead=SSOT/`.omc/`
 
-**배치 모드:** 배치 내 US 순차 Phase B → 전부 완료 후 Phase C 일괄 실행. 동일 도메인은 팀 재사용 가능.
+**배치 모드:** 배치 내 US 순차 Stage B → 전부 완료 후 Stage C 일괄 실행. 동일 도메인은 팀 재사용 가능.
+
+**활성 팀**: IVE(개발) — TeamCreate 협업 (최대 6명)
 
 **B→C 전환 (순서 엄수):**
 1. pytest PASS
 2. TeamDelete 완료
-3. `leviathan-progress.json` 저장 (`next_phase:"C"`)
-4. 즉시 shadow-tester(sakura) 호출
+3. `leviathan-progress.json` 저장 (`next_stage:"C"`)
+4. 즉시 Stage C 검증 시작
 
 ---
 
-### Phase C — 검증
+### Stage C — 검증 (코드리뷰 + 품질 + 보안)
 
-**순서대로** (실패 시 Phase B fix 루프):
+**Agent() 서브에이전트 기반** (독립 작업, TeamCreate 불필요):
 
-#### C-1. Shadow 테스트
-- **Docker 필수**: `docker compose up -d && docker compose ps` (실패 시 최대 2회 재시도)
-- `Agent(subagent_type="shadow-tester", name="sakura", prompt="Shadow 10분: docker compose up -d 확인 후 cd engine && timeout 600 python -m src.main. PnL/WR/crash 보고")`
-- 필수: `PnL > 0`, `crash = 0`
+#### C-1. 코드 리뷰 (병렬 실행)
+```
+Agent(subagent_type="oh-my-claudecode:code-reviewer", name="jennie", model="opus",
+      prompt="Phase X 변경 코드 종합 리뷰. API 계약, 하위호환, 아키텍처 준수.
+              docs/review/Phase-X_REVIEW.md 작성")
 
-#### C-2. 퀀트 검증 — 전략/수식 변경 시에만
-- `Agent(subagent_type="quant-validator", name="wonyoung", prompt="SSOT.md §4 수식 대비 코드 검증")`
+Agent(subagent_type="oh-my-claudecode:critic", name="lisa", model="opus",
+      prompt="Phase X 설계 비판. 구현이 PLAN.md 의도에 맞는지, 누락 엣지케이스, 개선안 제시")
+```
 
-#### C-3. 코드 리뷰
-- `Agent(subagent_type="oh-my-claudecode:code-reviewer", name="minji", prompt="변경 코드 리뷰. docs/review/US-XXX_REVIEW.md 작성")`
-- `Agent(subagent_type="oh-my-claudecode:critic", name="hanni", prompt="설계 비판 + 개선안")`
+#### C-2. 품질 + 보안 (병렬 실행)
+```
+Agent(subagent_type="oh-my-claudecode:quality-reviewer", name="rose",
+      prompt="Phase X 품질 검증. 로직결함, 안티패턴, SOLID 위반, 성능 이슈")
 
-#### C-3.5. Chrome 검증 — Phase D/H US에서만
-- `Agent(subagent_type="browser-verifier", name="kazuha", prompt="Chrome DevTools MCP로 대시보드 검증: 페이지 렌더링, API 200, WebSocket, 모바일 뷰")`
+Agent(subagent_type="oh-my-claudecode:security-reviewer", name="jisoo",
+      prompt="Phase X 보안 리뷰. JWT/API키/거래실행 보안, OWASP Top 10, 시크릿 노출")
+```
 
-#### C-4. 완료 처리
-- `Agent(subagent_type="ssot-keeper", name="haerin", prompt="SSOT.md 업데이트")`
-- prd.json `passes: true` 마킹
-- `docker compose ps` → healthy 확인
-- `git add` + `git commit` + `git push`
-- 배치 모드: 전체 US 일괄 처리, 배치 단위 단일 커밋
+#### C-3. 퀀트 검증 — 전략/수식 변경 시에만
+```
+Agent(subagent_type="quant-validator", name="yeji", model="opus",
+      prompt="SSOT.md §4 수식 대비 Phase X 코드 검증. 이중계산/파라미터 범위/PnL 영향")
+```
 
-**C→다음US 전환 (순서 엄수):**
-1. Shadow PASS + Review 완료
-2. ssot-keeper SSOT.md 업데이트
-3. prd.json passes:true
-4. git commit + push
-5. `leviathan-progress.json` 저장 (`next_phase:"A", next_us:"US-YYY"`)
-6. 즉시 다음 US Phase A
+#### C-4. Chrome 검증 — Phase D/H US에서만
+```
+Agent(subagent_type="browser-verifier", name="haerin",
+      prompt="Chrome DevTools MCP로 대시보드 검증: 페이지 렌더링, API 200, WebSocket, 모바일 뷰")
+```
+
+#### C-5. 완료 처리
+- 리뷰 결과 수집 → CRITICAL/HIGH 이슈 발견 시 Stage B fix 루프
+- `git add` + `git commit` (**push는 아직 안 함**)
+- `.omc/handoffs/Stage-C-handoff.md` 작성 (Stage D 컨텍스트 전달용)
+
+**활성 팀**: BLACKPINK(검증, 4명) + ITZY(퀀트, 해당 시)
+
+**산출물**: `docs/review/Phase-X_REVIEW.md` + `.omc/handoffs/Stage-C-handoff.md`
+
+**C→D 전환 (순서 엄수):**
+1. 코드리뷰 CRITICAL/HIGH 0건
+2. 보안리뷰 CRITICAL 0건
+3. git commit 완료 (push 아직)
+4. Stage-C-handoff.md 작성 완료
+5. `leviathan-progress.json` 저장 (`next_stage:"D"`)
+6. **세션 초기화**: `Skill("oh-my-claudecode:cancel", args="--force")` 또는 `/clear`
 
 ---
 
-## 3. 완료 기준
+### ⚡ 세션 초기화 (Stage C → Stage D 사이)
 
-| 항목 | 조건 |
-|------|------|
-| pytest | 0 failures |
-| Shadow 10min | PnL > 0, crash = 0 |
-| SSOT.md | 해당 섹션 업데이트됨 |
-| prd.json | `passes: true` |
-| PLAN.md | `docs/planning/`에 존재 |
-| REVIEW.md | `docs/review/`에 존재 |
-| Docker | 전 컨테이너 healthy |
-| Git | commit + push 완료 |
-| **Phase D/H 추가** | Chrome 렌더링 + API 200 + WebSocket + 모바일 반응형 |
+Stage A→B→C는 동일 세션 (코드 컨텍스트 유지).
+Stage C 완료 후 **세션 초기화** → Stage D는 **fresh context**에서 시작.
+
+**목적**: 자기 코드를 자기가 리뷰하는 편향 방지 (context pollution prevention).
+**컨텍스트 전달**: `.omc/handoffs/Stage-C-handoff.md`로 필수 정보만 전달.
+
+**Handoff 문서 포함 내용:**
+- 완료된 US 목록 + 변경 파일 목록
+- pytest 결과 요약
+- 코드리뷰 결과 요약 (이슈 0건 확인)
+- 다음 Stage D 주의사항
+
+---
+
+### Stage D — Shadow 테스트
+
+**(fresh session — Stage-C-handoff.md 읽어 컨텍스트 복원)**
+
+#### D-0. 컨텍스트 복원
+- `.omc/handoffs/Stage-C-handoff.md` 읽기
+- `leviathan-progress.json` 확인 (`next_stage:"D"`)
+
+#### D-1. Docker 확인
+- `docker compose up -d && docker compose ps` (실패 시 최대 2회 재시도)
+- 전 컨테이너 healthy 필수
+
+#### D-2. Shadow 실행 (10분 이상 무중단)
+```
+Agent(subagent_type="shadow-tester", name="minji",
+      prompt="Shadow 10분+: docker compose up -d 확인 후
+              cd engine && timeout 600 python -m src.main.
+              PnL/WR/crash/DD 보고. 10분 미만 실행 = 자동 FAIL")
+```
+
+#### D-3. 데이터 모니터링 (Shadow 실행 중 병렬)
+```
+Agent(subagent_type="oh-my-claudecode:scientist", name="danielle",
+      prompt="Shadow 실행 중 PnL/WR/DD 통계 분석. 이상치 탐지. 결과 보고")
+```
+
+#### D-4. QA 검증
+```
+Agent(subagent_type="oh-my-claudecode:qa-tester", name="hanni",
+      prompt="CLI/서비스 런타임 검증. 엣지케이스 테스트. API 응답 확인")
+```
+
+#### D-5. 대시보드 검증 — Phase D/H US에서만
+```
+Agent(subagent_type="browser-verifier", name="haerin",
+      prompt="Chrome DevTools로 대시보드 검증: 렌더링, API 200, WebSocket, 모바일 반응형")
+```
+
+#### D-6. 에스컬레이션 — crash 발생 시에만
+```
+Agent(subagent_type="oh-my-claudecode:debugger", name="hyein",
+      prompt="crash 루트코즈 분석. 회귀 격리. 수정 방안 제시")
+```
+- crash 시 → Stage B fix 루프 복귀
+
+**필수 조건:**
+- `PnL > 0`
+- `crash = 0`
+- `10분 이상 무중단 실행`
+- 실패 시 → Stage B fix 루프
+
+**활성 팀**: NewJeans(테스트, 5명) + ITZY(퀀트 수식검증, 해당 시)
+
+**D→E 전환 (순서 엄수):**
+1. Shadow PASS (PnL > 0, crash = 0, 10min+)
+2. `leviathan-progress.json` 저장 (`next_stage:"E"`)
+3. 즉시 Stage E 진행
+
+---
+
+### Stage E — 정합성 + 마무리 (Exit Gate)
+
+**[Exit Gate] — 정합성 재검사:**
+```
+Agent(subagent_type="oh-my-claudecode:architect", name="karina", model="opus",
+      prompt="Exit Gate: SSOT.md + prd.json + CLAUDE.md 정합성 검사.
+              Stage A Entry Gate와 동일 기준. 불일치 시 수정 지시")
+```
+
+#### E-1. SSOT + prd.json 업데이트
+```
+Agent(subagent_type="ssot-keeper", name="sakura",
+      prompt="SSOT.md 해당 섹션 업데이트. prd.json에서 완료 US passes:true 마킹")
+```
+
+#### E-2. 최종 증거 확인
+```
+Agent(subagent_type="oh-my-claudecode:verifier", name="chaewon",
+      prompt="전 Stage 산출물 존재 확인:
+              1) PLAN.md 2) pytest PASS 3) REVIEW.md 4) Shadow PASS 5) SSOT 업데이트
+              누락 시 FAIL + 누락 항목 보고")
+```
+
+#### E-3. Git push
+```
+Agent(subagent_type="oh-my-claudecode:git-master", name="kazuha",
+      prompt="git add + commit + push. 커밋 메시지: 'Phase X: [US 목록] 완료'")
+```
+- 배치 모드: Phase 단위 단일 커밋
+
+#### E-4. 텔레그램 알림 + 사장님 승인 대기
+- `WORKFLOW_TELEGRAM_BOT_TOKEN`으로 사장님에게 Phase 완료 알림 전송
+- 알림 내용: Phase X 완료, 테스트 수, Shadow 결과 (PnL/WR/DD), 변경 파일 수
+- **사장님 승인까지 대기** (자동 진행 금지)
+- 승인 후 다음 Phase의 Stage A로 진행
+
+**활성 팀**: LE SSERAFIM(정합성, 4명)
+
+**E→다음Phase 전환 (순서 엄수):**
+1. Exit Gate PASS
+2. SSOT.md + prd.json 업데이트 완료
+3. verifier 산출물 전부 확인
+4. git push 완료
+5. 텔레그램 알림 전송
+6. 사장님 승인 수신
+7. `leviathan-progress.json` 저장 (`next_stage:"A", next_phase:"Phase-Y"`)
+8. 즉시 다음 Phase Stage A
+
+---
+
+## 3. 팀 구조 (7팀 + TF)
+
+> 팀은 **기능별로 정의**, Stage가 **필요한 팀을 호출**하는 구조.
+> Stage B만 TeamCreate 사용 (개발자 간 협업 필요), 나머지는 Agent() 서브에이전트 (독립 작업).
+
+### ① 기획팀 [AESPA] — Stage A 활성화 (4명)
+
+| 팀원 | 에이전트 (subagent_type) | 모델 | 역할 |
+|------|------------------------|------|------|
+| **Karina** | `oh-my-claudecode:architect` | opus | Entry/Exit Gate: SSOT/prd.json 정합성, 시스템 설계 |
+| **Giselle** | `oh-my-claudecode:planner` | sonnet | 태스크 분해, 실행 순서, PLAN.md 작성 |
+| **NingNing** | `oh-my-claudecode:analyst` | sonnet | 요구사항 분석, acceptanceCriteria 검증 |
+| **Winter** | `oh-my-claudecode:critic` | opus | 기획 비판: 누락 엣지케이스, 과도한 복잡성 지적 |
+
+사전 단계: `oh-my-claudecode:explore` (haiku) — 코드베이스 탐색 후 architect에게 컨텍스트 제공
+
+### ② 개발팀 [IVE] — Stage B 활성화 (최대 6명, TeamCreate)
+
+| 팀원 | 에이전트 (subagent_type) | 모델 | 역할 |
+|------|------------------------|------|------|
+| **Yujin** | `oh-my-claudecode:executor` | sonnet | 백엔드/엔진 #1: `engine/src/` |
+| **Wonyoung** | `oh-my-claudecode:test-engineer` | sonnet | 테스트: `tests/` + pytest |
+| **Rei** | `oh-my-claudecode:designer` | sonnet | 프론트/UI: `dashboard/src/` (해당 시) |
+| **Gaeul** | `oh-my-claudecode:executor` | sonnet | 병렬 백엔드 #2 (필요 시) |
+| **Leeseo** | `oh-my-claudecode:executor` | sonnet | 병렬 백엔드 #3 (대규모 시) |
+| **Liz** | `oh-my-claudecode:executor` | sonnet | 병렬 백엔드 #4 (최대 병렬 시) |
+
+파일 소유권: Yujin/Gaeul/Leeseo/Liz=`engine/src/`, Rei=`dashboard/src/`, Wonyoung=`tests/`
+
+### ③ 검증팀 [BLACKPINK] — Stage C 활성화 (4명)
+
+| 팀원 | 에이전트 (subagent_type) | 모델 | 역할 |
+|------|------------------------|------|------|
+| **Jennie** | `oh-my-claudecode:code-reviewer` | opus | 종합 코드리뷰, API 계약, REVIEW.md 작성 |
+| **Lisa** | `oh-my-claudecode:critic` | opus | 설계 비판, PLAN.md 대비 검증 |
+| **Rose** | `oh-my-claudecode:quality-reviewer` | sonnet | 품질: 로직결함, 안티패턴, SOLID |
+| **Jisoo** | `oh-my-claudecode:security-reviewer` | sonnet | 보안: JWT/API키/OWASP (금융 필수) |
+
+### ④ 테스트팀 [NewJeans] — Stage D 활성화 (5명)
+
+| 팀원 | 에이전트 (subagent_type) | 모델 | 역할 |
+|------|------------------------|------|------|
+| **Minji** | `shadow-tester` (커스텀) | sonnet | Shadow 10min+ 실행, PnL/crash 보고 |
+| **Hanni** | `oh-my-claudecode:qa-tester` | sonnet | QA: CLI/서비스 런타임, 엣지케이스 |
+| **Danielle** | `oh-my-claudecode:scientist` | sonnet | 데이터 모니터링: PnL/WR/DD 분석 |
+| **Haerin** | `browser-verifier` (커스텀) | haiku | 대시보드: Chrome 렌더링/API/WS (해당 시) |
+| **Hyein** | `oh-my-claudecode:debugger` | sonnet | 에스컬레이션: crash 루트코즈 (crash 시만) |
+
+### ⑤ 정합성팀 [LE SSERAFIM] — Stage E 활성화 (4명)
+
+| 팀원 | 에이전트 (subagent_type) | 모델 | 역할 |
+|------|------------------------|------|------|
+| **Karina** | `oh-my-claudecode:architect` | opus | Exit Gate: 정합성 검사 (AESPA 겸임) |
+| **Sakura** | `ssot-keeper` (커스텀) | haiku | SSOT.md + prd.json 업데이트 |
+| **Chaewon** | `oh-my-claudecode:verifier` | sonnet | 최종 산출물 증거 확인 |
+| **Kazuha** | `oh-my-claudecode:git-master` | sonnet | git add + commit + push |
+
+### ⑥ 퀀트팀 [ITZY] — Stage A(QUANT GATE) + Stage D(수식검증) 활성화 (5명)
+
+| 팀원 | 에이전트 (subagent_type) | 모델 | 역할 |
+|------|------------------------|------|------|
+| **Yeji** | `quant-validator` (커스텀) | opus | 수학 검증: 슬리피지/마찰력/수익성, SSOT §4 |
+| **Ryujin** | `oh-my-claudecode:scientist` | sonnet | 백테스트: 파라미터 민감도, 통계 유의성 |
+| **Lia** | `ml-pipeline` (커스텀) | sonnet | ML: HMM 레짐, XGBoost, ONNX 추론 |
+| **Chaeryeong** | `dex-specialist` (커스텀) | sonnet | DEX: 가스비, Uniswap V3, CEX-DEX |
+| **Yuna** | `oh-my-claudecode:analyst` | sonnet | 파라미터 분석, 수익 시뮬레이션 |
+
+### ⑦ Fix 루프 전용 — 에스컬레이션 L1+ 시 활성화
+
+| 팀원 | 에이전트 (subagent_type) | 모델 | 역할 |
+|------|------------------------|------|------|
+| *Joy* | `oh-my-claudecode:debugger` | sonnet | 루트코즈 분석, 회귀 격리 |
+| *Irene* | `oh-my-claudecode:build-fixer` | sonnet | 빌드/타입에러 최소 변경 수정 |
+| *Wendy* | `oh-my-claudecode:code-simplifier` | opus | 리팩토링 필요 시 코드 단순화 |
+
+**팀 규칙:**
+- Karina는 AESPA(①) + LE SSERAFIM(⑤) 양쪽 — Entry/Exit Gate 책임
+- ITZY(⑥)는 Stage A + Stage D 양쪽 활성화
+- Stage B만 TeamCreate (협업 필요), 나머지 Agent() (독립 작업)
+- 병렬 필요 시 같은 역할 추가 스폰 가능 (IVE 최대 6명)
+- 모델 라우팅: opus=아키텍처/심층분석, sonnet=구현/표준, haiku=탐색/단순
+
+---
+
+## 4. 완료 기준
+
+| 항목 | 조건 | Stage |
+|------|------|-------|
+| Entry Gate | SSOT/prd.json/CLAUDE.md 정합성 PASS | A |
+| PLAN.md | `docs/planning/Phase-X_PLAN.md` 존재 | A |
+| QUANT GATE | 전략/수식 US 시 PASS | A |
+| pytest | 0 failures | B |
+| 코드리뷰 | CRITICAL/HIGH 0건 | C |
+| 보안리뷰 | CRITICAL 0건 | C |
+| REVIEW.md | `docs/review/Phase-X_REVIEW.md` 존재 | C |
+| Shadow 10min+ | PnL > 0, crash = 0, 10분 이상 | D |
+| Docker | 전 컨테이너 healthy | D |
+| Exit Gate | 정합성 재검사 PASS | E |
+| SSOT.md | 해당 섹션 업데이트됨 | E |
+| prd.json | `passes: true` | E |
+| Git | commit + push 완료 | E |
+| 텔레그램 | 사장님 알림 전송 | E |
+| **Phase D/H 추가** | Chrome 렌더링 + API 200 + WebSocket + 모바일 반응형 | C+D |
 
 > `npm run build` 성공만으로 Phase D/H 완료 선언 금지. Chrome 실제 렌더링 필수.
-
-## 4. 다음 US 전환
-
-완료 기준 **전부 충족** 후 자동 전환. 미충족 시 fix 루프 (최대 5회 → 사용자 보고).
+> Shadow 10분 미만 실행으로 완료 선언 금지. 실제 10분+ 무중단 필수.
 
 ## 4.5 에스컬레이션
 
@@ -178,11 +438,12 @@ Agent(subagent_type="quant-validator", name="winter",
 |-------|------|------|
 | L0 | 단순 버그 | 팀 내 즉시 수정 |
 | L1 | fix 루프 3회 | 기존 방식 |
-| L2 | 3회 초과/구조적 문제 | Phase A 복귀 → 새 PLAN.md |
-| L3 | SSOT↔PRD↔코드 모순 | SSOT→PRD 수정 → Phase A 재기획 |
+| L2 | 3회 초과/구조적 문제 | Stage A 복귀 → 새 PLAN.md |
+| L3 | SSOT↔PRD↔코드 모순 | SSOT→PRD 수정 → Stage A 재기획 |
 | L4 | Phase 범위 초과 | 새 US → prd.json 추가 |
+| **L5** | **동일 Phase 3회 이상 실패** | **텔레그램 알림 → 사장님 대기** |
 
-L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀.
+L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승인 필수.**
 
 ## 5. 인프라 규칙
 
@@ -192,38 +453,137 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀.
 
 ## 6. 컨텍스트 관리
 
-**Phase A→B→C 연속 실행.** Phase 간 `/clear` 없음. `/compact` 절대 금지 (GitHub #3274, #19567, #18482).
+**Stage A→B→C 연속 실행 → 세션 초기화 → Stage D→E 연속 실행.**
+`/compact` 절대 금지 (GitHub #3274, #19567, #18482).
 
 | 시점 | 동작 |
 |------|------|
-| Phase A 완료 | PLAN.md + checkpoint → 즉시 Phase B TeamCreate |
-| Phase B 완료 | pytest PASS + TeamDelete + checkpoint → 즉시 Phase C |
-| Phase C 완료 | SSOT/prd.json/git push + checkpoint → 즉시 다음 US |
+| Stage A 완료 | PLAN.md + checkpoint → 즉시 Stage B TeamCreate |
+| Stage B 완료 | pytest PASS + TeamDelete + checkpoint → 즉시 Stage C |
+| Stage C 완료 | 코드리뷰 + git commit + handoff → **세션 초기화** |
+| Stage D 시작 | handoff 읽기 → fresh context에서 Shadow |
+| Stage D 완료 | Shadow PASS + checkpoint → 즉시 Stage E |
+| Stage E 완료 | SSOT/prd.json/git push + 텔레그램 → **사장님 승인 대기** |
 
 **체크포인트**: `.omc/state/leviathan-progress.json` — 세션 복구 전용.
 세션 크래시/수동 `/clear` 시 → `/leviathan` 재호출 → progress 파일로 재개.
 
-## 7. Phase F 최종 검수
+**Handoff 문서**: `.omc/handoffs/Stage-{X}-handoff.md` — Stage 간 컨텍스트 전달용.
 
-> **진입 가드**: Phase G/H/I/J/J-EXT/K/L/M 전부 `passes:true` 필수. 하나라도 미완료 시 Phase F 진입 금지.
+**컨텍스트 60% 이상 시:**
+1. 현재 진행 중인 Stage 완료까지 마무리
+2. `/clear` 시도 → 성공 시 handoff 문서로 재개
+3. `/clear` 불가능한 경우에만 → WORKFLOW_TELEGRAM으로 사장님 알림
+4. **`/compact` 절대 금지** — 결과 소실 위험
 
-- **검사지**: `docs/checklists/phase-f-final-audit.md` (12개 카테고리, 178항목)
-- **5팀 분담**: 기획(문서/운영) + 개발(엔진/UI) + 퀀트(전략/시뮬레이션) + 테스트(거래소/성능/인프라) + 검증(리스크/모니터링)
-- **게이트**: 전 항목 PASS 필수. 1건 FAIL → Live 전환(US-056) 금지
-- **Progressive Shadow**: US-054 (1H→2H→6H→12H→24H→72H) 전 단계 통과
-- **LiveGate**: US-055 6-check AND gate 전체 PASS
+## 7. TF (Task Force) — Semi-Final + Final
 
-## 8. 시작 및 자동 루프
+> **진입 가드**: Phase G/H/I/J-EXT/K/L/M 전부 `passes:true` 필수. 하나라도 미완료 시 TF 소집 금지.
+> TF는 기존 팀원을 TF 전용 역할로 재소집(리스폰). 개발 세션과 **완전 분리** (fresh context).
+
+### TF 팀 [TWICE] (9명)
+
+| TF 역할 | 팀원 | 에이전트 (subagent_type) | 모델 | 역할 상세 |
+|---------|------|------------------------|------|----------|
+| TF 리더 | Nayeon | `oh-my-claudecode:architect` | opus | 전체 체크리스트 최종 승인, FIRE 목표 달성 판정 |
+| 메인 아키텍트 | Karina | `oh-my-claudecode:architect` | opus | 체크리스트 초안, 코드 정합성 대조, 합동 점검 주관 |
+| 엔진 전문가 | Jeongyeon | `oh-my-claudecode:deep-executor` | opus | 엔진 무결성 검증, 전략 로직 코드리뷰 |
+| 인프라 전문가 | Momo | `oh-my-claudecode:qa-tester` | sonnet | Docker/DB/Redis/Nginx 검증, 무중단 확인 |
+| 데이터 전문가 | Sana | `oh-my-claudecode:scientist` | sonnet | PnL/DD/WR 통계 검증, 백테스트 분석 |
+| UI/UX 전문가 | Mina | `oh-my-claudecode:designer` | sonnet | 대시보드 4페이지+로그인, 모바일 반응형 |
+| 퀀트 전문가 | Dahyun | `quant-validator` (커스텀) | opus | 전 전략 수식/파라미터/이중계산 최종 검증 |
+| QA 감사관 #1 | Chaeyoung | `oh-my-claudecode:critic` | opus | 악마의 변호인: 허점/의문점, 압박 면접 |
+| QA 감사관 #2 | Tzuyu | `oh-my-claudecode:verifier` | sonnet | 체크리스트 증거 수집, PASS/FAIL 근거 문서화 |
+
+클론 전문가: 병렬 검증 필요 시 Jeongyeon2, Momo2 등 추가 스폰 가능.
+
+### TF Semi-Final
+
+```
+[단계 0] Smoke Test Gate
+- 전체 pytest PASS
+- Docker 전 컨테이너 healthy
+- 엔진 기동 확인
+- 실패 시 TF 소집하지 않고 해당 Phase로 회귀
+
+[단계 1] 정합성 확인
+- Karina: SSOT.md + prd.json 전체 정합성 확인
+- 누락 US/Phase 발견 시 새 Phase/US 생성
+
+[단계 2] 체크리스트 수립 (The Blueprint)
+- Karina + 도메인 전문가 협의 → '완성 기준' 수립
+- 분야별 확인 체크리스트 문서 생성
+- Nayeon(TF 리더)이 상용화 기준 부합 여부 최종 승인
+
+[단계 3] 교차 검증 (The Deep Dive)
+- 전문가별 체크리스트 기반 자기 분야 검증 (병렬)
+- 타 분야 협업 필요 시 클론 전문가 스폰
+- Karina 합동 점검: 실전적 질의응답
+
+[단계 4] 최종 확인 + 회귀 (The Feedback Loop)
+- Karina → Nayeon 보고
+- Chaeyoung/Tzuyu QA 감사단 압박 면접
+- 미비점 → 새 US/Phase로 로드맵 추가 → 개발 회귀
+- 전 조건 충족 → Final 진출
+```
+
+### TF Final
+
+```
+[전제]: Semi-Final 통과 상태에서만 진행
+
+[단계 1] 전체 시스템 체크리스트
+- Semi-Final과 동일 전문가 리스폰
+- 영역별 + 전체 프로그램 응집도/결합도 체크리스트
+- 모든 기능이 main에서 동시 동작 확인
+
+[단계 2] Progressive Shadow (72H)
+- 1H → 6H → 24H → 72H 점진적 실행
+- 각 단계 통과 후 다음 진행
+- 실패 시 Semi-Final로 회귀
+
+[단계 3] Master Inspection
+- 전체 시스템의 '결' 맞춤
+- UI/UX 프레임 점검
+- 자동차 스크래치까지 잡아내는 수준
+
+[단계 4] Live Kick-Off
+- Nayeon(TF 리더) 최종 서명
+- 사장님 승인
+- 실 자본 투입 라이브 모드 전환
+```
+
+---
+
+## 8. 텔레그램 워크플로우 알림
+
+**환경변수** (기존 거래 알림과 완전 분리):
+```
+WORKFLOW_TELEGRAM_BOT_TOKEN=<사장님이 생성한 봇 토큰>
+WORKFLOW_TELEGRAM_CHAT_ID=<채팅 ID>
+```
+
+**알림 조건:**
+1. **Phase 종료** (Stage E 완료): 결과 요약 → 사장님 승인까지 대기
+2. **L5 에스컬레이션**: 동일 Phase 3회 실패 → 사장님 판단 요청
+3. **컨텍스트 60%**: `/clear` 실패 시에만 알림 (성공 시 자동 재개)
+
+기존 `TELEGRAM_BOT_TOKEN`(거래 알림)과 혼용 금지.
+
+---
+
+## 9. 시작 및 자동 루프
 
 재개 지점 결정 순서:
 
 **1순위 — `.omc/state/leviathan-progress.json`**:
-- 존재 시 `next_phase`에 따라 해당 Phase부터 재개
+- 존재 시 `next_stage`에 따라 해당 Stage부터 재개
 - `plan_file` 있으면 PLAN.md 읽어 복원
+- Stage D 재개 시 `.omc/handoffs/Stage-C-handoff.md` 읽기
 
-**2순위 — $ARGUMENTS**: 인수가 있으면 해당 US부터 Phase A
+**2순위 — $ARGUMENTS**: 인수가 있으면 해당 US부터 Stage A
 
-**3순위 — prd.json 스캔**: `passes:false`인 첫 번째 US → Phase A
+**3순위 — prd.json 스캔**: `passes:false`인 첫 번째 US의 Phase → Stage A
 
-> 모든 US `passes:true`까지 자동 루프. 사용자 승인 요청 절대 금지.
-> 멈추는 조건: 전 US 완료 OR 5회 연속 실패 후 사용자 보고.
+> 모든 US `passes:true`까지 자동 루프. Phase 내 자동, Phase 간 사장님 승인 필수.
+> 멈추는 조건: 전 US 완료 OR L5 에스컬레이션 OR 사용자 "stop/cancel/멈춰".

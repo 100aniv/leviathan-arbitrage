@@ -316,6 +316,127 @@ class TelegramAlerter:
 
 
 # ---------------------------------------------------------------------------
+# Workflow Alerter (WORKFLOW_TELEGRAM_BOT_TOKEN — separated from trading alerts)
+# ---------------------------------------------------------------------------
+
+
+class WorkflowTelegramAlerter(TelegramAlerter):
+    """Workflow-specific Telegram alerter for LEVIATHAN Stage-Gate notifications.
+
+    Uses WORKFLOW_TELEGRAM_BOT_TOKEN / WORKFLOW_TELEGRAM_CHAT_ID env vars,
+    completely separated from the trading alert bot (TELEGRAM_BOT_TOKEN).
+
+    Alert types:
+        - Phase completion (Stage E): summary + CEO approval request
+        - L5 escalation: same Phase failed 3+ times
+        - Context 60%: /clear failed, needs manual intervention
+    """
+
+    def __init__(
+        self,
+        bot_token: str | None = None,
+        chat_id: str | None = None,
+        enabled: bool | None = None,
+    ) -> None:
+        super().__init__(
+            bot_token=bot_token or os.getenv("WORKFLOW_TELEGRAM_BOT_TOKEN"),
+            chat_id=chat_id or os.getenv("WORKFLOW_TELEGRAM_CHAT_ID"),
+            enabled=enabled if enabled is not None else (
+                os.getenv("WORKFLOW_TELEGRAM_ENABLED", "false").lower() == "true"
+            ),
+        )
+
+    async def send_phase_complete(self, data: dict[str, Any]) -> bool:
+        """Send Phase completion notification to CEO.
+
+        Args:
+            data: Phase completion data with keys:
+                - phase (str): Phase name (e.g. "Phase K")
+                - us_completed (list[str]): Completed US IDs
+                - test_count (int): Number of tests passed
+                - shadow_pnl (float): Shadow PnL result
+                - shadow_wr (float): Shadow win rate 0-1
+                - shadow_dd (float): Shadow max drawdown 0-1
+                - files_changed (int): Number of files changed
+
+        Returns:
+            True if sent successfully.
+        """
+        wr = data.get("shadow_wr")
+        wr_str = f"{float(wr) * 100:.1f}%" if wr is not None else "N/A"
+
+        dd = data.get("shadow_dd")
+        dd_str = f"{float(dd) * 100:.2f}%" if dd is not None else "N/A"
+
+        pnl = data.get("shadow_pnl")
+        pnl_str = f"${float(pnl):+,.4f}" if pnl is not None else "N/A"
+
+        us_list = data.get("us_completed", [])
+        us_str = ", ".join(us_list[:10])
+        if len(us_list) > 10:
+            us_str += f" ... +{len(us_list) - 10} more"
+
+        lines = [
+            f"<b>PHASE COMPLETE: {data.get('phase', 'Unknown')}</b>",
+            "",
+            f"<b>US:</b> {us_str}",
+            f"<b>Tests:</b> {data.get('test_count', 'N/A')} passed",
+            f"<b>Files changed:</b> {data.get('files_changed', 'N/A')}",
+            "",
+            "<b>Shadow Results:</b>",
+            f"  PnL: {pnl_str}",
+            f"  Win Rate: {wr_str}",
+            f"  Max DD: {dd_str}",
+            "",
+            "<b>Action Required:</b> Reply to approve next Phase.",
+        ]
+        return await self._send("\n".join(lines))
+
+    async def send_escalation(self, phase: str, failures: int, reason: str) -> bool:
+        """Send L5 escalation alert when same Phase fails 3+ times.
+
+        Args:
+            phase: Phase name.
+            failures: Number of consecutive failures.
+            reason: Human-readable failure reason.
+
+        Returns:
+            True if sent successfully.
+        """
+        lines = [
+            "<b>L5 ESCALATION</b>",
+            "",
+            f"<b>Phase:</b> {phase}",
+            f"<b>Consecutive failures:</b> {failures}",
+            f"<b>Reason:</b> {reason}",
+            "",
+            "<b>Action Required:</b> Manual intervention needed.",
+        ]
+        return await self._send("\n".join(lines))
+
+    async def send_context_alert(self, stage: str, handoff_path: str) -> bool:
+        """Send context 60% alert when /clear fails.
+
+        Args:
+            stage: Current Stage (A-E).
+            handoff_path: Path to handoff document.
+
+        Returns:
+            True if sent successfully.
+        """
+        lines = [
+            "<b>CONTEXT LIMIT</b>",
+            "",
+            f"<b>Current Stage:</b> {stage}",
+            f"<b>Handoff:</b> {handoff_path}",
+            "<b>Status:</b> /clear failed, session paused.",
+            "",
+            "<b>Action Required:</b> Start new session with /leviathan.",
+        ]
+        return await self._send("\n".join(lines))
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
@@ -336,3 +457,17 @@ def get_telegram_alerter() -> TelegramAlerter:
         chat_id=os.getenv("TELEGRAM_CHAT_ID"),
         enabled=os.getenv("TELEGRAM_ENABLED", "false").lower() == "true",
     )
+
+
+def get_workflow_alerter() -> WorkflowTelegramAlerter:
+    """Create a WorkflowTelegramAlerter from environment variables.
+
+    Reads:
+        WORKFLOW_TELEGRAM_BOT_TOKEN  — workflow bot token from @BotFather
+        WORKFLOW_TELEGRAM_CHAT_ID    — CEO chat ID
+        WORKFLOW_TELEGRAM_ENABLED    — "true" to enable (default "false")
+
+    Returns:
+        Configured WorkflowTelegramAlerter instance.
+    """
+    return WorkflowTelegramAlerter()

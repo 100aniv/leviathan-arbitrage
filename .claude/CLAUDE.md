@@ -200,17 +200,22 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 3. **완료 기준**: 단위테스트 통과만으로 Phase 완료 선언 금지.
    반드시 Shadow 10분 실행 후 PnL > 0, crash 0건 확인.
 
-## 팀 구조 (5팀 체제)
+## 팀 구조 (7팀 + TF)
 
-| 팀 | 에이전트 | 역할 |
-|----|---------|------|
-| 기획팀 | architect(opus), planner(opus), analyst(opus) | SSOT 읽기, 리서치, 태스크 분해, 우선순위 |
-| 개발팀 | executor(sonnet), deep-executor(opus), build-fixer(sonnet), designer(sonnet) | 구현, 빌드 수정, UI 반영 |
-| 퀀트팀 | scientist(sonnet), analyst(opus), quant-validator | 수학 검증, 백테스트, 파라미터 민감도 |
-| 테스트팀 | test-engineer(sonnet), qa-tester(sonnet), shadow-tester | 단위/통합/Shadow 테스트, E2E |
-| 검증팀 | code-reviewer(opus), security-reviewer(sonnet), critic(opus), ssot-keeper | 코드 리뷰, 보안, SSOT 업데이트 |
+> 팀은 기능별 정의, Stage가 필요한 팀을 호출. Stage B만 TeamCreate, 나머지 Agent() 서브에이전트.
 
-**사이클**: 기획→개발→퀀트→테스트→검증→(gaps→기획 복귀, 없으면 commit+push+SSOT 업데이트)
+| 팀 | Stage | 에이전트 | 역할 |
+|----|-------|---------|------|
+| ① AESPA (기획) | A | Karina(architect/opus), Giselle(planner), NingNing(analyst), Winter(critic/opus) | Entry Gate 정합성, 기획, PLAN.md |
+| ② IVE (개발) | B | Yujin/Gaeul/Leeseo/Liz(executor), Wonyoung(test-engineer), Rei(designer) | TeamCreate 협업, 최대 6명 |
+| ③ BLACKPINK (검증) | C | Jennie(code-reviewer/opus), Lisa(critic/opus), Rose(quality-reviewer), Jisoo(security-reviewer) | 코드리뷰, 품질, 보안 |
+| ④ NewJeans (테스트) | D | Minji(shadow-tester), Hanni(qa-tester), Danielle(scientist), Haerin(browser-verifier), Hyein(debugger) | Shadow 10min+, QA, 모니터링 |
+| ⑤ LE SSERAFIM (정합성) | E | Karina(architect/opus), Sakura(ssot-keeper), Chaewon(verifier), Kazuha(git-master) | Exit Gate, SSOT, git push |
+| ⑥ ITZY (퀀트) | A+D | Yeji(quant-validator/opus), Ryujin(scientist), Lia(ml-pipeline), Chaeryeong(dex-specialist), Yuna(analyst) | 수학 검증, ML, DEX |
+| ⑦ Fix 루프 | L1+ | Joy(debugger), Irene(build-fixer), Wendy(code-simplifier/opus) | 에스컬레이션 시 활성화 |
+| TF TWICE | Semi/Final | Nayeon(TF리더), Karina, Jeongyeon, Momo, Sana, Mina, Dahyun, Chaeyoung, Tzuyu (9명) | 상용화 최종 검증 |
+
+**사이클**: Stage A(기획)→B(개발)→C(검증)→⚡세션초기화→D(Shadow)→E(정합성+사장님승인)→다음Phase
 
 ## 커스텀 에이전트 (.claude/agents/)
 
@@ -232,6 +237,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`
 - **슬리피지**: CEXOrderbookSlippage만 활성 (PowerLaw k=0.0 비활성)
 - **설정**: `engine/.env` (엔진용) + 루트 `.env` (Docker용) — **두 파일 반드시 동기화**
+- **워크플로우 알림**: `WORKFLOW_TELEGRAM_BOT_TOKEN` + `WORKFLOW_TELEGRAM_CHAT_ID` (기존 `TELEGRAM_BOT_TOKEN` 거래 알림과 분리)
 
 ## 자주 틀리는 패턴 (반드시 숙지)
 
@@ -261,11 +267,14 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 실행 워크플로우 (ralph autopilot)
 
-**3-Phase Sequential 연속 실행** (leviathan.md 참조):
-1. **Phase A** (기획): ralplan → PLAN.md → QUANT GATE → checkpoint 저장 → **즉시 Phase B**
-2. **Phase B** (개발): TeamCreate + Step 2.5 통합검증 → pytest PASS → TeamDelete → checkpoint 저장 → **즉시 Phase C**
-3. **Phase C** (검증): Shadow + code-reviewer + critic → SSOT 업데이트 → git push → checkpoint 저장 → **즉시 다음 US**
+**5-Stage Sequential 연속 실행** (leviathan.md 참조):
+1. **Stage A** (기획): Entry Gate 정합성 → ralplan → PLAN.md → QUANT GATE → checkpoint → **즉시 Stage B**
+2. **Stage B** (개발): TeamCreate(IVE) → pytest PASS → TeamDelete → checkpoint → **즉시 Stage C**
+3. **Stage C** (검증): code-reviewer + critic + security-reviewer → git commit → handoff → **⚡세션 초기화**
+4. **Stage D** (Shadow): fresh context → handoff 복원 → Shadow 10min+ → QA → checkpoint → **즉시 Stage E**
+5. **Stage E** (정합성): Exit Gate → SSOT + prd.json → git push → **텔레그램 → 사장님 승인 대기**
 
-**연속 실행 원칙**: Phase A→B→C는 끊김 없는 단일 흐름. Phase 간 `/clear` 없음. `/compact` 절대 금지.
-**체크포인트 복구**: `.omc/state/leviathan-progress.json` — 세션 크래시/수동 `/clear` 시 `/leviathan` 재호출로 자동 재개.
-**에스컬레이션**: L0(팀 내) → L1(fix 루프) → L2(Phase A 재기획) → L3(SSOT 수정) → L4(Phase 재편)
+**세션 관리**: Stage A→B→C 동일 세션 → `omc cancel --force` → Stage D→E fresh context.
+**`/compact` 절대 금지**. 컨텍스트 60% 시 `/clear` 시도 → 실패 시 텔레그램 알림.
+**체크포인트 복구**: `.omc/state/leviathan-progress.json` — 세션 크래시 시 `/leviathan` 재호출로 자동 재개.
+**에스컬레이션**: L0(팀 내) → L1(fix 루프) → L2(Stage A 재기획) → L3(SSOT 수정) → L4(Phase 재편) → **L5(텔레그램→사장님)**
