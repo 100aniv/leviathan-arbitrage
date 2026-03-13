@@ -91,7 +91,9 @@ class RiskGuardian:
         max_volatility_multiple: Decimal = Decimal("2.0"),
         max_rollback_threshold: Decimal = Decimal("0.02"),
         max_net_exposure_per_asset: Decimal = Decimal("0"),
+        max_concurrent_positions: int = 20,
     ) -> None:
+        import os as _os
         self._cb = circuit_breaker
         self._max_position_pct = max_position_pct
         self._max_drawdown_pct = max_drawdown_pct
@@ -102,6 +104,12 @@ class RiskGuardian:
         self._max_rollback_threshold = max_rollback_threshold
         # Amendment 7: 0 = disabled (no correlation check)
         self._max_net_exposure_per_asset = max_net_exposure_per_asset
+        # US-154: max concurrent open positions (HIGH FIX: bounds validation)
+        try:
+            _mcp = int(_os.getenv("MAX_CONCURRENT_POSITIONS", str(max_concurrent_positions)))
+        except (ValueError, TypeError):
+            _mcp = max_concurrent_positions
+        self._max_concurrent_positions: int = max(1, min(_mcp, 1000))
         # US-118: optional correlation monitor — set externally after construction
         self.correlation_monitor: CorrelationMonitor | None = None
 
@@ -292,6 +300,20 @@ class RiskGuardian:
                     )
                     # Don't reject — just log. DynamicSizer handles actual scale-down.
                     break
+
+        # CHECK #10: Max concurrent positions (US-154)
+        if len(portfolio.position_sizes) >= self._max_concurrent_positions:
+            RISK_REJECTIONS_TOTAL.labels(
+                check_number="10", reason="max_concurrent_positions"
+            ).inc()
+            return RiskCheckResult(
+                approved=False,
+                rejected_at_check=10,
+                reason=(
+                    f"Max concurrent positions reached: "
+                    f"{len(portfolio.position_sizes)} >= {self._max_concurrent_positions}"
+                ),
+            )
 
         logger.debug(
             "risk_check_approved",

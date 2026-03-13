@@ -104,6 +104,15 @@ class Engine:
         self._tca_analyzer: Any = None  # US-116
         self._rebalancer: Any = None  # US-120
         self._balance_tracker: Any = None  # US-120
+        # US-129: Position tracking for RiskGuardian PortfolioState
+        self._position_sizes: dict[str, Decimal] = {}   # symbol -> current notional exposure
+        self._peak_equity: Decimal | None = None           # initialized to capital_total on first risk check
+        self._total_pnl: Decimal = Decimal("0")          # cumulative realized PnL
+        self._exchange_health: dict[str, Decimal] = {}   # exchange_id -> health score (0-1)
+        # US-131: RegimeDetector reference (set during _init_signal_pipeline)
+        self._regime_detector: Any = None
+        # US-133: AtomicOrderExecutor for live IOC execution
+        self._atomic_order_executor: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -158,6 +167,12 @@ class Engine:
                 await self._strategy_manager.stop()
             except Exception as exc:
                 logger.warning("StrategyManager stop error: %s", exc)
+
+        # US-155: Cancel open orders in live mode before disconnecting
+        if (self._settings is not None
+                and self._settings.execution_mode.value == "live"
+                and self._exchanges):
+            await self._cancel_open_orders()
 
         # Disconnect exchanges
         for eid, adapter in self._exchanges.items():
@@ -484,16 +499,47 @@ class Engine:
             deviation_pct=float(os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10")),
             blacklist_ttl_s=float(os.getenv("STALE_BLACKLIST_TTL_S", "300")),
         )
+        # US-131: RegimeDetector — try HMM first, fall back to threshold-based
+        self._regime_detector = None
+        try:
+            from src.tuning.regime_detector import HMMRegimeDetector
+            self._regime_detector = HMMRegimeDetector()
+            logger.info("HMMRegimeDetector initialized")
+        except (ImportError, Exception) as exc:
+            logger.info("HMMRegimeDetector unavailable (%s), trying threshold-based", exc)
+            try:
+                from src.tuning.regime_detector import RegimeDetector
+                self._regime_detector = RegimeDetector()
+                logger.info("RegimeDetector (threshold-based) initialized")
+            except Exception as exc2:
+                logger.warning("RegimeDetector init failed (non-fatal): %s", exc2)
+
+        # US-131: ONNXSignalScorer — graceful fallback if onnxruntime not installed
+        ml_scorer = None
+        try:
+            from src.ml.onnx_runtime import ONNXSignalScorer
+            ml_scorer = ONNXSignalScorer()
+            logger.info("ONNXSignalScorer initialized")
+        except ImportError:
+            logger.info("ONNXSignalScorer not available (onnxruntime not installed)")
+        except Exception as exc:
+            logger.warning("ONNXSignalScorer init failed (non-fatal): %s", exc)
+
         self._signal_generator = SignalGenerator(
             price_hub=self._price_hub,
             cost_calculator=self._cost_calculator,
             config=signal_config,
             event_bus=self._event_bus,
             stale_detector=stale_detector,
+            regime_detector=self._regime_detector,
+            ml_scorer=ml_scorer,
         )
         logger.info(
-            "Signal pipeline initialized min_edge_bps=%s max_spread_pct=%s stale_deviation_pct=%s",
+            "Signal pipeline initialized min_edge_bps=%s max_spread_pct=%s stale_deviation_pct=%s"
+            " regime_detector=%s ml_scorer=%s",
             min_edge_bps, max_spread_pct, os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10"),
+            type(self._regime_detector).__name__ if self._regime_detector else "None",
+            type(ml_scorer).__name__ if ml_scorer else "None",
         )
 
     # ------------------------------------------------------------------
@@ -739,6 +785,26 @@ class Engine:
         except Exception as exc:
             logger.warning("DynamicSizer init failed (non-fatal): %s", exc)
 
+        # US-130: Wire DynamicSizer to SignalGenerator for regime-adaptive position sizing
+        if self._dynamic_sizer is not None and self._signal_generator is not None:
+            self._signal_generator._dynamic_sizer = self._dynamic_sizer
+            logger.info("DynamicSizer wired to SignalGenerator")
+
+        # US-133: AtomicOrderExecutor (IOC) — initialize for live execution mode
+        execution_mode_env = os.getenv("EXECUTION_MODE", "paper").lower()
+        if execution_mode_env == "live":
+            try:
+                from src.execution.atomic import AtomicOrderExecutor
+                self._atomic_order_executor = AtomicOrderExecutor(timeout_ms=1000)
+                logger.info("AtomicOrderExecutor (IOC+market fallback) initialized for live mode")
+            except Exception as exc:
+                logger.warning("AtomicOrderExecutor init failed (non-fatal): %s", exc)
+        else:
+            logger.info(
+                "EXECUTION_MODE=%s — paper/shadow execution active (AtomicOrderExecutor disabled)",
+                execution_mode_env,
+            )
+
         # US-116: TCAAnalyzer
         try:
             from src.analysis.tca import TCAAnalyzer
@@ -767,16 +833,41 @@ class Engine:
             logger.warning("InventoryRebalancer init failed (non-fatal): %s", exc)
 
     def _build_risk_check_fn(self):
-        """Create a risk check callable for the trade consumer."""
+        """Create a risk check callable for the trade consumer (US-129: all 8 fields populated)."""
         from src.risk.guardian import PortfolioState, TradeProposal
 
         capital = self._settings.capital.initial_capital if self._settings else Decimal("70")
 
         def risk_check(trade_request) -> tuple[bool, str]:
+            capital_total = capital * max(len(self._exchanges), 1)
+
+            # US-129: used_capital from tracked position sizes
+            used_capital = sum(self._position_sizes.values()) if self._position_sizes else Decimal("0")
+
+            # US-129: drawdown from peak equity tracking (CRITICAL FIX: init to capital_total)
+            if self._peak_equity is None:
+                self._peak_equity = capital_total
+            current_equity = capital_total + self._total_pnl
+            current_drawdown_pct = max(
+                Decimal("0"),
+                (self._peak_equity - current_equity) / self._peak_equity,
+            ) if self._peak_equity > Decimal("0") else Decimal("0")
+
+            # US-129: exchange health scores — default 1.0 (healthy)
+            exchange_health = {
+                eid: self._exchange_health.get(eid, Decimal("1.0"))
+                for eid in self._exchanges.keys()
+            }
+
             portfolio = PortfolioState(
-                total_capital=capital * len(self._exchanges),
-                used_capital=Decimal("0"),
-                current_drawdown_pct=Decimal("0"),
+                total_capital=capital_total,
+                used_capital=used_capital,
+                current_drawdown_pct=current_drawdown_pct,
+                total_exposure=used_capital,
+                position_sizes=dict(self._position_sizes),
+                exchange_health_scores=exchange_health,
+                volatility_1min={},   # populated when live vol data available
+                volatility_24h={},    # populated when live vol data available
             )
             # Check each leg
             for leg in trade_request.legs:
@@ -804,6 +895,55 @@ class Engine:
             trade_request.strategy_id,
             execution_result.status.value,
         )
+        # US-129: Update position tracking and peak equity for RiskGuardian PortfolioState
+        if getattr(execution_result.status, "value", str(execution_result.status)) == "success":
+            try:
+                for leg in getattr(execution_result, "legs", []):
+                    trade = getattr(leg, "trade", None)
+                    order = getattr(leg, "order", None)
+                    if trade is not None and order is not None:
+                        symbol = order.symbol
+                        pos_value = trade.price * trade.amount
+                        side = getattr(order.side, "value", str(order.side)).upper()
+                        if side == "BUY":
+                            self._position_sizes[symbol] = (
+                                self._position_sizes.get(symbol, Decimal("0")) + pos_value
+                            )
+                        else:
+                            current = self._position_sizes.get(symbol, Decimal("0"))
+                            updated = max(Decimal("0"), current - pos_value)
+                            if updated == Decimal("0"):
+                                self._position_sizes.pop(symbol, None)
+                            else:
+                                self._position_sizes[symbol] = updated
+                # Update peak equity
+                capital = self._settings.capital.initial_capital if self._settings else Decimal("70")
+                capital_total = capital * max(len(self._exchanges), 1)
+                # Compute actual PnL from fills (HIGH FIX: don't use expected_profit)
+                pnl_raw = getattr(execution_result, "pnl", None)
+                if pnl_raw is None:
+                    # Estimate from fill prices: sell proceeds - buy costs
+                    pnl_estimate = Decimal("0")
+                    for leg in getattr(execution_result, "legs", []):
+                        t = getattr(leg, "trade", None)
+                        o = getattr(leg, "order", None)
+                        if t and o:
+                            val = t.price * t.amount
+                            s = getattr(o.side, "value", str(o.side)).upper()
+                            pnl_estimate += val if s == "SELL" else -val
+                    pnl_raw = pnl_estimate
+                self._total_pnl += Decimal(str(pnl_raw))
+                current_equity = capital_total + self._total_pnl
+                if self._peak_equity is not None and current_equity > self._peak_equity:
+                    self._peak_equity = current_equity
+            except Exception as exc:
+                logger.error("position_tracking_failed strategy=%s error=%s", trade_request.strategy_id, exc)
+                self._position_tracking_errors = getattr(self, "_position_tracking_errors", 0) + 1
+                if self._position_tracking_errors > 5 and self._telegram:
+                    asyncio.ensure_future(self._telegram.send_alert(
+                        f"Position tracking persistently failing ({self._position_tracking_errors}x) — risk data unreliable",
+                        level="CRITICAL",
+                    ))
         # US-115: Feed slippage data to feedback loop
         if self._slippage_feedback is not None and hasattr(execution_result, 'legs'):
             try:
@@ -812,7 +952,7 @@ class Engine:
                         self._slippage_feedback.record_fill(
                             expected_price=leg.expected_price,
                             actual_price=leg.fill_price,
-                            side=leg.side if hasattr(leg, 'side') else "BUY",
+                            side=leg.order.side.value.upper() if leg.order and hasattr(leg.order, 'side') else "BUY",
                         )
             except Exception:
                 pass  # Non-critical: feedback tracking failure
@@ -908,6 +1048,37 @@ class Engine:
             except Exception as exc:
                 logger.warning("rebalancer_loop error: %s", exc)
                 await asyncio.sleep(60)
+
+    async def _cancel_open_orders(self) -> None:
+        """US-155: Cancel all open/pending orders before shutdown (live mode only)."""
+        logger.info("Cancelling open orders before shutdown...")
+        total_cancelled = 0
+        for eid, adapter in self._exchanges.items():
+            if not hasattr(adapter, "get_open_orders"):
+                logger.debug("Exchange %s does not support get_open_orders — skipping", eid)
+                continue
+            try:
+                pending = await adapter.get_open_orders()
+            except Exception as exc:
+                logger.warning("Failed to fetch open orders for %s: %s", eid, exc)
+                continue
+            for order in pending:
+                try:
+                    symbol = getattr(order, "symbol", None)
+                    await adapter.cancel_order(order.order_id, symbol=symbol)
+                    logger.info("Cancelled order %s on %s (symbol=%s)", order.order_id, eid, symbol)
+                    total_cancelled += 1
+                except Exception as exc:
+                    logger.error("Failed to cancel order %s on %s: %s", order.order_id, eid, exc)
+                    if self._telegram:
+                        try:
+                            await self._telegram.send_alert(
+                                f"⚠️ 주문 취소 실패: {eid} {order.order_id} — {exc}",
+                                level="CRITICAL",
+                            )
+                        except Exception:
+                            pass
+        logger.info("Open order cancellation complete: %d orders cancelled", total_cancelled)
 
     def _record_alert(self, alert_type: str, severity: str, message: str, metadata: dict | None = None) -> None:
         """Record a system alert for the dashboard API."""
@@ -1497,9 +1668,10 @@ class Engine:
             await asyncio.sleep(self.HEALTH_CHECK_INTERVAL)
 
     async def _run_health_check(self) -> None:
-        # Log exchange health scores
+        # Log exchange health scores and update _exchange_health (CRITICAL FIX: was never populated)
         for eid, adapter in self._exchanges.items():
             score = adapter.health_score
+            self._exchange_health[eid] = Decimal(str(score))
             if score < 0.9:
                 logger.warning("Exchange %s health_score=%.2f", eid, score)
 

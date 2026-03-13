@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from src.infra.telegram import TelegramAlerter, get_telegram_alerter
+from src.infra.telegram import TelegramAlerter, WorkflowTelegramAlerter, get_telegram_alerter
 
 
 # ---------------------------------------------------------------------------
@@ -478,3 +478,69 @@ class TestCheckRateLimit:
         # Now window has 20 → next should be blocked
         result = enabled_alerter._check_rate_limit()
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# WorkflowTelegramAlerter — context warning & clear success
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def workflow_alerter() -> WorkflowTelegramAlerter:
+    """Enabled workflow alerter with fake credentials."""
+    return WorkflowTelegramAlerter(
+        bot_token="bot123:WORKFLOW",
+        chat_id="-100CEO",
+        enabled=True,
+    )
+
+
+class TestWorkflowContextWarning:
+    async def test_context_warning_contains_header(self, workflow_alerter):
+        captured: list[str] = []
+
+        async def fake_send(text: str, parse_mode: str = "HTML") -> bool:
+            captured.append(text)
+            return True
+
+        workflow_alerter._send = fake_send  # type: ignore[method-assign]
+        await workflow_alerter.send_context_warning(stage="B", context_pct=62)
+        assert "CONTEXT WARNING" in captured[0]
+
+    async def test_context_warning_contains_stage_and_pct(self, workflow_alerter):
+        captured: list[str] = []
+
+        async def fake_send(text: str, parse_mode: str = "HTML") -> bool:
+            captured.append(text)
+            return True
+
+        workflow_alerter._send = fake_send  # type: ignore[method-assign]
+        await workflow_alerter.send_context_warning(stage="C", context_pct=75)
+        assert "Stage C" in captured[0] or "C" in captured[0]
+        assert "75%" in captured[0]
+
+
+class TestWorkflowContextClearSuccess:
+    async def test_clear_success_contains_header(self, workflow_alerter):
+        captured: list[str] = []
+
+        async def fake_send(text: str, parse_mode: str = "HTML") -> bool:
+            captured.append(text)
+            return True
+
+        workflow_alerter._send = fake_send  # type: ignore[method-assign]
+        await workflow_alerter.send_context_clear_success(stage="B", next_stage="C")
+        assert "CONTEXT CLEARED" in captured[0]
+
+    async def test_clear_success_contains_resume_info(self, workflow_alerter):
+        captured: list[str] = []
+
+        async def fake_send(text: str, parse_mode: str = "HTML") -> bool:
+            captured.append(text)
+            return True
+
+        workflow_alerter._send = fake_send  # type: ignore[method-assign]
+        await workflow_alerter.send_context_clear_success(stage="D", next_stage="E")
+        assert "D" in captured[0]
+        assert "E" in captured[0]
+        assert "progress.json" in captured[0]

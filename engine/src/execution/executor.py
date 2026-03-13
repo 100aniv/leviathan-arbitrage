@@ -44,12 +44,19 @@ class LegResult:
     order: Order
     trade: Trade | None = None
     error: str | None = None
+    expected_price: Decimal | None = None   # US-132: price from order request
+    fill_price: Decimal | None = None        # US-132: actual simulated/live fill price
 
     @property
     def filled_amount(self) -> Decimal:
         if self.trade is None:
             return Decimal("0")
         return self.trade.amount
+
+    @property
+    def filled_ratio(self) -> float:
+        """Fraction of requested order filled (0.0–1.0). Used by TCA (US-134)."""
+        return float(self.fill_ratio(self.order.amount))
 
     def fill_ratio(self, requested: Decimal) -> Decimal:
         if requested <= 0:
@@ -266,10 +273,18 @@ class AtomicExecutor:
             leg1_err = results[0] if isinstance(results[0], BaseException) else None
             leg2_err = results[1] if isinstance(results[1], BaseException) else None
 
-            leg1_result = LegResult(order=leg1_order, trade=leg1_trade,
-                                    error=str(leg1_err) if leg1_err else None)
-            leg2_result = LegResult(order=leg2_order, trade=leg2_trade,
-                                    error=str(leg2_err) if leg2_err else None)
+            leg1_result = LegResult(
+                order=leg1_order, trade=leg1_trade,
+                error=str(leg1_err) if leg1_err else None,
+                expected_price=leg1_order.price,
+                fill_price=leg1_trade.price if leg1_trade else None,
+            )
+            leg2_result = LegResult(
+                order=leg2_order, trade=leg2_trade,
+                error=str(leg2_err) if leg2_err else None,
+                expected_price=leg2_order.price,
+                fill_price=leg2_trade.price if leg2_trade else None,
+            )
 
             # Check for failures
             has_failure = leg1_err is not None or leg2_err is not None
@@ -407,7 +422,11 @@ class AtomicExecutor:
                         strategy_id=strategy_id,
                     )
 
-                leg_result = LegResult(order=order, trade=trade)
+                leg_result = LegResult(
+                    order=order, trade=trade,
+                    expected_price=order.price,
+                    fill_price=trade.price if trade else None,
+                )
                 completed.append(leg_result)
 
                 fill_ratio = leg_result.fill_ratio(order.amount)
@@ -542,7 +561,11 @@ class AtomicExecutor:
             # Step 8: Submit Leg 1 on Exchange A
             try:
                 leg1_trade = await self._place_with_timeout(adapter_a, leg1_order)
-                leg1_result = LegResult(order=leg1_order, trade=leg1_trade)
+                leg1_result = LegResult(
+                    order=leg1_order, trade=leg1_trade,
+                    expected_price=leg1_order.price,
+                    fill_price=leg1_trade.price if leg1_trade else None,
+                )
             except asyncio.TimeoutError:
                 logger.error("leg1_timeout exchange=%s strategy=%s", ex_a_id, strategy_id)
                 await self._rollback_order(ex_a_id, leg1_order)
@@ -605,7 +628,11 @@ class AtomicExecutor:
             # Step 10: Submit Leg 2 on Exchange B
             try:
                 leg2_trade = await self._place_with_timeout(adapter_b, adjusted_leg2)
-                leg2_result = LegResult(order=adjusted_leg2, trade=leg2_trade)
+                leg2_result = LegResult(
+                    order=adjusted_leg2, trade=leg2_trade,
+                    expected_price=adjusted_leg2.price,
+                    fill_price=leg2_trade.price if leg2_trade else None,
+                )
             except asyncio.TimeoutError:
                 logger.error("leg2_timeout exchange=%s strategy=%s", ex_b_id, strategy_id)
                 return await self._do_rollback_cross(

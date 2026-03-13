@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-14 (Phase S1 Security Hardening 완료 — 7/7 US PASS) | 최신 커밋: e858179
+> 마지막 업데이트: 2026-03-14 (Phase S2 Engine Wiring 완료 — 9/9 US PASS) | 최신 커밋: 13a4ac0
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (146개 User Stories)
 > **실행 순서**: A~M ✅ → 회귀 **S1~S6** (TF Semi-Final 발견, 원본 Phase 보완) → TF Semi-Final 재검증 → TF Final → Live
 
@@ -27,15 +27,15 @@
 ## 2. 현재 상태
 
 ```
-Phase:        S2 Engine Wiring Completion ← CURRENT  [S1 ✅ COMPLETE → S2 진행]
-테스트:       4,240 passed, 0 failed
+Phase:        S2 Engine Wiring Completion ← COMPLETE  [S1 ✅ COMPLETE → S2 ✅ COMPLETE → S3 다음]
+테스트:       4,346 passed, 0 failed
 커버리지:     88%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    e858179 (Phase S1 Security Hardening: JWT auth, Redis AUTH, Nginx IP, CSP (US-123~128, US-152))
-다음 작업:    Phase S2 US-129 (RiskGuardian PortfolioState 실제 값 주입)
-완료된 US:    119/146 (기존 111 + Phase S1 8/8 PASS)
-TF Semi-Final: FAIL → S1~S6 회귀 수정 중 (S1 완료, S2~S6 진행)
+최신 커밋:    13a4ac0 (Phase S1 Stage E: Security Hardening 완료 — SSOT/CLAUDE.md 동기화 + Docker 인프라 수정)
+다음 작업:    Phase S3 US-135 (DB 스키마 통합 + 자동 마이그레이션)
+완료된 US:    127/146 (기존 118 + Phase S2 9/9 PASS)
+TF Semi-Final: FAIL → S1~S6 회귀 수정 중 (S1 ✅, S2 ✅, S3~S6 진행)
                보고서: docs/checklists/tf-semi-final_20260313.md
 인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Docker 14 services ✅ ALL HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
@@ -375,7 +375,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 146개 User Stories, 111개 완료, 35개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 146개 User Stories, 127개 완료, 19개 미완)
 
 > **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -574,17 +574,22 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-127: CSP 헤더 강화 (← Phase D US-037~041 대시보드 보안) ✅
 - [x] US-128: pytest backoff jitter 테스트 수정 (← Phase I US-074 Coinone 백오프) ✅
 
-#### Phase S2: Engine Wiring Completion — US-129~134, US-153~155 (← E-3, J-EXT W3, K, M, B-5 보완) [NEXT]
+#### Phase S2: Engine Wiring Completion — US-129~134, US-153~155 ✅ ALL PASS (← E-3, J-EXT W3, K, M, B-5 보완)
 
-- [ ] US-129: RiskGuardian PortfolioState 실제 값 주입 (← Phase E-3 US-049 무력화) [CURRENT]
-- [ ] US-130: DynamicSizer 실행 경로 연결 (← J-EXT W3 US-114 미연결)
-- [ ] US-131: RegimeDetector + ONNX Scorer main.py 주입 (← Phase K US-084 + Phase M US-094 미연결)
-- [ ] US-132: SlippageFeedbackLoop LegResult 필드 수정 (← J-EXT W3 US-115 필드 불일치)
-- [ ] US-133: AtomicOrderExecutor(IOC) main.py 연결 (← J-EXT W3 US-119 미연결)
-- [ ] US-134: TCA/Correlation ExecutionResult 필드 통일 (← J-EXT W3 US-116,118 필드 불일치)
-- [ ] US-153: **주문 중복 방지** Idempotency Key (← Phase B-5 US-027~029 누락)
-- [ ] US-154: RiskGuardian max_concurrent_positions (← Phase E-3 US-049 체크 누락)
-- [ ] US-155: Graceful shutdown 오픈 포지션 정리 (← Phase E-3 US-049~050 누락)
+- [x] US-129: RiskGuardian PortfolioState 실제 값 주입 (← Phase E-3 US-049 무력화) ✅
+- [x] US-130: DynamicSizer 실행 경로 연결 (← J-EXT W3 US-114 미연결) ✅
+- [x] US-131: RegimeDetector + ONNX Scorer main.py 주입 (← Phase K US-084 + Phase M US-094 미연결) ✅
+- [x] US-132: SlippageFeedbackLoop LegResult 필드 수정 (← J-EXT W3 US-115 필드 불일치) ✅
+- [x] US-133: AtomicOrderExecutor(IOC) main.py 연결 (← J-EXT W3 US-119 미연결) ✅
+- [x] US-134: TCA/Correlation ExecutionResult 필드 통일 (← J-EXT W3 US-116,118 필드 불일치) ✅
+- [x] US-153: **주문 중복 방지** Idempotency Key (← Phase B-5 US-027~029 누락) ✅
+- [x] US-154: RiskGuardian max_concurrent_positions (← Phase E-3 US-049 체크 누락) ✅
+- [x] US-155: Graceful shutdown 오픈 포지션 정리 (← Phase E-3 US-049~050 누락) ✅
+
+**Shadow 검증 결과** (Stage D):
+- **10분 Shadow**: uptime=912.5s, PnL=+$419.40, WR=85% (324/381), crash=0
+- **코드리뷰**: 0 CRITICAL, 0 HIGH, 9 fixes applied
+- **L0 수정**: _peak_equity None guard (main.py), blacklist re-registration loop fix (stale_detector.py)
 
 #### Phase S3: Infrastructure Hardening — US-135~139 (← A, E-1, E-2, SR 보완)
 

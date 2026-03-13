@@ -215,7 +215,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 | ⑦ Fix 루프 | L1+ | Joy(debugger), Irene(build-fixer), Wendy(code-simplifier/opus) | 에스컬레이션 시 활성화 |
 | TF TWICE | Semi/Final | Nayeon(TF리더), Karina, Jeongyeon, Momo, Sana, Mina, Dahyun, Chaeyoung, Tzuyu (9명) | 상용화 최종 검증 |
 
-**사이클**: Stage A(기획)→B(개발)→C(검증)→⚡세션초기화→D(Shadow)→E(정합성+사장님승인)→다음Phase
+**사이클**: Stage A(기획)→B(개발)→C(검증)→D(Shadow)→E(정합성+사장님승인)→다음Phase
 
 ## 커스텀 에이전트 (.claude/agents/)
 
@@ -259,22 +259,22 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 ## 현재 상태 (SSOT.md §2 참조)
 
 - **Phase 순서**: A~M✅ → 회귀 S1~S6 (TF Semi-Final 발견, 원본 Phase 보완) → TF Semi-Final 재검증 → TF Final → Live
-- **Tests**: 4,240 passed, 0 failed
-- **PRD**: `.omc/prd.json` (146개 US, 118 pass / 28 fail)
+- **Tests**: 4,346 passed, 0 failed
+- **PRD**: `.omc/prd.json` (146개 US, 127 pass / 19 fail)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: Phase S2 US-129 (RiskGuardian PortfolioState 실제 값 주입) → US-130~134 → S3~S6 → TF재검증
+- **다음 작업**: Phase S3 US-135 (DB 스키마 통합 + 자동 마이그레이션) → US-136~139 → S4~S6 → TF재검증
 - **GAP 분석**: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합 분석)
 
 ## 실행 워크플로우 (ralph autopilot)
 
 **5-Stage Sequential 연속 실행** (leviathan.md 참조):
-1. **Stage A** (기획): Entry Gate 정합성 → ralplan → PLAN.md → QUANT GATE → checkpoint → **즉시 Stage B**
-2. **Stage B** (개발): TeamCreate(IVE) → pytest PASS → TeamDelete → checkpoint → **즉시 Stage C**
-3. **Stage C** (검증): code-reviewer + critic + security-reviewer → git commit → checkpoint → **즉시 Stage D**
-4. **Stage D** (Shadow): Shadow 10min+ → QA → checkpoint → **즉시 Stage E**
-5. **Stage E** (정합성): Exit Gate → SSOT + prd.json → git push → **텔레그램 → 사장님 승인 대기**
+1. **Stage A** (기획): [Entry Gate(architect) + planner] 병렬 → PLAN.md → QUANT GATE → **즉시 Stage B**
+2. **Stage B** (개발): TeamCreate(IVE) → pytest PASS → TeamDelete → **즉시 Stage C**
+3. **Stage C** (검증): code-reviewer + critic + security-reviewer → **git 안 함** → **즉시 Stage D**
+4. **Stage D** (Shadow): Shadow 10min+ → QA → **즉시 Stage E**
+5. **Stage E** (정합성): [Exit Gate + verifier] 병렬 → [SSOT + git commit+push] 병렬 → **텔레그램 → 사장님 승인 대기**
 
 **세션 관리**: Stage A→B→C→D→E 연속 실행 (세션 초기화 없음, ralph 루프 유지).
-**`/compact` 절대 금지**. 컨텍스트 60% 시 `/clear` 시도 → 실패 시 텔레그램 알림.
+**`/compact` 절대 금지**. 컨텍스트 60% 시 텔레그램 알림 → `/clear` 시도 → 성공/실패 모두 텔레그램 알림.
 **체크포인트 복구**: `.omc/state/leviathan-progress.json` — 세션 크래시 시 `/leviathan` 재호출로 자동 재개.
 **에스컬레이션**: L0(팀 내) → L1(fix 루프) → L2(Stage A 재기획) → L3(SSOT 수정) → L4(Phase 재편) → **L5(텔레그램→사장님)**

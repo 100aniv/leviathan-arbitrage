@@ -329,7 +329,9 @@ class WorkflowTelegramAlerter(TelegramAlerter):
     Alert types:
         - Phase completion (Stage E): summary + CEO approval request
         - L5 escalation: same Phase failed 3+ times
-        - Context 60%: /clear failed, needs manual intervention
+        - Context 60% warning: /clear 시도 예고
+        - Context clear success: 자동 재개 알림
+        - Context clear failed: needs manual intervention
     """
 
     def __init__(
@@ -411,6 +413,44 @@ class WorkflowTelegramAlerter(TelegramAlerter):
             f"<b>Reason:</b> {reason}",
             "",
             "<b>Action Required:</b> Manual intervention needed.",
+        ]
+        return await self._send("\n".join(lines))
+
+    async def send_context_warning(self, stage: str, context_pct: int) -> bool:
+        """Send context 60% warning — /clear attempt incoming.
+
+        Args:
+            stage: Current Stage (A-E).
+            context_pct: Current context usage percentage.
+
+        Returns:
+            True if sent successfully.
+        """
+        lines = [
+            "<b>CONTEXT WARNING</b>",
+            "",
+            f"<b>Current Stage:</b> {stage}",
+            f"<b>Context Usage:</b> {context_pct}%",
+            "<b>Status:</b> /clear 시도합니다.",
+        ]
+        return await self._send("\n".join(lines))
+
+    async def send_context_clear_success(self, stage: str, next_stage: str) -> bool:
+        """Send context clear success — auto-resuming from progress.json.
+
+        Args:
+            stage: Completed Stage (A-E).
+            next_stage: Stage to resume from.
+
+        Returns:
+            True if sent successfully.
+        """
+        lines = [
+            "<b>CONTEXT CLEARED</b>",
+            "",
+            f"<b>Completed Stage:</b> {stage}",
+            f"<b>Resuming from:</b> {next_stage}",
+            "<b>Status:</b> progress.json으로 자동 재개합니다.",
         ]
         return await self._send("\n".join(lines))
 

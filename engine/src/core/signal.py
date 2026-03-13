@@ -81,6 +81,7 @@ class SignalGenerator:
         stale_detector: StaleOrderbookDetector | None = None,
         regime_detector: Any | None = None,  # US-084
         ml_scorer: Any | None = None,  # US-094: ONNXSignalScorer
+        dynamic_sizer: Any | None = None,  # US-130: DynamicSizer
     ) -> None:
         self._hub = price_hub
         self._calc = cost_calculator
@@ -90,6 +91,7 @@ class SignalGenerator:
         self._last_signal: dict[str, float] = {}  # dedup_key -> last emit timestamp
         self._regime_detector = regime_detector  # US-084
         self._ml_scorer = ml_scorer  # US-094
+        self._dynamic_sizer = dynamic_sizer  # US-130
 
     def _dedup_key(self, buy_ex: str, sell_ex: str, symbol: str) -> str:
         return f"{symbol}:{buy_ex}:{sell_ex}"
@@ -235,6 +237,30 @@ class SignalGenerator:
         # Max rollback cost gate
         if friction.rollback_cost_expected > self._config.max_rollback_cost_usd:
             return None
+
+        # US-130: Dynamic sizing — adjust trade_size via DynamicSizer if available
+        if self._dynamic_sizer is not None:
+            try:
+                from src.tuning.regime_detector import MarketRegime
+                regime = MarketRegime.NORMAL
+                if self._regime_detector is not None and hasattr(self._regime_detector, "current_regime"):
+                    regime = self._regime_detector.current_regime
+                bid_depth_usd = buy_price * buy_book.volume_at_price(best_ask.price, "ask")
+                dynamic_size = self._dynamic_sizer.compute_dynamic_size(
+                    win_prob=Decimal("0.6"),
+                    win_loss_ratio=Decimal("1.5"),
+                    price=buy_price,
+                    strategy_id=self._config.strategy_id,
+                    strategy_used_capital=Decimal("0"),
+                    edge_bps=float(net_edge * 10000),
+                    regime=regime,
+                    bid_depth_usd=bid_depth_usd,
+                )
+                if dynamic_size > Decimal("0"):
+                    # CRITICAL FIX: cap at depth-based size to avoid exceeding verified liquidity
+                    trade_size = min(dynamic_size, trade_size) if trade_size > Decimal("0") else dynamic_size
+            except Exception as exc:
+                logger.debug("DynamicSizer failed (using depth-based size): %s", exc)
 
         # Deduplication
         dedup_key = self._dedup_key(buy_exchange, sell_exchange, symbol)

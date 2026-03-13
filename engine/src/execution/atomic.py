@@ -54,6 +54,14 @@ class AtomicOrderExecutor:
         self._market_fills: int = 0
         self._ioc_slippage_sum: float = 0.0
         self._market_slippage_sum: float = 0.0
+        self._executed_keys: dict[str, float] = {}  # US-153: key → timestamp
+
+    def _cleanup_old_keys(self) -> None:
+        """Remove idempotency keys older than 5 minutes (US-153)."""
+        cutoff = time.time() - 300
+        expired = [k for k, ts in self._executed_keys.items() if ts < cutoff]
+        for k in expired:
+            del self._executed_keys[k]
 
     async def execute(
         self,
@@ -62,8 +70,27 @@ class AtomicOrderExecutor:
         side: str,
         price: Decimal,
         size: Decimal,
+        signal_id: str = "",
     ) -> OrderResult:
         """Try IOC limit; fall back to market for remainder if partial or timed out."""
+        # US-153: Idempotency check — deduplicate orders within a 5-min window
+        if signal_id:
+            exchange_id = getattr(exchange, "exchange_id", str(id(exchange)))
+            idem_key = f"{exchange_id}:{symbol}:{signal_id}"
+            self._cleanup_old_keys()
+            if idem_key in self._executed_keys:
+                logger.warning(
+                    "duplicate_order_skipped",
+                    key=idem_key, symbol=symbol, side=side,
+                )
+                return OrderResult(
+                    filled_size=Decimal("0"),
+                    avg_price=price,
+                    order_type="duplicate_skip",
+                    latency_ms=0.0,
+                )
+            self._executed_keys[idem_key] = time.time()
+
         start = time.monotonic()
         remaining = size
 
@@ -96,8 +123,21 @@ class AtomicOrderExecutor:
         else:
             ioc_filled = result.filled_size if remaining < size else Decimal("0")
 
-        # Market fallback for remaining quantity
-        market_result = await exchange.place_market(symbol, side, remaining)
+        # Market fallback for remaining quantity (HIGH FIX: add timeout)
+        try:
+            market_result = await asyncio.wait_for(
+                exchange.place_market(symbol, side, remaining),
+                timeout=self._timeout_ms / 1000 * 2,
+            )
+        except asyncio.TimeoutError:
+            logger.error("market_fallback_timeout symbol=%s side=%s remaining=%s", symbol, side, remaining)
+            elapsed = (time.monotonic() - start) * 1000
+            return OrderResult(
+                filled_size=ioc_filled,
+                avg_price=price,
+                order_type="market_timeout",
+                latency_ms=elapsed,
+            )
         slippage = abs(float((market_result.avg_price - price) / price)) * 10_000 if price else 0.0
         self._market_fills += 1
         self._market_slippage_sum += slippage

@@ -2066,7 +2066,7 @@
       "title": "RiskGuardian PortfolioState 실제 값 주입",
       "phase": "S2",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "_build_risk_check_fn()이 실제 used_capital, current_drawdown_pct 전달",
         "RiskGuardian 9개 체크 중 capital/drawdown/exposure 체크가 실제 동작 확인",
@@ -2083,7 +2083,7 @@
       "title": "DynamicSizer 실행 경로 연결",
       "phase": "S2",
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "SignalGenerator 또는 ExecutionManager에서 compute_dynamic_size() 호출",
         "edge_bps/regime/bid_depth에 따라 포지션 크기 변동 확인",
@@ -2101,7 +2101,7 @@
       "title": "RegimeDetector + ONNX Scorer main.py 주입",
       "phase": "S2",
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "main.py에서 HMMRegimeDetector를 SignalGenerator에 전달",
         "main.py에서 ONNXSignalScorer를 SignalGenerator에 전달",
@@ -2119,7 +2119,7 @@
       "title": "SlippageFeedbackLoop LegResult 필드 수정",
       "phase": "S2",
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "LegResult에 expected_price, fill_price 필드 추가",
         "PaperExecutor가 fill 시 expected_price/fill_price 기록",
@@ -2137,7 +2137,7 @@
       "title": "AtomicOrderExecutor(IOC) main.py 연결",
       "phase": "S2",
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "main.py에서 AtomicOrderExecutor 인스턴스화",
         "Live 모드에서 IOC 주문 전송 경로 확인",
@@ -2154,7 +2154,7 @@
       "title": "TCA/Correlation ExecutionResult 필드 통일",
       "phase": "S2",
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "ExecutionResult/LegResult에 TCA가 참조하는 필드 모두 존재",
         "CorrelationMonitor가 사용하는 필드 일치 확인",
@@ -2481,7 +2481,7 @@
       "title": "주문 레벨 중복 방지 (Idempotency Key)",
       "phase": "S2",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "AtomicOrderExecutor에 idempotency key (exchange+symbol+signal_id+timestamp)",
         "동일 signal_id 재처리 시 중복 주문 차단",
@@ -2499,7 +2499,7 @@
       "title": "RiskGuardian max_concurrent_positions 체크 추가",
       "phase": "S2",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "RiskGuardian에 동시 포지션 수 체크 추가 (기본 max=20)",
         "175 심볼 동시 진입 시도 시 20개 초과분 REJECT",
@@ -2515,7 +2515,7 @@
       "title": "Graceful shutdown 시 오픈 포지션 정리",
       "phase": "S2",
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "Engine.stop()에서 SIGTERM 수신 시 오픈 주문 취소",
         "Live 모드: 미체결 주문 전량 취소 후 셧다운",

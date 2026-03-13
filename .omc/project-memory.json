@@ -150,57 +150,117 @@
   },
   "hotPaths": [
     {
-      "path": "",
-      "accessCount": 57,
-      "lastAccessed": 1773415628465,
-      "type": "directory"
+      "path": "engine/src/main.py",
+      "accessCount": 105,
+      "lastAccessed": 1773422365696,
+      "type": "file"
     },
     {
       "path": "SSOT.md",
-      "accessCount": 46,
-      "lastAccessed": 1773415690727,
+      "accessCount": 71,
+      "lastAccessed": 1773422609958,
       "type": "file"
     },
     {
-      "path": ".claude/CLAUDE.md",
-      "accessCount": 22,
-      "lastAccessed": 1773415641009,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/main.py",
-      "accessCount": 14,
-      "lastAccessed": 1773385831393,
-      "type": "file"
-    },
-    {
-      "path": "engine/src",
-      "accessCount": 12,
-      "lastAccessed": 1773388213392,
+      "path": "",
+      "accessCount": 66,
+      "lastAccessed": 1773419329734,
       "type": "directory"
     },
     {
       "path": ".claude/commands/leviathan.md",
-      "accessCount": 10,
-      "lastAccessed": 1773390905742,
+      "accessCount": 40,
+      "lastAccessed": 1773420315647,
       "type": "file"
     },
     {
-      "path": "engine/src/modes/shadow.py",
-      "accessCount": 5,
-      "lastAccessed": 1773415355014,
+      "path": ".claude/CLAUDE.md",
+      "accessCount": 36,
+      "lastAccessed": 1773422584459,
+      "type": "file"
+    },
+    {
+      "path": "engine/src",
+      "accessCount": 28,
+      "lastAccessed": 1773421459018,
+      "type": "directory"
+    },
+    {
+      "path": "engine/src/risk/guardian.py",
+      "accessCount": 21,
+      "lastAccessed": 1773421427060,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/execution/executor.py",
+      "accessCount": 18,
+      "lastAccessed": 1773420365209,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/core/signal.py",
+      "accessCount": 18,
+      "lastAccessed": 1773421457140,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/execution/atomic.py",
+      "accessCount": 16,
+      "lastAccessed": 1773421426141,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/execution/sizer.py",
+      "accessCount": 12,
+      "lastAccessed": 1773421447815,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/risk/slippage.py",
+      "accessCount": 10,
+      "lastAccessed": 1773421448564,
       "type": "file"
     },
     {
       "path": "engine/src/infra/telegram.py",
-      "accessCount": 4,
-      "lastAccessed": 1773383675814,
+      "accessCount": 9,
+      "lastAccessed": 1773417370947,
       "type": "file"
     },
     {
-      "path": "engine/src/risk/guardian.py",
+      "path": "engine/src/modes/shadow.py",
+      "accessCount": 8,
+      "lastAccessed": 1773422367553,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/execution/paper.py",
+      "accessCount": 7,
+      "lastAccessed": 1773420344503,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/tuning/regime_detector.py",
+      "accessCount": 6,
+      "lastAccessed": 1773419184500,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/risk/correlation_monitor.py",
+      "accessCount": 5,
+      "lastAccessed": 1773420327956,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/ml/onnx_runtime.py",
+      "accessCount": 5,
+      "lastAccessed": 1773420374349,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/execution/trade_consumer.py",
       "accessCount": 4,
-      "lastAccessed": 1773385821671,
+      "lastAccessed": 1773420372945,
       "type": "file"
     },
     {
@@ -216,18 +276,6 @@
       "type": "file"
     },
     {
-      "path": "engine/src/core/signal.py",
-      "accessCount": 2,
-      "lastAccessed": 1773384969204,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/execution/paper.py",
-      "accessCount": 2,
-      "lastAccessed": 1773384970722,
-      "type": "file"
-    },
-    {
       "path": "engine/src/risk/kill_switch.py",
       "accessCount": 2,
       "lastAccessed": 1773384979308,
@@ -240,27 +288,27 @@
       "type": "file"
     },
     {
-      "path": "engine/src/ml/onnx_runtime.py",
+      "path": "engine/src/risk/exposure_tracker.py",
       "accessCount": 2,
-      "lastAccessed": 1773385004526,
+      "lastAccessed": 1773417854961,
       "type": "file"
     },
     {
-      "path": "engine/src/execution/sizer.py",
+      "path": "engine/src/friction/cost_calculator.py",
       "accessCount": 2,
-      "lastAccessed": 1773385005265,
+      "lastAccessed": 1773418745565,
       "type": "file"
     },
     {
-      "path": "engine/src/risk/slippage.py",
+      "path": "engine/src/friction/slippage_model.py",
       "accessCount": 2,
-      "lastAccessed": 1773385015540,
+      "lastAccessed": 1773418746042,
       "type": "file"
     },
     {
-      "path": "engine/src/execution/executor.py",
+      "path": "engine/src/ml/hmm_trainer.py",
       "accessCount": 2,
-      "lastAccessed": 1773385022994,
+      "lastAccessed": 1773420375308,
       "type": "file"
     },
     {
@@ -318,18 +366,6 @@
       "type": "file"
     },
     {
-      "path": "engine/src/execution/atomic.py",
-      "accessCount": 1,
-      "lastAccessed": 1773384951865,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/risk/correlation_monitor.py",
-      "accessCount": 1,
-      "lastAccessed": 1773384954589,
-      "type": "file"
-    },
-    {
       "path": "engine/src/core/real_signal_producer.py",
       "accessCount": 1,
       "lastAccessed": 1773384961485,
@@ -354,18 +390,6 @@
       "type": "file"
     },
     {
-      "path": "engine/src/friction/cost_calculator.py",
-      "accessCount": 1,
-      "lastAccessed": 1773384968267,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/friction/slippage_model.py",
-      "accessCount": 1,
-      "lastAccessed": 1773384970602,
-      "type": "file"
-    },
-    {
       "path": "engine/src/friction/fee_model.py",
       "accessCount": 1,
       "lastAccessed": 1773384970656,
@@ -378,27 +402,9 @@
       "type": "file"
     },
     {
-      "path": "engine/src/execution/trade_consumer.py",
-      "accessCount": 1,
-      "lastAccessed": 1773384973384,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/risk/exposure_tracker.py",
-      "accessCount": 1,
-      "lastAccessed": 1773384975544,
-      "type": "file"
-    },
-    {
       "path": "engine/src/ml/feature_pipeline.py",
       "accessCount": 1,
       "lastAccessed": 1773384981413,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/ml/hmm_trainer.py",
-      "accessCount": 1,
-      "lastAccessed": 1773384981550,
       "type": "file"
     },
     {
@@ -406,12 +412,6 @@
       "accessCount": 1,
       "lastAccessed": 1773385000971,
       "type": "directory"
-    },
-    {
-      "path": "engine/src/tuning/regime_detector.py",
-      "accessCount": 1,
-      "lastAccessed": 1773385002862,
-      "type": "file"
     },
     {
       "path": "engine/src/ml/xgb_trainer.py",

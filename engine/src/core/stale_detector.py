@@ -153,9 +153,23 @@ class StaleOrderbookDetector:
         return True
 
     def add_blacklist(self, exchange: str, symbol: str) -> None:
-        """Blacklist (exchange, symbol) for TTL seconds."""
+        """Blacklist (exchange, symbol) for TTL seconds.
+
+        If already blacklisted (TTL not expired), skip re-registration to prevent
+        infinite blacklist loop where fat-tail losses repeatedly reset the TTL.
+        """
         key = (exchange, symbol)
-        expiry = time.monotonic() + self._blacklist_ttl_s
+        now = time.monotonic()
+        existing_expiry = self._blacklist.get(key)
+        if existing_expiry is not None and now < existing_expiry:
+            logger.debug(
+                "stale_detector.blacklist_already_active",
+                exchange=exchange,
+                symbol=symbol,
+                remaining_s=f"{existing_expiry - now:.1f}",
+            )
+            return
+        expiry = now + self._blacklist_ttl_s
         self._blacklist[key] = expiry
         logger.info(
             "stale_detector.blacklist_added",
