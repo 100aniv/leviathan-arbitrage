@@ -22,7 +22,7 @@
     "G": "Strategy Profitability Recovery",
     "H": "Dashboard Integration Complete",
     "I": "Exchange/Strategy Completeness",
-    "J": "Merged into Phase F (US-057/077/079 이동, US-078 삭제)",
+    "J": "Merged into TF (US-057/077/079 이동, US-078 삭제)",
     "J-EXT": "Security + UX + Engine Enhancement (Wave1~3 먼저) + Infra (Wave4: K/L/M 완료 후)",
     "K": "Regime Detection (ML-based HMM)",
     "L": "DEX Real-time + Gas Integration",
@@ -87,7 +87,7 @@
       "acceptanceCriteria": [
         "세션 시작 프로토콜이 SSOT.md 단일 참조",
         "Phase 7.3k, 3016 tests 반영",
-        "5팀 구조 반영",
+        "7팀+TF 구조 반영",
         "커스텀 에이전트 3개 언급"
       ]
     },
@@ -998,7 +998,7 @@
       "phase": "F",
       "priority": 65,
       "passes": true,
-      "notes": "J-EXT/K/L/M 구현 후 재실행 필수. 기존 결과: 580T/67.2%WR/+$2203.92/crash=0. Phase F: ProgressiveShadowOrchestrator 6-stage gate. 42 tests PASS, 3575 total. DB migration 003 added.",
+      "notes": "J-EXT/K/L/M 구현 후 재실행 필수. 기존 결과: 580T/67.2%WR/+$2203.92/crash=0. TF: ProgressiveShadowOrchestrator 6-stage gate. 42 tests PASS, 3575 total. DB migration 003 added.",
       "files": [
         "engine/src/modes/progressive_shadow.py",
         "engine/src/modes/shadow.py",
@@ -1304,7 +1304,7 @@
     },
     {
       "id": "US-080",
-      "title": "종합 검사지 기반 최종 감사 (Phase F 게이트)",
+      "title": "종합 검사지 기반 최종 감사 (TF 게이트)",
       "phase": "F",
       "priority": 84,
       "passes": true,
@@ -1314,7 +1314,7 @@
       "acceptanceCriteria": [
         "docs/checklists/phase-f-final-audit.md 전 항목 실행",
         "10개 카테고리 160항목 전체 PASS",
-        "5팀 분담 실행 + 크로스체크 완료",
+        "TF TWICE 9명 분담 실행 + 크로스체크 완료",
         "FAIL 항목 0건 → Live 전환 승인"
       ]
     },
@@ -1911,7 +1911,7 @@
       "phase": "J-EXT",
       "priority": 117,
       "passes": true,
-      "notes": "Wave 4 인프라 — K/L/M 완료 후 실행 (Phase F 직전)",
+      "notes": "Wave 4 인프라 — K/L/M 완료 후 실행 (TF 직전)",
       "dependencies": [],
       "files": [
         "docker-compose.yml",
@@ -1931,7 +1931,7 @@
       "phase": "J-EXT",
       "priority": 118,
       "passes": true,
-      "notes": "Wave 4 인프라 — K/L/M 완료 후 실행 (Phase F 직전)",
+      "notes": "Wave 4 인프라 — K/L/M 완료 후 실행 (TF 직전)",
       "dependencies": [],
       "files": [
         "docker-compose.yml",

@@ -33,7 +33,7 @@ Phase:        F (최종 검수) ← CURRENT  [J-EXT ✅, K ✅, L ✅, M ✅, Wa
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    (pending)
-다음 작업:    Phase F — US-054 (프로그레시브 Shadow 72H)
+다음 작업:    TF Semi-Final — US-054 (프로그레시브 Shadow 72H)
 완료된 US:    US-065~076, US-105~122, US-081~096
 인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Docker 11 services
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
@@ -187,7 +187,7 @@ Engine.run()
 | 5 | funding_rate | `strategies/funding_rate.py` | **검증됨** | 4거래소×8심볼 수집 성공, diff<threshold 시 정상 필터 | 15-30% |
 | 6 | statistical_arb | `strategies/statistical_arb.py` | **검증됨** | ~~GAP 3~~ RESOLVED, 2 trades 실행, WFE 음수 주의 | 11-16% |
 | 7 | latency_arb | `strategies/latency_arb.py` | **활성** | cross_exchange 신호 라우팅 추가, 82 trades in 10min | 20-100%+ |
-| 8 | cex_dex | `strategies/cex_dex.py` | 조건부 | GAP 8 (DEX stub, Phase F) | 10-50% |
+| 8 | cex_dex | `strategies/cex_dex.py` | 조건부 | GAP 8 (DEX stub, TF) | 10-50% |
 
 > **GAP 의존성 순서**: GAP9→10→(5,6,7 병렬)→3→(1,2)→4 — 상세: §9 참조
 
@@ -534,7 +534,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-121: Loki + Promtail 로그 집계 (Grafana 연동, 크로스 컨테이너 검색) ✅
 - [x] US-122: WAL 백업 + PITR (RPO <1시간, 주간 복원 검증) ✅
 
-### Phase F: 최종 검수 — US-054~057, US-077, US-079~080 (LAST — 전 Phase 완료 후 진입)
+### TF (Task Force): 최종 검수 — US-054~057, US-077, US-079~080 (LAST — 전 Phase 완료 후 TF 소집)
 
 - [x] US-054: Progressive Shadow 재실행 (J-EXT/K/L/M 포함된 최신 엔진, 72H 전 단계) ✅
 - [x] US-077: 문서 정합성 최종 감사 (SSOT↔PRD↔구현 전수 조사) ✅
@@ -640,7 +640,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 |------|------|------|
 | Coinone Rate Limit | 30min PING keepalive 유지 실패 가능 | 자동 재연결 구현됨 |
 | 빈 Orderbook 경고 | 타이밍 레이스 (collector 전 신호 평가) | crash 없음, 신호 무시 |
-| cex_dex 미구현 | _build_dex_adapter() 항상 None | Phase F (GAP 8) |
+| cex_dex 미구현 | _build_dex_adapter() 항상 None | TF (GAP 8) |
 
 ### RESOLVED
 

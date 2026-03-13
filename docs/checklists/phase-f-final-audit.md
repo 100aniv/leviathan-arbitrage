@@ -1,6 +1,6 @@
-# Phase F 종합 검사지 (Final Audit Checklist)
+# TF 종합 검사지 (Final Audit Checklist)
 
-> Phase F는 모든 기능이 구현·검증된 후 진입하는 **마지막 관문**.
+> TF(Task Force)는 모든 기능이 구현·검증된 후 진입하는 **마지막 관문**.
 > 전 항목 PASS 필수. 하나라도 FAIL 시 Live 전환(US-056) 절대 금지.
 > **최종 감사 실행일**: 2026-03-12
 > **테스트 결과**: 4,229 passed, 0 failed, 88% coverage

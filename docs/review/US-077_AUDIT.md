@@ -64,7 +64,7 @@
 | 테스트 수 | "4,200+ passed" | 4,229 collected (pytest --co) | 수정됨 (4,229+) |
 | 커버리지 | 88% | 27% (단위 기준, --co만으로 측정 불가) | 유지 (full run 필요) |
 | 컴플라이언스 | 100% (23/23 PASS) | 미변경 | PASS |
-| Phase 표기 | F (CURRENT) | prd.json: Phase F 미완료 US 6개 존재 | 일치 |
+| Phase 표기 | F (CURRENT) | prd.json: TF 미완료 US 6개 존재 | 일치 |
 | 인프라 | "Docker 11 services" | 실제 14 서비스 | 수정됨 |
 
 ---
@@ -80,19 +80,19 @@
 | passes=false | 6 |
 | passes=null | 0 |
 
-### passes=false (Phase F 미완료 — 정상)
+### passes=false (TF 미완료 — 정상)
 
 | US | 제목 | 비고 |
 |----|------|------|
-| US-054 | Progressive Shadow 재실행 (72H) | Phase F 진입 후 실행 |
-| US-055 | LiveGate + Preflight 10항목 통과 | Phase F |
-| US-056 | Live 모드 전환 (사용자 승인) | Phase F LAST |
-| US-057 | 최종 문서화 + 운영 가이드 | Phase F |
-| US-077 | 문서 정합성 최종 감사 (현재 실행 중) | Phase F — 본 감사 완료 후 true로 변경 |
-| US-079 | 운영 Runbook 업데이트 | Phase F |
-| US-080 | 종합 검사지 기반 최종 감사 | Phase F GATE |
+| US-054 | Progressive Shadow 재실행 (72H) | TF 진입 후 실행 |
+| US-055 | LiveGate + Preflight 10항목 통과 | TF |
+| US-056 | Live 모드 전환 (사용자 승인) | TF LAST |
+| US-057 | 최종 문서화 + 운영 가이드 | TF |
+| US-077 | 문서 정합성 최종 감사 (현재 실행 중) | TF — 본 감사 완료 후 true로 변경 |
+| US-079 | 운영 Runbook 업데이트 | TF |
+| US-080 | 종합 검사지 기반 최종 감사 | TF GATE |
 
-**결론**: passes=false 항목은 모두 Phase F (최종 검수) 스토리로 의도된 상태. PASS.
+**결론**: passes=false 항목은 모두 TF (최종 검수) 스토리로 의도된 상태. PASS.
 
 ### SSOT §7 체크리스트 vs prd.json 불일치 — **수정됨**
 
@@ -140,7 +140,7 @@
 | 전략 수 | "전략 8개" | "8개 (7개 기본 + CexDex 조건부)" | 일치 |
 | 테스트 수 | "3,747 passed" (과거 값) | "4,229+ passed" (현재) | CLAUDE.md는 과거 스냅샷, 매 세션 메모리 자동 업데이트 대상 |
 | Docker 서비스 | "Docker: 8 containers ALL healthy" | 14 서비스 (수정됨) | CLAUDE.md는 과거 기록, SSOT가 유일한 설계 문서 원칙 적용 |
-| Phase 순서 | "J-EXT Wave1~3(진행중)" | "Phase F ← CURRENT" | CLAUDE.md 세션 메모리가 약간 오래됨, SSOT가 정확 |
+| Phase 순서 | "J-EXT Wave1~3(진행중)" | "TF ← CURRENT" | CLAUDE.md 세션 메모리가 약간 오래됨, SSOT가 정확 |
 
 **결론**: CLAUDE.md는 자동 세션 메모리로 최신 상태를 완전히 반영하지 않는 것이 정상. SSOT.md가 유일한 설계 문서 원칙 유지. 동기화 불요 (CLAUDE.md는 다음 세션에서 자동 갱신).
 
@@ -172,7 +172,7 @@
 | SSOT §6 Docker 서비스 표 | 1 | 1 | 0 |
 | SSOT §7 체크리스트 vs prd.json | 12 | 12 | 0 |
 | SSOT §7 헤더 US 카운트 | 1 | 1 | 0 |
-| prd.json Phase F 미완료 | 0 (정상) | — | 0 |
+| prd.json TF 미완료 | 0 (정상) | — | 0 |
 | 구현 파일 누락 | 0 | — | 0 |
 | **합계** | **16** | **16** | **0** |
 
@@ -183,6 +183,6 @@
 불일치 항목 0건. 모든 발견된 불일치는 수정 완료.
 
 - SSOT.md는 현재 구현과 완전히 일치
-- prd.json의 6개 미완료 US는 모두 Phase F 의도된 미완료 항목
+- prd.json의 6개 미완료 US는 모두 TF 의도된 미완료 항목
 - 구현 파일 샘플 검증 10/10 PASS
 - 거래소 10개, 전략 8개, Docker 14 서비스, 테스트 4,229+
