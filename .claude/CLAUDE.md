@@ -245,7 +245,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **ENGINE_ENV**: `dev|staging|prod|test`만 허용 (`development` 사용 금지)
 - **KRW 거래소**: upbit, bithumb, coinone은 KRW 페어 자동 매핑. auto-symbols `min_exchanges=3` 필수 (7로 하면 0개)
 - **Bithumb stale data**: 증분 orderbook에서 소형코인 2-10x 가격 오차 → fake spread. Phase G에서 해결
-- **Phase C 중 /compact 금지**: Shadow/리뷰 백그라운드 에이전트 실행 중 압축하면 결과 소실. Phase C 완료 + git push 후에만
+- **Stage D 중 /compact 금지**: Shadow/리뷰 백그라운드 에이전트 실행 중 압축하면 결과 소실. Stage E 완료 + git push 후에만
 - **Coinone 수수료**: 0.20% → 0.02% (API 할인 적용)
 - **cancel_order**: order.symbol 전달 필수 (Binance rollback). TypeError fallback for legacy adapters
 - **friction prefix**: cost_calculator가 `paper_`/`sandbox_` prefix 자동 strip
@@ -258,9 +258,9 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: G✅ → H✅ → I✅ → J-EXT Wave1~3(진행중) → K → L → M → Wave4(인프라) → F(최종검수, LAST)
+- **Phase 순서**: G✅ → H✅ → I✅ → J-EXT✅ → K✅ → L✅ → M✅ → Wave4✅ → TF(최종검수, LAST)
 - **Tests**: 3,747 passed, 0 failures
-- **PRD**: `.omc/prd.json` (113개 US, Phase J→F 병합됨)
+- **PRD**: `.omc/prd.json` (113개 US, Phase J→TF 병합됨)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
 - **다음 작업**: Phase J-EXT US-106 (WebSocket JWT 인증) → Wave2 UX → Wave3 엔진 → K → L → M → Wave4 인프라 → F
 - **GAP 분석**: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합 분석)

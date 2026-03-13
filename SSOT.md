@@ -3,7 +3,7 @@
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-12 (Phase J-EXT Wave 3 Batch 1: US-114~119 완료) | 최신 커밋: 0a5302e
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (113개 User Stories)
-> **실행 순서**: J-EXT Wave1(보안) → Wave2(UX) → Wave3(엔진) → K(Regime) → L(DEX) → M(ML) → Wave4(인프라) → F(LAST)
+> **실행 순서**: J-EXT Wave1(보안) → Wave2(UX) → Wave3(엔진) → K(Regime) → L(DEX) → M(ML) → Wave4(인프라) → TF(LAST)
 
 ---
 
@@ -27,7 +27,7 @@
 ## 2. 현재 상태
 
 ```
-Phase:        F (최종 검수) ← CURRENT  [J-EXT ✅, K ✅, L ✅, M ✅, Wave4 ✅]
+Phase:        TF (최종 검수) ← CURRENT  [J-EXT ✅, K ✅, L ✅, M ✅, Wave4 ✅]
 테스트:       4,229+ passed, 0 failed
 커버리지:     88%
 컴플라이언스: 100% (23/23 PASS)
