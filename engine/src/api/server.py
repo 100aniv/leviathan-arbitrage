@@ -142,6 +142,8 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     app.include_router(portfolio_router)
     from src.api.routes.tca import router as tca_router
     app.include_router(tca_router)
+    from src.api.routes.system import router as system_router
+    app.include_router(system_router)
 
     # ---------------------------------------------------------------------------
     # Prometheus short-path alias

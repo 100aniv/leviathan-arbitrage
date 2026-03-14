@@ -59,7 +59,7 @@ describe('PortfolioSummary', () => {
   describe('status badge', () => {
     it('shows RUNNING badge when engine is running', () => {
       mockUseEngineWs.mockReturnValue(makeWsData());
-      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<PortfolioSummary />);
 
@@ -68,7 +68,7 @@ describe('PortfolioSummary', () => {
 
     it('shows STOPPED badge when engine is not running', () => {
       mockUseEngineWs.mockReturnValue(makeWsData({ running: false }));
-      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<PortfolioSummary />);
 
@@ -77,7 +77,7 @@ describe('PortfolioSummary', () => {
 
     it('shows KILL SWITCH ACTIVE badge when kill_switch is true', () => {
       mockUseEngineWs.mockReturnValue(makeWsData({ kill_switch: true }));
-      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<PortfolioSummary />);
 
@@ -88,19 +88,19 @@ describe('PortfolioSummary', () => {
   describe('KPI cards', () => {
     it('renders all four KPI card labels', () => {
       mockUseEngineWs.mockReturnValue(makeWsData());
-      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<PortfolioSummary />);
 
-      expect(screen.getByText(/Total Balance/i)).toBeInTheDocument();
-      expect(screen.getByText(/Today PnL/i)).toBeInTheDocument();
-      expect(screen.getByText(/Total PnL/i)).toBeInTheDocument();
-      expect(screen.getByText(/Active Positions/i)).toBeInTheDocument();
+      expect(screen.getByText(/총 자산/)).toBeInTheDocument();
+      expect(screen.getByText(/오늘 수익/)).toBeInTheDocument();
+      expect(screen.getByText(/총 수익/)).toBeInTheDocument();
+      expect(screen.getByText(/활성 포지션/)).toBeInTheDocument();
     });
 
     it('renders active position count from WS data', () => {
       mockUseEngineWs.mockReturnValue(makeWsData({ position_count: 7 }));
-      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<PortfolioSummary />);
 
@@ -109,7 +109,7 @@ describe('PortfolioSummary', () => {
 
     it('renders dash placeholders when WS data is null (offline)', () => {
       mockUseEngineWs.mockReturnValue({ connected: false, data: null });
-      mockUseApi.mockReturnValue({ data: undefined, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: undefined, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<PortfolioSummary />);
 
@@ -119,7 +119,7 @@ describe('PortfolioSummary', () => {
 
     it('aggregates Total Balance from exchange balances', () => {
       mockUseEngineWs.mockReturnValue(makeWsData());
-      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<PortfolioSummary />);
 
@@ -131,7 +131,7 @@ describe('PortfolioSummary', () => {
   describe('ExchangeStatusBar', () => {
     it('renders exchange pills for connected exchanges', () => {
       mockUseEngineWs.mockReturnValue(makeWsData());
-      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockExchangeStatus, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<PortfolioSummary />);
 
@@ -141,7 +141,7 @@ describe('PortfolioSummary', () => {
 
     it('does not render exchange bar when exchange data is unavailable', () => {
       mockUseEngineWs.mockReturnValue(makeWsData());
-      mockUseApi.mockReturnValue({ data: undefined, error: undefined, isLoading: true, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: undefined, error: undefined, isLoading: true, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<PortfolioSummary />);
 

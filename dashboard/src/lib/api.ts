@@ -18,6 +18,8 @@ import type {
   ShadowStats,
   PortfolioSummaryResponse,
   TCASummary,
+  ContainerStatus,
+  SystemResources,
 } from "@/types";
 
 const BASE_URL =
@@ -67,7 +69,7 @@ export const getStatus = () =>
 // ─── Kill Switch ──────────────────────────────────────────────────────────────
 
 export const killEngine = (reason: string) =>
-  request<KillResponse>("/kill", {
+  request<KillResponse>("/api/v1/kill-switch", {
     method: "POST",
     body: JSON.stringify({ reason }),
   });
@@ -75,10 +77,10 @@ export const killEngine = (reason: string) =>
 // ─── Strategies ───────────────────────────────────────────────────────────────
 
 export const getStrategies = () =>
-  request<Strategy[]>("/strategies");
+  request<Strategy[]>("/api/v1/strategies");
 
 export const toggleStrategy = (id: string) =>
-  request<ToggleResponse>(`/strategies/${id}/toggle`, { method: "POST" });
+  request<ToggleResponse>(`/api/v1/strategies/${id}/toggle`, { method: "POST" });
 
 // ─── Trading ──────────────────────────────────────────────────────────────────
 
@@ -190,3 +192,32 @@ export const logout = () => {
 
 export const getTCASummary = () =>
   request<TCASummary>("/api/v1/tca/summary");
+
+// ─── System ──────────────────────────────────────────────────────────────────
+
+export const getSystemContainers = () =>
+  request<ContainerStatus[]>("/api/v1/system/containers");
+
+export const getSystemResources = () =>
+  request<SystemResources>("/api/v1/system/resources");
+
+// ─── Market Data ─────────────────────────────────────────────────────────────
+
+export const getSymbols = () =>
+  request<{ symbols: string[]; count: number }>("/api/v1/symbols");
+
+export interface SpreadItem {
+  symbol: string;
+  exchange_a: string;
+  exchange_b: string;
+  spread_bps: number;
+  timestamp: string;
+}
+
+export const getSpreads = () =>
+  request<SpreadItem[]>("/api/v1/spreads");
+
+// ─── Portfolio Extended ───────────────────────────────────────────────────────
+
+export const getDailyReturns = () =>
+  request<{ returns: { date: string; pnl: number }[] }>("/api/v1/portfolio/daily-returns");

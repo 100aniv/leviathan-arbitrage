@@ -218,9 +218,18 @@ export interface SessionPnlPoint {
 export interface ContainerStatus {
   name: string;
   status: 'running' | 'stopped' | 'error';
-  cpu_pct: number;
-  memory_mb: number;
+  health: string;
+  cpu_pct: number | null;
+  memory_mb: number | null;
   uptime: string;
+}
+
+export interface SystemResources {
+  cpu_pct: number | null;
+  memory_used_gb: number | null;
+  memory_total_gb: number | null;
+  disk_used_gb: number | null;
+  disk_total_gb: number | null;
 }
 
 // ─── Attribution Types ───────────────────────────────────────────────────────

@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getFeedManager } from '@/lib/websocket';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useApi } from '@/hooks/useApi';
-import { getExchangeStatus } from '@/lib/api';
+import { getExchangeStatus, getSpreads } from '@/lib/api';
+import type { SpreadItem } from '@/lib/api';
 import type { WsMessage, ExchangeStatus } from '@/types';
 
 const FALLBACK_EXCHANGES = ['Binance', 'Bybit', 'OKX', 'Upbit', 'Bithumb', 'Coinone'];
@@ -24,17 +25,6 @@ const SYMBOL_SET_LABELS: Record<SymbolSet, string> = {
 const LS_CUSTOM_KEY = 'leviathan_heatmap_custom';
 
 type SpreadGrid = Record<string, Record<string, number | null>>;
-
-function genMockGrid(exchanges: string[], symbols: string[]): SpreadGrid {
-  const g: SpreadGrid = {};
-  for (const ex of exchanges) {
-    g[ex] = {};
-    for (const sym of symbols) {
-      g[ex][sym] = parseFloat(((Math.random() - 0.35) * 120).toFixed(2));
-    }
-  }
-  return g;
-}
 
 function cellClass(bps: number | null): string {
   if (bps === null) return 'bg-terminal-muted text-terminal-subtle';
@@ -114,23 +104,28 @@ export function GlobalHeatmap() {
     }
   }, [symbolSet, customInput, allSymbols]);
 
-  const [grid,      setGrid]      = useState<SpreadGrid>(() => genMockGrid(FALLBACK_EXCHANGES, MAJOR_8));
+  const [grid,      setGrid]      = useState<SpreadGrid>({});
   const [updatedAt, setUpdatedAt] = useState<Date>(() => new Date());
 
-  // Re-seed grid when exchange list or symbol set changes
-  useEffect(() => {
-    setGrid(genMockGrid(exchanges, activeSymbols));
-  }, [exchanges, activeSymbols]);
+  // REST spread polling (10s fallback) — backend returns flat SpreadItem[]
+  const { data: spreadsData } = useApi<SpreadItem[]>(
+    '/api/v1/spreads',
+    getSpreads,
+    { refreshInterval: 10000 },
+  );
 
-  // Simulate live updates when no real WS data
   useEffect(() => {
-    if (connected) return;
-    const interval = setInterval(() => {
-      setGrid(genMockGrid(exchanges, activeSymbols));
-      setUpdatedAt(new Date());
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [connected, exchanges, activeSymbols]);
+    if (!spreadsData || !Array.isArray(spreadsData)) return;
+    const newGrid: SpreadGrid = {};
+    for (const item of spreadsData) {
+      const ex = item.exchange_a.charAt(0).toUpperCase() + item.exchange_a.slice(1);
+      const sym = item.symbol.replace(/\/USDT$/, '');
+      if (!newGrid[ex]) newGrid[ex] = {};
+      newGrid[ex][sym] = item.spread_bps;
+    }
+    setGrid(newGrid);
+    setUpdatedAt(new Date());
+  }, [spreadsData]);
 
   // Apply real WS market_data updates
   useEffect(() => {
@@ -228,7 +223,7 @@ export function GlobalHeatmap() {
 
         <div className="flex items-center gap-3">
           <span className={`text-[9px] font-mono uppercase ${connected ? 'text-profit' : 'text-terminal-subtle'}`}>
-            {connected ? '● LIVE' : '○ MOCK'}
+            {connected ? '● LIVE' : '○ OFFLINE'}
           </span>
           <span className={`text-[9px] font-mono uppercase ${isLiveData ? 'text-accent' : 'text-terminal-subtle'}`}>
             {isLiveData ? '◆ API' : '◇ STATIC'}

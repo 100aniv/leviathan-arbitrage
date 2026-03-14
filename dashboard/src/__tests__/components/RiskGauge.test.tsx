@@ -28,7 +28,7 @@ beforeEach(() => mockUseApi.mockClear());
 describe('RiskGauge', () => {
   describe('gauge rendering', () => {
     it('renders the risk gauge heading', () => {
-      mockUseApi.mockReturnValue({ data: makeRiskData(), error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: makeRiskData(), error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<RiskGauge />);
 
@@ -36,7 +36,7 @@ describe('RiskGauge', () => {
     });
 
     it('renders an SVG element for the semicircle arc', () => {
-      mockUseApi.mockReturnValue({ data: makeRiskData({ max_drawdown_pct: 8.0 }), error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: makeRiskData({ max_drawdown_pct: 8.0 }), error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       const { container } = render(<RiskGauge />);
 
@@ -44,7 +44,7 @@ describe('RiskGauge', () => {
     });
 
     it('displays the drawdown percentage value', () => {
-      mockUseApi.mockReturnValue({ data: makeRiskData({ max_drawdown_pct: 12.5 }), error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: makeRiskData({ max_drawdown_pct: 12.5 }), error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<RiskGauge />);
 
@@ -54,7 +54,7 @@ describe('RiskGauge', () => {
 
   describe('kill switch badge', () => {
     it('shows STANDBY badge when kill switch is inactive', () => {
-      mockUseApi.mockReturnValue({ data: makeRiskData({ kill_switch_active: false }), error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: makeRiskData({ kill_switch_active: false }), error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<RiskGauge />);
 
@@ -62,7 +62,7 @@ describe('RiskGauge', () => {
     });
 
     it('shows ACTIVE badge when kill switch is triggered', () => {
-      mockUseApi.mockReturnValue({ data: makeRiskData({ kill_switch_active: true }), error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: makeRiskData({ kill_switch_active: true }), error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<RiskGauge />);
 
@@ -72,7 +72,7 @@ describe('RiskGauge', () => {
 
   describe('circuit breaker badge', () => {
     it('shows CLOSED badge for normal circuit breaker state', () => {
-      mockUseApi.mockReturnValue({ data: makeRiskData({ circuit_breaker_state: 'CLOSED' }), error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: makeRiskData({ circuit_breaker_state: 'CLOSED' }), error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<RiskGauge />);
 
@@ -80,7 +80,7 @@ describe('RiskGauge', () => {
     });
 
     it('shows OPEN badge when circuit breaker is tripped', () => {
-      mockUseApi.mockReturnValue({ data: makeRiskData({ circuit_breaker_state: 'OPEN' }), error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: makeRiskData({ circuit_breaker_state: 'OPEN' }), error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<RiskGauge />);
 
@@ -88,7 +88,7 @@ describe('RiskGauge', () => {
     });
 
     it('shows HALF_OPEN badge during recovery state', () => {
-      mockUseApi.mockReturnValue({ data: makeRiskData({ circuit_breaker_state: 'HALF_OPEN' }), error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: makeRiskData({ circuit_breaker_state: 'HALF_OPEN' }), error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<RiskGauge />);
 
@@ -98,7 +98,7 @@ describe('RiskGauge', () => {
 
   describe('navigation', () => {
     it('renders a "View all" link pointing to /risk', () => {
-      mockUseApi.mockReturnValue({ data: makeRiskData(), error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: makeRiskData(), error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<RiskGauge />);
 
@@ -110,7 +110,7 @@ describe('RiskGauge', () => {
 
   describe('error state', () => {
     it('shows retry button when API call fails', () => {
-      mockUseApi.mockReturnValue({ data: undefined, error: new Error('Network error'), isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: undefined, error: new Error('Network error'), isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<RiskGauge />);
 
@@ -120,7 +120,7 @@ describe('RiskGauge', () => {
     it('calls mutate when retry button is clicked', async () => {
       const user = userEvent.setup();
       const mutate = jest.fn();
-      mockUseApi.mockReturnValue({ data: undefined, error: new Error('fail'), isLoading: false, mutate } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: undefined, error: new Error('fail'), isLoading: false, isValidating: false, mutate } as ReturnType<typeof useApi>);
 
       render(<RiskGauge />);
       await user.click(screen.getByRole('button', { name: /retry/i }));

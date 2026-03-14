@@ -44,6 +44,7 @@ describe('PositionTable', () => {
       data: mockPositions,
       error: undefined,
       isLoading: false,
+      isValidating: false,
       mutate: jest.fn(),
     } as ReturnType<typeof useApi>);
 
@@ -58,6 +59,7 @@ describe('PositionTable', () => {
       data: mockPositions,
       error: undefined,
       isLoading: false,
+      isValidating: false,
       mutate: jest.fn(),
     } as ReturnType<typeof useApi>);
 
@@ -74,6 +76,7 @@ describe('PositionTable', () => {
       data: [],
       error: undefined,
       isLoading: false,
+      isValidating: false,
       mutate: jest.fn(),
     } as ReturnType<typeof useApi>);
 
@@ -89,6 +92,7 @@ describe('PositionTable', () => {
       data: mockPositions,
       error: undefined,
       isLoading: false,
+      isValidating: false,
       mutate: jest.fn(),
     } as ReturnType<typeof useApi>);
 
@@ -108,6 +112,7 @@ describe('PositionTable', () => {
       data: mockPositions,
       error: undefined,
       isLoading: false,
+      isValidating: false,
       mutate: jest.fn(),
     } as ReturnType<typeof useApi>);
 
@@ -125,6 +130,7 @@ describe('PositionTable', () => {
       data: undefined,
       error: undefined,
       isLoading: true,
+      isValidating: false,
       mutate: jest.fn(),
     } as ReturnType<typeof useApi>);
 
@@ -140,6 +146,7 @@ describe('PositionTable', () => {
       data: undefined,
       error: new Error('Network error'),
       isLoading: false,
+      isValidating: false,
       mutate,
     } as ReturnType<typeof useApi>);
 
@@ -156,6 +163,7 @@ describe('PositionTable', () => {
       data: undefined,
       error: new Error('fail'),
       isLoading: false,
+      isValidating: false,
       mutate,
     } as ReturnType<typeof useApi>);
 

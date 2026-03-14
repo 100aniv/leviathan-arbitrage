@@ -12,7 +12,7 @@ jest.mock('@/hooks/useWebSocket', () => ({
 }));
 
 jest.mock('@/hooks/useApi', () => ({
-  useApi: jest.fn(() => ({ data: null, loading: false, error: null })),
+  useApi: jest.fn(() => ({ data: undefined, isLoading: false, isValidating: false, error: undefined, mutate: jest.fn() })),
 }));
 
 jest.mock('@/lib/api', () => ({
@@ -37,7 +37,7 @@ afterAll(() => {
 
 beforeEach(() => {
   mockUseWebSocket.mockReturnValue({ lastMessage: null, connected: false } as ReturnType<typeof useWebSocket>);
-  mockUseApi.mockReturnValue({ data: null, loading: false, error: null } as ReturnType<typeof useApi>);
+  mockUseApi.mockReturnValue({ data: undefined, isLoading: false, isValidating: false, error: undefined, mutate: jest.fn() } as ReturnType<typeof useApi>);
   localStorage.clear();
   jest.useFakeTimers();
 });
@@ -65,9 +65,9 @@ describe('GlobalHeatmap — rendering', () => {
     expect(screen.getByRole('button', { name: /custom/i })).toBeInTheDocument();
   });
 
-  it('shows MOCK status when WebSocket is not connected', () => {
+  it('shows OFFLINE status when WebSocket is not connected', () => {
     render(<GlobalHeatmap />);
-    expect(screen.getByText(/mock/i)).toBeInTheDocument();
+    expect(screen.getByText(/offline/i)).toBeInTheDocument();
   });
 
   it('shows LIVE status when WebSocket is connected', () => {
@@ -290,8 +290,10 @@ describe('GlobalHeatmap — exchange status', () => {
         binance: { connected: true },
         bybit:   { connected: false },
       },
-      loading: false,
-      error: null,
+      isLoading: false,
+      isValidating: false,
+      error: undefined,
+      mutate: jest.fn(),
     } as ReturnType<typeof useApi>);
 
     render(<GlobalHeatmap />);

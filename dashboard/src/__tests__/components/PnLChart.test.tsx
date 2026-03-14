@@ -32,6 +32,7 @@ describe('PnLChart', () => {
       data: { total_pnl: 150, realized_pnl: 100, unrealized_pnl: 50 },
       error: undefined,
       isLoading: false,
+      isValidating: false,
       mutate: jest.fn(),
     } as ReturnType<typeof useApi>);
 
@@ -47,6 +48,7 @@ describe('PnLChart', () => {
       data: { total_pnl: 200, realized_pnl: 150, unrealized_pnl: 50 },
       error: undefined,
       isLoading: false,
+      isValidating: false,
       mutate: jest.fn(),
     } as ReturnType<typeof useApi>);
 
@@ -62,6 +64,7 @@ describe('PnLChart', () => {
       data: undefined,
       error: undefined,
       isLoading: true,
+      isValidating: false,
       mutate: jest.fn(),
     } as ReturnType<typeof useApi>);
 
@@ -77,6 +80,7 @@ describe('PnLChart', () => {
       data: undefined,
       error: new Error('Connection failed'),
       isLoading: false,
+      isValidating: false,
       mutate,
     } as ReturnType<typeof useApi>);
 
@@ -93,6 +97,7 @@ describe('PnLChart', () => {
       data: undefined,
       error: new Error('fail'),
       isLoading: false,
+      isValidating: false,
       mutate,
     } as ReturnType<typeof useApi>);
 
@@ -107,6 +112,7 @@ describe('PnLChart', () => {
       data: { total_pnl: 0, realized_pnl: 0, unrealized_pnl: 0 },
       error: undefined,
       isLoading: false,
+      isValidating: false,
       mutate: jest.fn(),
     } as ReturnType<typeof useApi>);
 

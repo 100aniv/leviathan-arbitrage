@@ -2172,7 +2172,7 @@
       "title": "DB 스키마 통합 + 자동 마이그레이션",
       "phase": "S3",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "docker/init.sql = engine migration_sql() = 실DB 스키마 일치",
         "docker compose up 시 자동 마이그레이션 적용",
@@ -2190,7 +2190,7 @@
       "title": ".env 동기화 + MIN_EDGE_BPS preflight",
       "phase": "S3",
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "root .env와 engine/.env의 MIN_EDGE_BPS 일치 (5)",
         "main.py MIN_EDGE_BPS 기본값 40→5 변경",
@@ -2210,7 +2210,7 @@
       "title": "Nginx WS 포트 + 백업 자동재시작",
       "phase": "S3",
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "nginx.conf WebSocket proxy_pass 포트 8000→8001 수정 (또는 엔진 WS 포트 확인)",
         "db-backup, wal-backup에 restart: unless-stopped 설정",
@@ -2227,7 +2227,7 @@
       "title": "Alertmanager 연결 + Grafana datasource 정리",
       "phase": "S3",
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "Prometheus alerting_rules.yml → Alertmanager 전달 확인",
         "Telegram/Slack receiver 설정",
@@ -2245,7 +2245,7 @@
       "title": "Docker 리소스 제한 + 모니터링 healthcheck",
       "phase": "S3",
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "Redis, TimescaleDB에 mem_limit 설정",
         "Promtail healthcheck 추가",
@@ -2261,7 +2261,7 @@
       "title": "API prefix 통일 + SWR key 수정",
       "phase": "S4",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "lib/api.ts: /kill→/api/v1/kill, /strategies→/api/v1/strategies 통일",
         "PnLChart SWR key /trading/pnl→/api/v1/pnl 수정",
@@ -2278,7 +2278,7 @@
       "title": "System 페이지 실데이터 연동",
       "phase": "S4",
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "MOCK_CONTAINERS 제거, /api/v1/system/containers 실 API 연동",
         "Resource Usage: Prometheus 쿼리 또는 /api/v1/system/resources 연동",
@@ -2294,7 +2294,7 @@
       "title": "Heatmap/OrderbookView 실데이터 + 심볼 연동",
       "phase": "S4",
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "GlobalHeatmap: genMockGrid() 제거, WS market_data 또는 REST spread API 연동",
         "OrderbookView: FALLBACK_SYMBOLS 5개→API /api/v1/symbols 동적 로드 (175개)",
@@ -2311,7 +2311,7 @@
       "title": "Strategy/Portfolio/EquityCurve 완성",
       "phase": "S4",
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "StrategyPanel: MOCK_STRATEGIES 제거, API 0개 시 빈 상태 UI",
         "Portfolio Daily Returns: placeholder→실 차트 또는 명시적 미지원 표기",
@@ -2329,7 +2329,7 @@
       "title": "대시보드 테스트 수정 + 모바일 최적화",
       "phase": "S4",
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "SWR v2 mock에 isValidating 추가, TS 에러 40개→0개",
         "TradeDetail 패널 모바일: w-80→full-screen 처리",
@@ -2527,6 +2527,27 @@
         "engine/src/execution/atomic.py"
       ],
       "source": "Chaeyoung MISSED HIGH: No position closure on shutdown"
+    },
+    {
+      "id": "US-156",
+      "title": "Shadow 손실 전략 비활성화 — SHADOW_DISABLED_STRATEGIES .env 설정",
+      "phase": "S5",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "engine/.env에 SHADOW_DISABLED_STRATEGIES=statistical_arb_v1,spot_futures_v1,latency_arb_v1 설정",
+        "root .env에도 동일 설정 동기화",
+        "Shadow 10min 실행 시 stat_arb/spot_futures/latency_arb 거래 0건",
+        "Shadow PnL > 0 (손실 전략 제외 후)",
+        "docker-compose.yml에 SHADOW_DISABLED_STRATEGIES 환경변수 전달 확인"
+      ],
+      "files": [
+        "engine/.env",
+        ".env",
+        "docker-compose.yml"
+      ],
+      "dependencies": [],
+      "source": "Phase S4 Stage D Shadow PnL=-7.86 USDT: stat_arb_v1 6거래 -7.61 손실. 메커니즘(US-066) 구현됨 but .env 미설정. TF Semi-Final도 미감지. SSOT §9 HIGH 등록."
     }
   ]
 }

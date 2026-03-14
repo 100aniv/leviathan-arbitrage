@@ -6,32 +6,6 @@ import { getStrategies, toggleStrategy } from '@/lib/api';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import type { Strategy } from '@/types';
 
-interface StrategyStats {
-  winRate: number;
-  tradeCount: number;
-  pnl: number;
-  avgDuration: string;
-}
-
-// Deterministic-ish mock stats seeded by strategy id
-function mockStats(id: string): StrategyStats {
-  const seed = id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  const rng  = (n: number) => ((seed * 9301 + 49297 * n) % 233280) / 233280;
-  return {
-    winRate:     parseFloat((rng(1) * 35 + 58).toFixed(1)),
-    tradeCount:  Math.floor(rng(2) * 300 + 10),
-    pnl:         parseFloat(((rng(3) - 0.28) * 3000).toFixed(2)),
-    avgDuration: `${Math.floor(rng(4) * 6)}m ${Math.floor(rng(5) * 59)}s`,
-  };
-}
-
-const MOCK_STRATEGIES: Strategy[] = [
-  { id: 'tri-arb',  type: 'triangular',  name: 'Triangle Arbitrage',   enabled: true,  exchange_a: 'Binance', exchange_b: 'OKX',     symbol: 'BTC/USDT' },
-  { id: 'kim-arb',  type: 'kimchi',      name: 'Kimchi Premium',        enabled: true,  exchange_a: 'Upbit',   exchange_b: 'Binance', symbol: 'ETH/KRW'  },
-  { id: 'stat-arb', type: 'statistical', name: 'Statistical Arbitrage', enabled: false, exchange_a: 'Bybit',   exchange_b: 'OKX',     symbol: 'SOL/USDT' },
-  { id: 'mm-eth',   type: 'market_make', name: 'ETH Market Making',     enabled: true,  exchange_a: 'Binance', symbol: 'ETH/USDT' },
-];
-
 // ─── Strategy Card ────────────────────────────────────────────────────────────
 
 function StrategyCard({
@@ -43,8 +17,12 @@ function StrategyCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [toggling, setToggling] = useState(false);
-  const stats  = mockStats(strategy.id);
   const status = strategy.enabled ? 'active' : 'stopped';
+  const m = strategy.metrics ?? {};
+  const winRateVal = m.win_rate != null ? `${(m.win_rate * 100).toFixed(1)}%` : '—';
+  const tradesVal  = m.fills != null ? String(Math.floor(m.fills)) : '—';
+  const pnl        = m.pnl ?? null;
+  const pnlVal     = pnl != null ? `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}` : '—';
   const displayName = String(strategy.name ?? strategy.type);
   const exchangeA   = strategy.exchange_a ? String(strategy.exchange_a) : '';
   const exchangeB   = strategy.exchange_b ? String(strategy.exchange_b) : '';
@@ -106,23 +84,17 @@ function StrategyCard({
       <div className="grid grid-cols-4 border-t border-terminal-border/40 px-3 py-2">
         {(
           [
-            { label: 'Win Rate', value: `${stats.winRate}%`,                     pnlKey: false },
-            { label: 'Trades',   value: String(stats.tradeCount),                pnlKey: false },
-            { label: 'PnL',      value: `${stats.pnl >= 0 ? '+' : ''}$${stats.pnl.toFixed(2)}`, pnlKey: true  },
-            { label: 'Avg Dur',  value: stats.avgDuration,                       pnlKey: false },
-          ] as const
-        ).map(({ label, value, pnlKey }) => (
+            { label: 'Win Rate', value: winRateVal, profit: false,                    loss: false },
+            { label: 'Trades',   value: tradesVal,  profit: false,                    loss: false },
+            { label: 'PnL',      value: pnlVal,     profit: pnl != null && pnl >= 0,  loss: pnl != null && pnl < 0 },
+            { label: 'Avg Dur',  value: '—',        profit: false,                    loss: false },
+          ]
+        ).map(({ label, value, profit, loss }) => (
           <div key={label} className="text-center">
             <div className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">
               {label}
             </div>
-            <div
-              className={`text-[11px] font-mono tabular-nums mt-0.5 ${
-                pnlKey
-                  ? stats.pnl >= 0 ? 'text-profit' : 'text-loss'
-                  : 'text-terminal-text'
-              }`}
-            >
+            <div className={`text-[11px] font-mono tabular-nums mt-0.5 ${profit ? 'text-profit' : loss ? 'text-loss' : 'text-terminal-text'}`}>
               {value}
             </div>
           </div>
@@ -187,7 +159,7 @@ export function StrategyPanel() {
     { refreshInterval: 10_000 },
   );
 
-  const strategies = data && data.length > 0 ? data : MOCK_STRATEGIES;
+  const strategies = data ?? [];
   const activeCount = strategies.filter(s => s.enabled).length;
 
   const handleToggle = async (id: string) => {
@@ -234,15 +206,22 @@ export function StrategyPanel() {
         </span>
       </div>
 
-      <div className="space-y-1.5">
-        {strategies.map(strategy => (
-          <StrategyCard
-            key={strategy.id}
-            strategy={strategy}
-            onToggle={handleToggle}
-          />
-        ))}
-      </div>
+      {strategies.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-2">
+          <p className="text-xs font-mono text-terminal-subtle">등록된 전략 없음</p>
+          <p className="text-[10px] font-mono text-terminal-muted">엔진이 시작되면 전략이 자동 등록됩니다</p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {strategies.map(strategy => (
+            <StrategyCard
+              key={strategy.id}
+              strategy={strategy}
+              onToggle={handleToggle}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

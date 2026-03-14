@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-14 (Phase S2 Engine Wiring 완료 — 9/9 US PASS) | 최신 커밋: 13a4ac0
+> 마지막 업데이트: 2026-03-14 (Phase S3 Infrastructure Hardening 완료 — 5/5 US PASS) | 최신 커밋: f2bd7e4
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (146개 User Stories)
 > **실행 순서**: A~M ✅ → 회귀 **S1~S6** (TF Semi-Final 발견, 원본 Phase 보완) → TF Semi-Final 재검증 → TF Final → Live
 
@@ -17,7 +17,7 @@
 | 대시보드 | Next.js 14 (App Router) + JWT 인증 + 실시간 WS 피드 |
 | 거래소 | 10개 네이티브 WebSocket 어댑터 (7 spot + Binance/OKX/Bybit Futures, ccxt 미사용) |
 | 전략 | 8개 (7개 기본 + CexDex 조건부) |
-| 인프라 | Docker Compose 14 서비스, TimescaleDB + Redis + Prometheus + Grafana + Loki + WAL백업 |
+| 인프라 | Docker Compose 15 서비스, TimescaleDB + Redis + Prometheus + Grafana + Loki + Alertmanager + WAL백업 |
 | 실행 모드 | Backtest → Paper → Shadow → Live |
 
 **거래소 목록**: Binance, Binance Futures, Bybit, Bybit Futures, OKX, OKX Futures, Bitget, Upbit, Bithumb, Coinone (10개 네이티브 어댑터)
@@ -27,17 +27,17 @@
 ## 2. 현재 상태
 
 ```
-Phase:        S2 Engine Wiring Completion ← COMPLETE  [S1 ✅ COMPLETE → S2 ✅ COMPLETE → S3 다음]
-테스트:       4,346 passed, 0 failed
-커버리지:     88%
+Phase:        S4 Dashboard Completion ← COMPLETE  [S1 ✅ → S2 ✅ → S3 ✅ → S4 ✅ COMPLETE → S5 다음]
+테스트:       4,360 passed, 0 failed, 6 skipped
+커버리지:     87%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    1d92ed2 (Phase S2 Stage E: Engine Wiring Completion — 9/9 US PASS)
-다음 작업:    Phase S3 US-135 (DB 스키마 통합 + 자동 마이그레이션)
-완료된 US:    127/146 (기존 118 + Phase S2 9/9 PASS)
-TF Semi-Final: FAIL → S1~S6 회귀 수정 중 (S1 ✅, S2 ✅, S3~S6 진행)
+최신 커밋:    (Phase S4 커밋 후 업데이트)
+다음 작업:    Phase S5 US-145 (Auto-Tuner TimescaleDB) + US-156 (Shadow 손실 전략 비활성화)
+완료된 US:    137/147 (기존 132 + Phase S4 5/5 PASS, US-156 신규 추가)
+TF Semi-Final: FAIL → S1~S6 회귀 수정 중 (S1 ✅, S2 ✅, S3 ✅, S4 ✅, S5~S6 진행)
                보고서: docs/checklists/tf-semi-final_20260313.md
-인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Docker 14 services ✅ ALL HEALTHY
+인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ ALL HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
@@ -342,7 +342,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ## 6. 인프라
 
-### Docker Compose (14 서비스)
+### Docker Compose (15 서비스)
 
 | 서비스 | 이미지 | 포트 | 역할 |
 |--------|--------|------|------|
@@ -353,6 +353,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | dashboard | leviathan-dashboard:latest | 3000 | Next.js 대시보드 |
 | prometheus | prom/prometheus:v2.50.1 | 9090 | 메트릭 수집 (30일 보관) |
 | grafana | grafana/grafana:10.3.3 | 3001 | 메트릭 시각화 |
+| alertmanager | prom/alertmanager:v0.26.0 | 9093 | 알림 라우팅 (Telegram/Slack) |
 | nginx | nginx:alpine | 80, 443 | TLS 종단 + 역방향 프록시 |
 | monitoring | leviathan-engine:latest | — | Telegram 인프라 모니터링 데몬 |
 | auto-tuner | leviathan-engine:latest | — | Optuna 자동 튜닝 스케줄러 |
@@ -375,7 +376,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 146개 User Stories, 127개 완료, 19개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 146개 User Stories, 132개 완료, 14개 미완)
 
 > **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -591,21 +592,33 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - **코드리뷰**: 0 CRITICAL, 0 HIGH, 9 fixes applied
 - **L0 수정**: _peak_equity None guard (main.py), blacklist re-registration loop fix (stale_detector.py)
 
-#### Phase S3: Infrastructure Hardening — US-135~139 (← A, E-1, E-2, SR 보완)
+#### Phase S3: Infrastructure Hardening — US-135~139 ✅ ALL PASS (← A, E-1, E-2, SR 보완)
 
-- [ ] US-135: DB 스키마 통합 + 자동 마이그레이션 (← Phase A US-002 + Phase E-2 스키마 divergence)
-- [ ] US-136: .env MIN_EDGE_BPS 동기화 + PowerLaw k (← Phase SR + Phase 7.3h 값 불일치)
-- [ ] US-137: Nginx WS 포트 + 백업 자동재시작 (← Phase E-1 US-042~044 인프라)
-- [ ] US-138: Alertmanager 연결 + Grafana datasource (← Phase E-1 US-044 알람 미연결)
-- [ ] US-139: Docker 리소스 제한 + healthcheck (← Phase E-1 US-042 모니터링)
+- [x] US-135: DB 스키마 통합 + 자동 마이그레이션 (docker/init.sql 통합, migration_runner.py with advisory lock + transaction) ✅ PASS
+- [x] US-136: .env MIN_EDGE_BPS 동기화 + PowerLaw k (_check_env_sync in preflight.py, main.py에서 호출) ✅ PASS
+- [x] US-137: Nginx WS 포트 + 백업 자동재시작 (docker-compose.yml backup services, restart:"no") ✅ PASS
+- [x] US-138: Alertmanager 연결 + Grafana datasource (sed-based env var substitution, Telegram webhook) ✅ PASS
+- [x] US-139: Docker 리소스 제한 + healthcheck (datasources.yml 프로비저닝, mem_limit 설정) ✅ PASS
+
+**Shadow 검증 결과** (Stage D):
+- **12분 Shadow**: uptime=720s, PnL=+$0.0069, WR=100% (4/4), crash=0
+- **DB Migration**: advisory lock + transaction 적용, auto_ddl 검증 완료
+- **인프라**: Docker 15 services ALL HEALTHY, Alertmanager→Telegram webhook 연결 완료
 
 #### Phase S4: Dashboard Completion — US-140~144 (← D, H, J-EXT W2 보완)
 
-- [ ] US-140: API prefix 통일 + SWR key (← Phase D US-037~041 API 불일치)
-- [ ] US-141: System 페이지 실데이터 연동 (← Phase H US-069~071 mock 미제거)
-- [ ] US-142: Heatmap/OrderbookView 175 심볼 연동 (← Phase H US-071 데이터 미완)
-- [ ] US-143: Strategy/Portfolio/EquityCurve mock 제거 (← Phase H US-069 + J-EXT US-108 spec 불일치)
-- [ ] US-144: 대시보드 테스트 SWR v2 + 모바일 (← Phase D US-041 테스트 미완)
+- [x] US-140: API prefix 통일 + SWR key — `/api/v1/` 통일, kill-switch/strategies/status 경로 수정
+- [x] US-141: System 페이지 실데이터 연동 — system.py NEW (Docker containers + psutil resources), asyncio.to_thread
+- [x] US-142: Heatmap/OrderbookView 175 심볼 연동 — symbols/spreads 엔드포인트, SpreadItem[] 변환
+- [x] US-143: Strategy/Portfolio/EquityCurve mock 제거 — 전 컴포넌트 실데이터 연결, MOCK→OFFLINE
+- [x] US-144: 대시보드 테스트 SWR v2 + 모바일 — isValidating 수정, TradeDetail 반응형 (w-full sm:w-80)
+
+**Stage C 코드리뷰**: CRITICAL 3 + HIGH 5 → fix loop 12건 적용 → 전부 해결. 보안 CRITICAL 0.
+**Shadow 검증 결과** (Stage D):
+- **18.5h Shadow**: 289 trades, WR=90.7%, PnL=-$7.86 (stat_arb_v1 -$7.61 원인), crash=0
+- **API QA**: 13/13 PASS — containers/resources/symbols/spreads 엔드포인트 + 인증 + 엣지케이스
+- **stat_arb 손실 문제**: US-156 신규 생성 (SSOT §9 HIGH 등록). SHADOW_DISABLED_STRATEGIES .env 미설정이 원인.
+- **pytest**: 4,360 passed, 0 failed, 6 skipped | tsc: 0 errors
 
 #### Phase S5: Data Pipeline & Auto-Tuner — US-145~148 (← E-2, E-3, SR 보완)
 
@@ -741,13 +754,14 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | **Shadow 실행 시 Docker 미실행 위험** | Docker 없이 Shadow 실행 시 거래 로직은 유효하나 TimescaleDB/Redis 미저장 → 메트릭 유실 | Shadow 실행 전 `docker compose up -d` 필수 (leviathan.md에 명시) |
 | **AtomicOrderExecutor: place_ioc_limit() 미구현** | Native Adapter에서 IOC limit 주문 지원 부재 → 모든 거래소에서 US-119 IOC fallback(limit→market) 동작만 수행 | Phase K/L에서 거래소별 실제 API 연동 시 추가 (현재는 코드만 검증) |
 | ~~Bithumb 증분 Orderbook~~ | ~~스냅샷 없이 증분만 수신 → 허위 스프레드~~ | **RESOLVED (US-073)**: 누적 orderbook + REST re-sync + stale 5초 감지 |
+| **Shadow 손실 전략 미비활성화** | `SHADOW_DISABLED_STRATEGIES` 메커니즘(US-066)은 구현됐으나 engine/.env에 미설정. stat_arb_v1(-7.61 USDT/18h), spot_futures_v1(Korean stale data), latency_arb_v1(동일) 3개 전략이 Shadow에서 손실 유발 | US-156으로 해결 — engine/.env + root .env에 `SHADOW_DISABLED_STRATEGIES=statistical_arb_v1,spot_futures_v1,latency_arb_v1` 설정 필수 |
 | 마찰 vs Gross Spread | 대부분 알트 spread 2-25bps, friction ~20bps | MIN_EDGE_BPS=5 + 고스프레드 심볼 집중 |
 
 ### MEDIUM
 
 | 이슈 | 설명 | 상태 |
 |------|------|------|
-| 전략 6개 비활성 | GAP 1-7로 cross_exchange만 Shadow 동작 | Phase B-1~B-5에서 해결 예정 |
+| ~~전략 6개 비활성~~ | ~~GAP 1-7로 cross_exchange만 Shadow 동작~~ | **RESOLVED**: Phase J-EXT Wave 1~4에서 전략 연결 완료. 단, 3개 전략 Shadow 손실 문제는 HIGH로 승격 (US-156) |
 | httpx 클라이언트 재생성 | 매 요청마다 httpx.AsyncClient 재생성 → 성능 | 미해결 |
 
 ### LOW

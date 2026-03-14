@@ -13,6 +13,7 @@ const mockToggle = toggleStrategy as jest.MockedFunction<typeof toggleStrategy>;
 
 const baseStrategy = {
   id: 'tri-arb-1',
+  type: 'triangular',
   name: 'Tri Arb',
   enabled: false,
   exchange_a: 'Binance',

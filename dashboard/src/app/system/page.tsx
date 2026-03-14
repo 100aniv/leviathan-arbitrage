@@ -1,8 +1,8 @@
 'use client';
 
 import { useApi } from '@/hooks/useApi';
-import { getHealth, getStatus, getExchangeStatus } from '@/lib/api';
-import type { HealthResponse, StatusResponse, ExchangeStatus, ContainerStatus } from '@/types';
+import { getHealth, getStatus, getExchangeStatus, getSystemContainers, getSystemResources } from '@/lib/api';
+import type { HealthResponse, StatusResponse, ExchangeStatus, ContainerStatus, SystemResources } from '@/types';
 import { TCAWidget } from '@/components/TCAWidget';
 
 function formatUptime(seconds: number): string {
@@ -24,18 +24,6 @@ function StatusDot({ status }: { status: 'healthy' | 'degraded' | 'unhealthy' | 
   };
   return <span className={`inline-block w-2 h-2 rounded-full ${colors[status]} mr-1.5`} />;
 }
-
-// Mock Docker containers (8 containers)
-const MOCK_CONTAINERS: ContainerStatus[] = [
-  { name: 'leviathan-engine',     status: 'running', cpu_pct: 12.4, memory_mb: 384,  uptime: '2d 4h' },
-  { name: 'leviathan-dashboard',  status: 'running', cpu_pct: 3.1,  memory_mb: 128,  uptime: '2d 4h' },
-  { name: 'nginx',                status: 'running', cpu_pct: 0.4,  memory_mb: 32,   uptime: '2d 4h' },
-  { name: 'timescaledb',          status: 'running', cpu_pct: 8.7,  memory_mb: 512,  uptime: '2d 4h' },
-  { name: 'redis',                status: 'running', cpu_pct: 1.2,  memory_mb: 64,   uptime: '2d 4h' },
-  { name: 'prometheus',           status: 'running', cpu_pct: 2.6,  memory_mb: 96,   uptime: '2d 4h' },
-  { name: 'grafana',              status: 'running', cpu_pct: 1.8,  memory_mb: 80,   uptime: '2d 4h' },
-  { name: 'redis-exporter',       status: 'running', cpu_pct: 0.2,  memory_mb: 16,   uptime: '2d 4h' },
-];
 
 function ContainerBadge({ status }: { status: ContainerStatus['status'] }) {
   if (status === 'running') return <span className="badge-profit">running</span>;
@@ -74,6 +62,18 @@ export default function SystemPage() {
   const isLoading = (healthLoading && !health) || (statusLoading && !status);
 
   const exchangeList = Object.entries(exchanges ?? {});
+
+  const { data: containers, isLoading: containersLoading } = useApi<ContainerStatus[]>(
+    '/api/v1/system/containers',
+    getSystemContainers,
+    { refreshInterval: 5000 },
+  );
+
+  const { data: resources, isLoading: resourcesLoading } = useApi<SystemResources>(
+    '/api/v1/system/resources',
+    getSystemResources,
+    { refreshInterval: 5000 },
+  );
 
   return (
     <div className="space-y-6">
@@ -233,62 +233,83 @@ export default function SystemPage() {
         </div>
       </div>
 
-      {/* Docker containers — mock */}
+      {/* Docker containers — live API */}
       <div className="bg-terminal-surface border border-terminal-border p-4">
         <div className="flex items-center justify-between mb-4">
           <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">
             Docker Containers
           </span>
-          <span className="text-[10px] font-mono text-terminal-subtle">8 / 8 running</span>
+          {containers && containers.length > 0 && (
+            <span className="text-[10px] font-mono text-terminal-subtle">
+              {containers.filter(c => c.status === 'running').length} / {containers.length} running
+            </span>
+          )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
-          {MOCK_CONTAINERS.map(container => (
-            <div
-              key={container.name}
-              className="px-3 py-2 bg-terminal-bg border border-terminal-border/40"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-mono text-terminal-text truncate pr-2">{container.name}</span>
-                <ContainerBadge status={container.status} />
+        {containersLoading && !containers ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-16 bg-terminal-muted/40 animate-pulse border border-terminal-border/30" />
+            ))}
+          </div>
+        ) : containers && containers.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+            {containers.map(container => (
+              <div
+                key={container.name}
+                className="px-3 py-2 bg-terminal-bg border border-terminal-border/40"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-mono text-terminal-text truncate pr-2">{container.name}</span>
+                  <ContainerBadge status={container.status} />
+                </div>
+                <div className="flex items-center gap-3 text-[10px] font-mono text-terminal-subtle tabular-nums">
+                  <span>CPU {container.cpu_pct ?? '—'}%</span>
+                  <span>{container.memory_mb ?? '—'}MB</span>
+                  <span>{container.uptime ?? '—'}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-3 text-[10px] font-mono text-terminal-subtle tabular-nums">
-                <span>CPU {container.cpu_pct}%</span>
-                <span>{container.memory_mb}MB</span>
-                <span>{container.uptime}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-8">
+            <span className="text-xs font-mono text-terminal-subtle">Docker 연결 대기 중...</span>
+          </div>
+        )}
       </div>
 
-      {/* Memory / CPU — placeholder for Prometheus */}
+      {/* Resource Usage — live API */}
       <div className="bg-terminal-surface border border-terminal-border p-4">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">
-            Resource Usage
-          </span>
-          <span className="text-[10px] font-mono text-terminal-subtle">via Prometheus (placeholder)</span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[
-            { label: 'CPU Usage',    value: '29.4%',  bar: 29, color: '#00ff88' },
-            { label: 'Memory',       value: '1.3 GB', bar: 52, color: '#3b82f6' },
-            { label: 'Disk I/O',     value: '12 MB/s', bar: 18, color: '#f59e0b' },
-          ].map(({ label, value, bar, color }) => (
-            <div key={label} className="space-y-2">
-              <div className="flex justify-between text-[11px] font-mono">
-                <span className="text-terminal-subtle">{label}</span>
-                <span className="text-terminal-text tabular-nums">{value}</span>
+        <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle block mb-4">
+          Resource Usage
+        </span>
+        {resourcesLoading && !resources ? (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-8 bg-terminal-muted/40 animate-pulse border border-terminal-border/30" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[
+              { label: 'CPU Usage', value: resources?.cpu_pct != null ? `${resources.cpu_pct.toFixed(1)}%` : '—', bar: resources?.cpu_pct ?? 0, color: '#00ff88' },
+              { label: 'Memory',    value: resources?.memory_used_gb != null && resources?.memory_total_gb != null ? `${resources.memory_used_gb.toFixed(1)} / ${resources.memory_total_gb.toFixed(0)} GB` : '—', bar: resources?.memory_used_gb != null && resources?.memory_total_gb ? Math.min(resources.memory_used_gb / resources.memory_total_gb * 100, 100) : 0, color: '#3b82f6' },
+              { label: 'Disk',      value: resources?.disk_used_gb != null && resources?.disk_total_gb != null ? `${resources.disk_used_gb.toFixed(0)} / ${resources.disk_total_gb.toFixed(0)} GB` : '—', bar: resources?.disk_used_gb != null && resources?.disk_total_gb ? Math.min(resources.disk_used_gb / resources.disk_total_gb * 100, 100) : 0, color: '#f59e0b' },
+            ].map(({ label, value, bar, color }) => (
+              <div key={label} className="space-y-2">
+                <div className="flex justify-between text-[11px] font-mono">
+                  <span className="text-terminal-subtle">{label}</span>
+                  <span className="text-terminal-text tabular-nums">{value}</span>
+                </div>
+                <div className="h-1.5 bg-terminal-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${bar}%`, backgroundColor: color }}
+                  />
+                </div>
               </div>
-              <div className="h-1.5 bg-terminal-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${bar}%`, backgroundColor: color }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* TCA — Execution Quality (US-116) */}

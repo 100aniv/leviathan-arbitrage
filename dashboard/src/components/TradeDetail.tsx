@@ -17,7 +17,7 @@ export function TradeDetail({ trade, onClose }: TradeDetailProps) {
       <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
 
       {/* Side panel */}
-      <div className="fixed right-0 top-0 h-full w-80 bg-terminal-surface border-l border-terminal-border z-50 overflow-y-auto">
+      <div className="fixed right-0 top-0 h-full w-full sm:w-80 bg-terminal-surface border-l border-terminal-border z-50 overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border sticky top-0 bg-terminal-surface">
           <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-terminal-subtle">

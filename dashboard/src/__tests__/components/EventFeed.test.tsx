@@ -21,7 +21,7 @@ beforeEach(() => mockUseApi.mockClear());
 describe('EventFeed', () => {
   describe('alert list rendering', () => {
     it('renders alert messages when data is available', () => {
-      mockUseApi.mockReturnValue({ data: mockAlerts, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockAlerts, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<EventFeed />);
 
@@ -31,7 +31,7 @@ describe('EventFeed', () => {
     });
 
     it('renders all three alert messages in the list', () => {
-      mockUseApi.mockReturnValue({ data: mockAlerts, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockAlerts, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<EventFeed />);
 
@@ -44,7 +44,7 @@ describe('EventFeed', () => {
 
   describe('severity badges', () => {
     it('renders a badge for each alert severity level', () => {
-      mockUseApi.mockReturnValue({ data: mockAlerts, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockAlerts, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<EventFeed />);
 
@@ -56,7 +56,7 @@ describe('EventFeed', () => {
 
   describe('empty state', () => {
     it('shows "No recent events" when alert list is empty', () => {
-      mockUseApi.mockReturnValue({ data: [], error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: [], error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<EventFeed />);
 
@@ -64,7 +64,7 @@ describe('EventFeed', () => {
     });
 
     it('shows "No recent events" when data is null', () => {
-      mockUseApi.mockReturnValue({ data: undefined, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: undefined, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<EventFeed />);
 
@@ -74,7 +74,7 @@ describe('EventFeed', () => {
 
   describe('navigation', () => {
     it('renders a "View all" link pointing to /alerts', () => {
-      mockUseApi.mockReturnValue({ data: mockAlerts, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockAlerts, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<EventFeed />);
 
@@ -86,7 +86,7 @@ describe('EventFeed', () => {
 
   describe('timestamp display', () => {
     it('renders timestamps for each alert row', () => {
-      mockUseApi.mockReturnValue({ data: mockAlerts, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
+      mockUseApi.mockReturnValue({ data: mockAlerts, error: undefined, isLoading: false, isValidating: false, mutate: jest.fn() } as ReturnType<typeof useApi>);
 
       render(<EventFeed />);
 

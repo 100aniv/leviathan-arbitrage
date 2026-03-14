@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -41,11 +42,12 @@ def _get_pnl(ctx: Any) -> dict[str, float]:
     """Get PnL from real PositionManager or fallback to context values."""
     if ctx.position_manager is not None:
         try:
+            positions = list(ctx.position_manager.get_all_positions())
             total_realized = float(sum(
-                p.realized_pnl for p in ctx.position_manager.get_all_positions()
+                p.realized_pnl for p in positions
             ))
             total_unrealized = float(sum(
-                p.unrealized_pnl for p in ctx.position_manager.get_all_positions()
+                p.unrealized_pnl for p in positions
             ))
             return {
                 "realized_pnl": total_realized,
@@ -85,7 +87,7 @@ async def list_trades(
     symbol: str | None = None,
     from_date: str | None = Query(default=None, alias="from"),
     to_date: str | None = Query(default=None, alias="to"),
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=1000),
 ) -> JSONResponse:
     """Return trade history with optional filters."""
     ctx = request.app.state.engine_context
@@ -160,3 +162,84 @@ async def get_status(request: Request) -> JSONResponse:
         "position_count": len(ctx.positions),
         "connection_count": ctx.ws_manager.connection_count if ctx.ws_manager else 0,
     })
+
+
+@router.get("/symbols", dependencies=[Depends(require_auth)])
+async def get_symbols(request: Request) -> JSONResponse:
+    """Return active trading symbol list from collector_manager or env config."""
+    ctx = request.app.state.engine_context
+
+    symbols: list[str] = []
+
+    # Source 1: collector_manager.get_active_symbols() via engine
+    engine = getattr(ctx, "engine", None)
+    if engine is not None:
+        cm = getattr(engine, "collector_manager", None)
+        if cm is not None:
+            try:
+                symbols = list(cm.get_active_symbols())
+            except Exception as exc:
+                logger.warning("collector_manager.get_active_symbols() failed: %s", exc)
+
+    # Source 2: runtime_settings injected by main.py
+    if not symbols:
+        symbols = ctx.runtime_settings.get("trading_symbols", [])
+
+    # Source 3: TRADING_SYMBOLS env var
+    if not symbols:
+        env_symbols = os.environ.get("TRADING_SYMBOLS", "")
+        if env_symbols:
+            symbols = [s.strip() for s in env_symbols.split(",") if s.strip()]
+
+    return JSONResponse({"symbols": symbols, "count": len(symbols)})
+
+
+@router.get("/spreads", dependencies=[Depends(require_auth)])
+async def get_spreads(request: Request) -> JSONResponse:
+    """Return current exchange×symbol spread snapshot from SignalGenerator."""
+    ctx = request.app.state.engine_context
+
+    spreads: list[dict[str, Any]] = []
+
+    engine = getattr(ctx, "engine", None)
+    if engine is not None:
+        # Try SignalGenerator snapshot
+        sg = getattr(engine, "signal_generator", None)
+        if sg is not None:
+            try:
+                snapshot = sg.get_spread_snapshot() if hasattr(sg, "get_spread_snapshot") else {}
+                for key, data in snapshot.items():
+                    spreads.append({
+                        "symbol": data.get("symbol", key),
+                        "exchange_a": data.get("exchange_a", ""),
+                        "exchange_b": data.get("exchange_b", ""),
+                        "spread_bps": data.get("spread_bps", 0.0),
+                        "timestamp": data.get("timestamp", ""),
+                    })
+            except Exception as exc:
+                logger.warning("SignalGenerator.get_spread_snapshot() failed: %s", exc)
+
+        # Fallback: PriceHub snapshot
+        if not spreads:
+            ph = getattr(engine, "price_hub", None)
+            if ph is not None:
+                try:
+                    snapshot = ph.get_snapshot() if hasattr(ph, "get_snapshot") else {}
+                    for symbol, prices in snapshot.items():
+                        if isinstance(prices, dict) and len(prices) >= 2:
+                            exs = list(prices.keys())
+                            p_a = float(prices[exs[0]])
+                            p_b = float(prices[exs[1]])
+                            mid = (p_a + p_b) / 2 if (p_a + p_b) > 0 else 1.0
+                            spread_bps = abs(p_a - p_b) / mid * 10000
+                            spreads.append({
+                                "symbol": symbol,
+                                "exchange_a": exs[0],
+                                "exchange_b": exs[1],
+                                "spread_bps": round(spread_bps, 2),
+                                "timestamp": "",
+                            })
+                except Exception as exc:
+                    logger.warning("PriceHub.get_snapshot() failed: %s", exc)
+
+    return JSONResponse(spreads)

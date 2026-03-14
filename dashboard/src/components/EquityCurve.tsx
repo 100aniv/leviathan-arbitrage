@@ -6,11 +6,18 @@ interface DataPoint {
   btc_benchmark: number | null;
 }
 
-interface EquityCurveProps {
-  data: DataPoint[];
+interface EquityMetrics {
+  sharpe_ratio:     number | null;
+  max_drawdown_pct: number;
+  calmar_ratio:     number | null;
 }
 
-export function EquityCurve({ data }: EquityCurveProps) {
+interface EquityCurveProps {
+  data:     DataPoint[];
+  metrics?: EquityMetrics;
+}
+
+export function EquityCurve({ data, metrics }: EquityCurveProps) {
   if (data.length === 0) {
     return (
       <div className="bg-terminal-surface border border-terminal-border p-4 h-48 flex items-center justify-center">
@@ -74,6 +81,20 @@ export function EquityCurve({ data }: EquityCurveProps) {
           />
         ))}
       </svg>
+      {metrics && (
+        <div className="flex items-center gap-4 mt-2 pt-2 border-t border-terminal-border/40">
+          {[
+            { label: 'Sharpe', value: metrics.sharpe_ratio?.toFixed(2)     ?? '—' },
+            { label: 'MDD',    value: `${metrics.max_drawdown_pct.toFixed(2)}%` },
+            { label: 'Calmar', value: metrics.calmar_ratio?.toFixed(2)      ?? '—' },
+          ].map(({ label, value }) => (
+            <div key={label} className="flex items-center gap-1.5">
+              <span className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">{label}</span>
+              <span className="text-[10px] font-mono text-terminal-text tabular-nums">{value}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
