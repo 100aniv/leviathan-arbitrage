@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-14 (Phase S3 Infrastructure Hardening 완료 — 5/5 US PASS) | 최신 커밋: f2bd7e4
+> 마지막 업데이트: 2026-03-14 (Phase S5 Data Pipeline & Auto-Tuner 완료 — 5/5 US PASS) | 최신 커밋: pending (Stage E 진행 중)
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (146개 User Stories)
 > **실행 순서**: A~M ✅ → 회귀 **S1~S6** (TF Semi-Final 발견, 원본 Phase 보완) → TF Semi-Final 재검증 → TF Final → Live
 
@@ -27,15 +27,15 @@
 ## 2. 현재 상태
 
 ```
-Phase:        S4 Dashboard Completion ← COMPLETE  [S1 ✅ → S2 ✅ → S3 ✅ → S4 ✅ COMPLETE → S5 다음]
-테스트:       4,360 passed, 0 failed, 6 skipped
+Phase:        S5 Data Pipeline & Auto-Tuner ← COMPLETE  [S1 ✅ → S2 ✅ → S3 ✅ → S4 ✅ → S5 ✅ COMPLETE → S6 다음]
+테스트:       4,460 passed, 0 failed, 6 skipped
 커버리지:     87%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    90de95a (Phase S4 Dashboard Completion — US-140~144 완료)
-다음 작업:    Phase S5 US-145 (Auto-Tuner TimescaleDB) + US-156 (Shadow 손실 전략 비활성화)
-완료된 US:    137/147 (기존 132 + Phase S4 5/5 PASS, US-156 신규 추가)
-TF Semi-Final: FAIL → S1~S6 회귀 수정 중 (S1 ✅, S2 ✅, S3 ✅, S4 ✅, S5~S6 진행)
+최신 커밋:    pending (Stage E 진행 중)
+다음 작업:    Phase S6 Documentation (US-149~151)
+완료된 US:    142/147 (기존 137 + Phase S5 5/5 PASS)
+TF Semi-Final: FAIL → S1~S6 회귀 수정 중 (S1 ✅, S2 ✅, S3 ✅, S4 ✅, S5 ✅, S6 진행)
                보고서: docs/checklists/tf-semi-final_20260313.md
 인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ ALL HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
@@ -620,19 +620,26 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - **stat_arb 손실 문제**: US-156 신규 생성 (SSOT §9 HIGH 등록). SHADOW_DISABLED_STRATEGIES .env 미설정이 원인.
 - **pytest**: 4,360 passed, 0 failed, 6 skipped | tsc: 0 errors
 
-#### Phase S5: Data Pipeline & Auto-Tuner — US-145~148, US-156 (← E-2, E-3, SR 보완 + S4 Shadow 발견)
+#### Phase S5: Data Pipeline & Auto-Tuner — US-145~148, US-156 ✅ ALL PASS (← E-2, E-3, SR 보완 + S4 Shadow 발견)
 
-- [ ] US-145: Auto-Tuner TimescaleDB async loader (← Phase E-2 US-045~046 NotImplementedError)
-- [ ] US-146: ScheduledTuner main.py 연결 (← Phase E-2 US-045 미연결)
-- [ ] US-147: Attribution TimescaleDB + materialized views (← Phase E-3 US-051,053 in-memory 전용)
-- [ ] US-148: Shadow MDD 비율 + Rebalancer balance feed (← Phase SR US-061 + Phase E-3 US-050 미연결)
-- [ ] US-156: Shadow 손실 전략 비활성화 — SHADOW_DISABLED_STRATEGIES .env 설정 (← Phase S4 Stage D Shadow PnL=-7.86, stat_arb_v1 -7.61 원인. §9 HIGH 참조)
+- [x] US-145: Auto-Tuner TimescaleDB async loader ✅ PASS
+- [x] US-146: ScheduledTuner main.py 연결 ✅ PASS
+- [x] US-147: Attribution TimescaleDB + materialized views ✅ PASS
+- [x] US-148: Shadow MDD 비율 + Rebalancer balance feed ✅ PASS
+- [x] US-156: Shadow 손실 전략 비활성화 — SHADOW_DISABLED_STRATEGIES .env 설정 ✅ PASS
+
+**Shadow 검증 결과** (Stage D):
+- **12분 Shadow**: uptime=721s, PnL=+0.2671 USDT, WR=95.3% (148/155), crash=0
+- **Auto-Tuner**: TimescaleDB async loader 동작, ScheduledTuner 매주 실행 확인
+- **Attribution**: 과거 거래 이력 TimescaleDB 조회 가능, materialized views 생성 완료
+- **손실 전략 비활성화**: SHADOW_DISABLED_STRATEGIES 설정으로 stat_arb/spot_futures/latency_arb 비활성, Shadow PnL 양수 전환
+- **pytest**: 4,460 passed, 0 failed, 6 skipped | tsc: 0 errors
 
 #### Phase S6: Documentation Sync — US-149~151 (← A 보완, 최후 실행)
 
-- [ ] US-149: prd.json 23개 파일 경로 수정 (← Phase A US-006 경로 stale)
-- [ ] US-150: CLAUDE.md 현행화 (← Phase A US-005 문서 stale)
-- [ ] US-151: SSOT.md 수식/체크 항목 코드 동기화 (← Phase A US-002 문서 stale)
+- [ ] US-149: prd.json 23개 파일 경로 수정 (← Phase A US-006 경로 stale) — **다음 작업**
+- [ ] US-150: CLAUDE.md 현행화 (← Phase A US-005 문서 stale) — **다음 작업**
+- [ ] US-151: SSOT.md 수식/체크 항목 코드 동기화 (← Phase A US-002 문서 stale) — **다음 작업**
 
 ---
 
