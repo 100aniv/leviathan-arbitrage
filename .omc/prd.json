@@ -2345,7 +2345,7 @@
       "title": "Auto-Tuner TimescaleDB async loader 구현",
       "phase": "S5",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "_run_with_timescaledb()의 NotImplementedError 제거",
         "asyncpg로 execution_log 조회 → Optuna 입력 데이터 변환",
@@ -2361,7 +2361,7 @@
       "title": "ScheduledTuner main.py 연결",
       "phase": "S5",
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "main.py에서 ScheduledTuner import + start_scheduler() 호출",
         "엔진 시작 시 'Scheduled tuner started' 로그 확인",
@@ -2378,7 +2378,7 @@
       "title": "Attribution TimescaleDB 연동 + materialized views",
       "phase": "S5",
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "PerformanceAttribution이 TimescaleDB execution_log 조회",
         "엔진 재시작 후에도 과거 거래 이력 조회 가능",
@@ -2395,7 +2395,7 @@
       "title": "Shadow MDD 비율 계산 + InventoryRebalancer balance feed",
       "phase": "S5",
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "shadow.py _compute_drawdown()에서 비율 기반 MDD도 추적 (mdd_pct 필드)",
         "ShadowStats.max_drawdown_pct 추가 (0~1 범위)",
@@ -2533,7 +2533,7 @@
       "title": "Shadow 손실 전략 비활성화 — SHADOW_DISABLED_STRATEGIES .env 설정",
       "phase": "S5",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "engine/.env에 SHADOW_DISABLED_STRATEGIES=statistical_arb_v1,spot_futures_v1,latency_arb_v1 설정",
         "root .env에도 동일 설정 동기화",

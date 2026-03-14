@@ -184,7 +184,7 @@ class TestDataLoaderLoadOHLCV:
     @pytest.mark.asyncio
     async def test_load_ohlcv_requires_connection(self):
         loader = _make_loader()  # no conn
-        with pytest.raises(AssertionError):
+        with pytest.raises((AssertionError, RuntimeError)):
             await loader.load_ohlcv("binance", "BTC/USDT", self._start, self._end)
 
     @pytest.mark.asyncio
@@ -278,7 +278,7 @@ class TestDataLoaderLoadSpreads:
     @pytest.mark.asyncio
     async def test_load_spreads_requires_connection(self):
         loader = _make_loader()
-        with pytest.raises(AssertionError):
+        with pytest.raises((AssertionError, RuntimeError)):
             await loader.load_spreads("strat", self._start, self._end)
 
     @pytest.mark.asyncio

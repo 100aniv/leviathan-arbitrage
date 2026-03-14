@@ -53,6 +53,61 @@ class PerformanceAttribution:
         """Add multiple trade records."""
         self._trades.extend(trades)
 
+    async def load_from_db(self, pool) -> int:
+        """Load historical trades from TimescaleDB execution_log.
+
+        Args:
+            pool: asyncpg connection pool
+
+        Returns:
+            Number of trades loaded
+        """
+        query = """
+            SELECT ts, strategy_id, signal_id, buy_exchange, sell_exchange,
+                   symbol, buy_price, sell_price, size, gross_spread_bps,
+                   fee_total, slippage_total, net_pnl, status
+            FROM execution_log
+            WHERE status = 'filled'
+            ORDER BY ts DESC
+            LIMIT 10000
+        """
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query)
+
+        loaded = 0
+        for row in rows:
+            trade = TradeRecord(
+                trade_id=row['signal_id'] or "",
+                timestamp=row['ts'],
+                strategy_id=row['strategy_id'],
+                exchange_buy=row['buy_exchange'],
+                exchange_sell=row['sell_exchange'],
+                pair=row['symbol'],
+                pnl=float(row['net_pnl'] or 0),
+                size_usd=float(row['size'] or 0),
+            )
+            self._trades.append(trade)
+            loaded += 1
+
+        logger.info("Loaded %d historical trades from TimescaleDB", loaded)
+        return loaded
+
+    _ALLOWED_VIEWS = frozenset({
+        "strategy_daily_pnl",
+        "exchange_daily_pnl",
+        "pair_daily_pnl",
+    })
+
+    async def refresh_views(self, pool) -> None:
+        """Refresh materialized views for attribution analysis."""
+        async with pool.acquire() as conn:
+            for view in self._ALLOWED_VIEWS:
+                try:
+                    await conn.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view}")
+                    logger.info("Refreshed materialized view: %s", view)
+                except Exception as exc:
+                    logger.warning("Failed to refresh %s: %s", view, exc)
+
     @property
     def trade_count(self) -> int:
         return len(self._trades)

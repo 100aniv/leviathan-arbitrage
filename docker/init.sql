@@ -295,3 +295,8 @@ SELECT
 FROM execution_log
 GROUP BY day, symbol
 ORDER BY day DESC;
+
+-- Unique indexes required for REFRESH MATERIALIZED VIEW CONCURRENTLY
+CREATE UNIQUE INDEX IF NOT EXISTS strategy_daily_pnl_idx ON strategy_daily_pnl (day, strategy_id);
+CREATE UNIQUE INDEX IF NOT EXISTS exchange_daily_pnl_idx ON exchange_daily_pnl (day, exchange_id);
+CREATE UNIQUE INDEX IF NOT EXISTS pair_daily_pnl_idx ON pair_daily_pnl (day, symbol);

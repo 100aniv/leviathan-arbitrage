@@ -24,6 +24,7 @@ dependencies = [
     "PyJWT>=2.8",
     "bcrypt>=4.1",
     "optuna>=3.6",
+    "apscheduler>=3.10",
     "scipy>=1.13",
     "numpy>=1.26",
     "statsmodels>=0.14",

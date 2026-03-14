@@ -24,6 +24,9 @@ class OHLCVWindow:
     def length(self) -> int:
         return len(self.closes)
 
+    def __len__(self) -> int:
+        return len(self.closes)
+
 
 @dataclass
 class SpreadRecord:
@@ -100,7 +103,8 @@ class DataLoader:
         if key in self._cache:
             return self._cache[key]
 
-        assert self._conn is not None, "Call connect() first"
+        if self._conn is None:
+            raise RuntimeError("DataLoader: call connect() before querying")
 
         rows = await self._conn.fetch(
             """
@@ -150,7 +154,8 @@ class DataLoader:
         if key in self._cache:
             return self._cache[key]
 
-        assert self._conn is not None, "Call connect() first"
+        if self._conn is None:
+            raise RuntimeError("DataLoader: call connect() before querying")
 
         rows = await self._conn.fetch(
             """
@@ -185,18 +190,19 @@ class DataLoader:
         days: int = 7,
     ) -> OHLCVWindow:
         """최근 N일 execution_log를 1시간 OHLCV 형태로 변환."""
-        assert self._conn is not None, "Call connect() first"
+        if self._conn is None:
+            raise RuntimeError("DataLoader: call connect() before querying")
         rows = await self._conn.fetch(
             """
             SELECT
-                time_bucket('1 hour', executed_at) AS time,
-                FIRST(price, executed_at) AS open,
-                MAX(price) AS high,
-                MIN(price) AS low,
-                LAST(price, executed_at) AS close,
+                time_bucket('1 hour', ts) AS time,
+                FIRST((buy_price + sell_price) / 2, ts) AS open,
+                MAX((buy_price + sell_price) / 2) AS high,
+                MIN((buy_price + sell_price) / 2) AS low,
+                LAST((buy_price + sell_price) / 2, ts) AS close,
                 SUM(size) AS volume
             FROM execution_log
-            WHERE executed_at >= NOW() - make_interval(days => $1)
+            WHERE ts >= NOW() - make_interval(days => $1)
               AND ($2::text IS NULL OR strategy_id = $2)
             GROUP BY time
             ORDER BY time ASC
@@ -229,18 +235,19 @@ class DataLoader:
         days: int = 7,
     ) -> list[SpreadRecord]:
         """최근 N일 execution_log에서 buy/sell price로 spread 데이터 추출."""
-        assert self._conn is not None, "Call connect() first"
+        if self._conn is None:
+            raise RuntimeError("DataLoader: call connect() before querying")
         rows = await self._conn.fetch(
             """
             SELECT
-                executed_at AS time,
+                ts AS time,
                 strategy_id AS strategy,
-                exchange AS exchange_pair,
+                buy_exchange || '-' || sell_exchange AS exchange_pair,
                 (sell_price - buy_price) AS gross_spread,
-                (sell_price - buy_price - fee) AS net_spread
+                (sell_price - buy_price - fee_total) AS net_spread
             FROM execution_log
-            WHERE executed_at >= NOW() - make_interval(days => $1)
-            ORDER BY executed_at ASC
+            WHERE ts >= NOW() - make_interval(days => $1)
+            ORDER BY ts ASC
             """,
             days,
         )

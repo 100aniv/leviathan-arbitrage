@@ -6,6 +6,7 @@ target allocation, suggests a transfer to rebalance.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 
 from src.core.balance_tracker import BalanceTracker
@@ -141,3 +142,18 @@ class InventoryRebalancer:
             abs(dev) > self.deviation_threshold * 2
             for dev in deviations.values()
         )
+
+    async def connect_exchange_feeds(self, exchanges: dict) -> None:
+        """Connect exchange balance feeds for live mode."""
+        if os.environ.get("EXECUTION_MODE", "").lower() != "live":
+            logger.info("Balance feed: simulation mode (no live exchange connection)")
+            return
+
+        for name, adapter in exchanges.items():
+            try:
+                balance = await adapter.get_balance()
+                if balance:
+                    self.tracker.update(name, balance)
+                    logger.info("Balance feed connected: %s", name)
+            except Exception as exc:
+                logger.warning("Balance feed failed for %s: %s", name, exc)

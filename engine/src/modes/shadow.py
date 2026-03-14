@@ -342,6 +342,7 @@ class ShadowStats:
     total_pnl: float = 0.0
     peak_pnl: float = 0.0
     max_drawdown: float = 0.0
+    max_drawdown_pct: float = 0.0  # 0~1 range, percentage-based MDD (SSOT §4.6)
     last_daily_summary: datetime | None = None
     trades_rejected: int = 0
     trades_partial_fill: int = 0
@@ -506,11 +507,23 @@ class ShadowMode:
             blacklist_ttl_s=float(os.getenv("STALE_BLACKLIST_TTL_S", "300")),
         )
 
-        # US-066: Strategy blacklist — comma-separated strategy IDs to disable
+        # US-066/US-156: Strategy blacklist — comma-separated strategy IDs to disable
         _disabled_raw = os.environ.get("SHADOW_DISABLED_STRATEGIES", "")
-        self._disabled_strategies: set[str] = {
+        _disabled_base: set[str] = {
             s.strip() for s in _disabled_raw.split(",") if s.strip()
         }
+        # Also map registration IDs to signal IDs for dual-path blocking
+        try:
+            from src.modes.strategy_validation import STRATEGY_SIGNAL_ID_MAP
+            _disabled_signal_ids = {
+                STRATEGY_SIGNAL_ID_MAP.get(s, s) for s in _disabled_base
+            }
+            self._disabled_strategies: set[str] = _disabled_base | _disabled_signal_ids
+        except ImportError:
+            self._disabled_strategies = _disabled_base
+
+        if self._disabled_strategies:
+            logger.info(f"Shadow disabled strategies: {sorted(self._disabled_strategies)}")
 
         # US-066: Per-trade loss cap (hard ceiling on single-trade loss)
         self._max_loss_per_trade_usd: Decimal = Decimal(
@@ -1703,6 +1716,12 @@ class ShadowMode:
         if drawdown > self._stats.max_drawdown:
             self._stats.max_drawdown = drawdown
 
+        # Percentage-based MDD (SSOT §4.6: MDD = (Peak - PnL) / Peak)
+        if self._stats.peak_pnl > 0.01:  # guard against tiny peak
+            dd_pct = min(drawdown / self._stats.peak_pnl, 1.0)  # clamp to 0~1
+            if dd_pct > self._stats.max_drawdown_pct:
+                self._stats.max_drawdown_pct = dd_pct
+
     # -----------------------------------------------------------------------
     # US-067: Strategy validation helpers
     # -----------------------------------------------------------------------
@@ -1730,6 +1749,7 @@ class ShadowMode:
             "total_pnl": round(stats.total_pnl, 6),
             "peak_pnl": round(stats.peak_pnl, 6),
             "max_drawdown": round(stats.max_drawdown, 6),
+            "max_drawdown_pct": round(stats.max_drawdown_pct, 6),
             "trades_rejected": stats.trades_rejected,
             "trades_partial_fill": stats.trades_partial_fill,
             "trades_rate_limited": stats.trades_rate_limited,

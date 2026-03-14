@@ -32,6 +32,12 @@ load_dotenv()  # Load .env before any os.getenv() calls
 from src.api.server import EngineContext, create_app
 from src.core.config import ExecutionMode, Settings, get_settings
 
+try:
+    from src.tuning.scheduled_tuner import ScheduledTuner
+    _HAS_TUNER = True
+except ImportError:
+    _HAS_TUNER = False
+
 logger = logging.getLogger(__name__)
 
 # Dynamic BTC reference price — read from env var, used for USDT→BTC position size conversion.
@@ -113,6 +119,8 @@ class Engine:
         self._regime_detector: Any = None
         # US-133: AtomicOrderExecutor for live IOC execution
         self._atomic_order_executor: Any = None
+        # US-146: ScheduledTuner (optional, enabled via ENABLE_INLINE_TUNER)
+        self._scheduled_tuner: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -133,6 +141,7 @@ class Engine:
             await self._init_execution()
             await self._populate_context()
             await self._start_background_tasks()
+            await self._init_tuner()
 
             self.state.running = True
             self.context.running = True
@@ -208,6 +217,13 @@ class Engine:
                 await self._db_pool.close()
             except Exception as exc:
                 logger.warning("DB pool close error: %s", exc)
+
+        # Stop ScheduledTuner
+        if self._scheduled_tuner:
+            try:
+                self._scheduled_tuner.stop()
+            except Exception as exc:
+                logger.warning("ScheduledTuner stop error: %s", exc)
 
         # Cancel background tasks
         for task in self.state.background_tasks:
@@ -327,6 +343,14 @@ class Engine:
                             MarketRecorder.FLUSH_INTERVAL_MS, MarketRecorder.MAX_BUFFER_SIZE)
             except Exception as exc:
                 logger.warning("MarketRecorder init failed (non-fatal): %s", exc)
+
+            # Load historical trades into PerformanceAttribution
+            try:
+                from src.analysis.attribution import PerformanceAttribution
+                self._attribution = PerformanceAttribution()
+                await self._attribution.load_from_db(self._db_pool.pool)
+            except Exception as exc:
+                logger.warning("PerformanceAttribution init failed (non-fatal): %s", exc)
         except Exception as exc:
             logger.warning("TimescaleDB init failed (non-fatal, paper mode ok): %s", exc)
 
@@ -350,6 +374,21 @@ class Engine:
             logger.info("Rust bridge flags: %s", flags)
         except Exception as exc:
             logger.warning("Rust bridge init failed (non-fatal): %s", exc)
+
+    async def _init_tuner(self) -> None:
+        """Initialize ScheduledTuner if ENABLE_INLINE_TUNER is set (US-146)."""
+        if not _HAS_TUNER:
+            logger.info("ScheduledTuner not available (optuna/apscheduler not installed)")
+            return
+        if os.environ.get("ENABLE_INLINE_TUNER", "").lower() not in ("true", "1", "yes"):
+            logger.info("Inline tuner disabled (ENABLE_INLINE_TUNER not set)")
+            return
+        try:
+            self._scheduled_tuner = ScheduledTuner()
+            self._scheduled_tuner.start_scheduler()
+            logger.info("Scheduled tuner started")
+        except Exception as exc:
+            logger.warning("Failed to start scheduled tuner: %s", exc)
 
     # ------------------------------------------------------------------
     # Step 3: Exchange Adapters

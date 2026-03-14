@@ -58,6 +58,7 @@ class ScheduledTuner:
         self.n_trials = n_trials
         self.data_source = data_source or os.environ.get("TUNER_DATA_SOURCE", "synthetic")
         self.alerter = TelegramAlerter()
+        self._scheduler = None
 
         # Determine base strategy list
         base = strategies if strategies is not None else list(STRATEGY_TYPES)
@@ -161,20 +162,39 @@ class ScheduledTuner:
     def _run_with_timescaledb(
         self, optimizer: WalkForwardOptimizer, params: StrategyParams, strategy: str
     ):
-        """Try TimescaleDB data; fall back to synthetic on any failure."""
+        """Load real data from TimescaleDB and run optimization."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        dsn = os.environ.get("DATABASE_URL", "")
+        if not dsn:
+            logger.warning("DATABASE_URL not set, falling back to synthetic")
+            return optimizer._engine.run_with_synthetic_data(params)
+
+        def _load_sync():
+            import asyncio
+            loop = asyncio.new_event_loop()
+            try:
+                async def _do():
+                    async with DataLoader(dsn=dsn) as loader:
+                        return await loader.load_execution_log_as_ohlcv(days=30)
+                return loop.run_until_complete(_do())
+            finally:
+                loop.close()
+
         try:
-            import os
-            dsn = os.getenv("DATABASE_URL", "")
-            if not dsn:
-                raise ValueError("DATABASE_URL not set")
-            loader = DataLoader(dsn=dsn)
-            # TODO: Full TimescaleDB integration requires async context
-            # For now, fall through to synthetic fallback
-            raise NotImplementedError("TimescaleDB async loader requires event loop integration")
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(_load_sync)
+                ohlcv = future.result(timeout=60)
+
+            if ohlcv.length < 10:
+                logger.warning(
+                    "Insufficient data (%d rows), falling back to synthetic", ohlcv.length
+                )
+                return optimizer._engine.run_with_synthetic_data(params)
+
+            return optimizer._engine.run(params, ohlcv)
         except Exception as exc:
-            logger.warning(
-                "TimescaleDB load failed for %s (%s); falling back to synthetic", strategy, exc
-            )
+            logger.error("TimescaleDB loader failed: %s, falling back to synthetic", exc)
             return optimizer._engine.run_with_synthetic_data(params)
 
     async def _apply_shadow_decisions(self, results: dict) -> None:
@@ -229,15 +249,24 @@ class ScheduledTuner:
             logger.error("apscheduler is not installed; cannot start scheduler")
             return
 
-        scheduler = AsyncIOScheduler()
-        scheduler.add_job(
+        self._scheduler = AsyncIOScheduler()
+        self._scheduler.add_job(
             self.run_optimization,
             "cron",
             day_of_week="sun",
             hour=2,
         )
-        scheduler.start()
+        self._scheduler.start()
         logger.info("Auto-tuner scheduler started (every Sunday 02:00 UTC)")
+
+    def stop(self) -> None:
+        """Shutdown the APScheduler instance."""
+        if self._scheduler is not None:
+            try:
+                self._scheduler.shutdown(wait=False)
+                logger.info("Auto-tuner scheduler stopped")
+            except Exception as exc:
+                logger.warning("Scheduler shutdown error: %s", exc)
 
 
 if __name__ == "__main__":

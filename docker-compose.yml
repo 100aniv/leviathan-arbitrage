@@ -38,6 +38,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://leviathan:leviathan@timescaledb:5432/leviathan
       REDIS_URL: redis://redis:6379/0
       REDIS_PASSWORD: ${REDIS_PASSWORD:-leviathan-redis-secret}
+      SHADOW_DISABLED_STRATEGIES: ${SHADOW_DISABLED_STRATEGIES:-}
     volumes:
       - ./docker/init.sql:/app/docker/init.sql:ro
     ports:
@@ -338,6 +339,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       DATABASE_URL: postgresql+asyncpg://leviathan:leviathan@timescaledb:5432/leviathan
       TUNER_N_TRIALS: "100"
+      TUNER_DATA_SOURCE: ${TUNER_DATA_SOURCE:-timescaledb}
     command: ["python", "-m", "src.tuning.scheduled_tuner"]
     networks:
       - leviathan
