@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-14 (Phase S5 Data Pipeline & Auto-Tuner 완료 — 5/5 US PASS) | 최신 커밋: pending (Stage E 진행 중)
+> 마지막 업데이트: 2026-03-14 (Phase S5 Data Pipeline & Auto-Tuner 완료 — 5/5 US PASS) | 최신 커밋: 46cd92e
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (146개 User Stories)
 > **실행 순서**: A~M ✅ → 회귀 **S1~S6** (TF Semi-Final 발견, 원본 Phase 보완) → TF Semi-Final 재검증 → TF Final → Live
 
