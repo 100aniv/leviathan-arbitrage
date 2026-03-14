@@ -32,7 +32,7 @@ Phase:        S4 Dashboard Completion ← COMPLETE  [S1 ✅ → S2 ✅ → S3 �
 커버리지:     87%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    (Phase S4 커밋 후 업데이트)
+최신 커밋:    90de95a (Phase S4 Dashboard Completion — US-140~144 완료)
 다음 작업:    Phase S5 US-145 (Auto-Tuner TimescaleDB) + US-156 (Shadow 손실 전략 비활성화)
 완료된 US:    137/147 (기존 132 + Phase S4 5/5 PASS, US-156 신규 추가)
 TF Semi-Final: FAIL → S1~S6 회귀 수정 중 (S1 ✅, S2 ✅, S3 ✅, S4 ✅, S5~S6 진행)
@@ -620,12 +620,13 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - **stat_arb 손실 문제**: US-156 신규 생성 (SSOT §9 HIGH 등록). SHADOW_DISABLED_STRATEGIES .env 미설정이 원인.
 - **pytest**: 4,360 passed, 0 failed, 6 skipped | tsc: 0 errors
 
-#### Phase S5: Data Pipeline & Auto-Tuner — US-145~148 (← E-2, E-3, SR 보완)
+#### Phase S5: Data Pipeline & Auto-Tuner — US-145~148, US-156 (← E-2, E-3, SR 보완 + S4 Shadow 발견)
 
 - [ ] US-145: Auto-Tuner TimescaleDB async loader (← Phase E-2 US-045~046 NotImplementedError)
 - [ ] US-146: ScheduledTuner main.py 연결 (← Phase E-2 US-045 미연결)
 - [ ] US-147: Attribution TimescaleDB + materialized views (← Phase E-3 US-051,053 in-memory 전용)
 - [ ] US-148: Shadow MDD 비율 + Rebalancer balance feed (← Phase SR US-061 + Phase E-3 US-050 미연결)
+- [ ] US-156: Shadow 손실 전략 비활성화 — SHADOW_DISABLED_STRATEGIES .env 설정 (← Phase S4 Stage D Shadow PnL=-7.86, stat_arb_v1 -7.61 원인. §9 HIGH 참조)
 
 #### Phase S6: Documentation Sync — US-149~151 (← A 보완, 최후 실행)
 
