@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-15 (Phase S6 Documentation Sync 완료 — 3/3 US PASS, S1~S6 회귀 완료) | 최신 커밋: 67ffc98
-> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (146개 User Stories)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S6** (TF Semi-Final 발견, 원본 Phase 보완) → TF Semi-Final 재검증 → TF Final → Live
+> 마지막 업데이트: 2026-03-15 (TF Semi-Final 재검증 조건부 PASS — 91.5% 이슈 해소, TF Final 진출 승인) | 최신 커밋: 42faa81
+> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (147개 User Stories)
+> **실행 순서**: A~M ✅ → 회귀 **S1~S6** ✅ (TF Semi-Final 발견, 원본 Phase 보완) → **TF Final → Live**
 
 ---
 
@@ -390,7 +390,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 147개 User Stories, 142개 완료, 5개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 147개 User Stories, 145개 완료, 2개 미완)
 
 > **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
