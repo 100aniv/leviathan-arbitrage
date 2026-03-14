@@ -136,11 +136,11 @@ class PerformanceAttribution:
         -- Strategy daily PnL
         CREATE MATERIALIZED VIEW IF NOT EXISTS strategy_daily_pnl AS
         SELECT
-            time_bucket('1 day', timestamp) AS day,
+            time_bucket('1 day', ts) AS day,
             strategy_id,
-            SUM(pnl) AS total_pnl,
+            SUM(net_pnl) AS total_pnl,
             COUNT(*) AS trade_count,
-            SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::float / COUNT(*) AS win_rate
+            SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END)::float / COUNT(*) AS win_rate
         FROM execution_log
         GROUP BY day, strategy_id
         ORDER BY day DESC;
@@ -148,23 +148,23 @@ class PerformanceAttribution:
         -- Exchange daily PnL
         CREATE MATERIALIZED VIEW IF NOT EXISTS exchange_daily_pnl AS
         SELECT
-            time_bucket('1 day', timestamp) AS day,
-            exchange_buy AS exchange_id,
-            SUM(pnl) / 2 AS total_pnl,
+            time_bucket('1 day', ts) AS day,
+            buy_exchange AS exchange_id,
+            SUM(net_pnl) / 2 AS total_pnl,
             COUNT(*) AS trade_count
         FROM execution_log
-        GROUP BY day, exchange_buy
+        GROUP BY day, buy_exchange
         ORDER BY day DESC;
 
         -- Pair daily PnL
         CREATE MATERIALIZED VIEW IF NOT EXISTS pair_daily_pnl AS
         SELECT
-            time_bucket('1 day', timestamp) AS day,
-            pair,
-            SUM(pnl) AS total_pnl,
+            time_bucket('1 day', ts) AS day,
+            symbol,
+            SUM(net_pnl) AS total_pnl,
             COUNT(*) AS trade_count,
-            SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::float / COUNT(*) AS win_rate
+            SUM(CASE WHEN net_pnl > 0 THEN 1 ELSE 0 END)::float / COUNT(*) AS win_rate
         FROM execution_log
-        GROUP BY day, pair
+        GROUP BY day, symbol
         ORDER BY day DESC;
         """

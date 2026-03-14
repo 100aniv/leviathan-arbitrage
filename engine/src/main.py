@@ -305,20 +305,18 @@ class Engine:
 
             # Run schema migration
             try:
-                import pathlib
-                migration_path = (
-                    pathlib.Path(__file__).parent / "infra" / "db" / "migrations"
-                    / "001_init_schema.sql"
-                )
-                if migration_path.exists():
-                    sql = migration_path.read_text()
-                    async with self._db_pool.pool.acquire() as conn:
-                        await conn.execute(sql)
-                    logger.info("TimescaleDB schema migration applied")
-                else:
-                    logger.warning("Schema migration file not found: %s", migration_path)
+                from src.infra.db.migration_runner import run_migrations
+                await run_migrations(self._db_pool.pool)
+                logger.info("TimescaleDB schema migration applied")
             except Exception as exc:
                 logger.warning("Schema migration failed (non-fatal): %s", exc)
+
+            # Check .env sync (root vs engine)
+            try:
+                from src.modes.preflight import PreflightChecker
+                PreflightChecker()._check_env_sync()
+            except Exception:
+                pass  # Non-fatal — preflight not required for startup
 
             # Start MarketRecorder
             try:
@@ -485,7 +483,7 @@ class Engine:
             logger.warning("CostCalculator init failed, using stub: %s", exc)
             self._cost_calculator = None
 
-        min_edge_bps = int(os.environ.get("MIN_EDGE_BPS", "40"))
+        min_edge_bps = int(os.environ.get("MIN_EDGE_BPS", "5"))
         max_spread_pct = float(os.environ.get("MAX_SPREAD_PCT", "0.05"))
         cooldown_sec = float(os.environ.get("SIGNAL_COOLDOWN_SEC", "2.0"))
         min_price_usd = Decimal(os.environ.get("MIN_PRICE_USD", "0.10"))

@@ -203,11 +203,23 @@ class TestPowerLawSlippageFormula:
         )
 
     def test_default_k_and_gamma_values(self) -> None:
-        """Default parameters (k=1.0, gamma=0.5) produce valid output."""
+        """Default k=0.0 (env not set) produces zero slippage: fill == base.
+
+        POWERLAW_SLIPPAGE_K defaults to 0.0 to prevent double-slippage:
+        SignalGenerator's CEXOrderbookSlippage is the sole slippage source.
+        """
         model = PowerLawSlippage()
         base = Decimal("100")
         fill = model.apply(base, OrderSide.BUY, size=Decimal("1"))
-        assert fill > base
+        # k=0 → impact=0 → slippage=0 → fill == base
+        assert fill == base, f"Expected fill == {base} with k=0.0, got {fill}"
+
+    def test_explicit_k_produces_adverse_slippage(self) -> None:
+        """Explicit k=1.0 produces BUY fill price > base price."""
+        model = PowerLawSlippage(k=1.0)
+        base = Decimal("100")
+        fill = model.apply(base, OrderSide.BUY, size=Decimal("1"))
+        assert fill > base, f"Expected fill > {base} with k=1.0, got {fill}"
 
     def test_apply_returns_decimal(self) -> None:
         """apply() always returns a Decimal instance."""

@@ -10,11 +10,10 @@ global:
     cluster: leviathan
     environment: development
 
-# Alertmanager (configure when available)
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets: ['alertmanager:9093']
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
 
 # Load alert rules
 rule_files:

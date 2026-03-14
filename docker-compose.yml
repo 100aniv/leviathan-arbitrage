@@ -38,9 +38,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://leviathan:leviathan@timescaledb:5432/leviathan
       REDIS_URL: redis://redis:6379/0
       REDIS_PASSWORD: ${REDIS_PASSWORD:-leviathan-redis-secret}
+    volumes:
+      - ./docker/init.sql:/app/docker/init.sql:ro
     ports:
-      - "8000:8000"   # REST API + Prometheus metrics
-      - "8001:8001"   # WebSocket
+      - "8000:8000"   # REST API + Prometheus metrics + WebSocket (/ws, /ws/feed)
+      # 8001 removed: ENGINE_WS_PORT=8001 is dead config, WS served on 8000
     networks:
       - leviathan
     depends_on:
@@ -66,6 +68,8 @@ services:
     image: redis:7.2-alpine
     container_name: leviathan-redis
     restart: unless-stopped
+    mem_limit: 1g
+    memswap_limit: 1g
     command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD:-leviathan-redis-secret}
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-leviathan-redis-secret}
@@ -116,6 +120,8 @@ services:
     image: timescale/timescaledb:latest-pg16
     container_name: leviathan-timescaledb
     restart: unless-stopped
+    mem_limit: 4g
+    memswap_limit: 4g
     environment:
       POSTGRES_USER: leviathan
       POSTGRES_PASSWORD: leviathan
@@ -129,6 +135,7 @@ services:
       - timescaledb_data:/var/lib/postgresql/data
       - wal_archive:/var/lib/postgresql/wal_archive
       - ./infra/postgres/postgresql.conf:/etc/postgresql/conf.d/wal.conf:ro
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     command:
       - postgres
       - -c
@@ -174,7 +181,7 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_ENGINE_URL=http://localhost:8000
-      - NEXT_PUBLIC_WS_URL=ws://localhost:8001
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000
     ports:
       - "3000:3000"
     networks:
@@ -218,6 +225,39 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Alertmanager — alert routing to Telegram (US-138)
+  # ---------------------------------------------------------------------------
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: leviathan-alertmanager
+    restart: unless-stopped
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        # envsubst not available in Alpine — use sed for token replacement
+        sed \
+          -e "s|WORKFLOW_TELEGRAM_BOT_TOKEN_PLACEHOLDER|$${WORKFLOW_TELEGRAM_BOT_TOKEN}|g" \
+          -e "s|chat_id: 0|chat_id: $${WORKFLOW_TELEGRAM_CHAT_ID}|g" \
+          /etc/alertmanager/alertmanager.template.yml > /tmp/alertmanager.yml
+        exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager
+    ports:
+      - "9093:9093"
+    networks:
+      - leviathan
+    volumes:
+      - ./infra/prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.template.yml:ro
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
@@ -379,6 +419,12 @@ services:
     depends_on:
       loki:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9080/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     logging: *default-logging
 
   # ---------------------------------------------------------------------------

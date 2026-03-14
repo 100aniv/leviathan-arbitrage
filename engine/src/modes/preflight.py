@@ -21,9 +21,11 @@ All external dependencies are injected as callables for testability.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 import structlog
@@ -673,3 +675,61 @@ class PreflightChecker:
                 threshold=f"{required_hours}h incident-free",
                 detail=str(exc),
             )
+
+    # ---------------------------------------------------------------------------
+    # Utility: .env sync check
+    # ---------------------------------------------------------------------------
+
+    # Keys to compare between root .env and engine/.env
+    ENV_SYNC_KEYS = ("MIN_EDGE_BPS", "SLIPPAGE_K_DEFAULT", "POWERLAW_SLIPPAGE_K", "REDIS_PASSWORD")
+    _SENSITIVE_KEYS = frozenset({"REDIS_PASSWORD", "JWT_SECRET", "POSTGRES_PASSWORD", "DB_PASSWORD"})
+
+    def _check_env_sync(self) -> None:
+        """Warn if root .env and engine/.env have mismatched critical variables.
+
+        Reads both files from disk (relative to this file's project root) and
+        compares ENV_SYNC_KEYS. Logs a WARNING for each mismatch found.
+        Does NOT raise — only logs.
+        """
+        # Locate project root: engine/src/modes/preflight.py → go up 3 levels
+        project_root = Path(__file__).resolve().parents[3]
+        root_env_path = project_root / ".env"
+        engine_env_path = project_root / "engine" / ".env"
+
+        def _parse_env(path: Path) -> dict[str, str]:
+            values: dict[str, str] = {}
+            if not path.exists():
+                return values
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                # Strip inline comment
+                val = val.split("#")[0].strip()
+                values[key.strip()] = val
+            return values
+
+        root_vals = _parse_env(root_env_path)
+        engine_vals = _parse_env(engine_env_path)
+
+        for key in self.ENV_SYNC_KEYS:
+            rv = root_vals.get(key)
+            ev = engine_vals.get(key)
+            if rv is None and ev is None:
+                continue
+            if rv != ev:
+                def _mask(k: str, v: str | None) -> str:
+                    if v is None:
+                        return "<unset>"
+                    if k in self._SENSITIVE_KEYS:
+                        return f"{v[:2]}***" if len(v) > 2 else "***"
+                    return v
+
+                logger.warning(
+                    "env_sync_mismatch",
+                    key=key,
+                    root_env=_mask(key, rv),
+                    engine_env=_mask(key, ev),
+                    message=f".env mismatch for {key}: root={_mask(key, rv)!r} engine={_mask(key, ev)!r}",
+                )

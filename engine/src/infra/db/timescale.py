@@ -103,6 +103,9 @@ async def setup_timescaledb(conn) -> None:
     Create TimescaleDB hypertables, retention policies, and continuous aggregates.
 
     Must be called with a live asyncpg connection after PostgreSQL + TimescaleDB is running.
+
+    NOTE: Unified schema is now managed via migration_runner.run_migrations(pool).
+    This function retains inline DDL for reference and backward compatibility.
     """
     logger.info("Setting up TimescaleDB hypertables")
 

@@ -98,7 +98,7 @@ class TestPaperExecutorSetup:
 
     def test_power_law_default_k_and_gamma(self) -> None:
         model = PowerLawSlippage()
-        assert model._k == 1.0
+        assert model._k == 0.0  # default 0.0 — CEXOrderbookSlippage is sole slippage source
         assert model._gamma == 0.5
 
 

@@ -75,7 +75,7 @@ class PowerLawSlippage(SlippageModel):
 
     def __init__(self, k: float | None = None, gamma: float = 0.5) -> None:
         super().__init__(base_slippage_pct=Decimal("0.001"))
-        self._k = k if k is not None else float(os.getenv("SLIPPAGE_K_DEFAULT", "5.0"))
+        self._k = k if k is not None else float(os.getenv("POWERLAW_SLIPPAGE_K", "0.0"))
         self._gamma = gamma
 
     def apply(

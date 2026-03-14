@@ -1,0 +1,26 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'telegram'
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - match:
+        severity: critical
+      receiver: 'telegram'
+      repeat_interval: 1h
+
+receivers:
+  - name: 'telegram'
+    telegram_configs:
+      - bot_token: 'WORKFLOW_TELEGRAM_BOT_TOKEN_PLACEHOLDER'
+        chat_id: 0
+        parse_mode: 'HTML'
+        message: |
+          {{ range .Alerts }}
+          <b>{{ .Labels.severity | toUpper }}</b>: {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end }}
