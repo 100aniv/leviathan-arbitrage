@@ -60,7 +60,17 @@
       "WebFetch(domain:www.infoq.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:dev.to)",
-      "WebFetch(domain:www.thecaio.ai)"
+      "WebFetch(domain:www.thecaio.ai)",
+      "Read(//Users/100aniv/.claude/**)",
+      "Bash(grep -r \"send_phase_complete\\\\|send_context_alert\\\\|send_escalation\" /Users/100aniv/Development/arbitrage_OMC --include=*.py)",
+      "Bash(grep -r \"WorkflowTelegramAlerter\\\\|get_workflow_alerter\" /Users/100aniv/Development/arbitrage_OMC --include=*.py)",
+      "Bash(find /Users/100aniv/Development/arbitrage_OMC/.omc/handoffs -type f -name *.md)",
+      "Read(//Users/100aniv/**)",
+      "Bash(wc -l /Users/100aniv/Development/arbitrage_OMC/engine/src/**/*.py)",
+      "WebFetch(domain:claudelog.com)",
+      "WebFetch(domain:decodeclaude.com)",
+      "WebFetch(domain:www.morphllm.com)",
+      "WebFetch(domain:claude-world.com)"
     ],
     "deny": [],
     "ask": []

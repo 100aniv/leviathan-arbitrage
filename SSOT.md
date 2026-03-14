@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-14 (Phase S5 Data Pipeline & Auto-Tuner 완료 — 5/5 US PASS) | 최신 커밋: 46cd92e
+> 마지막 업데이트: 2026-03-15 (Phase S6 Documentation Sync 완료 — 3/3 US PASS, S1~S6 회귀 완료) | 최신 커밋: pending
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (146개 User Stories)
 > **실행 순서**: A~M ✅ → 회귀 **S1~S6** (TF Semi-Final 발견, 원본 Phase 보완) → TF Semi-Final 재검증 → TF Final → Live
 
@@ -27,15 +27,15 @@
 ## 2. 현재 상태
 
 ```
-Phase:        S5 Data Pipeline & Auto-Tuner ← COMPLETE  [S1 ✅ → S2 ✅ → S3 ✅ → S4 ✅ → S5 ✅ COMPLETE → S6 다음]
+Phase:        S6 Documentation Sync ← COMPLETE  [S1 ✅ → S2 ✅ → S3 ✅ → S4 ✅ → S5 ✅ → S6 ✅ COMPLETE → TF 재검증]
 테스트:       4,460 passed, 0 failed, 6 skipped
 커버리지:     87%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    pending (Stage E 진행 중)
-다음 작업:    Phase S6 Documentation (US-149~151)
-완료된 US:    142/147 (기존 137 + Phase S5 5/5 PASS)
-TF Semi-Final: FAIL → S1~S6 회귀 수정 중 (S1 ✅, S2 ✅, S3 ✅, S4 ✅, S5 ✅, S6 진행)
+다음 작업:    TF Semi-Final 재검증 → TF Final → Live
+완료된 US:    145/147 (기존 142 + Phase S6 3/3 PASS)
+TF Semi-Final: FAIL → S1~S6 회귀 수정 완료 (S1 ✅, S2 ✅, S3 ✅, S4 ✅, S5 ✅, S6 ✅)
                보고서: docs/checklists/tf-semi-final_20260313.md
 인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ ALL HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
@@ -274,16 +274,30 @@ P(rollback): 30-trade 롤링 윈도우, cold-start 5%
 | Bithumb | 0.25% | 0.25% | KRW 마켓 |
 | Coinone | 0.02% | 0.02% | API 할인 적용 (기본 0.20%) |
 
+**ETH 출금 비용 (네트워크별)**:
+
+| 거래소 | ETH 비용 | 네트워크 | 비고 |
+|--------|---------|---------|------|
+| Binance | $0.06 | Arbitrum One | L2 최저경로 |
+| Bybit | $0.19 | Arbitrum | L2 |
+| OKX | $0.10 | Arbitrum | L2 |
+| Bitget | $0.10 | Arbitrum | L2 |
+| Upbit | $4.50 | Ethereum L1 | L2 미지원 |
+| Bithumb | $2.50 | Ethereum L1 | L2 미지원 |
+| Coinone | $2.50 | Ethereum L1 | L2 미지원 |
+
+> **주의**: 글로벌 거래소 $0.06~$0.19 (Arbitrum L2) vs KRW 거래소 $2.50~$4.50 (L1 only). 상세: `engine/src/friction/fee_model.py` WITHDRAWAL_FEES_USD 참조.
+
 ### 4.3 리스크 모델
 
 **KillSwitch (3-tier)**:
-- Tier 1: 일일 누적 손실 > 임계값 → 전체 중단
-- Tier 2: CB OPEN > 30min / 레이턴시 > 5s 연속 10회 → 자동 일시정지
-- Tier 3: 수동 halt_local() → 즉시 중단
+- Tier 1 (< 1ms): halt 플래그 설정 (threading.Event + Redis SET) → 즉시 신규 주문 차단
+- Tier 2 (< 500ms): 전 거래소 미체결 주문 취소 (asyncio.gather, 2s timeout)
+- Tier 3 (< 2000ms): 전 거래소 오픈 포지션 시장가 청산 (asyncio.gather, 3s timeout)
 
-**CircuitBreaker**: CLOSED → OPEN → HALF_OPEN (지수 백오프 1s→60s cap)
+**CircuitBreaker**: CLOSED → OPEN → HALF_OPEN (고정 300s cooldown)
 
-**RiskGuardian (9-check)**: 자본, 마진, 스프레드, 포지션, 주문크기, 일일손실, 연속손실, 슬리피지, 롤백비용
+**RiskGuardian (11-check)**: #0 halt, #1 포지션한도, #2 드로다운, #3 익스포저, #4 서킷브레이커, #4e 넷익스포저(Amendment 7), #5 거래소건강도, #6 단일거래크기, #7 변동성, #8 롤백비용, #9 전략상관(log-only), #10 최대동시포지션(US-154)
 
 ### 4.4 슬리피지 계층 규칙
 
@@ -376,7 +390,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 146개 User Stories, 132개 완료, 14개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 147개 User Stories, 142개 완료, 5개 미완)
 
 > **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -635,21 +649,63 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - **손실 전략 비활성화**: SHADOW_DISABLED_STRATEGIES 설정으로 stat_arb/spot_futures/latency_arb 비활성, Shadow PnL 양수 전환
 - **pytest**: 4,460 passed, 0 failed, 6 skipped | tsc: 0 errors
 
-#### Phase S6: Documentation Sync — US-149~151 (← A 보완, 최후 실행)
+#### Phase S6: Documentation Sync — US-149~151 ✅ ALL PASS (← A 보완, 최후 실행)
 
-- [ ] US-149: prd.json 23개 파일 경로 수정 (← Phase A US-006 경로 stale) — **다음 작업**
-- [ ] US-150: CLAUDE.md 현행화 (← Phase A US-005 문서 stale) — **다음 작업**
-- [ ] US-151: SSOT.md 수식/체크 항목 코드 동기화 (← Phase A US-002 문서 stale) — **다음 작업**
+- [x] US-149: prd.json 파일 경로 검증 — 0 mismatches 확인, total_stories=147 정합 ✅
+- [x] US-150: CLAUDE.md 현행화 — Tests 4,460, PRD 145/2, 다음작업 TF재검증 ✅
+- [x] US-151: SSOT.md 수식/체크 코드 동기화 — §4.3 이미 정합 확인, §4.2 ETH L2 비용 테이블 추가 ✅
 
 ---
 
-### TF Semi-Final: 상용화 검증 — **FAIL (2026-03-13)**
+### TF Semi-Final: 상용화 검증
 
-> **판정**: FAIL — CRITICAL 9, HIGH 12, MEDIUM 19, LOW 19 → 회귀 Phase S1~S6 생성 (위 참조)
-> **프로세스 상세 (단계 0~4)**: `docs/checklists/tf-semi-final-consolidated_20260313.md`
-> **교차검증 보고서**: `docs/checklists/tf-semi-final_20260313.md`
-> **TF 리더 판정문**: `docs/checklists/tf-semi-final-verdict_20260313.md`
-> **재검증 조건**: S1~S6 전부 완료 + pytest 0 fail + Docker 전 서비스 healthy + API 키 로테이션
+> **진입 가드**: S1~S6 전부 완료 + pytest 0 fail + Docker 전 서비스 healthy + API 키 로테이션
+> **규칙**: 전 단계 ALL PASS 시에만 체크. 개별 단계 통과는 체크하지 않음.
+> **FAIL 시**: [단계 5] 회귀 수행 → 5-Stage(A~E) 사이클 → TF 재검증. 로그 누적.
+
+#### 검증 이력
+
+> **#1 FAIL (2026-03-13)**
+> 판정: FAIL — CRITICAL 9, HIGH 12, MEDIUM 19, LOW 19 → 회귀 Phase S1~S6 생성
+> 프로세스 상세: `docs/checklists/tf-semi-final-consolidated_20260313.md`
+> 교차검증 보고서: `docs/checklists/tf-semi-final_20260313.md`
+> TF 리더 판정문: `docs/checklists/tf-semi-final-verdict_20260313.md`
+
+**[단계 0] Smoke Test Gate**
+- [ ] 전체 pytest PASS (0 failures)
+- [ ] Docker 전 컨테이너 healthy
+- [ ] 통합 Shadow 10min (crash=0, 전략 신호 흐름 정상, PnL 기록 확인)
+- [ ] 실패 시 TF 소집하지 않고 해당 Phase로 회귀
+
+**[단계 1] 정합성 확인**
+- [ ] SSOT.md + prd.json + CLAUDE.md 3-way 정합성 PASS
+- [ ] 누락 US/Phase 없음 확인
+
+**[단계 2] 체크리스트 수립 (The Blueprint)**
+- [ ] Karina + 도메인 전문가 협의 → 완성 기준 수립
+- [ ] 분야별 확인 체크리스트 문서 생성
+- [ ] Nayeon(TF 리더) 상용화 기준 부합 승인
+
+**[단계 3] 교차 검증 (The Deep Dive)**
+- [ ] 전문가별 체크리스트 기반 자기 분야 검증 (병렬)
+- [ ] Karina 합동 점검: 실전적 질의응답
+
+**[단계 4] 최종 확인 + 회귀 판정 (The Feedback Loop)**
+- [ ] Karina → Nayeon 보고
+- [ ] Chaeyoung/Tzuyu QA 감사단 압박 면접
+- [ ] Nayeon(TF 리더) 최종 판정: PASS → Final 진출 / FAIL → [단계 5] 회귀 수행
+
+**[단계 5] 회귀 수행 (FAIL 시에만)**
+- [ ] 5-1. 미비점 분석 → 원본 Phase별 회귀 US 생성 (각 US에 `← 원본 Phase US-XXX 사유` 역추적 주석)
+- [ ] 5-2. 기존 Phase/US 의존성 분석 → 회귀 Phase 실행 순서 결정
+- [ ] 5-3. SSOT.md §7에 회귀 Phase/US 추가 (TF 섹션 위, 원본 Phase 다음 배치)
+- [ ] 5-4. SSOT.md §9 알려진 이슈 정리:
+  - 해결된 이슈 → RESOLVED 테이블로 이동 (취소선 방치 금지)
+  - 미해결 이슈 중 US로 반영할 것 → 회귀 Phase US에 포함
+  - 신규 발견 이슈 → 해당 심각도(CRITICAL/HIGH/MEDIUM/LOW)에 추가 + 회귀 US 생성
+- [ ] 5-5. prd.json에 신규 회귀 US 추가 (passes:false)
+- [ ] 5-6. 통합 추적 문서 생성/갱신: `docs/checklists/tf-semi-final-consolidated_YYYYMMDD.md`
+- [ ] 5-7. 회귀 Phase 개발 → 5-Stage(A~E) 사이클 → TF 재검증
 
 ### TF Final: 라이브 전환 (Semi-Final 재검증 통과 후)
 
@@ -695,7 +751,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | 7.3d | MIN_PRICE_USD=0.10 | 소액 코인 슬리피지 리스크 감소 |
 | 7.3h | MIN_EDGE_BPS=5 확정 | 40=없음, 30=거의없음, 5=모든 시간대 수익 |
 | 7.3j | PaperExecutor ZERO slippage | 이중 슬리피지 계산 방지 (CEXOrderbook이 유일 소스) |
-| 7.3k | transfer_coin 동적 할당 | network cost: BTC=$1.39, ETH=$5.60, XRP=$0.40 등 |
+| 7.3k | transfer_coin 동적 할당 | network cost: BTC=$1.39, ETH=$0.06~$4.50 (거래소별, L2 Arbitrum 우선), XRP=$0.40 등 |
 | SR | Docker Shadow 필수화 | Shadow 테스트 중 Docker 미실행 발견. graceful degradation으로 거래 로직 유효하나 TimescaleDB/Redis 미저장. 향후 Shadow 실행 전 `docker compose up -d` 필수 |
 | SR | Phase D 브라우저 테스트 필수화 | US-037~041, US-053 대시보드 US가 `npm run build`만으로 passes:true 처리됨. 실제 Chrome 렌더링/API 연동/WebSocket 피드 검증 미완. Phase D 완료 기준에 Chrome 브라우저 테스트 추가 |
 | SR | Shadow 현실성 6개 GAP 식별 (SG-1~SG-6) | PaperExecutor가 데모급(100% fill, 0ms delay, 무한잔고). 상용급 전환 위해 부분체결/지연/깊이VWAP/가상잔고/Rate Limit 추가 필요 |
@@ -761,15 +817,15 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | **Phase D 대시보드 브라우저 미검증** | US-037~041, US-053 코드 레벨만 검증(`npm run build`). Chrome 렌더링, API 연동, WebSocket 실시간 피드, 모바일 반응형 미확인 | Phase D 재검증 US 추가 (Chrome 브라우저 테스트 필수) |
 | **Shadow 실행 시 Docker 미실행 위험** | Docker 없이 Shadow 실행 시 거래 로직은 유효하나 TimescaleDB/Redis 미저장 → 메트릭 유실 | Shadow 실행 전 `docker compose up -d` 필수 (leviathan.md에 명시) |
 | **AtomicOrderExecutor: place_ioc_limit() 미구현** | Native Adapter에서 IOC limit 주문 지원 부재 → 모든 거래소에서 US-119 IOC fallback(limit→market) 동작만 수행 | Phase K/L에서 거래소별 실제 API 연동 시 추가 (현재는 코드만 검증) |
-| ~~Bithumb 증분 Orderbook~~ | ~~스냅샷 없이 증분만 수신 → 허위 스프레드~~ | **RESOLVED (US-073)**: 누적 orderbook + REST re-sync + stale 5초 감지 |
-| **Shadow 손실 전략 미비활성화** | `SHADOW_DISABLED_STRATEGIES` 메커니즘(US-066)은 구현됐으나 engine/.env에 미설정. stat_arb_v1(-7.61 USDT/18h), spot_futures_v1(Korean stale data), latency_arb_v1(동일) 3개 전략이 Shadow에서 손실 유발 | US-156으로 해결 — engine/.env + root .env에 `SHADOW_DISABLED_STRATEGIES=statistical_arb_v1,spot_futures_v1,latency_arb_v1` 설정 필수 |
+| ~~Bithumb 증분 Orderbook~~ | ~~스냅샷 없이 증분만 수신 → 허위 스프레드~~ | **RESOLVED (US-073)** |
+| ~~Shadow 손실 전략 미비활성화~~ | ~~`SHADOW_DISABLED_STRATEGIES` 메커니즘(US-066)은 구현됐으나 engine/.env에 미설정~~ | **RESOLVED (US-156)** |
 | 마찰 vs Gross Spread | 대부분 알트 spread 2-25bps, friction ~20bps | MIN_EDGE_BPS=5 + 고스프레드 심볼 집중 |
 
 ### MEDIUM
 
 | 이슈 | 설명 | 상태 |
 |------|------|------|
-| ~~전략 6개 비활성~~ | ~~GAP 1-7로 cross_exchange만 Shadow 동작~~ | **RESOLVED**: Phase J-EXT Wave 1~4에서 전략 연결 완료. 단, 3개 전략 Shadow 손실 문제는 HIGH로 승격 (US-156) |
+| ~~전략 6개 비활성~~ | ~~GAP 1-7로 cross_exchange만 Shadow 동작~~ | **RESOLVED (J-EXT)** |
 | httpx 클라이언트 재생성 | 매 요청마다 httpx.AsyncClient 재생성 → 성능 | 미해결 |
 
 ### LOW
@@ -792,3 +848,6 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | 이중 슬리피지 | PaperExecutor ZERO slippage 적용 (Phase 7.3j) |
 | PowerLawSlippage k/gamma 무시 | 실제 공식 적용 완료 (Phase 3.5) |
 | Stale Orderbook fat-tail loss | StaleOrderbookDetector 4계층 방어 + loss cap $50 (Phase G US-066) |
+| Bithumb 증분 Orderbook | 누적 orderbook + REST re-sync + stale 5초 감지 (Phase I US-073) |
+| Shadow 손실 전략 미비활성화 | SHADOW_DISABLED_STRATEGIES .env 설정 — stat_arb/spot_futures/latency_arb 비활성 (Phase S5 US-156) |
+| 전략 6개 비활성 | Phase J-EXT Wave 1~4에서 전략 연결 완료 |

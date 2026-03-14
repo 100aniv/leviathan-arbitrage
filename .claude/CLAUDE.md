@@ -259,10 +259,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 ## 현재 상태 (SSOT.md §2 참조)
 
 - **Phase 순서**: A~M✅ → 회귀 S1~S6 (TF Semi-Final 발견, 원본 Phase 보완) → TF Semi-Final 재검증 → TF Final → Live
-- **Tests**: 4,360 passed, 0 failed, 6 skipped
-- **PRD**: `.omc/prd.json` (147개 US, 137 pass / 10 fail) — US-156 신규 추가
+- **Tests**: 4,460 passed, 0 failed, 6 skipped
+- **PRD**: `.omc/prd.json` (147개 US, 145 pass / 2 fail)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: Phase S5 US-145 (Auto-Tuner TimescaleDB) + US-156 (Shadow 손실 전략 비활성화) → S6 → TF재검증
+- **다음 작업**: TF Semi-Final 재검증 → TF Final → Live
+- **Upbit 수수료**: Maker 0.05% / Taker 0.139%
 - **GAP 분석**: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합 분석)
 
 ## 실행 워크플로우 (ralph autopilot)

@@ -1,18 +1,21 @@
 """LEVIATHAN Risk Guardian — Pre-Trade Checks.
 
-Implements 9 pre-trade checks (Amendment 1E, 3C).
+Implements 11 pre-trade checks (Amendment 1E, 3C, 7, US-154).
 Check #0 (halt check) CANNOT be bypassed — uses threading.Event, no external deps.
 
 Check ordering:
-  #0: Halt check (threading.Event, < 0.01ms) — CANNOT be bypassed
-  #1: Position limit
-  #2: Drawdown limit
-  #3: Exposure limit
-  #4: Circuit breaker state
-  #5: Exchange health score
-  #6: Max single trade size
-  #7: Volatility check
-  #8: Max rollback cost gate (Amendment 3C)
+  #0:  Halt check (threading.Event, < 0.01ms) — CANNOT be bypassed
+  #1:  Position limit
+  #2:  Drawdown limit
+  #3:  Exposure limit
+  #4:  Circuit breaker state
+  #4e: Net exposure per asset (Amendment 7)
+  #5:  Exchange health score
+  #6:  Max single trade size
+  #7:  Volatility check
+  #8:  Max rollback cost gate (Amendment 3C)
+  #9:  Strategy correlation scale-down (log-only, US-118)
+  #10: Max concurrent positions (US-154)
 """
 from __future__ import annotations
 

@@ -54,7 +54,7 @@ function fmt(v: number) {
 
 export function PnLChart({ wsPnl }: PnLChartProps = {}) {
   const { data, error, isLoading, mutate } = useApi<PnlResponse>(
-    '/trading/pnl',
+    '/api/v1/pnl',
     getPnl,
     { refreshInterval: 2000 },
   );

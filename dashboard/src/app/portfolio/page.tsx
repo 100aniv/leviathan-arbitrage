@@ -58,7 +58,7 @@ export default function PortfolioPage() {
       <h2 className="text-lg font-mono font-semibold text-terminal-text">Portfolio</h2>
 
       {/* Equity Curve */}
-      <EquityCurve data={curve} />
+      <EquityCurve data={curve} metrics={metrics ?? undefined} />
 
       {/* Risk Metric Cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
@@ -105,7 +105,7 @@ export default function PortfolioPage() {
         <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">Daily Returns</span>
         <div className="flex items-center justify-center h-24 mt-2">
           <span className="text-xs font-mono text-terminal-subtle">
-            Historical return data requires extended Shadow/Live operation
+            Shadow/Live 운영 이후 누적 데이터가 표시됩니다
           </span>
         </div>
       </div>

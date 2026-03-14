@@ -5,8 +5,8 @@
 
 ## 0. ZERO TOLERANCE (최우선 규칙)
 
-**절대 금지**: 사용자 확인 요청, Stage 간 멈춤, 에이전트 대기 중 멈춤, US 간 멈춤, 상태 보고만 하고 멈춤
-**강제**: 모든 응답에 tool call 포함. Stage A→B→C→D→E→다음Phase 끊김 없는 연속 흐름.
+**절대 금지**: 사용자 확인 요청, Stage 간 멈춤, 에이전트 대기 중 멈춤, US 간 멈춤, 상태 보고만 하고 멈춤, **run_in_background: true**
+**강제**: 모든 응답에 tool call 포함. Stage A→B→C→D→E→다음Phase 끊김 없는 연속 흐름. **모든 Agent는 foreground 실행** (background 금지 — 메인 스레드 멈춤 버그).
 **멈춤 허용**: (1) 전 US `passes:true` (2) 5회 연속 동일 US 실패 (3) 사용자 "stop/cancel/멈춰" (4) Stage E 완료 후 사장님 승인 대기
 
 ```
@@ -25,7 +25,7 @@ Stage A(Entry Gate→기획→QUANT GATE→checkpoint)
 ## 1. 소스
 
 - `SSOT.md` — 유일한 설계 문서. 작업 전 반드시 읽기.
-- `.omc/prd.json` — 114 US 목록. `passes:false`인 첫 번째 US부터 시작.
+- `.omc/prd.json` — 146 US 목록. `passes:false`인 첫 번째 US부터 시작.
 - 팀 구조, 기술 스택, 커스텀 에이전트, 자주 틀리는 패턴 → **CLAUDE.md 참조** (여기서 중복 기술하지 않음)
 
 ## 2. 실행 모드
@@ -44,20 +44,39 @@ ralph 루프 안에서 **Phase(로드맵) 단위**로 **5-Stage Sequential** 수
 
 ### Stage A — 기획 (Entry Gate)
 
-**[Entry Gate] — 정합성 검사 (Stage A 최우선):**
+**[Entry Gate + 코드 탐색 + 기획] — 병렬 그룹 1 (반드시 단일 메시지에서 2개 Agent 동시 스폰):**
+
+> ⚠️ **run_in_background 절대 금지**. 모든 Agent는 **foreground**(기본값)로 실행.
+> background 스폰 시 메인 스레드가 결과 대기 중 멈추는 버그 발생. 이미 3회 재발.
+> foreground 병렬 = 단일 메시지에서 2개 Agent tool call → 둘 다 완료 후 즉시 다음 단계.
+
 ```
 Agent(subagent_type="oh-my-claudecode:architect", name="karina", model="opus",
-      prompt="SSOT.md + prd.json + CLAUDE.md 3문서 정합성 검사.
-              1) Phase 순서 일치 2) US 상태 일치 3) 기술스택 일치 4) 팀구조 일치.
-              불일치 항목 목록 + 수정 지시. 자동 수정 금지.")
+      prompt="Entry Gate + 코드 탐색: SSOT.md + CLAUDE.md + prd.json 3-way 정합성 검사.
+              **필수 체크 항목**:
+              1) prd.json passes:true/false 카운트 vs SSOT.md §2 '완료된 US' vs §7 헤더 숫자 — 3곳 일치
+              2) prd.json passes:true/false 카운트 vs CLAUDE.md PRD 숫자 — 일치
+              3) SSOT.md §2 테스트 수 vs CLAUDE.md 테스트 수 — 일치
+              4) SSOT.md §2 '다음 작업' vs CLAUDE.md '다음 작업' — 일치
+              5) Phase 순서/기술스택/팀구조 일치
+              6) 대상 파일 현재 코드 구조 파악
+              **불일치 발견 시**: 구체적 수정 지시 (파일:라인 + 현재값→정확값). 수정 완료까지 Stage B 진입 금지.")
+
+Agent(subagent_type="oh-my-claudecode:planner", name="giselle",
+      prompt="Phase X PLAN.md 작성: [us_targets 목록] + acceptanceCriteria 기반.
+              SSOT.md §4 참조. 산출물: docs/planning/Phase-X_PLAN.md")
 ```
-- 불일치 발견 → 수정 후 재검사 (최대 2회). 통과 시 기획 진행.
+> 결과 수신 즉시 다음 블록 tool call 발행. 상태 요약/보고 금지.
+
+- Entry Gate 불일치 발견 → 수정 후 재검사 (최대 2회). 통과 시 QUANT GATE 진행.
 
 **[기획] Phase 단위 배치 수집:**
-1. prd.json에서 현재 Phase의 모든 `passes:false` US 수집
-2. 의존성 그래프 분석 → 독립 US 배치, 의존 US 순차
-3. 도메인(engine/dashboard) 기준 배치 그룹 형성
-4. Phase 내 모든 배치 그룹 완료 = 1사이클 종료
+1. `leviathan-progress.json`의 `us_targets` 확인 → 있으면 그대로 사용 (prd.json 재파싱 생략)
+2. `us_targets` 없을 때만: `Grep(pattern='"passes":\s*false', path='.omc/prd.json')`로 현재 Phase US 추출 → progress.json에 캐싱
+3. **prd.json 전체 Read 절대 금지** (32K tokens 초과로 Read 도구 실패함)
+4. 의존성 그래프 분석 → 독립 US 배치, 의존 US 순차
+5. 도메인(engine/dashboard) 기준 배치 그룹 형성
+6. Phase 내 모든 배치 그룹 완료 = 1사이클 종료
 
 **배치 규칙:**
 - 동일 Phase + 동일 도메인 → 배치 가능 (최대 5 US)
@@ -65,9 +84,10 @@ Agent(subagent_type="oh-my-claudecode:architect", name="karina", model="opus",
 - `dependencies` 미충족 OR `files` 교집합 → 순차 실행
 - 배치 → 통합 `docs/planning/Phase-X_PLAN.md` 작성
 
-**복잡도 판단 (prd.json `files` 기준):**
-- **복잡 US** (files 3+개 OR 아키텍처 변경): `Skill("oh-my-claudecode:ralplan")` → `--deliberate "US-XXX [제목]: [acceptanceCriteria]"`
-- **단순 US** (files 1-2개): `Agent(subagent_type="oh-my-claudecode:architect", prompt="...")`
+**복잡도 판단:** 병렬 그룹 1의 architect(karina)+planner(giselle)가 PLAN.md 작성 완료.
+- 복잡 US(files 3+개): planner가 상세 기획 + architect가 아키텍처 검증 (병렬 그룹 1에서 동시 수행)
+- Critic 검증은 Stage C의 Lisa(critic)가 수행 (역할 분산, 삭제 아님)
+- **ralplan 직접 호출 금지** (plan mode 활성화 → 파일 수정 차단 데드락 위험)
 - 산출물: `docs/planning/Phase-X_PLAN.md`
 
 **QUANT GATE — `files`에 전략/수식 키워드 포함 시에만:**
@@ -78,14 +98,14 @@ Agent(subagent_type="quant-validator", name="yeji", model="opus",
               1) 파라미터 범위 2) 이중계산 여부 3) PnL 영향 4) 수식 일치. PASS/FAIL+근거")
 ```
 - PASS → Stage B. FAIL → PLAN 수정 후 재호출 (최대 2회)
+> 결과 수신 즉시 A→B 전환 tool call 발행. 상태 요약/보고 금지.
 
 **활성 팀**: AESPA(기획) + ITZY(퀀트, 해당 시)
 
-**A→B 전환 (순서 엄수):**
-1. PLAN.md 존재 확인
-2. QUANT GATE 해당 시 PASS 확인
-3. `leviathan-progress.json` 저장 (`next_stage:"B"`)
-4. 즉시 `TeamCreate(team_name="leviathan-phase-X")`
+**A→B 전환 (동일 메시지 병렬 필수):** PLAN.md 존재 + QUANT PASS 확인 즉시 → 아래 2개를 **반드시 동일 메시지에서 병렬 호출**:
+1. `state_write(next_stage:"B")`
+2. `TeamCreate("leviathan-phase-X")`
+텍스트 출력 금지. tool call만 출력. state_write만 하고 TeamCreate 안 하면 = BUG.
 
 ---
 
@@ -136,11 +156,10 @@ Agent(subagent_type="quant-validator", name="yeji", model="opus",
 
 **활성 팀**: IVE(개발) — TeamCreate 협업 (최대 6명)
 
-**B→C 전환 (순서 엄수):**
-1. pytest PASS
-2. TeamDelete 완료
-3. `leviathan-progress.json` 저장 (`next_stage:"C"`)
-4. 즉시 Stage C 검증 시작
+**B→C 전환 (동일 메시지 병렬 필수):** pytest PASS + TeamDelete 완료 즉시 → 아래 2개를 **반드시 동일 메시지에서 병렬 호출**:
+1. `state_write(next_stage:"C")`
+2. Stage C 검증 에이전트 4개 스폰 (jennie + lisa + rose + jisoo)
+텍스트 출력 금지. tool call만 출력. state_write만 하고 에이전트 안 스폰하면 = BUG.
 
 ---
 
@@ -166,6 +185,7 @@ Agent(subagent_type="oh-my-claudecode:quality-reviewer", name="rose",
 Agent(subagent_type="oh-my-claudecode:security-reviewer", name="jisoo",
       prompt="Phase X 보안 리뷰. JWT/API키/거래실행 보안, OWASP Top 10, 시크릿 노출")
 ```
+> 결과 수신 즉시 C-3/C-4/C-5 또는 C→D 전환 tool call 발행. 상태 요약/보고 금지.
 
 #### C-3. 퀀트 검증 — 전략/수식 변경 시에만
 ```
@@ -181,19 +201,17 @@ Agent(subagent_type="browser-verifier", name="haerin",
 
 #### C-5. 완료 처리
 - 리뷰 결과 수집 → CRITICAL/HIGH 이슈 발견 시 Stage B fix 루프
-- `git add` + `git commit` (**push는 아직 안 함**)
+- **git commit/push 하지 않음** — Stage E에서 일괄 수행
 - Stage D 진행 준비 완료 확인
 
 **활성 팀**: BLACKPINK(검증, 4명) + ITZY(퀀트, 해당 시)
 
 **산출물**: `docs/review/Phase-X_REVIEW.md`
 
-**C→D 전환 (순서 엄수):**
-1. 코드리뷰 CRITICAL/HIGH 0건
-2. 보안리뷰 CRITICAL 0건
-3. git commit 완료 (push 아직)
-4. `leviathan-progress.json` 저장 (`next_stage:"D"`)
-5. 즉시 Stage D 진행
+**C→D 전환 (동일 메시지 병렬 필수):** 코드리뷰 CRITICAL/HIGH 0건 + 보안리뷰 CRITICAL 0건 확인 즉시 → 아래 2개를 **반드시 동일 메시지에서 병렬 호출**:
+1. `state_write(next_stage:"D")`
+2. Stage D Shadow 에이전트 스폰 (minji + danielle + hanni)
+텍스트 출력 금지. tool call만 출력. state_write만 하고 에이전트 안 스폰하면 = BUG.
 
 ---
 
@@ -238,6 +256,7 @@ Agent(subagent_type="oh-my-claudecode:debugger", name="hyein",
       prompt="crash 루트코즈 분석. 회귀 격리. 수정 방안 제시")
 ```
 - crash 시 → Stage B fix 루프 복귀
+> 결과 수신 즉시 D→E 전환 tool call 발행. 상태 요약/보고 금지.
 
 **필수 조건:**
 - `PnL > 0`
@@ -247,44 +266,53 @@ Agent(subagent_type="oh-my-claudecode:debugger", name="hyein",
 
 **활성 팀**: NewJeans(테스트, 5명) + ITZY(퀀트 수식검증, 해당 시)
 
-**D→E 전환 (순서 엄수):**
-1. Shadow PASS (PnL > 0, crash = 0, 10min+)
-2. `leviathan-progress.json` 저장 (`next_stage:"E"`)
-3. 즉시 Stage E 진행
+**D→E 전환 (동일 메시지 병렬 필수):** Shadow PASS (PnL > 0, crash = 0, 10min+) 확인 즉시 → 아래 2개를 **반드시 동일 메시지에서 병렬 호출**:
+1. `state_write(next_stage:"E")`
+2. Stage E Exit Gate 에이전트 스폰 (karina + chaewon)
+텍스트 출력 금지. tool call만 출력. state_write만 하고 에이전트 안 스폰하면 = BUG.
 
 ---
 
 ### Stage E — 정합성 + 마무리 (Exit Gate)
 
-**[Exit Gate] — 정합성 재검사:**
+**[Exit Gate + 증거 확인] — 병렬 그룹 (반드시 단일 메시지에서 2개 Agent 동시 스폰):**
 ```
 Agent(subagent_type="oh-my-claudecode:architect", name="karina", model="opus",
-      prompt="Exit Gate: SSOT.md + prd.json + CLAUDE.md 정합성 검사.
-              Stage A Entry Gate와 동일 기준. 불일치 시 수정 지시")
-```
+      prompt="Exit Gate: SSOT.md + CLAUDE.md + prd.json 3-way 정합성 검사.
+              **필수 체크 항목** (Entry Gate와 동일):
+              1) prd.json passes:true/false 카운트 vs SSOT.md §2 '완료된 US' vs §7 헤더 — 3곳 일치
+              2) prd.json 카운트 vs CLAUDE.md PRD 숫자 — 일치
+              3) SSOT.md §2 테스트 수 vs CLAUDE.md 테스트 수 — 일치
+              4) SSOT.md §2 '다음 작업' vs CLAUDE.md '다음 작업' — 일치
+              **불일치 발견 시**: sakura(ssot-keeper)에게 수정 지시. 수정 완료까지 git push 금지.")
 
-#### E-1. SSOT + prd.json 업데이트
-```
-Agent(subagent_type="ssot-keeper", name="sakura",
-      prompt="SSOT.md 해당 섹션 업데이트. prd.json에서 완료 US passes:true 마킹")
-```
-
-#### E-2. 최종 증거 확인
-```
 Agent(subagent_type="oh-my-claudecode:verifier", name="chaewon",
       prompt="전 Stage 산출물 존재 확인:
-              1) PLAN.md 2) pytest PASS 3) REVIEW.md 4) Shadow PASS 5) SSOT 업데이트
+              1) PLAN.md 2) pytest PASS 3) REVIEW.md 4) Shadow PASS
               누락 시 FAIL + 누락 항목 보고")
 ```
+> 결과 수신 즉시 다음 블록 tool call 발행. 상태 요약/보고 금지.
 
-#### E-3. Git push
+#### E-1. SSOT + prd.json 업데이트 + Git commit & push (병렬)
 ```
+Agent(subagent_type="ssot-keeper", name="sakura",
+      prompt="Phase 완료 반영 — 아래 4가지 전부 수행:
+              1) prd.json: 완료 US passes:true 마킹
+              2) SSOT.md §2: Phase, 테스트 수, 완료 US 카운트, 다음 작업 업데이트
+              3) SSOT.md §7 헤더: 'N개 User Stories, M개 완료, K개 미완' 숫자를 prd.json 실제 카운트와 동기화
+              4) CLAUDE.md '현재 상태' 섹션: PRD 카운트, 테스트 수, 다음 작업을 SSOT.md §2와 동기화
+              **검증**: Grep으로 prd.json passes:true/false 카운트 → 3곳(SSOT §2, §7, CLAUDE.md) 숫자 대조. 불일치 시 수정.")
+
 Agent(subagent_type="oh-my-claudecode:git-master", name="kazuha",
-      prompt="git add + commit + push. 커밋 메시지: 'Phase X: [US 목록] 완료'")
+      prompt="Phase 전체 변경사항 git add + git commit + git push origin main.
+              커밋 메시지: 'Phase X: [US 목록] 완료'.
+              반드시 commit 후 push까지 완료할 것. push 누락 = FAIL.")
 ```
-- 배치 모드: Phase 단위 단일 커밋
+> 결과 수신 즉시 다음 블록 tool call 발행. 상태 요약/보고 금지.
 
-#### E-4. 텔레그램 알림 + 사장님 승인 대기
+- **git commit만 하고 push 안 하는 것 = 미완료**. `git push origin main` 필수.
+
+#### E-2. 텔레그램 알림 + 사장님 승인 대기
 - `WORKFLOW_TELEGRAM_BOT_TOKEN`으로 사장님에게 Phase 완료 알림 전송
 - 알림 내용: Phase X 완료, 테스트 수, Shadow 결과 (PnL/WR/DD), 변경 파일 수
 - **사장님 승인까지 대기** (자동 진행 금지)
@@ -292,15 +320,7 @@ Agent(subagent_type="oh-my-claudecode:git-master", name="kazuha",
 
 **활성 팀**: LE SSERAFIM(정합성, 4명)
 
-**E→다음Phase 전환 (순서 엄수):**
-1. Exit Gate PASS
-2. SSOT.md + prd.json 업데이트 완료
-3. verifier 산출물 전부 확인
-4. git push 완료
-5. 텔레그램 알림 전송
-6. 사장님 승인 수신
-7. `leviathan-progress.json` 저장 (`next_stage:"A", next_phase:"Phase-Y"`)
-8. 즉시 다음 Phase Stage A
+**E→다음Phase 전환:** Exit Gate PASS + verifier 확인 + SSOT 업데이트 + git push 완료 + 텔레그램 알림 전송 + 사장님 승인 수신 즉시 → `state_write(next_stage:"A", next_phase:"Phase-Y")` && 다음 Phase Stage A 시작. 중간 상태 보고 금지.
 
 ---
 
@@ -399,12 +419,13 @@ Agent(subagent_type="oh-my-claudecode:git-master", name="kazuha",
 | 코드리뷰 | CRITICAL/HIGH 0건 | C |
 | 보안리뷰 | CRITICAL 0건 | C |
 | REVIEW.md | `docs/review/Phase-X_REVIEW.md` 존재 | C |
+| git commit+push | **Stage C에서 안 함** — Stage E에서 일괄 수행 | C→E |
 | Shadow 10min+ | PnL > 0, crash = 0, 10분 이상 | D |
 | Docker | 전 컨테이너 healthy | D |
 | Exit Gate | 정합성 재검사 PASS | E |
 | SSOT.md | 해당 섹션 업데이트됨 | E |
 | prd.json | `passes: true` | E |
-| Git | commit + push 완료 | E |
+| Git | `git add` + `git commit` + `git push origin main` 일괄 완료 | E |
 | 텔레그램 | 사장님 알림 전송 | E |
 | **Phase D/H 추가** | Chrome 렌더링 + API 200 + WebSocket + 모바일 반응형 | C+D |
 
@@ -448,10 +469,12 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승�
 세션 크래시/수동 `/clear` 시 → `/leviathan` 재호출 → progress 파일로 재개.
 
 **컨텍스트 60% 이상 시:**
-1. 현재 진행 중인 Stage 완료까지 마무리
-2. `/clear` 시도 → 성공 시 progress.json으로 재개
-3. `/clear` 불가능한 경우에만 → WORKFLOW_TELEGRAM으로 사장님 알림
-4. **`/compact` 절대 금지** — 결과 소실 위험
+1. WORKFLOW_TELEGRAM `send_context_warning()` → 60% 도달 알림 전송
+2. 현재 진행 중인 Stage 완료까지 마무리
+3. `/clear` 시도
+4. 성공 시 → `send_context_clear_success()` 알림 → progress.json으로 자동 재개
+5. 실패 시 → `send_context_alert()` 알림 → 사장님 수동 개입 필요
+6. **`/compact` 절대 금지** — 결과 소실 위험
 
 ## 7. TF (Task Force) — Semi-Final + Final
 
@@ -502,7 +525,7 @@ SSOT.md §7 구조:
 [단계 0] Smoke Test Gate
 - 전체 pytest PASS
 - Docker 전 컨테이너 healthy
-- 엔진 기동 확인
+- 통합 Shadow 10min (crash=0, 전략 신호 흐름 정상, PnL 기록 확인)
 - 실패 시 TF 소집하지 않고 해당 Phase로 회귀
 
 [단계 1] 정합성 확인
@@ -570,7 +593,9 @@ WORKFLOW_TELEGRAM_CHAT_ID=<채팅 ID>
 **알림 조건:**
 1. **Phase 종료** (Stage E 완료): 결과 요약 → 사장님 승인까지 대기
 2. **L5 에스컬레이션**: 동일 Phase 3회 실패 → 사장님 판단 요청
-3. **컨텍스트 60%**: `/clear` 실패 시에만 알림 (성공 시 자동 재개)
+3. **컨텍스트 60% 도달**: `/clear` 시도 예고 알림 (`send_context_warning`)
+4. **컨텍스트 /clear 성공**: 자동 재개 알림 (`send_context_clear_success`)
+5. **컨텍스트 /clear 실패**: 수동 개입 필요 알림 (`send_context_alert`)
 
 기존 `TELEGRAM_BOT_TOKEN`(거래 알림)과 혼용 금지.
 

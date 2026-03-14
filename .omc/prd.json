@@ -4,7 +4,7 @@
   "created": "2026-03-08",
   "updated": "2026-03-13",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 146,
+  "total_stories": 147,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -204,7 +204,7 @@
       "passes": true,
       "gap": "GAP-10",
       "files": [
-        "tests/test_strategy_cost_integration.py"
+        "engine/tests/integration/test_strategy_cost_integration.py"
       ],
       "acceptanceCriteria": [
         "tests/test_strategy_cost_integration.py 생성",
@@ -220,7 +220,7 @@
       "passes": true,
       "gap": "GAP-5",
       "files": [
-        "engine/src/collectors/binance_futures.py"
+        "engine/src/collectors/binance_futures_collector.py"
       ],
       "acceptanceCriteria": [
         "engine/src/collectors/binance_futures.py 생성",
@@ -255,7 +255,7 @@
       "passes": true,
       "gap": "GAP-6",
       "files": [
-        "engine/src/collectors/funding_rate.py"
+        "engine/src/collectors/funding_rate_collector.py"
       ],
       "acceptanceCriteria": [
         "engine/src/collectors/funding_rate.py 생성",
@@ -291,7 +291,7 @@
       "passes": true,
       "gap": "GAP-5,6",
       "files": [
-        "tests/test_futures_infrastructure.py"
+        "engine/tests/integration/test_futures_infrastructure.py"
       ],
       "acceptanceCriteria": [
         "tests/test_futures_infrastructure.py 생성",
@@ -359,7 +359,7 @@
       "passes": true,
       "gap": "GAP-3,2",
       "files": [
-        "tests/test_multi_signal_integration.py"
+        "engine/tests/integration/test_multi_signal_integration.py"
       ],
       "acceptanceCriteria": [
         "tests/test_multi_signal_integration.py 생성",
@@ -424,7 +424,7 @@
       "passes": true,
       "gap": "GAP-1",
       "files": [
-        "tests/test_shadow_strategy_integration.py"
+        "engine/tests/integration/test_shadow_strategy_integration.py"
       ],
       "acceptanceCriteria": [
         "tests/test_shadow_strategy_integration.py 생성",
@@ -474,7 +474,7 @@
       "passes": true,
       "gap": "GAP-4",
       "files": [
-        "tests/test_triangular_execution.py"
+        "engine/tests/integration/test_triangular_execution.py"
       ],
       "acceptanceCriteria": [
         "tests/test_triangular_execution.py 생성",
@@ -581,8 +581,8 @@
       "priority": 37,
       "passes": true,
       "files": [
-        "dashboard/src/pages/trades.tsx",
-        "dashboard/src/pages/alerts.tsx"
+        "dashboard/src/app/trades/page.tsx",
+        "dashboard/src/app/alerts/page.tsx"
       ],
       "acceptanceCriteria": [
         "전략별 필터링, 시간순 정렬, PnL 표시",
@@ -600,7 +600,7 @@
       "priority": 38,
       "passes": true,
       "files": [
-        "dashboard/src/pages/settings.tsx"
+        "dashboard/src/app/settings/page.tsx"
       ],
       "acceptanceCriteria": [
         "MIN_EDGE_BPS, 전략 활성/비활성, 거래소 선택 UI",
@@ -617,8 +617,8 @@
       "priority": 39,
       "passes": true,
       "files": [
-        "dashboard/src/pages/analytics.tsx",
-        "dashboard/src/pages/funding.tsx"
+        "dashboard/src/app/analytics/page.tsx",
+        "dashboard/src/app/funding/page.tsx"
       ],
       "acceptanceCriteria": [
         "전략별 PnL 누적, WR 추이, DD 이력 차트",
@@ -635,7 +635,7 @@
       "priority": 40,
       "passes": true,
       "files": [
-        "dashboard/src/pages/exchanges.tsx"
+        "dashboard/src/app/exchanges/page.tsx"
       ],
       "acceptanceCriteria": [
         "WS 연결 상태, latency, orderbook depth 표시",
@@ -651,7 +651,7 @@
       "priority": 41,
       "passes": true,
       "files": [
-        "dashboard/src/**/*.tsx"
+        "dashboard/src/app/layout.tsx"
       ],
       "acceptanceCriteria": [
         "Tailwind breakpoint 적용 (sm/md/lg)",
@@ -770,7 +770,7 @@
       "passes": true,
       "notes": "Phase E-2: 3-Layer pipeline integration tests (Offline→Adaptive→Regime). 17 tests: per-strategy independence, regime→KillSwitch, history persistence, full cycle. 3401 total PASS.",
       "files": [
-        "tests/test_auto_tuning_pipeline.py"
+        "engine/tests/test_auto_tuning_pipeline.py"
       ],
       "acceptanceCriteria": [
         "tests/test_auto_tuning_pipeline.py 생성",
@@ -856,7 +856,7 @@
       "passes": true,
       "notes": "Attribution page with Waterfall+Heatmap, /api/v1/attribution endpoint, npm build PASS",
       "files": [
-        "dashboard/src/pages/attribution.tsx"
+        "dashboard/src/app/attribution/page.tsx"
       ],
       "acceptanceCriteria": [
         "전략/거래소/페어별 수익 귀속 차트",
@@ -1254,8 +1254,8 @@
       "priority": 79,
       "passes": true,
       "files": [
-        "engine/src/collectors/okx_futures.py",
-        "engine/src/collectors/bybit_futures.py",
+        "engine/src/collectors/okx_futures_collector.py",
+        "engine/src/collectors/bybit_futures_collector.py",
         "engine/src/collectors/manager.py"
       ],
       "acceptanceCriteria": [
@@ -1315,7 +1315,7 @@
       "priority": 84,
       "passes": true,
       "files": [
-        "docs/checklists/phase-f-final-audit.md"
+        "docs/checklists/phase-f-final-audit_20260313.md"
       ],
       "acceptanceCriteria": [
         "docs/checklists/phase-f-final-audit.md 전 항목 실행",
@@ -1595,7 +1595,7 @@
       ],
       "files": [
         "engine/src/analysis/ml_backtest.py",
-        "engine/tests/test_ml_signal.py"
+        "engine/tests/unit/ml/test_ml_signal_backtest.py"
       ],
       "acceptanceCriteria": [
         "walk-forward ML 랭킹 시그널 vs 기존 시그널 비교",
@@ -1674,7 +1674,7 @@
       "files": [
         "dashboard/src/components/ModeSwitch.tsx",
         "dashboard/src/app/page.tsx",
-        "dashboard/src/app/overview/page.tsx"
+        "dashboard/src/app/page.tsx"
       ],
       "acceptanceCriteria": [
         "ModeSwitch Overview 헤더에 통합",
@@ -1714,7 +1714,7 @@
       ],
       "files": [
         "dashboard/src/components/PortfolioSummary.tsx",
-        "dashboard/src/app/overview/page.tsx"
+        "dashboard/src/app/page.tsx"
       ],
       "acceptanceCriteria": [
         "ROI % KPI 추가 (총수익/초기자본)",
@@ -1780,7 +1780,7 @@
       "passes": true,
       "dependencies": [],
       "files": [
-        "dashboard/src/app/overview/page.tsx",
+        "dashboard/src/app/page.tsx",
         "dashboard/src/components/PortfolioSummary.tsx",
         "dashboard/src/app/settings/page.tsx"
       ],
@@ -1799,7 +1799,7 @@
       "dependencies": [],
       "files": [
         "engine/src/execution/sizer.py",
-        "engine/tests/unit/test_sizer.py"
+        "engine/tests/unit/execution/test_sizer.py"
       ],
       "acceptanceCriteria": [
         "size = base_size × confidence(edge) × regime_multiplier × liquidity_factor",
@@ -1886,7 +1886,7 @@
       "dependencies": [],
       "files": [
         "engine/src/execution/atomic.py",
-        "engine/src/collectors/binance_adapter.py"
+        "engine/src/collectors/binance_collector.py"
       ],
       "acceptanceCriteria": [
         "IOC 리밋 주문 우선 시도",
@@ -1902,7 +1902,7 @@
       "passes": true,
       "dependencies": [],
       "files": [
-        "engine/src/execution/inventory_rebalancer.py",
+        "engine/src/core/inventory_rebalancer.py",
         "engine/src/main.py"
       ],
       "acceptanceCriteria": [
@@ -2180,7 +2180,7 @@
       ],
       "files": [
         "docker/init.sql",
-        "engine/src/infra/timescale.py",
+        "engine/src/infra/db/timescale.py",
         "docker-compose.yml"
       ],
       "source": "Infra CRITICAL #3, Data PARTIAL #7"
@@ -2235,7 +2235,7 @@
       ],
       "files": [
         "infra/prometheus/alertmanager.yml",
-        "infra/grafana/datasources.yml",
+        "infra/grafana/provisioning/datasources.yml",
         "docker-compose.yml"
       ],
       "source": "Infra HIGH #3, LOW #11"
@@ -2352,7 +2352,7 @@
         "TUNER_DATA_SOURCE=timescaledb 설정 시 실데이터 기반 최적화 동작"
       ],
       "files": [
-        "engine/src/tuning/auto_tuner.py"
+        "engine/src/tuning/scheduled_tuner.py"
       ],
       "source": "Data CRITICAL: NotImplementedError"
     },
@@ -2369,7 +2369,7 @@
       ],
       "files": [
         "engine/src/main.py",
-        "engine/src/tuning/auto_tuner.py"
+        "engine/src/tuning/scheduled_tuner.py"
       ],
       "source": "Data FAIL: ScheduledTuner not wired"
     },
@@ -2403,7 +2403,7 @@
       ],
       "files": [
         "engine/src/modes/shadow.py",
-        "engine/src/execution/rebalancer.py"
+        "engine/src/core/inventory_rebalancer.py"
       ],
       "source": "Quant HIGH #7, Data WARN: balance feed"
     },
@@ -2412,7 +2412,7 @@
       "title": "prd.json 23개 파일 경로 수정",
       "phase": "S6",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "prd.json의 모든 files 경로가 실제 파일 경로와 일치",
         "검증 스크립트: 모든 files 항목이 os.path.exists() True"
@@ -2427,7 +2427,7 @@
       "title": "CLAUDE.md 현행화",
       "phase": "S6",
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "테스트 수 현행화 (3,747→실제 수)",
         "Phase 순서 현행화 (S1~S6 추가)",
@@ -2444,7 +2444,7 @@
       "title": "SSOT.md 수식/체크 항목 코드 동기화",
       "phase": "S6",
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "SSOT §4.3 RiskGuardian 9-check 목록을 실제 코드와 동기화",
         "SSOT KillSwitch Tier 설명을 코드의 실행 단계 기반으로 수정",
