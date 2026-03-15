@@ -1679,21 +1679,38 @@ class ShadowMode:
                         seconds_since_update=elapsed,
                         stale_count=self._krw_stale_count,
                     )
-                    # US-171: After 3 consecutive stale checks (≈90s) trigger KillSwitch
-                    # soft-block for KRW exchanges only
+                    # US-171: Tiered response — soft-block first, KillSwitch for prolonged outage
+                    # Phase 1: 3x stale (≈90s) → soft-block KRW exchanges only
                     if self._krw_stale_count >= 3 and not self._krw_soft_blocked:
                         self._krw_soft_blocked = True
                         logger.warning(
                             "shadow_mode.krw_soft_block_activated",
                             stale_seconds=elapsed,
                         )
-                        # Soft-block only: skip KRW exchanges in signal generation
-                        # Do NOT trigger full KillSwitch — it halts ALL trading including non-KRW pairs
                         if self._telegram is not None:
                             try:
                                 asyncio.create_task(self._telegram.send_alert(
                                     f"KRW rate stale {elapsed:.0f}s — KRW exchanges soft-blocked",
                                     level="WARNING",
+                                ))
+                            except Exception:
+                                pass
+                    # Phase 2: 20x stale (≈10min) → full KillSwitch (prolonged outage = systemic risk)
+                    if self._krw_stale_count >= 20 and self._kill_switch is not None:
+                        logger.critical(
+                            "shadow_mode.krw_prolonged_outage_killswitch",
+                            stale_seconds=elapsed,
+                            stale_count=self._krw_stale_count,
+                        )
+                        try:
+                            asyncio.create_task(self._kill_switch.trigger())
+                        except Exception as exc:
+                            logger.error("shadow_mode.kill_switch_trigger_failed", error=str(exc))
+                        if self._telegram is not None:
+                            try:
+                                asyncio.create_task(self._telegram.send_alert(
+                                    f"CRITICAL: KRW rate stale {elapsed:.0f}s (10min+) — KillSwitch triggered",
+                                    level="CRITICAL",
                                 ))
                             except Exception:
                                 pass
