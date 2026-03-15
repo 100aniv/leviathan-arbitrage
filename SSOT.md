@@ -28,13 +28,13 @@
 
 ```
 Phase:        Phase S7 Pre-Live Hardening ← ALL PASS  [S1~S6 ✅ → TF 재검증 ✅ → S7 ✅]
-테스트:       4,471 passed, 0 failed, 6 skipped (2 flaky deselected)
+테스트:       4,474 passed, 0 failed, 6 skipped (2 flaky deselected)
 커버리지:     87%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    a4fa4a7
 다음 작업:    TF SF [단계 1-A] Delta Check 재검증 → [단계 1-B] → [단계 2] → TF Final → Live
-완료된 US:    157/159 (기존 145 + Phase S7 12/12 완료)
+완료된 US:    157/159 (기존 145 + Phase S7 12/12 완료, prd.json 동기화 완료)
 TF QF:        PASS(조건부, 2026-03-15) — CRITICAL 0, HIGH 0, 잔여 ~7건 MEDIUM/LOW
               원본(FAIL): docs/checklists/tf-semi-final_20260313.md
               재검증(PASS): docs/checklists/tf-semi-final-recheck_20260315.md (91.5% 해소)
@@ -393,7 +393,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 159개 User Stories, 145개 완료, 14개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 159개 User Stories, 157개 완료, 2개 미완)
 
 > **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -572,10 +572,10 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > Progressive Shadow Stage 1: 8h28m, 502 trades, 91.8% WR, crash=0
 > **후속**: Phase S7 (Pre-Live Hardening) 완료 → 3-Round 체계 강화로 [단계 1-A]부터 재검증
 
-**[단계 1-A] 경량 재확인 (Delta Check)** ← 3-Round 체계 강화로 재검증 필요
-- [ ] QF 이후 변경분 CRITICAL/HIGH 신규 0건 (S7 + 3-Round 문서 변경분 포함)
-- [ ] 전체 프로그램 응집도/결합도 점검 (8전략+10거래소+리스크+모니터링)
-- [ ] 엔드투엔드 데이터 흐름 확인
+**[단계 1-A] 경량 재확인 (Delta Check)** ✅ ALL PASS (2026-03-15, 재검증 완료)
+- [x] QF 이후 변경분 CRITICAL/HIGH 신규 0건 (S7 12 US + 3-Round 문서 변경분, HIGH 2건 발견→즉시 수정)
+- [x] 전체 프로그램 응집도/결합도 점검 (8전략+10거래소+리스크+모니터링 — Karina/Jeongyeon 교차 확인)
+- [x] 엔드투엔드 데이터 흐름 확인 (WS→PriceHub→Signal→Strategy→Executor→DB VERIFIED)
 
 **[단계 1-B] 전략별 독립 검증 (Strategy Isolation)**
 - [ ] 각 활성 전략 단독 10분 Shadow (P&L, WR, Sharpe, MDD 개별)

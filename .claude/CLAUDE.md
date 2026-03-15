@@ -261,7 +261,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 - **Phase 순서**: A~M✅ → 회귀 S1~S7 ✅ → TF QF ✅ → **TF SF** (진행 중) → TF Final → Live
 - **Tests**: 4,474 passed, 0 failed, 6 skipped
-- **PRD**: `.omc/prd.json` (159개 US, 145 pass / 14 fail)
+- **PRD**: `.omc/prd.json` (159개 US, 157 pass / 2 fail)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
 - **다음 작업**: TF SF [단계 1-A] Delta Check 재검증 → [단계 1-B] → [단계 2] → TF Final → Live
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%

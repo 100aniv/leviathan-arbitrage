@@ -2,9 +2,9 @@
   "project": "LEVIATHAN Arbitrage Engine",
   "version": "2.0",
   "created": "2026-03-08",
-  "updated": "2026-03-13",
+  "updated": "2026-03-15",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 147,
+  "total_stories": 159,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -33,7 +33,8 @@
     "S3": "Infrastructure Hardening (TF Semi-Final 발견)",
     "S4": "Dashboard Completion (TF Semi-Final 발견)",
     "S5": "Data Pipeline & Auto-Tuner (TF Semi-Final 발견)",
-    "S6": "Documentation Sync (TF Semi-Final 발견)"
+    "S6": "Documentation Sync (TF Semi-Final 발견)",
+    "S8": "Pre-Live Hardening (TF Final 발견)"
   },
   "gap_dependency_order": "GAP9 -> GAP10 -> (GAP5,GAP6,GAP7 parallel) -> GAP3 -> GAP1,GAP2 -> GAP4",
   "stories": [
@@ -2548,6 +2549,243 @@
       ],
       "dependencies": [],
       "source": "Phase S4 Stage D Shadow PnL=-7.86 USDT: stat_arb_v1 6거래 -7.61 손실. 메커니즘(US-066) 구현됨 but .env 미설정. TF Semi-Final도 미감지. SSOT §9 HIGH 등록."
+    },
+    {
+      "id": "US-157",
+      "title": "Config 아키텍처 분리 — .env 시크릿만, 비즈니스 설정 JSON",
+      "phase": "S8",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "engine/config/trading.json",
+        "engine/src/core/config.py",
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "engine/config/trading.json 파일 존재 (active_exchanges, risk, slippage, execution, phase_gates, symbol_discovery 섹션)",
+        "config.py에서 JSON 로딩 + env 우선 fallback 구현",
+        "main.py _init_config()에서 trading.json 로드",
+        ".env에서 TRADING_ACTIVE_EXCHANGES, MIN_EDGE_BPS, SLIPPAGE_*, LEG_TIMEOUT_MS 등 비민감 항목 제거 또는 주석 처리",
+        ".env 없이 trading.json만으로 엔진 기동 가능",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "사장님 지시: .env는 민감정보 위주, 비즈니스 설정은 config 파일로 분리"
+    },
+    {
+      "id": "US-158",
+      "title": "okx_futures + bybit_futures 활성 거래소 추가",
+      "phase": "S8",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/config/trading.json"
+      ],
+      "acceptanceCriteria": [
+        "trading.json active_exchanges에 okx_futures, bybit_futures 포함 (총 10개)",
+        "Shadow 실행 시 10개 거래소 전부 연결 확인 (로그에 10 collectors initialized)",
+        "pytest 0 failures"
+      ],
+      "dependencies": [
+        "US-157"
+      ],
+      "source": "TF Final NOTE#1: .env TRADING_ACTIVE_EXCHANGES에 okx_futures, bybit_futures 누락"
+    },
+    {
+      "id": "US-159",
+      "title": "_reconcile_loop 실제 구현",
+      "phase": "S8",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "main.py _reconcile_loop()가 실제 포지션 reconciliation 수행 (stub 아님)",
+        "Redis recovery state와 VirtualBalanceTracker 잔고 비교",
+        "불일치 시 로그 WARNING + Telegram 알림",
+        "테스트 파일에 reconcile 로직 단위 테스트 존재",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "TF Final NOTE#2: main.py:1768-1776 stub — 로그만 출력, 실제 reconciliation 미구현"
+    },
+    {
+      "id": "US-160",
+      "title": "InMemoryEventBus 큐 크기 제한",
+      "phase": "S8",
+      "priority": 4,
+      "passes": true,
+      "files": [
+        "engine/src/core/event_bus.py"
+      ],
+      "acceptanceCriteria": [
+        "asyncio.Queue(maxsize=10000) 적용",
+        "큐 full 시 oldest 이벤트 drop + WARNING 로그",
+        "테스트에서 maxsize 초과 시 drop 동작 확인",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "TF Final 압박면접 RISK#1: asyncio.Queue unbounded (Paper/Shadow 한정이지만 방어 필요)"
+    },
+    {
+      "id": "US-161",
+      "title": "KRW stale rate 거래 중단 로직",
+      "phase": "S8",
+      "priority": 5,
+      "passes": true,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/core/signal.py"
+      ],
+      "acceptanceCriteria": [
+        "KRW 환율 120s stale 감지 시 KRW 심볼 신호 필터링 (거래 중단)",
+        "환율 갱신 복구 시 자동 거래 재개",
+        "stale 감지 시 WARNING 로그 + 메트릭 카운터",
+        "테스트에서 stale rate → 신호 차단 → 복구 → 신호 허용 시퀀스 확인",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "TF Final 압박면접 RISK#4: 120s stale 감지하지만 경고만, 거래 중단 로직 부재"
+    },
+    {
+      "id": "US-162",
+      "title": "Auto-discovery 거래량 필터",
+      "phase": "S8",
+      "priority": 6,
+      "passes": true,
+      "files": [
+        "engine/src/collectors/symbol_discovery.py",
+        "engine/config/trading.json"
+      ],
+      "acceptanceCriteria": [
+        "discover_common_symbols()에 min_volume_usd 파라미터 추가 (기본 100000)",
+        "24h 거래량 < min_volume_usd 심볼 자동 필터링",
+        "trading.json symbol_discovery.min_volume_usd에서 설정 가능",
+        "테스트에서 저거래량 심볼 필터링 확인",
+        "pytest 0 failures"
+      ],
+      "dependencies": [
+        "US-157"
+      ],
+      "source": "TF Final 압박면접 RISK#5: volume 필터 없음, min_price_usd=0.10만 존재"
+    },
+    {
+      "id": "US-163",
+      "title": "Dashboard 로그인 수정",
+      "phase": "S8",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "dashboard/.env.local",
+        "dashboard/src/app/login/page.tsx",
+        "dashboard/src/middleware.ts",
+        "engine/src/api/auth.py"
+      ],
+      "acceptanceCriteria": [
+        "dashboard/.env.local에 NEXT_PUBLIC_ENGINE_URL 설정 확인",
+        "POST /api/auth/login 정상 응답 (200 + token)",
+        "로그인 후 Overview 페이지 접근 가능",
+        "CORS_ORIGINS에 대시보드 URL 포함",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "사장님 보고: 어느순간부터 웹 UIUX 로그인이 안됨"
+    },
+    {
+      "id": "US-164",
+      "title": "Shadow PnL 단일 손실 방어 (max_single_loss)",
+      "phase": "S8",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/config/trading.json"
+      ],
+      "acceptanceCriteria": [
+        "trading.json에 max_single_loss_usd 파라미터 (기본 50)",
+        "단일 거래 손실 > threshold 시 해당 심볼 30분 쿨다운",
+        "쿨다운 시 로그 WARNING + Telegram 알림",
+        "테스트에서 max_single_loss 초과 → 쿨다운 → 복구 시퀀스 확인",
+        "pytest 0 failures"
+      ],
+      "dependencies": [
+        "US-157"
+      ],
+      "source": "TF Final Shadow Stage1: AVAX 단일 손실 -0.2370 USDT 방어 필요"
+    },
+    {
+      "id": "US-165",
+      "title": "Redis 연결 명시적 close",
+      "phase": "S8",
+      "priority": 7,
+      "passes": true,
+      "files": [
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "graceful shutdown 시퀀스에 Redis 연결 close 추가",
+        "close 호출 후 Redis 연결 pool 상태 확인 로그",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "TF Final NOTE#3: Redis 연결 명시적 close 미호출 (LOW)"
+    },
+    {
+      "id": "US-166",
+      "title": "모니터링 가이드 문서 작성",
+      "phase": "S8",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "docs/operations/monitoring-guide.md"
+      ],
+      "acceptanceCriteria": [
+        "docs/operations/monitoring-guide.md 존재",
+        "Grafana 접속법 + 주요 패널 설명 포함",
+        "Engine API 엔드포인트 목록 (/health, /shadow/stats, /shadow/recent-trades)",
+        "Dashboard 4페이지 설명 포함",
+        "CLI 모니터링 명령어 (docker logs, curl, watch) 포함",
+        "Telegram 알림 설정법 포함"
+      ],
+      "dependencies": [],
+      "source": "사장님 요청: 2H+ Shadow 중 사용자가 확인할 수 있는 방법 친절하게 알려달라"
+    },
+    {
+      "id": "US-167",
+      "title": "Docker 리소스 제한 (Redis/TimescaleDB deploy limits)",
+      "phase": "S8",
+      "priority": 8,
+      "passes": true,
+      "files": [
+        "docker-compose.yml"
+      ],
+      "acceptanceCriteria": [
+        "docker-compose.yml에 Redis deploy.resources.limits 설정 (memory: 512M, cpus: '0.5')",
+        "docker-compose.yml에 TimescaleDB deploy.resources.limits 설정 (memory: 2G, cpus: '1.0')",
+        "docker compose up -d 정상 기동",
+        "docker stats로 제한 적용 확인"
+      ],
+      "dependencies": [],
+      "source": "TF Semi-Final MEDIUM: 리소스 제한 엔진만 적용, Redis/TimescaleDB 무제한"
+    },
+    {
+      "id": "US-168",
+      "title": "httpx AsyncClient 재사용 (connection pooling)",
+      "phase": "S8",
+      "priority": 9,
+      "passes": true,
+      "files": [
+        "engine/src/collectors/symbol_discovery.py",
+        "engine/src/core/krw_rate.py"
+      ],
+      "acceptanceCriteria": [
+        "httpx.AsyncClient를 모듈/클래스 레벨에서 재사용 (매 요청 재생성 금지)",
+        "클라이언트 생명주기 관리 (startup에서 생성, shutdown에서 close)",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "TF Semi-Final MEDIUM + SSOT §9: 매 요청마다 httpx.AsyncClient 재생성 → 성능 이슈"
     }
   ]
 }

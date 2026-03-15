@@ -316,6 +316,12 @@ class Engine:
         if "min_volume_usd" in cfg:
             _setdefault("SIGNAL_MIN_VOLUME_USD", cfg["min_volume_usd"])
 
+        # US-156/164: Shadow disabled strategies and single loss defense
+        if "disabled_strategies" in cfg:
+            _setdefault("SHADOW_DISABLED_STRATEGIES", ",".join(cfg["disabled_strategies"]))
+        if "max_single_loss_usd" in cfg:
+            _setdefault("SHADOW_MAX_LOSS_PER_TRADE_USD", cfg["max_single_loss_usd"])
+
     async def _init_config(self) -> None:
         # Load non-sensitive config from trading.json; env vars (.env) take priority.
         _tcfg = load_trading_config()
@@ -639,6 +645,7 @@ class Engine:
             max_spread_pct=Decimal(str(max_spread_pct)),
             cooldown_seconds=cooldown_sec,
             min_price_usd=min_price_usd,
+            min_volume_usd=Decimal(os.environ.get("SIGNAL_MIN_VOLUME_USD", "0")),
         )
         stale_detector = StaleOrderbookDetector(
             deviation_pct=float(os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10")),
