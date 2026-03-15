@@ -52,6 +52,7 @@ class SignalConfig:
     min_price_usd: Decimal = Decimal("0.10")
     max_book_age_seconds: float = 30.0  # reject orderbooks not updated within this window
     min_delta_update_count: int = 3    # STALE_MIN_DELTA_UPDATES: min deltas since snapshot for delta exchanges
+    min_volume_usd: Decimal = Decimal("0")  # US-162: minimum 24h volume filter (0 = disabled)
 
 
 class SignalGenerator:
@@ -147,6 +148,21 @@ class SignalGenerator:
         # Min price gate — filter out penny coins (e.g. QKC at $0.003)
         if buy_price < self._config.min_price_usd:
             return None
+
+        # US-162: Volume filter — skip low-liquidity symbols
+        # Uses buy_book.volume_24h_usd if available; graceful skip if absent
+        if self._config.min_volume_usd > Decimal("0"):
+            buy_vol = getattr(books.get(buy_exchange), "volume_24h_usd", None)
+            sell_vol = getattr(books.get(sell_exchange), "volume_24h_usd", None)
+            # Use the lower of the two volumes as the conservative estimate
+            if buy_vol is not None and sell_vol is not None:
+                min_vol = min(Decimal(str(buy_vol)), Decimal(str(sell_vol)))
+                if min_vol < self._config.min_volume_usd:
+                    logger.debug(
+                        "volume_filter_rejected symbol=%s min_vol=%.2f threshold=%.2f",
+                        symbol, float(min_vol), float(self._config.min_volume_usd),
+                    )
+                    return None
 
         # Max spread gate — reject data anomalies (e.g. stale/incremental orderbooks)
         raw_spread_frac = (sell_price - buy_price) / buy_price

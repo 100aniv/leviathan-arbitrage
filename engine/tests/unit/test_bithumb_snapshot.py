@@ -60,8 +60,7 @@ class TestBithumbRestSnapshot:
         with patch("src.collectors.bithumb_collector.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
 
             await c._fetch_initial_snapshots()
 
@@ -85,8 +84,7 @@ class TestBithumbRestSnapshot:
         with patch("src.collectors.bithumb_collector.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
 
             await c._fetch_initial_snapshots()
 
@@ -111,8 +109,7 @@ class TestBithumbRestSnapshot:
         with patch("src.collectors.bithumb_collector.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
 
             await c._fetch_initial_snapshots()
 
@@ -134,8 +131,7 @@ class TestBithumbRestSnapshot:
         with patch("src.collectors.bithumb_collector.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
 
             await c._fetch_initial_snapshots()
 
@@ -160,8 +156,7 @@ class TestBithumbRestSnapshot:
         with patch("src.collectors.bithumb_collector.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.side_effect = httpx.ConnectError("Connection refused")
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
 
             # Should not raise
             await c._fetch_initial_snapshots()
@@ -220,8 +215,7 @@ class TestBithumbMultiSymbolSnapshot:
         with patch("src.collectors.bithumb_collector.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_response
-            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
 
             with patch("src.collectors.bithumb_collector.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
                 await c._fetch_initial_snapshots()

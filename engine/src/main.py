@@ -16,6 +16,7 @@ Engine lifecycle:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import signal
@@ -30,7 +31,7 @@ from dotenv import load_dotenv
 load_dotenv()  # Load .env before any os.getenv() calls
 
 from src.api.server import EngineContext, create_app
-from src.core.config import ExecutionMode, Settings, get_settings
+from src.core.config import ExecutionMode, Settings, get_settings, load_trading_config
 
 try:
     from src.tuning.scheduled_tuner import ScheduledTuner
@@ -121,6 +122,8 @@ class Engine:
         self._atomic_order_executor: Any = None
         # US-146: ScheduledTuner (optional, enabled via ENABLE_INLINE_TUNER)
         self._scheduled_tuner: Any = None
+        # US-165: Redis client reference for explicit close on shutdown
+        self._redis_client: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -218,6 +221,26 @@ class Engine:
             except Exception as exc:
                 logger.warning("DB pool close error: %s", exc)
 
+        # US-165: Close Redis connection explicitly
+        if self._redis_client:
+            try:
+                await self._redis_client.disconnect()
+                logger.info("Redis connection closed")
+            except Exception as exc:
+                logger.warning("Redis disconnect error: %s", exc)
+
+        # US-168: Close Telegram HTTP clients
+        if hasattr(self, '_telegram') and self._telegram:
+            try:
+                await self._telegram.close()
+            except Exception as exc:
+                logger.warning("Telegram close error: %s", exc)
+        if hasattr(self, '_telegram_cmd_handler') and self._telegram_cmd_handler:
+            try:
+                await self._telegram_cmd_handler.close()
+            except Exception as exc:
+                logger.warning("TelegramCommandHandler close error: %s", exc)
+
         # Stop ScheduledTuner
         if self._scheduled_tuner:
             try:
@@ -255,7 +278,50 @@ class Engine:
     # Step 1: Configuration
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _apply_trading_json_defaults(cfg: dict) -> None:
+        """Inject trading.json values as env var defaults (env vars take priority)."""
+
+        def _setdefault(key: str, value: object) -> None:
+            if key not in os.environ:
+                os.environ[key] = json.dumps(value) if isinstance(value, list) else str(value)
+
+        if "active_exchanges" in cfg:
+            _setdefault("TRADING_ACTIVE_EXCHANGES", cfg["active_exchanges"])
+
+        sym = cfg.get("symbol_discovery", {})
+        if "min_exchanges" in sym:
+            _setdefault("TRADING_SYMBOL_MIN_EXCHANGES", sym["min_exchanges"])
+
+        exe = cfg.get("execution", {})
+        for _k, _env in [
+            ("leg_timeout_ms", "LEG_TIMEOUT_MS"),
+            ("rollback_timeout_ms", "ROLLBACK_TIMEOUT_MS"),
+            ("reconciliation_interval_s", "RECONCILIATION_INTERVAL_S"),
+        ]:
+            if _k in exe:
+                _setdefault(_env, exe[_k])
+
+        pg = cfg.get("phase_gates", {})
+        if "phase" in pg:
+            _setdefault("CAPITAL_TIER", pg["phase"])
+        if "alpha_capital_per_exchange" in pg:
+            _setdefault("CAPITAL_INITIAL_CAPITAL", pg["alpha_capital_per_exchange"])
+
+        risk = cfg.get("risk", {})
+        if "max_rollback_threshold" in risk:
+            _setdefault("RISK_MAX_ROLLBACK_THRESHOLD", risk["max_rollback_threshold"])
+
+        # US-162: Volume filter threshold
+        if "min_volume_usd" in cfg:
+            _setdefault("SIGNAL_MIN_VOLUME_USD", cfg["min_volume_usd"])
+
     async def _init_config(self) -> None:
+        # Load non-sensitive config from trading.json; env vars (.env) take priority.
+        _tcfg = load_trading_config()
+        if _tcfg:
+            self._apply_trading_json_defaults(_tcfg)
+
         # Convert TRADING_SYMBOLS=auto to valid JSON before pydantic-settings parsing.
         # pydantic-settings tries json.loads() on list[str] fields; "auto" is not valid JSON.
         raw_symbols = os.environ.get("TRADING_SYMBOLS", "").strip()
@@ -328,6 +394,7 @@ class Engine:
                 from src.infra.redis.event_bus import EventBus
                 redis_client = RedisClient(self._settings.redis.url)
                 await redis_client.connect()
+                self._redis_client = redis_client
                 self._event_bus = EventBus(redis_client)
                 logger.info("Redis EventBus initialized")
             except Exception as exc:
@@ -1766,10 +1833,51 @@ class Engine:
             logger.debug("Health check OK")
 
     async def _reconcile_loop(self) -> None:
+        interval = float(os.environ.get("RECONCILIATION_INTERVAL_S", str(self.RECONCILE_INTERVAL)))
         while self.state.running:
             try:
-                await asyncio.sleep(self.RECONCILE_INTERVAL)
-                logger.debug("Position reconciliation tick")
+                await asyncio.sleep(interval)
+
+                # Only reconcile when shadow mode is active and Redis is available
+                if self._shadow_mode is None or self._redis_client is None:
+                    continue
+
+                current: dict[str, str] = self._shadow_mode._balance_tracker.summary()
+                if not current:
+                    continue
+
+                # Read last saved snapshot from Redis
+                raw = await self._redis_client.hgetall("leviathan:recovery:balances")
+                if raw:
+                    recovery = {
+                        (k.decode() if isinstance(k, bytes) else k):
+                        (v.decode() if isinstance(v, bytes) else v)
+                        for k, v in raw.items()
+                    }
+                    mismatches = []
+                    for ex_id, cur_str in current.items():
+                        if ex_id in recovery:
+                            try:
+                                cur_val = float(cur_str)
+                                rec_val = float(recovery[ex_id])
+                                if rec_val > 0 and abs(cur_val - rec_val) / rec_val > 0.01:
+                                    mismatches.append(
+                                        f"{ex_id}: memory={cur_val:.4f} redis={rec_val:.4f}"
+                                    )
+                            except (ValueError, ZeroDivisionError):
+                                pass
+                    if mismatches:
+                        msg = "Reconciliation mismatch: " + ", ".join(mismatches)
+                        logger.warning(msg)
+                        if self._telegram:
+                            try:
+                                await self._telegram.send_alert(f"⚠️ {msg}")
+                            except Exception:
+                                pass
+
+                # Save current state as the new recovery snapshot
+                await self._redis_client.hset("leviathan:recovery:balances", current)
+                logger.debug("Position reconciliation tick — snapshot saved (%d exchanges)", len(current))
             except asyncio.CancelledError:
                 break
             except Exception as exc:

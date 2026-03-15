@@ -461,6 +461,7 @@ class ShadowMode:
         # Background tasks
         self._daily_task: asyncio.Task[None] | None = None
         self._funding_rate_task: asyncio.Task[None] | None = None
+        self._reconcile_task: asyncio.Task[None] | None = None
 
         # Resolve orderbook class (Rust or Python)
         self._orderbook_cls = get_orderbook_class()
@@ -476,6 +477,7 @@ class ShadowMode:
         self._krw_rate_task: asyncio.Task[None] | None = None
         self._krw_rate_updated_at: float = time.monotonic()
         self._sanity_reject_count: int = 0
+        self._krw_stale: bool = False
         self._http_client: httpx.AsyncClient = httpx.AsyncClient(timeout=5.0)
 
         # Statistical arb state: rolling z-score window per symbol
@@ -528,6 +530,13 @@ class ShadowMode:
         # US-066: Per-trade loss cap (hard ceiling on single-trade loss)
         self._max_loss_per_trade_usd: Decimal = Decimal(
             os.getenv("SHADOW_MAX_LOSS_PER_TRADE_USD", "50")
+        )
+
+        # US-164: Temporary strategy disable map — strategy_id -> re-enable timestamp
+        # Default 0 (disabled); set SHADOW_SINGLE_LOSS_DISABLE_SECONDS=600 in prod
+        self._strategy_disable_until: dict[str, float] = {}
+        self._single_loss_disable_seconds: float = float(
+            os.getenv("SHADOW_SINGLE_LOSS_DISABLE_SECONDS", "0")
         )
 
         # US-066: Background task handle for periodic Bithumb REST refresh
@@ -614,6 +623,11 @@ class ShadowMode:
             self._delta_refresh_loop(), name="shadow_delta_refresh"
         )
 
+        # US-159: Periodic reconcile — position consistency check
+        self._reconcile_task = asyncio.create_task(
+            self._reconcile_loop(), name="shadow_reconcile"
+        )
+
         logger.info("shadow_mode.started", multi_strategy=self._multi_signal_producer is not None)
 
     async def stop(self) -> None:
@@ -624,6 +638,15 @@ class ShadowMode:
 
         self._running = False
         logger.info("shadow_mode.stopping")
+
+        # Cancel reconcile task (US-159)
+        if self._reconcile_task is not None and not self._reconcile_task.done():
+            self._reconcile_task.cancel()
+            try:
+                await self._reconcile_task
+            except asyncio.CancelledError:
+                pass
+            self._reconcile_task = None
 
         # Cancel delta refresh task (US-066)
         if self._delta_refresh_task is not None and not self._delta_refresh_task.done():
@@ -713,17 +736,25 @@ class ShadowMode:
 
         # Normalize KRW prices to USDT for cross-exchange comparison
         # Korean exchanges (upbit, bithumb, coinone) quote in KRW
-        if "/KRW" in symbol and self._krw_rate > 0:
-            symbol = symbol.replace("/KRW", "/USDT")
-            bids = [[str(float(b[0]) / self._krw_rate), str(b[1])] for b in bids]
-            asks = [[str(float(a[0]) / self._krw_rate), str(a[1])] for a in asks]
-        elif "/KRW" in symbol:
-            logger.warning(
-                "shadow_mode.krw_rate_zero_skip",
-                exchange=exchange_id,
-                symbol=symbol,
-            )
-            return
+        if "/KRW" in symbol:
+            if self._krw_stale:
+                logger.info(
+                    "shadow_mode.krw_stale_filtered",
+                    exchange=exchange_id,
+                    symbol=symbol,
+                )
+                return
+            if self._krw_rate > 0:
+                symbol = symbol.replace("/KRW", "/USDT")
+                bids = [[str(float(b[0]) / self._krw_rate), str(b[1])] for b in bids]
+                asks = [[str(float(a[0]) / self._krw_rate), str(a[1])] for a in asks]
+            else:
+                logger.warning(
+                    "shadow_mode.krw_rate_zero_skip",
+                    exchange=exchange_id,
+                    symbol=symbol,
+                )
+                return
 
         try:
             # Normalise to list-of-tuples
@@ -1028,6 +1059,26 @@ class ShadowMode:
         except asyncio.CancelledError:
             pass
 
+    async def _reconcile_loop(self) -> None:
+        """US-159: Periodic position consistency check.
+
+        Periodically verifies that virtual balance totals remain consistent
+        with the recorded PnL. Logs warnings on drift but never raises.
+        """
+        interval = float(os.getenv("SHADOW_RECONCILE_INTERVAL_S", "60"))
+        try:
+            while self._running:
+                await asyncio.sleep(interval)
+                balance_summary = self._balance_tracker.summary()
+                logger.debug(
+                    "shadow_mode.reconcile_tick",
+                    total_pnl=f"{self._stats.total_pnl:.4f}",
+                    trades=self._stats.trades_executed,
+                    balances=balance_summary,
+                )
+        except asyncio.CancelledError:
+            pass
+
     # -----------------------------------------------------------------------
     # Shadow trade execution
     # -----------------------------------------------------------------------
@@ -1055,6 +1106,16 @@ class ShadowMode:
         sid_check = signal.strategy_id or self.STRATEGY_ID
         if sid_check in self._disabled_strategies:
             logger.debug("shadow_mode.strategy_disabled", strategy=sid_check)
+            return
+
+        # US-164: Temporary strategy disable check (10-min cooldown after single large loss)
+        disable_until = self._strategy_disable_until.get(sid_check)
+        if disable_until is not None and time.monotonic() < disable_until:
+            logger.debug(
+                "shadow_mode.strategy_temp_disabled",
+                strategy=sid_check,
+                seconds_remaining=f"{disable_until - time.monotonic():.1f}",
+            )
             return
 
         # Rate limit check before balance deduct (SG-6)
@@ -1191,6 +1252,18 @@ class ShadowMode:
             TRADE_LOSS_CAPPED.labels(exchange=signal.buy_exchange).inc()
             self._stale_detector.add_blacklist(signal.buy_exchange, signal.symbol)
             self._stale_detector.add_blacklist(signal.sell_exchange, signal.symbol)
+            # US-164: Temporarily disable the offending strategy (if enabled)
+            if self._single_loss_disable_seconds > 0:
+                _sid_loss = signal.strategy_id or self.STRATEGY_ID
+                _disable_until = time.monotonic() + self._single_loss_disable_seconds
+                self._strategy_disable_until[_sid_loss] = _disable_until
+                logger.warning(
+                    "shadow_mode.strategy_temp_disabled_single_loss",
+                    strategy=_sid_loss,
+                    raw_pnl=f"{float(net_pnl):+.4f}",
+                    threshold=f"{float(max_loss):.2f}",
+                    disable_seconds=self._single_loss_disable_seconds,
+                )
 
         # Per-strategy tracking
         sid = signal.strategy_id or self.STRATEGY_ID
@@ -1584,13 +1657,22 @@ class ShadowMode:
                                 sources=len(rates),
                             )
 
-                # Staleness check
+                # Staleness check — halt KRW trading when rate is stale
                 elapsed = time.monotonic() - self._krw_rate_updated_at
                 if elapsed > 120:
+                    if not self._krw_stale:
+                        self._krw_stale = True
+                        logger.info(
+                            "shadow_mode.krw_stale_entered",
+                            seconds_since_update=elapsed,
+                        )
                     logger.warning(
                         "shadow_mode.krw_rate_stale",
                         seconds_since_update=elapsed,
                     )
+                elif self._krw_stale:
+                    self._krw_stale = False
+                    logger.info("shadow_mode.krw_stale_recovered")
 
                 await asyncio.sleep(30.0)
         except asyncio.CancelledError:

@@ -30,7 +30,8 @@ export default function LoginPage() {
       const data = await res.json() as { access_token: string };
       localStorage.setItem("leviathan_token", data.access_token);
       // Also set a cookie so the Next.js middleware can verify auth server-side
-      document.cookie = `leviathan_token=${data.access_token}; path=/; SameSite=Strict`;
+      const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `leviathan_token=${data.access_token}; path=/; SameSite=Strict${secureFlag}`;
       router.push("/");
     } catch {
       setError("Network error — engine unreachable");

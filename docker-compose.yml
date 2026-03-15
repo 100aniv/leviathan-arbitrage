@@ -71,6 +71,7 @@ services:
     restart: unless-stopped
     mem_limit: 1g
     memswap_limit: 1g
+    cpus: 0.5
     command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD:-leviathan-redis-secret}
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-leviathan-redis-secret}
@@ -123,6 +124,7 @@ services:
     restart: unless-stopped
     mem_limit: 4g
     memswap_limit: 4g
+    cpus: 1.0
     environment:
       POSTGRES_USER: leviathan
       POSTGRES_PASSWORD: leviathan

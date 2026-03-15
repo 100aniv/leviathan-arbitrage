@@ -1,0 +1,45 @@
+{
+  "active_exchanges": [
+    "binance", "bybit", "okx", "bitget",
+    "upbit", "bithumb", "coinone",
+    "binance_futures", "okx_futures", "bybit_futures"
+  ],
+  "disabled_strategies": [
+    "statistical_arb_v1",
+    "spot_futures_v1",
+    "latency_arb_v1"
+  ],
+  "risk": {
+    "max_position_usd": 1000,
+    "max_daily_loss_usd": 500,
+    "max_net_exposure_per_asset": 5000,
+    "min_edge_bps": 5,
+    "min_price_usd": 0.10,
+    "max_rollback_threshold": 0.02
+  },
+  "slippage": {
+    "model": "cex_orderbook",
+    "k_default": 1.0,
+    "powerlaw_k": 0.0,
+    "conservative_multiplier": 1.5,
+    "gamma": 0.5,
+    "gamma_calibrated": false
+  },
+  "execution": {
+    "leg_timeout_ms": 1000,
+    "rollback_timeout_ms": 2000,
+    "reconciliation_interval_s": 60,
+    "recovery_reconciliation_interval_s": 60
+  },
+  "phase_gates": {
+    "phase": "alpha",
+    "alpha_capital_per_exchange": 70,
+    "beta_capital_per_exchange": 750
+  },
+  "symbol_discovery": {
+    "mode": "auto",
+    "min_exchanges": 3
+  },
+  "min_volume_usd": 10000,
+  "max_single_loss_usd": 50
+}

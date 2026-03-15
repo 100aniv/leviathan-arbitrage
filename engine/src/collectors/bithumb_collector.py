@@ -57,6 +57,8 @@ class BithumbCollector(BaseCollector):
         # Accumulated in-memory book: {symbol: {"bids": {price: qty}, "asks": {price: qty}}}
         self._books: dict[str, dict[str, dict[str, str]]] = {}
         self._stale_task: asyncio.Task | None = None
+        # Reusable HTTP client for REST snapshot fetches (US-168)
+        self._http_client: httpx.AsyncClient | None = None
 
     async def start(self) -> None:
         """Start with REST snapshots, then WS stream + per-symbol stale watcher."""
@@ -74,6 +76,9 @@ class BithumbCollector(BaseCollector):
             except asyncio.CancelledError:
                 pass
             self._stale_task = None
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
         await super().stop()
 
     async def _fetch_initial_snapshots(self) -> None:
@@ -83,59 +88,61 @@ class BithumbCollector(BaseCollector):
         logger.info("bithumb_rest_snapshot_start", symbols=len(self.symbols))
         fetched = 0
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                for symbol in self.symbols:
-                    try:
-                        coin = _coin_from_symbol(symbol)
-                        resp = await client.get(
-                            f"{_REST_BASE}/public/orderbook/{coin}_KRW",
-                            params={"count": _SNAPSHOT_DEPTH},
-                        )
-                        data = resp.json()
-                        if data.get("status") != "0000":
-                            logger.warning("bithumb_rest_snapshot_error",
-                                         symbol=symbol, status=data.get("status"))
-                            continue
-
-                        ob_data = data.get("data", {})
-                        bids = [[str(item["price"]), str(item["quantity"])]
-                                for item in ob_data.get("bids", [])]
-                        asks = [[str(item["price"]), str(item["quantity"])]
-                                for item in ob_data.get("asks", [])]
-
-                        if not bids or not asks:
-                            continue
-
-                        # Price sanity check: top bid should not be > 10x top ask
-                        top_bid = float(bids[0][0]) if bids else 0
-                        top_ask = float(asks[0][0]) if asks else 0
-                        if top_ask > 0 and (top_bid / top_ask > 10 or top_bid / top_ask < 0.1):
-                            logger.warning("bithumb_rest_snapshot_price_insane",
-                                         symbol=symbol, bid=top_bid, ask=top_ask)
-                            continue
-
-                        # Sort: bids descending, asks ascending
-                        bids.sort(key=lambda x: float(x[0]), reverse=True)
-                        asks.sort(key=lambda x: float(x[0]))
-
-                        # Initialize accumulated book state from snapshot
-                        self._books[symbol] = {
-                            "bids": {b[0]: b[1] for b in bids},
-                            "asks": {a[0]: a[1] for a in asks},
-                        }
-
-                        if self._on_orderbook:
-                            await self._on_orderbook(self.exchange_id, symbol, bids, asks, is_snapshot=True)
-                        self._last_update[symbol] = time.monotonic()
-                        fetched += 1
-
-                        # Rate limit: ~5 req/s for Bithumb public API
-                        await asyncio.sleep(0.25)
-
-                    except Exception as exc:
-                        logger.warning("bithumb_rest_snapshot_symbol_error",
-                                     symbol=symbol, error=str(exc))
+            if self._http_client is None:
+                self._http_client = httpx.AsyncClient(timeout=15.0)
+            client = self._http_client
+            for symbol in self.symbols:
+                try:
+                    coin = _coin_from_symbol(symbol)
+                    resp = await client.get(
+                        f"{_REST_BASE}/public/orderbook/{coin}_KRW",
+                        params={"count": _SNAPSHOT_DEPTH},
+                    )
+                    data = resp.json()
+                    if data.get("status") != "0000":
+                        logger.warning("bithumb_rest_snapshot_error",
+                                     symbol=symbol, status=data.get("status"))
                         continue
+
+                    ob_data = data.get("data", {})
+                    bids = [[str(item["price"]), str(item["quantity"])]
+                            for item in ob_data.get("bids", [])]
+                    asks = [[str(item["price"]), str(item["quantity"])]
+                            for item in ob_data.get("asks", [])]
+
+                    if not bids or not asks:
+                        continue
+
+                    # Price sanity check: top bid should not be > 10x top ask
+                    top_bid = float(bids[0][0]) if bids else 0
+                    top_ask = float(asks[0][0]) if asks else 0
+                    if top_ask > 0 and (top_bid / top_ask > 10 or top_bid / top_ask < 0.1):
+                        logger.warning("bithumb_rest_snapshot_price_insane",
+                                     symbol=symbol, bid=top_bid, ask=top_ask)
+                        continue
+
+                    # Sort: bids descending, asks ascending
+                    bids.sort(key=lambda x: float(x[0]), reverse=True)
+                    asks.sort(key=lambda x: float(x[0]))
+
+                    # Initialize accumulated book state from snapshot
+                    self._books[symbol] = {
+                        "bids": {b[0]: b[1] for b in bids},
+                        "asks": {a[0]: a[1] for a in asks},
+                    }
+
+                    if self._on_orderbook:
+                        await self._on_orderbook(self.exchange_id, symbol, bids, asks, is_snapshot=True)
+                    self._last_update[symbol] = time.monotonic()
+                    fetched += 1
+
+                    # Rate limit: ~5 req/s for Bithumb public API
+                    await asyncio.sleep(0.25)
+
+                except Exception as exc:
+                    logger.warning("bithumb_rest_snapshot_symbol_error",
+                                 symbol=symbol, error=str(exc))
+                    continue
 
         except Exception as exc:
             logger.error("bithumb_rest_snapshot_failed", error=str(exc))
@@ -276,8 +283,9 @@ class BithumbCollector(BaseCollector):
                     logger.warning("bithumb_refresh_symbol_error", symbol=symbol, error=str(exc))
                     return False
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            results = await asyncio.gather(*[_fetch_one(client, s) for s in symbols])
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(timeout=15.0)
+        results = await asyncio.gather(*[_fetch_one(self._http_client, s) for s in symbols])
 
         return sum(1 for r in results if r)
 

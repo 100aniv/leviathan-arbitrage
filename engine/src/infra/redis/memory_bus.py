@@ -25,7 +25,8 @@ class InMemoryEventBus:
     (single-consumer-per-group semantics).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, maxsize: int = 10000) -> None:
+        self._maxsize = maxsize
         # stream -> list of group names
         self._groups: dict[str, list[str]] = defaultdict(list)
         # (stream, group) -> asyncio.Queue of (msg_id, event_dict)
@@ -49,7 +50,17 @@ class InMemoryEventBus:
             key = (stream, group)
             queue = self._queues.get(key)
             if queue is not None:
-                await queue.put((msg_id, event))
+                try:
+                    queue.put_nowait((msg_id, event))
+                except asyncio.QueueFull:
+                    try:
+                        queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                    queue.put_nowait((msg_id, event))
+                    logger.warning(
+                        "EventBus queue full (stream=%s) — dropped oldest message", stream
+                    )
 
         logger.debug("Published to %s: %s", stream, msg_id)
         return msg_id
@@ -64,7 +75,7 @@ class InMemoryEventBus:
         """
         key = (stream, group)
         if key not in self._queues:
-            self._queues[key] = asyncio.Queue()
+            self._queues[key] = asyncio.Queue(maxsize=self._maxsize)
             self._groups[stream].append(group)
             logger.info("Created consumer group '%s' on stream '%s'", group, stream)
 

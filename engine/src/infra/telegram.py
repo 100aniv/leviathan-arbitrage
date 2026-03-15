@@ -76,6 +76,8 @@ class TelegramAlerter:
 
         # Sliding-window rate limiter: stores timestamps of recent sends.
         self._send_times: deque[float] = deque()
+        # Reusable HTTP client for connection pooling (US-168)
+        self._http_client: httpx.AsyncClient | None = None
 
     @property
     def bot_token(self) -> str | None:
@@ -291,15 +293,16 @@ class TelegramAlerter:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-                logger.debug(
-                    "telegram_alert_sent",
-                    status_code=response.status_code,
-                    text_preview=text[:80],
-                )
-                return True
+            if self._http_client is None:
+                self._http_client = httpx.AsyncClient(timeout=5.0)
+            response = await self._http_client.post(url, json=payload)
+            response.raise_for_status()
+            logger.debug(
+                "telegram_alert_sent",
+                status_code=response.status_code,
+                text_preview=text[:80],
+            )
+            return True
         except httpx.HTTPStatusError as exc:
             logger.error(
                 "telegram_http_error",
@@ -313,6 +316,12 @@ class TelegramAlerter:
         except Exception as exc:
             logger.error("telegram_unexpected_error", error=str(exc), exc_info=True)
             return False
+
+    async def close(self) -> None:
+        """Close the reusable HTTP client (US-168)."""
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
 
 
 # ---------------------------------------------------------------------------

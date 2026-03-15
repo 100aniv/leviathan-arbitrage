@@ -5,8 +5,10 @@ Supports dev/staging/prod environment switching.
 """
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 from enum import StrEnum
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -272,3 +274,25 @@ def get_settings() -> Settings:
     if _settings is None:
         _settings = Settings()
     return _settings
+
+
+# Path: engine/config/trading.json (two levels up from this file's src/core/)
+_TRADING_JSON_PATH = Path(__file__).parent.parent.parent / "config" / "trading.json"
+
+
+def load_trading_config() -> dict:
+    """Load non-sensitive trading config from engine/config/trading.json.
+
+    Returns empty dict if the file is absent or malformed — engine falls
+    back to .env values and hardcoded defaults (backward compatible).
+    Priority: env var > trading.json > hardcoded default.
+    """
+    if not _TRADING_JSON_PATH.exists():
+        return {}
+    try:
+        with _TRADING_JSON_PATH.open(encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, OSError) as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to load trading.json: %s", exc)
+        return {}

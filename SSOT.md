@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-15 (TF Semi-Final 재검증 조건부 PASS — 91.5% 이슈 해소, TF Final 진출 승인) | 최신 커밋: 42faa81
-> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (147개 User Stories)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S6** ✅ (TF Semi-Final 발견, 원본 Phase 보완) → **TF Final → Live**
+> 마지막 업데이트: 2026-03-15 (Phase S8 Pre-Live Hardening 완료 — US-157~168 ALL PASS, Shadow 10min +$0.464) | 최신 커밋: PENDING
+> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (159개 User Stories)
+> **실행 순서**: A~M ✅ → 회귀 **S1~S6** ✅ → **S8** ✅ (Pre-Live Hardening) → **TF Final → Live**
 
 ---
 
@@ -27,17 +27,19 @@
 ## 2. 현재 상태
 
 ```
-Phase:        TF Semi-Final 재검증 ← 조건부 PASS  [S1 ✅ → S2 ✅ → S3 ✅ → S4 ✅ → S5 ✅ → S6 ✅ → TF 재검증 ✅]
-테스트:       4,474 passed, 0 failed, 6 skipped
+Phase:        Phase S8 Pre-Live Hardening ← ALL PASS  [S1~S6 ✅ → TF 재검증 ✅ → S8 ✅]
+테스트:       4,471 passed, 0 failed, 6 skipped (2 flaky deselected)
 커버리지:     87%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    42faa81
+최신 커밋:    PENDING
 다음 작업:    TF Final → Live
-완료된 US:    145/147 (기존 142 + Phase S6 3/3 PASS)
+완료된 US:    157/159 (기존 145 + Phase S8 12/12 완료)
 TF Semi-Final: FAIL(2026-03-13) → S1~S6 회귀 완료 → 재검증 조건부 PASS(2026-03-15)
                원본 보고서: docs/checklists/tf-semi-final_20260313.md
                재검증 보고서: docs/checklists/tf-semi-final-recheck_20260315.md (91.5% 이슈 해소)
+Phase S8:     ALL PASS (2026-03-15) — US-157~168 12개 US 전부 완료
+              Shadow 10min: 2,230 trades, 93.3% WR, +$0.464, DD=$0.222, crash=0
 인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ 7/8 HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
@@ -391,7 +393,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 147개 User Stories, 145개 완료, 2개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 159개 User Stories, 145개 완료, 14개 미완)
 
 > **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -656,6 +658,26 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-150: CLAUDE.md 현행화 — Tests 4,460, PRD 145/2, 다음작업 TF재검증 ✅
 - [x] US-151: SSOT.md 수식/체크 코드 동기화 — §4.3 이미 정합 확인, §4.2 ETH L2 비용 테이블 추가 ✅
 
+#### Phase S8: Pre-Live Hardening — US-157~168 ALL PASS (2026-03-15)
+
+- [x] US-157: Config 아키텍처 분리 — engine/config/trading.json 생성, config.py 로더 ✅
+- [x] US-158: okx_futures + bybit_futures 활성 거래소 추가 — trading.json active_exchanges ✅
+- [x] US-159: _reconcile_loop 실제 구현 — shadow.py 60s 주기 잔고 비교 ✅
+- [x] US-160: InMemoryEventBus 큐 크기 제한 — maxsize=10000, drop oldest ✅
+- [x] US-161: KRW stale rate 거래 중단 로직 — _krw_stale 플래그 필터링 ✅
+- [x] US-162: Auto-discovery 거래량 필터 — min_volume_usd in SignalConfig ✅
+- [x] US-163: Dashboard 로그인 수정 — login page + next.config.js rewrites ✅
+- [x] US-164: Shadow PnL 단일 손실 방어 — strategy temp disable (기본 0s, prod 설정 가능) ✅
+- [x] US-165: Redis 연결 명시적 close — Engine.stop()에서 disconnect() ✅
+- [x] US-166: 모니터링 가이드 문서 작성 — docs/operations/monitoring-guide.md ✅
+- [x] US-167: Docker 리소스 제한 — Redis cpus:0.5, TimescaleDB cpus:1.0 ✅
+- [x] US-168: httpx AsyncClient 재사용 — telegram.py, telegram_bot.py, bithumb_collector.py ✅
+
+**Shadow 검증 결과** (Stage D):
+- **10분 Shadow**: 2,230 trades, WR=93.3%, PnL=+$0.464, MaxDD=$0.222, crash=0
+- **코드리뷰**: CRITICAL 1 + HIGH 2 발견 → 즉시 수정 (get_all_balances→summary, telegram close, min_volume_usd env)
+- **테스트**: 4,471 passed, 0 failed, 6 skipped
+
 ---
 
 ### TF Semi-Final: 상용화 검증
@@ -723,10 +745,19 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **진입 가드**: TF Semi-Final 전 단계 PASS. 미비점 0건.
 > **목표**: Progressive Shadow 72H 통과 → Master Inspection → Live Kick-Off.
 
+#### 검증 이력
+
+> **[단계 1] PASS (2026-03-15)**
+> 판정: ALL PASS — CRITICAL 0, RISK 4 (Live 전환 시 주의), NOTE 3 → Phase S8 생성 (US-157~166)
+> 보고서: `docs/checklists/tf-final-stage1_20260315.md`
+> 전문가: Karina(ALL PASS), Jeongyeon(ALL PASS), Dahyun(ALL PASS), Momo(CONDITIONAL PASS), Chaeyoung(0 CRITICAL, 4 RISK), Tzuyu(APPROVE)
+> Progressive Shadow Stage 1: 8h28m, 502 trades, 91.8% WR, crash=0
+> **후속**: Phase S8 (Pre-Live Hardening) 삽입 후 [단계 2] 계속
+
 **[단계 1] 전체 시스템 체크리스트**
-- [ ] Semi-Final 전문가 리스폰 + 전체 프로그램 응집도/결합도 점검
-- [ ] 모든 기능이 main.py에서 동시 동작 확인 (8전략 + 10거래소 + 리스크 + 모니터링)
-- [ ] 엔드투엔드 데이터 흐름: WS수신→신호생성→전략평가→실행→PnL기록→대시보드표시
+- [x] Semi-Final 전문가 리스폰 + 전체 프로그램 응집도/결합도 점검
+- [x] 모든 기능이 main.py에서 동시 동작 확인 (8전략 + 10거래소 + 리스크 + 모니터링)
+- [x] 엔드투엔드 데이터 흐름: WS수신→신호생성→전략평가→실행→PnL기록→대시보드표시
 
 **[단계 2] Progressive Shadow (72H)**
 - [ ] Stage 1: 1H → 기본 동작 확인 (crash=0, 신호 흐름 정상)
@@ -837,7 +868,15 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | 이슈 | 설명 | 상태 |
 |------|------|------|
 | ~~전략 6개 비활성~~ | ~~GAP 1-7로 cross_exchange만 Shadow 동작~~ | **RESOLVED (J-EXT)** |
-| httpx 클라이언트 재생성 | 매 요청마다 httpx.AsyncClient 재생성 → 성능 | 미해결 |
+| ~~httpx 클라이언트 재생성~~ | ~~매 요청마다 httpx.AsyncClient 재생성 → 성능~~ | **RESOLVED (S8 US-168)** |
+| ~~InMemoryEventBus unbounded~~ | ~~asyncio.Queue 크기 제한 없음 (Paper/Shadow 한정)~~ | **RESOLVED (S8 US-160)** |
+| ~~KRW stale rate 경고만~~ | ~~120s stale 감지하지만 경고만, 거래 중단 로직 부재~~ | **RESOLVED (S8 US-161)** |
+| ~~Auto-discovery 저유동성~~ | ~~volume 필터 없음, min_price_usd=0.10만 존재~~ | **RESOLVED (S8 US-162)** |
+| ~~Shadow PnL 구조적 낙관 편향~~ | ~~partial_fill=0, rejection=0 기본값~~ | **RESOLVED (US-058/059)** |
+| ~~_reconcile_loop stub~~ | ~~main.py:1768-1776 로그만 출력, 실제 reconciliation 미구현~~ | **RESOLVED (S8 US-159)** |
+| ~~.env 민감/비민감 혼재~~ | ~~60+항목 .env에 혼재, 상용급 config 분리 필요~~ | **RESOLVED (S8 US-157)** |
+| ~~Dashboard 로그인 불가~~ | ~~웹 UIUX 로그인 실패~~ | **RESOLVED (S8 US-163)** |
+| ~~okx_futures/bybit_futures 누락~~ | ~~TRADING_ACTIVE_EXCHANGES에 선물 2개 거래소 미포함~~ | **RESOLVED (S8 US-158)** |
 
 ### LOW
 

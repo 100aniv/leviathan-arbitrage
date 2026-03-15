@@ -41,6 +41,8 @@ class TelegramCommandHandler:
         self._offset: int = 0
         self._running = False
         self._consecutive_errors: int = 0
+        # Reusable HTTP client for long-polling (US-168)
+        self._http_client: httpx.AsyncClient | None = None
         # Auth: only allow commands from these chat IDs (fallback to TELEGRAM_CHAT_ID env)
         if allowed_chat_ids is not None:
             self._allowed_chat_ids = allowed_chat_ids
@@ -98,19 +100,26 @@ class TelegramCommandHandler:
             "allowed_updates": ["message"],
         }
         try:
-            async with httpx.AsyncClient(timeout=35) as client:
-                resp = await client.get(url, params=params)
-                resp.raise_for_status()
-                data = resp.json()
-                if not data.get("ok"):
-                    logger.warning("telegram_api_error", response=data)
-                    return []
-                self._consecutive_errors = 0
-                return data.get("result", [])
+            if self._http_client is None:
+                self._http_client = httpx.AsyncClient(timeout=35)
+            resp = await self._http_client.get(url, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            if not data.get("ok"):
+                logger.warning("telegram_api_error", response=data)
+                return []
+            self._consecutive_errors = 0
+            return data.get("result", [])
         except Exception:
             self._consecutive_errors = getattr(self, "_consecutive_errors", 0) + 1
             logger.warning("telegram_poll_failed", consecutive=self._consecutive_errors, exc_info=True)
             return []
+
+    async def close(self) -> None:
+        """Close the reusable HTTP client (US-168)."""
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
 
     async def poll_loop(self) -> None:
         """Run long-poll loop until stop() is called."""
