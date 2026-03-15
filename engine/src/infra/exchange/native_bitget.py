@@ -125,6 +125,34 @@ class NativeBitgetAdapter(NativeAdapter):
             amount=order.amount,
         )
 
+    async def place_ioc_limit(
+        self, symbol: str, side: str, price: Decimal, size: Decimal
+    ) -> "OrderResult":
+        """Submit an IOC limit order and return fill result (partial fills allowed)."""
+        if price <= Decimal("0") or size <= Decimal("0"):
+            raise ValueError(f"IOC price/size must be positive: price={price}, size={size}")
+        from src.execution.atomic import OrderResult
+        import time as _time
+        start = _time.monotonic()
+        body: dict[str, Any] = {
+            "symbol": _normalize_symbol(symbol),
+            "side": "buy" if side.upper() == "BUY" else "sell",
+            "orderType": "limit",
+            "size": str(size),
+            "price": str(price),
+            "force": "ioc",
+        }
+        resp = await self._request("POST", "/api/v2/spot/trade/place-order", data=body, signed=True)
+        rd = resp.get("data", {})
+        filled_qty = Decimal(str(rd.get("baseVolume", "0"))) if rd.get("baseVolume") else size
+        avg_price = Decimal(str(rd.get("avgPrice", "0"))) if rd.get("avgPrice") else price
+        return OrderResult(
+            filled_size=filled_qty,
+            avg_price=avg_price,
+            order_type="ioc_limit",
+            latency_ms=(_time.monotonic() - start) * 1000,
+        )
+
     async def _rest_cancel_order(self, order_id: str, symbol: str | None) -> bool:
         body: dict[str, Any] = {"orderId": order_id}
         if symbol:

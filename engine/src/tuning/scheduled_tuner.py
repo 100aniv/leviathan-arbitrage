@@ -5,7 +5,9 @@ import asyncio
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
+from typing import Callable
 
 try:
     import optuna
@@ -59,6 +61,10 @@ class ScheduledTuner:
         self.data_source = data_source or os.environ.get("TUNER_DATA_SOURCE", "synthetic")
         self.alerter = TelegramAlerter()
         self._scheduler = None
+        self._params_path = Path(
+            os.environ.get("STRATEGY_PARAMS_PATH", "config/strategy_params.json")
+        )
+        self._reload_callback: Callable[[], None] | None = None
 
         # Determine base strategy list
         base = strategies if strategies is not None else list(STRATEGY_TYPES)
@@ -86,11 +92,22 @@ class ScheduledTuner:
         """Load active strategies from strategy_activation.json (US-067 output).
 
         Returns list of active strategy names, or None if file not found/invalid.
+        Handles both simple format ({name: bool}) and StrategyValidationOrchestrator
+        format ({active_strategies: [...], results: {...}}).
         """
         if not path.exists():
             return None
         try:
             data = json.loads(path.read_text())
+            # StrategyValidationOrchestrator format (US-067): has active_strategies key
+            if "active_strategies" in data:
+                active = data["active_strategies"]
+                if not active:
+                    # Empty = inconclusive or all disabled; skip filter
+                    return None
+                # Strip _v1 suffix if present
+                return [s.removesuffix("_v1") for s in active]
+            # Original simple format: {strategy_name: bool/dict}
             return [s for s, v in data.items() if v is True or (isinstance(v, dict) and v.get("active", False))]
         except Exception as exc:
             logger.warning("Failed to load activation file %s: %s", path, exc)
@@ -115,6 +132,7 @@ class ScheduledTuner:
                 results[strategy] = {"error": str(exc)}
 
         await self._apply_shadow_decisions(results)
+        await self._write_params(results)
         await self._report_results(results)
         return results
 
@@ -196,6 +214,61 @@ class ScheduledTuner:
         except Exception as exc:
             logger.error("TimescaleDB loader failed: %s, falling back to synthetic", exc)
             return optimizer._engine.run_with_synthetic_data(params)
+
+    async def _write_params(self, results: dict) -> None:
+        """최적화 결과를 config/strategy_params.json에 원자적으로 쓰기 (US-179)."""
+        ready_strategies = {
+            s: d for s, d in results.items()
+            if "error" not in d and d.get("best_params") and d.get("status") == "READY"
+        }
+        if not ready_strategies:
+            return
+
+        # Load existing params to merge
+        existing: dict = {}
+        if self._params_path.exists():
+            try:
+                existing = json.loads(self._params_path.read_text())
+            except Exception as exc:
+                logger.warning("Failed to read existing params: %s", exc)
+
+        for strategy, data in ready_strategies.items():
+            entry = dict(data["best_params"])
+            entry["status"] = "READY"
+            entry["wfe"] = data.get("best_value", 0.0)
+            existing[strategy] = entry
+
+        # JSON schema validation: all values must be JSON-serialisable numbers/strings
+        try:
+            serialized = json.dumps(existing, indent=2)
+        except (TypeError, ValueError) as exc:
+            logger.error("ScheduledTuner: params JSON serialization failed: %s", exc)
+            return
+
+        # Atomic write via temp file + rename
+        try:
+            self._params_path.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=self._params_path.parent, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w") as f:
+                    f.write(serialized)
+                os.rename(tmp, self._params_path)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+        except Exception as exc:
+            logger.error("ScheduledTuner: failed to write params: %s", exc)
+            return
+
+        logger.info("ScheduledTuner: parameters hot-reloaded")
+        if self._reload_callback is not None:
+            try:
+                self._reload_callback()
+            except Exception as exc:
+                logger.warning("ScheduledTuner: reload_callback error: %s", exc)
 
     async def _apply_shadow_decisions(self, results: dict) -> None:
         """Optuna 결과를 ShadowRunner.apply_decision으로 검증 후 APPLY/REJECT 결정."""

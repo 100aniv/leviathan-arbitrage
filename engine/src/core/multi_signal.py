@@ -41,7 +41,7 @@ class MultiSignalConfig:
 
     # Funding Rate
     funding_rate_poll_interval: float = 60.0  # seconds
-    funding_rate_min_diff_bps: Decimal = Decimal("5")
+    funding_rate_min_diff_bps: Decimal = Decimal("30")  # Must exceed round-trip friction (fees ~8bps + slippage ~20bps)
 
     # Triangular
     triangular_paths: list[list[str]] = field(default_factory=lambda: [

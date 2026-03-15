@@ -22,6 +22,7 @@ from src.core.models import (
     Position,
     Trade,
 )
+from src.execution.atomic import OrderResult
 from src.infra.exchange.native_adapter import NativeAdapter
 
 logger = logging.getLogger(__name__)
@@ -274,6 +275,40 @@ class BinanceNativeAdapter(NativeAdapter):
                 )
             )
         return positions
+
+    async def place_ioc_limit(
+        self, symbol: str, side: str, price: Decimal, size: Decimal
+    ) -> OrderResult:
+        """Submit an IOC limit order and return fill result (partial fills allowed)."""
+        if price <= Decimal("0") or size <= Decimal("0"):
+            raise ValueError(f"IOC price/size must be positive: price={price}, size={size}")
+        import time
+        start = time.monotonic()
+        params: dict = {
+            "symbol": _symbol_to_binance(symbol),
+            "side": side.upper(),
+            "type": "LIMIT",
+            "timeInForce": "IOC",
+            "price": str(price),
+            "quantity": str(size),
+        }
+        raw = await self._signed_request("POST", "/api/v3/order", params=params)
+        filled_qty = Decimal(str(raw.get("executedQty", "0")))
+        # Compute avg price from fills if available, otherwise fallback to requested price
+        fills = raw.get("fills", [])
+        if fills and filled_qty > 0:
+            total_cost = sum(
+                Decimal(str(f["price"])) * Decimal(str(f["qty"])) for f in fills
+            )
+            avg_price = total_cost / filled_qty
+        else:
+            avg_price = price
+        return OrderResult(
+            filled_size=filled_qty,
+            avg_price=avg_price,
+            order_type="ioc_limit",
+            latency_ms=(time.monotonic() - start) * 1000,
+        )
 
     async def _rest_get_fee_rate(self, symbol: str) -> FeeRate:
         raw = await self._signed_request("GET", "/api/v3/account")

@@ -38,17 +38,13 @@
     "min_edge_bps": 4.2,
     "max_position_size_usdt": 1687,
     "entry_threshold": 0.000512,
-    "exit_threshold": 0.0000633,
+    "exit_threshold": 6.33e-05,
     "stop_loss_pct": 0.005
   },
   "cross_exchange": {
-    "status": "MONITOR",
-    "wfe": 0.32,
-    "min_spread_bps": 5,
-    "max_position_size_usdt": 9767,
-    "entry_threshold": 0.00672,
-    "exit_threshold": 0.0000971,
-    "stop_loss_pct": 0.005
+    "min_spread_bps": 5.0,
+    "status": "READY",
+    "wfe": 1.2
   },
   "futures_futures": {
     "status": "MONITOR",

@@ -20,6 +20,7 @@ from src.core.models import (
     Position,
     Trade,
 )
+from src.execution.atomic import OrderResult
 from src.infra.exchange.native_adapter import NativeAdapter
 
 _RECV_WINDOW = 5000
@@ -190,6 +191,35 @@ class NativeBybitAdapter(NativeAdapter):
     async def _rest_get_positions(self) -> list[Position]:
         """Bybit spot has no positions."""
         return []
+
+    async def place_ioc_limit(
+        self, symbol: str, side: str, price: Decimal, size: Decimal
+    ) -> OrderResult:
+        """Submit an IOC limit order and return fill result (partial fills allowed)."""
+        if price <= Decimal("0") or size <= Decimal("0"):
+            raise ValueError(f"IOC price/size must be positive: price={price}, size={size}")
+        import time
+        start = time.monotonic()
+        body: dict = {
+            "category": "spot",
+            "symbol": self._normalize_symbol(symbol),
+            "side": "Buy" if side.upper() == "BUY" else "Sell",
+            "orderType": "Limit",
+            "price": str(price),
+            "qty": str(size),
+            "timeInForce": "IOC",
+        }
+        resp = await self._request("POST", "/v5/order/create", data=body, signed=True)
+        result = resp.get("result", {})
+        filled_qty = Decimal(str(result.get("cumExecQty", "0")))
+        avg_price_str = result.get("avgPrice", "0") or "0"
+        avg_price = Decimal(avg_price_str) if avg_price_str != "0" else price
+        return OrderResult(
+            filled_size=filled_qty,
+            avg_price=avg_price,
+            order_type="ioc_limit",
+            latency_ms=(time.monotonic() - start) * 1000,
+        )
 
     async def _rest_get_fee_rate(self, symbol: str) -> FeeRate:
         sym = self._normalize_symbol(symbol)

@@ -7,6 +7,7 @@ Pipeline:
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
 from dataclasses import dataclass
@@ -93,6 +94,7 @@ class SignalGenerator:
         self._regime_detector = regime_detector  # US-084
         self._ml_scorer = ml_scorer  # US-094
         self._dynamic_sizer = dynamic_sizer  # US-130
+        self._crisis_start_time: float | None = None  # US-173: CRISIS timeout tracking
 
     def _dedup_key(self, buy_ex: str, sell_ex: str, symbol: str) -> str:
         return f"{symbol}:{buy_ex}:{sell_ex}"
@@ -241,18 +243,51 @@ class SignalGenerator:
         notional = buy_price * trade_size
         net_edge = friction.net_profit / notional if notional > 0 else Decimal("0")
 
-        # Min edge gate — US-084: regime-adaptive threshold
+        # Min edge gate — US-084 / US-173: regime-adaptive threshold (QUANT: max(adaptive, regime))
         effective_min_edge = self._config.min_edge
         if self._regime_detector is not None:
-            from src.tuning.regime_detector import REGIME_MIN_EDGE
+            from src.tuning.regime_detector import REGIME_MIN_EDGE, MarketRegime
             regime = self._regime_detector.current_regime
-            effective_min_edge = REGIME_MIN_EDGE.get(regime, self._config.min_edge)
+            # US-173: CRISIS timeout — reset to HIGH after 30 minutes
+            if regime == MarketRegime.CRISIS:
+                now_ts = time.time()
+                if self._crisis_start_time is None:
+                    self._crisis_start_time = now_ts
+                elif now_ts - self._crisis_start_time > 1800:
+                    regime = MarketRegime.HIGH
+                    self._crisis_start_time = None
+            else:
+                self._crisis_start_time = None
+            regime_edge = REGIME_MIN_EDGE.get(regime, self._config.min_edge)
+            effective_min_edge = max(self._config.min_edge, regime_edge)
         if net_edge < effective_min_edge:
             return None
 
         # Max rollback cost gate
         if friction.rollback_cost_expected > self._config.max_rollback_cost_usd:
             return None
+
+        # US-172: ML scorer filter — soft filter (reject with log), confidence update
+        ml_score: float = 0.5  # neutral default when scorer unavailable
+        if self._ml_scorer and self._ml_scorer.enabled:
+            try:
+                import numpy as np
+                features = np.array(
+                    [[float(net_edge * 10000), float(trade_size), float(self._config.default_sigma)]],
+                    dtype=np.float32,
+                )
+                score = self._ml_scorer.predict_signal(features)
+                if not math.isfinite(score):
+                    score = 0.5
+                if score < self._ml_scorer.score_threshold:
+                    logger.debug(
+                        "ml_scorer_rejected symbol=%s score=%.3f threshold=%.3f",
+                        symbol, score, self._ml_scorer.score_threshold,
+                    )
+                    return None
+                ml_score = score
+            except Exception as exc:
+                logger.debug("ml_scorer_failed (non-fatal): %s", exc)
 
         # US-130: Dynamic sizing — adjust trade_size via DynamicSizer if available
         if self._dynamic_sizer is not None:
@@ -295,7 +330,7 @@ class SignalGenerator:
             buy_price=buy_price,
             sell_price=sell_price,
             spread_pct=gross_spread_pct,
-            confidence=float(min(net_edge * 100, Decimal("1"))),
+            confidence=float(min(net_edge * 100, Decimal("1"))) * ml_score,
             volume=trade_size,
             timestamp=datetime.now(timezone.utc),
             metadata={

@@ -259,12 +259,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → 회귀 S1~S7 ✅ → TF QF ✅ → TF SF (중단) → **Phase S8** (구현 대기) → TF QF 재실행 → TF SF → TF Final → Live
-- **Tests**: 4,474 passed, 0 failed, 6 skipped
-- **PRD**: `.omc/prd.json` (171개 US, 157 pass / 2 fail / 12 S8 대기)
+- **Phase 순서**: A~M✅ → 회귀 S1~S7 ✅ → TF QF ✅ → TF SF (중단) → **Phase S8** ✅ → TF QF 재실행 → TF SF → TF Final → Live
+- **Tests**: 4,587 passed, 0 failed, 12 skipped
+- **PRD**: `.omc/prd.json` (171개 US, 169 pass / 2 fail)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: Phase S8 구현 (12 US, 미연결 기능 해소) → TF QF 재실행 → TF SF → TF Final → Live
-- **Phase S8 플랜**: `.claude/plans/goofy-napping-feather.md` (12개 GAP: CRITICAL 3 + HIGH 5 + MEDIUM 4)
+- **다음 작업**: TF QF 재실행 → TF SF → TF Final → Live
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%
 - **GAP 분석**: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합 분석)
 

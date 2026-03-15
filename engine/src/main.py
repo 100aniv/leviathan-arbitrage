@@ -124,6 +124,14 @@ class Engine:
         self._scheduled_tuner: Any = None
         # US-165: Redis client reference for explicit close on shutdown
         self._redis_client: Any = None
+        # US-170: TriangularScanner for triangular arb signal detection
+        self._triangular_scanner: Any = None
+        # US-169/173: MultiStrategySignalProducer ref shared across loops
+        self._multi_signal_producer: Any = None
+        # US-174: AdaptiveThreshold for dynamic MIN_EDGE adjustment
+        self._adaptive_threshold: Any = None
+        # US-175: ExposureTracker for net exposure tracking
+        self._exposure_tracker: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -499,8 +507,31 @@ class Engine:
             return
         try:
             self._scheduled_tuner = ScheduledTuner()
+
+            # US-179: Hot-reload callback — update SignalConfig.min_edge when params change
+            def _tuner_reload_callback() -> None:
+                try:
+                    import json
+                    import pathlib
+                    params_path = pathlib.Path(__file__).parent.parent / "config" / "strategy_params.json"
+                    if params_path.exists() and self._signal_generator is not None:
+                        params = json.loads(params_path.read_text())
+                        # Apply cross_exchange min_spread as the runtime min_edge if available
+                        ce = params.get("cross_exchange", {})
+                        if ce.get("status") in ("READY", "MONITOR") and "min_spread_bps" in ce:
+                            new_edge = Decimal(str(ce["min_spread_bps"])) / Decimal("10000")
+                            if hasattr(self._signal_generator, "_config"):
+                                self._signal_generator._config.min_edge = new_edge
+                                logger.info(
+                                    "ScheduledTuner hot-reload: min_edge updated to %.2f bps",
+                                    float(ce["min_spread_bps"]),
+                                )
+                except Exception as exc:
+                    logger.warning("ScheduledTuner hot-reload failed: %s", exc)
+
+            self._scheduled_tuner._reload_callback = _tuner_reload_callback
             self._scheduled_tuner.start_scheduler()
-            logger.info("Scheduled tuner started")
+            logger.info("Scheduled tuner started (with hot-reload callback)")
         except Exception as exc:
             logger.warning("Failed to start scheduled tuner: %s", exc)
 
@@ -686,6 +717,27 @@ class Engine:
             regime_detector=self._regime_detector,
             ml_scorer=ml_scorer,
         )
+
+        # US-170: TriangularScanner
+        try:
+            from src.core.triangular_scanner import TriangularScanner
+            self._triangular_scanner = TriangularScanner(
+                min_profit_bps=Decimal(str(min_edge_bps)),
+            )
+            logger.info("TriangularScanner initialized (min_profit_bps=%s)", min_edge_bps)
+        except Exception as exc:
+            logger.warning("TriangularScanner init failed (non-fatal): %s", exc)
+
+        # US-174: AdaptiveThreshold
+        try:
+            from src.tuning.adaptive_threshold import AdaptiveThreshold
+            self._adaptive_threshold = AdaptiveThreshold(
+                initial_edge_bps=float(min_edge_bps),
+            )
+            logger.info("AdaptiveThreshold initialized (initial_edge_bps=%s)", min_edge_bps)
+        except Exception as exc:
+            logger.warning("AdaptiveThreshold init failed (non-fatal): %s", exc)
+
         logger.info(
             "Signal pipeline initialized min_edge_bps=%s max_spread_pct=%s stale_deviation_pct=%s"
             " regime_detector=%s ml_scorer=%s",
@@ -841,8 +893,9 @@ class Engine:
             logger.info("DEX_RPC_URL set but DEX_POOL_ADDRESS missing")
             return None
         try:
-            from src.infra.dex.uniswap_v3 import UniswapV3Adapter
-            adapter = UniswapV3Adapter(rpc_url=dex_rpc, pool_address=pool)
+            from src.infra.dex.uniswap_v3 import UniswapV3Adapter, UniswapV3Config
+            config = UniswapV3Config(rpc_url=dex_rpc, pool_address=pool)
+            adapter = UniswapV3Adapter(config)
             logger.info("UniswapV3Adapter initialized: pool=%s", pool[:10] + "...")
             return adapter
         except Exception as exc:
@@ -893,6 +946,17 @@ class Engine:
             logger.info("CorrelationMonitor initialized (window=30, threshold=0.7)")
         except Exception as exc:
             logger.warning("CorrelationMonitor init failed (non-fatal): %s", exc)
+
+        # US-175: ExposureTracker
+        try:
+            from src.risk.exposure_tracker import ExposureTracker
+            if self._redis_client is not None:
+                self._exposure_tracker = ExposureTracker(self._redis_client)
+                logger.info("ExposureTracker initialized (Redis-backed)")
+            else:
+                logger.info("ExposureTracker skipped (no Redis — in-memory position_sizes used)")
+        except Exception as exc:
+            logger.warning("ExposureTracker init failed (non-fatal): %s", exc)
 
     # ------------------------------------------------------------------
     # Step 7: Execution Engine
@@ -1096,6 +1160,28 @@ class Engine:
                         f"Position tracking persistently failing ({self._position_tracking_errors}x) — risk data unreliable",
                         level="CRITICAL",
                     ))
+        # US-175: Update ExposureTracker on successful fills
+        if (getattr(execution_result.status, "value", str(execution_result.status)) == "success"
+                and self._exposure_tracker is not None):
+            try:
+                for leg in getattr(execution_result, "legs", []):
+                    order = getattr(leg, "order", None)
+                    trade = getattr(leg, "trade", None)
+                    if order is not None and trade is not None and "/" in getattr(order, "symbol", ""):
+                        base_asset = order.symbol.split("/")[0]
+                        side = getattr(order.side, "value", str(order.side)).upper()
+                        delta = trade.amount if side == "BUY" else -trade.amount
+                        asyncio.create_task(
+                            self._exposure_tracker.update_exposure(
+                                order.exchange_id if hasattr(order, "exchange_id") else
+                                getattr(leg, "exchange_id", "unknown"),
+                                base_asset,
+                                Decimal(str(delta)),
+                            )
+                        )
+            except Exception:
+                pass  # Non-critical: exposure tracking failure
+
         # US-115: Feed slippage data to feedback loop
         if self._slippage_feedback is not None and hasattr(execution_result, 'legs'):
             try:
@@ -1322,6 +1408,12 @@ class Engine:
                 asyncio.create_task(self._real_data_feed_loop(), name="real_data_feed")
             )
             logger.info("Data mode: REAL_PUBLIC — starting WebSocket collectors")
+        elif self._data_mode == DataMode.REAL_AUTHENTICATED:
+            # US-169: Live mode — real authenticated data + AtomicExecutor routing
+            tasks.append(
+                asyncio.create_task(self._live_mode_loop(), name="live_mode")
+            )
+            logger.info("Data mode: REAL_AUTHENTICATED — starting live mode")
         else:
             # Synthetic paper mode — use PaperExchangeAdapter orderbook feed
             mode = self._settings.execution_mode if self._settings else ExecutionMode.PAPER
@@ -1364,6 +1456,18 @@ class Engine:
         if self._rebalancer is not None:
             tasks.append(asyncio.create_task(
                 self._rebalancer_loop(), name="rebalancer"
+            ))
+
+        # US-173: RegimeDetector background task (60s periodic)
+        if self._regime_detector is not None:
+            tasks.append(asyncio.create_task(
+                self._regime_detect_loop(), name="regime_detect"
+            ))
+
+        # US-174: AdaptiveThreshold adjustment task (1h periodic)
+        if self._adaptive_threshold is not None:
+            tasks.append(asyncio.create_task(
+                self._adaptive_threshold_loop(), name="adaptive_threshold"
             ))
 
         self.state.background_tasks.extend(tasks)
@@ -1504,6 +1608,20 @@ class Engine:
                         best_ask=best_ask,
                     )
 
+            # US-170: TriangularScanner — detect triangular cycles
+            if self._triangular_scanner is not None:
+                try:
+                    cycles = self._triangular_scanner.on_orderbook_update(
+                        exchange_id=exchange_id, symbol=symbol, book=core_book
+                    )
+                    if cycles and self._multi_signal_producer is not None:
+                        for cycle in cycles:
+                            asyncio.create_task(
+                                self._multi_signal_producer.produce_triangular_signal(cycle)
+                            )
+                except Exception as exc:
+                    logger.debug("TriangularScanner error: %s", exc)
+
             # Feed to SignalGenerator when we have data from 2+ exchanges
             if self._signal_generator and len(all_books) >= 2:
                 try:
@@ -1558,6 +1676,185 @@ class Engine:
             if self._collector_manager:
                 await self._collector_manager.stop()
 
+    async def _live_mode_loop(self) -> None:
+        """US-169: Live mode — real authenticated data + AtomicExecutor signal routing.
+
+        Mirrors _real_data_feed_loop but additionally:
+        - Creates a MultiStrategySignalProducer for all 8 strategy types
+        - Runs TriangularScanner on every orderbook update (US-170)
+        - Routes signals to AtomicExecutor via the event bus (TradeRequestConsumer handles it)
+        """
+        from src.collectors.manager import CollectorManager
+        from src.core.multi_signal import MultiStrategySignalProducer
+        from src.core.rust_bridge import get_orderbook_class
+
+        CoreOrderBook = get_orderbook_class()
+        all_books: dict[str, CoreOrderBook] = {}
+
+        self._multi_signal_producer = MultiStrategySignalProducer(
+            event_bus=self._event_bus,
+            latency_tracker=getattr(self, "_latency_tracker", None),
+        )
+
+        async def on_orderbook(exchange_id: str, symbol: str, bids: list, asks: list) -> None:
+            core_book = CoreOrderBook(symbol=symbol, exchange=exchange_id)
+            core_book.apply_snapshot(
+                [(b[0], b[1]) for b in bids],
+                [(a[0], a[1]) for a in asks],
+            )
+            all_books[exchange_id] = core_book
+
+            if self._market_recorder:
+                best_bid = core_book.best_bid()
+                best_ask = core_book.best_ask()
+                if best_bid and best_ask:
+                    self._market_recorder.record_orderbook(
+                        exchange=exchange_id, symbol=symbol,
+                        bids=bids[:20], asks=asks[:20],
+                        best_bid=best_bid, best_ask=best_ask,
+                    )
+
+            # US-170: TriangularScanner
+            if self._triangular_scanner is not None:
+                try:
+                    cycles = self._triangular_scanner.on_orderbook_update(
+                        exchange_id=exchange_id, symbol=symbol, book=core_book
+                    )
+                    for cycle in cycles:
+                        asyncio.create_task(
+                            self._multi_signal_producer.produce_triangular_signal(cycle)
+                        )
+                except Exception as exc:
+                    logger.debug("TriangularScanner (live) error: %s", exc)
+
+            # Feed SignalGenerator → event bus → TradeRequestConsumer → AtomicExecutor
+            if self._signal_generator and len(all_books) >= 2:
+                try:
+                    await self._signal_generator.on_orderbook_update(
+                        book=core_book, books=all_books,
+                    )
+                except Exception as exc:
+                    logger.warning("Live signal generation error: %s", exc)
+
+            # MultiStrategySignalProducer for additional strategy types
+            if len(all_books) >= 2:
+                try:
+                    await self._multi_signal_producer.on_orderbook_update(
+                        exchange_id=exchange_id, symbol=symbol,
+                        book=core_book, all_books=all_books,
+                    )
+                except Exception:
+                    pass
+
+        symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
+        exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
+
+        self._collector_manager = CollectorManager(
+            symbols=symbols, exchanges=exchanges, on_orderbook=on_orderbook,
+        )
+        await self._collector_manager.start()
+        logger.info("Live mode collectors started: %s for %s", exchanges, symbols)
+
+        if self._telegram and self._telegram._enabled:
+            await self._telegram.send_alert(
+                f"LIVE Mode started\nExchanges: {', '.join(exchanges)}\nSymbols: {', '.join(symbols)}",
+                level="INFO",
+            )
+
+        try:
+            while self.state.running:
+                await asyncio.sleep(5.0)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            if self._collector_manager:
+                await self._collector_manager.stop()
+
+    async def _regime_detect_loop(self) -> None:
+        """US-173: 60s periodic regime detection using recent PnL returns."""
+        while self.state.running:
+            try:
+                await asyncio.sleep(60.0)
+                if self._regime_detector is None:
+                    break
+                # Build returns series from PnL deltas (not cumulative snapshots)
+                pnl_now = float(self._total_pnl)
+                if not hasattr(self, "_regime_pnl_history"):
+                    self._regime_pnl_history: list[float] = []
+                    self._regime_last_pnl: float = 0.0
+                pnl_delta = pnl_now - self._regime_last_pnl
+                self._regime_last_pnl = pnl_now
+                if pnl_delta != 0.0:
+                    self._regime_pnl_history.append(pnl_delta)
+                # Keep last 60 data points (1 hour at 60s intervals)
+                self._regime_pnl_history = self._regime_pnl_history[-60:]
+                returns = self._regime_pnl_history.copy()
+                if returns:
+                    try:
+                        self._regime_detector.detect(returns)
+                    except Exception:
+                        pass  # detect() may not exist on all detector types — try predict()
+                    try:
+                        self._regime_detector.predict(returns)
+                    except Exception:
+                        pass
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.warning("regime_detect_loop error: %s", exc)
+
+    async def _adaptive_threshold_loop(self) -> None:
+        """US-174: 1-hour periodic AdaptiveThreshold adjustment.
+
+        Reads current win_rate from shadow stats (if available) or trade history,
+        calls AdaptiveThreshold.adjust(), and updates SignalConfig.min_edge.
+        """
+        INTERVAL_S = float(os.environ.get("ADAPTIVE_THRESHOLD_INTERVAL_S", "3600"))
+        while self.state.running:
+            try:
+                await asyncio.sleep(INTERVAL_S)
+                if self._adaptive_threshold is None:
+                    break
+
+                # Collect win_rate and total_trades from available sources
+                win_rate = 0.5
+                total_trades = 0
+                if self._shadow_mode is not None and hasattr(self._shadow_mode, "_stats"):
+                    stats = self._shadow_mode._stats
+                    total_trades = getattr(stats, "total_trades", 0)
+                    wins = getattr(stats, "profitable_trades", 0)
+                    if total_trades > 0:
+                        win_rate = wins / total_trades
+                elif self.context.trade_history:
+                    total_trades = len(self.context.trade_history)
+                    wins = sum(1 for t in self.context.trade_history if t.get("pnl", 0) > 0)
+                    if total_trades > 0:
+                        win_rate = wins / total_trades
+
+                new_edge_bps = self._adaptive_threshold.adjust(win_rate, total_trades)
+
+                # Update SignalConfig.min_edge at runtime
+                if self._signal_generator is not None and hasattr(self._signal_generator, "_config"):
+                    self._signal_generator._config.min_edge = (
+                        Decimal(str(new_edge_bps)) / Decimal("10000")
+                    )
+                    logger.info(
+                        "AdaptiveThreshold updated min_edge to %.2f bps (wr=%.1f%%, trades=%d)",
+                        new_edge_bps, win_rate * 100, total_trades,
+                    )
+
+                # Persist history to DB if available
+                if self._db_pool is not None:
+                    try:
+                        async with self._db_pool.pool.acquire() as conn:
+                            await self._adaptive_threshold.save_history(conn)
+                    except Exception:
+                        pass
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.warning("adaptive_threshold_loop error: %s", exc)
+
     async def _shadow_mode_loop(self) -> None:
         """Start Shadow Mode: real data + paper execution + full metrics.
 
@@ -1585,6 +1882,10 @@ class Engine:
             http_client=getattr(self, "_http_client", None),
         )
 
+        # US-171: create KillSwitch for KRW staleness soft-block
+        from src.risk.kill_switch import KillSwitch as _KillSwitch
+        _shadow_kill_switch = _KillSwitch()
+
         self._shadow_mode = ShadowMode(
             signal_generator=self._signal_generator,
             paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
@@ -1596,6 +1897,7 @@ class Engine:
             multi_signal_producer=multi_signal_producer,
             funding_rate_collector=funding_rate_collector,
             strategy_manager=self._strategy_manager,
+            kill_switch=_shadow_kill_switch,
         )
 
         # Set all registered strategies to shadow mode and start them

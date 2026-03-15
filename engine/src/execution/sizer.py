@@ -156,6 +156,11 @@ class DynamicSizer:
     ) -> None:
         self._base = base_sizer
         self._liquidity_threshold = liquidity_threshold
+        self._correlation_scales: dict[str, float] = {}  # US-176: per-strategy correlation scale
+
+    def set_correlation_scale(self, strategy_id: str, scale: float) -> None:
+        """US-176: Set per-strategy correlation scale factor (clamped to [0.0, 1.0])."""
+        self._correlation_scales[strategy_id] = max(0.0, min(scale, 1.0))
 
     @staticmethod
     def confidence(edge_bps: float) -> float:
@@ -190,6 +195,7 @@ class DynamicSizer:
         c = self.confidence(edge_bps)
         r = self.regime_multiplier(regime)
         lf = self.liquidity_factor(bid_depth_usd, self._liquidity_threshold)
+        corr_scale = self._correlation_scales.get(strategy_id, 1.0)  # US-176
         # Clamp combined multiplier to prevent exceeding base position caps
-        combined = min(c * r * lf, 1.5)
+        combined = min(c * r * lf * corr_scale, 1.5)
         return base * Decimal(str(combined))

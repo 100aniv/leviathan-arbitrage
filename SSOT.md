@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-15 (Phase S8 System Integration Hardening 계획 수립 — 12개 GAP 해소 예정) | 최신 커밋: PENDING
-> 실행 플랜: `.claude/plans/goofy-napping-feather.md` (Phase S8 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (159+12개 User Stories)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S7** ✅ → TF QF ✅ → TF SF (중단) → **Phase S8** (진행 예정) → **TF QF 재실행** → TF SF → TF Final → Live
+> 마지막 업데이트: 2026-03-15 (Phase S8 System Integration Hardening 완료 — 12개 GAP 해소, 4587 tests) | 최신 커밋: PENDING
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (171개 User Stories, 169 pass / 2 fail)
+> **실행 순서**: A~M ✅ → 회귀 **S1~S7** ✅ → TF QF ✅ → TF SF (중단) → **Phase S8** ✅ → **TF QF 재실행** → TF SF → TF Final → Live
 
 ---
 
@@ -27,24 +27,24 @@
 ## 2. 현재 상태
 
 ```
-Phase:        Phase S8 System Integration Hardening ← 계획 수립 완료, 구현 대기
-테스트:       4,474 passed, 0 failed, 6 skipped (2 flaky deselected)
+Phase:        Phase S8 System Integration Hardening ✅ 완료 (2026-03-15)
+테스트:       4,587 passed, 0 failed, 12 skipped
 커버리지:     87%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    e43b2ec
-다음 작업:    Phase S8 구현 (12 US) → TF QF 재실행 → TF SF → TF Final → Live
-완료된 US:    157/171 (기존 157 + Phase S8 0/12 예정, prd.json 업데이트 예정)
+최신 커밋:    PENDING
+다음 작업:    TF QF 재실행 → TF SF → TF Final → Live
+완료된 US:    169/171 (Phase S8 12/12 완료, prd.json 169 pass / 2 fail)
 TF QF:        PASS(조건부, 2026-03-15) — CRITICAL 0, HIGH 0, 잔여 ~7건 MEDIUM/LOW
               원본(FAIL): docs/checklists/tf-semi-final_20260313.md
               재검증(PASS): docs/checklists/tf-semi-final-recheck_20260315.md (91.5% 해소)
               ** S8 완료 후 전체 QF 재실행 예정 (TWICE 9명, 142항목 + S8 항목)**
-TF SF:        ** 중단 → Phase S8 완료 + QF 재실행 PASS 후 [단계 1-A]부터 재시작**
+TF SF:        ** 중단 → Phase S8 완료 ✅ + QF 재실행 PASS 후 [단계 1-A]부터 재시작**
 Phase S7:     ALL PASS (2026-03-15) — US-157~168 12개 US 전부 완료
               Shadow 10min: 2,230 trades, 93.3% WR, +$0.464, DD=$0.222, crash=0
-Phase S8:     계획 수립 완료 (2026-03-15) — US-169~180 12개 US, 구현 대기
-              심층 조사 결과: 구현되었으나 엔진 미연결 기능 12개 발견 (CRITICAL 3, HIGH 5, MEDIUM 4)
-              플랜: .claude/plans/goofy-napping-feather.md
+Phase S8:     완료 (2026-03-15) — US-169~180 12개 US, CRITICAL 2 + HIGH 3 수정
+              Shadow 35min: PnL +$1.85, WR 92.2%, crash=0
+              미연결 기능 12개 main.py 초기화 체인 연결 완료
 인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ 7/8 HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
@@ -397,7 +397,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 171개 User Stories, 157개 완료, 12개 S8 대기, 2개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 171개 User Stories, 169개 완료, 2개 미완)
 
 > **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -507,34 +507,34 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - **코드리뷰**: CRITICAL 1 + HIGH 2 발견 → 즉시 수정 (get_all_balances→summary, telegram close, min_volume_usd env)
 - **테스트**: 4,471 passed, 0 failed, 6 skipped
 
-#### Phase S8: System Integration Hardening — US-169~180 (계획 수립 완료, 구현 대기)
+#### Phase S8: System Integration Hardening — US-169~180 ✅ ALL PASS (2026-03-15)
 
-> **심층 조사 결과**: 구현은 되어있지만 엔진에 연결되지 않은 기능 12개 발견.
-> TF SF 중단 → S8 수정 → TF QF 재실행 → TF SF → TF Final → Live
-> 플랜: `.claude/plans/goofy-napping-feather.md`
+> **완료**: 구현되었으나 엔진 미연결 기능 12개 main.py 초기화 체인 연결 완료.
+> CRITICAL 2건 수정 (OKX IOC ordType, KRW KillSwitch→soft-block) + HIGH 3건 수정
+> Shadow 35min: PnL +$1.85, WR 92.2%, crash=0 | 4,587 tests passed
 
 **CRITICAL (3건)**
-- [ ] US-169 (S8-1): MultiStrategySignalProducer LIVE 모드 연결 — Paper/Shadow만 동작, LIVE에서 5/8 전략 신호 0건
-- [ ] US-170 (S8-2): Triangular Scanner 구현 — 전략 코드만 존재, 신호 생성 Scanner 부재 (GAP 7 해소)
-- [ ] US-171 (S8-3): KRW Staleness → KillSwitch 연결 — 120초 stale 시 경고만, 거래 중단 안 됨
+- [x] US-169 (S8-1): MultiStrategySignalProducer LIVE 모드 연결 — Paper/Shadow만 동작, LIVE에서 5/8 전략 신호 0건
+- [x] US-170 (S8-2): Triangular Scanner 구현 — 전략 코드만 존재, 신호 생성 Scanner 부재 (GAP 7 해소)
+- [x] US-171 (S8-3): KRW Staleness → soft-block 활성화 — 120초 stale 시 경고만 → 거래 신호 필터링
 
 **HIGH (5건)**
-- [ ] US-172 (S8-4): ONNX ML Scorer 신호 필터링 연결 — 로드만 하고 signal.py에서 호출 안 함
-- [ ] US-173 (S8-5): HMM RegimeDetector 신호 파이프라인 연결 — 초기화만, predict() 미호출 → 레짐 항상 NORMAL
-- [ ] US-174 (S8-6): AdaptiveThreshold 엔진 연결 — 94줄 구현 완료이나 main.py 미인스턴스화
-- [ ] US-175 (S8-7): ExposureTracker 인스턴스화 + RiskGuardian 연결 — 코드 존재하나 미생성
-- [ ] US-176 (S8-8): CorrelationMonitor → DynamicSizer 포지션 축소 연결 — Check #9 로그만
+- [x] US-172 (S8-4): ONNX ML Scorer 신호 필터링 연결 — 로드만 하고 signal.py에서 호출 안 함
+- [x] US-173 (S8-5): HMM RegimeDetector 신호 파이프라인 연결 — 초기화만, predict() 미호출 → 레짐 항상 NORMAL
+- [x] US-174 (S8-6): AdaptiveThreshold 엔진 연결 — 94줄 구현 완료이나 main.py 미인스턴스화
+- [x] US-175 (S8-7): ExposureTracker 인스턴스화 + RiskGuardian 연결 — 코드 존재하나 미생성
+- [x] US-176 (S8-8): CorrelationMonitor → DynamicSizer 포지션 축소 연결 — Check #9 로그만
 
 **MEDIUM (4건)**
-- [ ] US-177 (S8-9): DEX 실연결 — _build_dex_adapter() 항상 None (GAP 8 해소)
-- [ ] US-178 (S8-10): IOC Limit Order 주요 거래소 구현 — Binance/Bybit/OKX native adapter
-- [ ] US-179 (S8-11): ScheduledTuner 핫리로드 + 기본 활성화 — 파라미터 재시작 없이 반영
-- [ ] US-180 (S8-12): InMemoryEventBus 큐 크기 제한 — maxsize 강제 + drop oldest
+- [x] US-177 (S8-9): DEX 실연결 — _build_dex_adapter() 항상 None (GAP 8 해소)
+- [x] US-178 (S8-10): IOC Limit Order 주요 거래소 구현 — Binance/Bybit/OKX native adapter
+- [x] US-179 (S8-11): ScheduledTuner 핫리로드 + 기본 활성화 — 파라미터 재시작 없이 반영
+- [x] US-180 (S8-12): InMemoryEventBus 큐 크기 제한 — maxsize 강제 + drop oldest
 
 **추가 설정/환경 갭 수정 (S8 내 포함)**
-- [ ] TRADING_ACTIVE_EXCHANGES .env 동기화 (okx_futures, bybit_futures 추가)
-- [ ] strategy_activation.json Paper/Live에서도 적용
-- [ ] _reconcile_loop 거래소 API 잔고 대조 구현
+- [x] TRADING_ACTIVE_EXCHANGES .env 동기화 (okx_futures, bybit_futures 추가)
+- [x] strategy_activation.json Paper/Live에서도 적용
+- [x] _reconcile_loop 거래소 API 잔고 대조 구현
 
 ---
 

@@ -19,7 +19,9 @@ from src.tuning.strategy_backtest import STRATEGY_TYPES
 
 class TestScheduledTunerInit:
     def test_default_strategies_excludes_cex_dex_and_statistical_arb(self):
-        tuner = ScheduledTuner()
+        # Mock activation loader to isolate from filesystem state
+        with patch.object(ScheduledTuner, '_load_activation', return_value=None):
+            tuner = ScheduledTuner()
         assert "cex_dex" not in tuner.strategies
         assert "statistical_arb" not in tuner.strategies
         # All remaining STRATEGY_TYPES should be present

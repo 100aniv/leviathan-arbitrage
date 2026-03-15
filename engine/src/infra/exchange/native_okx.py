@@ -26,6 +26,7 @@ from src.core.models import (
     Position,
     Trade,
 )
+from src.execution.atomic import OrderResult
 from src.infra.exchange.native_adapter import NativeAdapter
 
 
@@ -169,6 +170,34 @@ class NativeOKXAdapter(NativeAdapter):
         order_id = result.get("ordId", "")
         fill_price = order.price or Decimal("0")
         return self._build_trade(order, trade_id=order_id, price=fill_price, amount=order.amount)
+
+    async def place_ioc_limit(
+        self, symbol: str, side: str, price: Decimal, size: Decimal
+    ) -> OrderResult:
+        """Submit an IOC limit order and return fill result (partial fills allowed)."""
+        import time
+        start = time.monotonic()
+        if price <= Decimal("0") or size <= Decimal("0"):
+            raise ValueError(f"IOC price/size must be positive: price={price}, size={size}")
+        body: dict = {
+            "instId": self._normalize_symbol(symbol),
+            "tdMode": "cash",
+            "side": side.lower(),
+            "ordType": "ioc",
+            "px": str(price),
+            "sz": str(size),
+        }
+        resp = await self._request("POST", "/api/v5/trade/order", data=body, signed=True)
+        data = resp.get("data", [{}])[0]
+        filled_qty = Decimal(str(data.get("fillSz", "0")))
+        fill_px_str = data.get("fillPx", "0") or "0"
+        avg_price = Decimal(fill_px_str) if fill_px_str != "0" else price
+        return OrderResult(
+            filled_size=filled_qty,
+            avg_price=avg_price,
+            order_type="ioc_limit",
+            latency_ms=(time.monotonic() - start) * 1000,
+        )
 
     async def _rest_cancel_order(self, order_id: str, symbol: str | None) -> bool:
         body: dict[str, Any] = {"ordId": order_id}

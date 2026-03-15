@@ -23,7 +23,7 @@ from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeReq
 class FundingRateConfig(BaseModel):
     """Configuration for FundingRateStrategy."""
 
-    min_funding_diff_bps: Decimal = Field(default=Decimal("5"), ge=Decimal("0"))
+    min_funding_diff_bps: Decimal = Field(default=Decimal("30"), ge=Decimal("0"))  # Must exceed round-trip friction
     max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
     max_holding_periods: int = Field(default=3, ge=1)
     hedge_ratio: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
@@ -90,9 +90,14 @@ class FundingRateStrategy(BaseStrategy):
         )
         total_cost = short_cost + long_cost
 
+        # Add estimated round-trip slippage cost (conservative: 10bps per leg)
+        # This accounts for BookWalkSlippage fallback on illiquid symbols
+        avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
+        est_slippage_cost = avg_price * size * Decimal("20") / Decimal("10000")
+        total_cost += est_slippage_cost
+
         # Expected income: conservatively assume 1 funding period (8h) collected
         # max_holding_periods is the CEILING (force-exit), not the expected hold time
-        avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
         expected_funding_income = (
             funding_diff * avg_price * size * Decimal("1")
         )

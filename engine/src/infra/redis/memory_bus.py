@@ -8,9 +8,24 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from collections import defaultdict
 from typing import Any, Optional
+
+try:
+    from prometheus_client import Counter, Gauge
+    _EVENT_BUS_QUEUE_DEPTH = Gauge(
+        "leviathan_event_bus_queue_depth",
+        "Current InMemoryEventBus queue depth (all streams)",
+    )
+    _EVENT_BUS_DROPPED = Counter(
+        "leviathan_event_bus_dropped_total",
+        "Total messages dropped due to full queue",
+    )
+    _PROM_AVAILABLE = True
+except Exception:
+    _PROM_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +40,10 @@ class InMemoryEventBus:
     (single-consumer-per-group semantics).
     """
 
-    def __init__(self, maxsize: int = 10000) -> None:
-        self._maxsize = maxsize
+    def __init__(self, maxsize: int | None = None) -> None:
+        self._maxsize = maxsize if maxsize is not None else int(
+            os.getenv("EVENT_BUS_MAXSIZE", "10000")
+        )
         # stream -> list of group names
         self._groups: dict[str, list[str]] = defaultdict(list)
         # (stream, group) -> asyncio.Queue of (msg_id, event_dict)
@@ -50,6 +67,17 @@ class InMemoryEventBus:
             key = (stream, group)
             queue = self._queues.get(key)
             if queue is not None:
+                # 80% capacity warning
+                if self._maxsize > 0:
+                    depth = queue.qsize()
+                    if depth >= self._maxsize * 0.8:
+                        logger.warning(
+                            "EventBus queue at %d%% capacity (stream=%s, depth=%d/%d)",
+                            int(depth / self._maxsize * 100),
+                            stream,
+                            depth,
+                            self._maxsize,
+                        )
                 try:
                     queue.put_nowait((msg_id, event))
                 except asyncio.QueueFull:
@@ -61,6 +89,12 @@ class InMemoryEventBus:
                     logger.warning(
                         "EventBus queue full (stream=%s) — dropped oldest message", stream
                     )
+                    if _PROM_AVAILABLE:
+                        _EVENT_BUS_DROPPED.inc()
+
+        if _PROM_AVAILABLE:
+            total_depth = sum(q.qsize() for q in self._queues.values())
+            _EVENT_BUS_QUEUE_DEPTH.set(total_depth)
 
         logger.debug("Published to %s: %s", stream, msg_id)
         return msg_id

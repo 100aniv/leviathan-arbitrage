@@ -35,7 +35,7 @@
     "S4": "Dashboard Completion (TF Semi-Final 발견)",
     "S5": "Data Pipeline & Auto-Tuner (TF Semi-Final 발견)",
     "S6": "Documentation Sync (TF Semi-Final 발견)",
-    "S8": "Pre-Live Hardening (TF Final 발견)"
+    "S7": "Pre-Live Hardening (TF SF 발견)"
   },
   "gap_dependency_order": "GAP9 -> GAP10 -> (GAP5,GAP6,GAP7 parallel) -> GAP3 -> GAP1,GAP2 -> GAP4",
   "stories": [
@@ -2554,7 +2554,7 @@
     {
       "id": "US-157",
       "title": "Config 아키텍처 분리 — .env 시크릿만, 비즈니스 설정 JSON",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 1,
       "passes": true,
       "files": [
@@ -2576,7 +2576,7 @@
     {
       "id": "US-158",
       "title": "okx_futures + bybit_futures 활성 거래소 추가",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 2,
       "passes": true,
       "files": [
@@ -2595,7 +2595,7 @@
     {
       "id": "US-159",
       "title": "_reconcile_loop 실제 구현",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 3,
       "passes": true,
       "files": [
@@ -2614,7 +2614,7 @@
     {
       "id": "US-160",
       "title": "InMemoryEventBus 큐 크기 제한",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 4,
       "passes": true,
       "files": [
@@ -2632,7 +2632,7 @@
     {
       "id": "US-161",
       "title": "KRW stale rate 거래 중단 로직",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 5,
       "passes": true,
       "files": [
@@ -2652,7 +2652,7 @@
     {
       "id": "US-162",
       "title": "Auto-discovery 거래량 필터",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 6,
       "passes": true,
       "files": [
@@ -2674,7 +2674,7 @@
     {
       "id": "US-163",
       "title": "Dashboard 로그인 수정",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 1,
       "passes": true,
       "files": [
@@ -2696,7 +2696,7 @@
     {
       "id": "US-164",
       "title": "Shadow PnL 단일 손실 방어 (max_single_loss)",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 2,
       "passes": true,
       "files": [
@@ -2718,7 +2718,7 @@
     {
       "id": "US-165",
       "title": "Redis 연결 명시적 close",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 7,
       "passes": true,
       "files": [
@@ -2735,7 +2735,7 @@
     {
       "id": "US-166",
       "title": "모니터링 가이드 문서 작성",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 1,
       "passes": true,
       "files": [
@@ -2755,7 +2755,7 @@
     {
       "id": "US-167",
       "title": "Docker 리소스 제한 (Redis/TimescaleDB deploy limits)",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 8,
       "passes": true,
       "files": [
@@ -2773,7 +2773,7 @@
     {
       "id": "US-168",
       "title": "httpx AsyncClient 재사용 (connection pooling)",
-      "phase": "S8",
+      "phase": "S7",
       "priority": 9,
       "passes": true,
       "files": [
@@ -2793,9 +2793,15 @@
       "title": "MultiStrategySignalProducer LIVE 모드 연결 (GAP 3 해소)",
       "phase": "S8",
       "priority": 1,
-      "passes": false,
-      "files": ["engine/src/main.py"],
-      "acceptanceCriteria": ["LIVE 모드에서 MultiStrategySignalProducer 초기화", "8개 전략 모두 신호 수신 확인", "pytest 0 failures"],
+      "passes": true,
+      "files": [
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "LIVE 모드에서 MultiStrategySignalProducer 초기화",
+        "8개 전략 모두 신호 수신 확인",
+        "pytest 0 failures"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: LIVE 모드에서 5/8 전략 신호 0건 (Paper/Shadow만 동작)"
     },
@@ -2804,9 +2810,16 @@
       "title": "Triangular Scanner 구현 (GAP 7 해소)",
       "phase": "S8",
       "priority": 1,
-      "passes": false,
-      "files": ["engine/src/core/triangle_scanner.py", "engine/src/main.py"],
-      "acceptanceCriteria": ["3-leg cycle 탐지 로직 구현", "수익성 계산 → Signal 메타데이터 생성", "합성 오더북 E2E 테스트 PASS"],
+      "passes": true,
+      "files": [
+        "engine/src/core/triangle_scanner.py",
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "3-leg cycle 탐지 로직 구현",
+        "수익성 계산 → Signal 메타데이터 생성",
+        "합성 오더북 E2E 테스트 PASS"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: TriangularStrategy 코드 존재하나 신호 생성 Scanner 부재"
     },
@@ -2815,9 +2828,16 @@
       "title": "KRW Staleness → KillSwitch 연결",
       "phase": "S8",
       "priority": 1,
-      "passes": false,
-      "files": ["engine/src/modes/shadow.py", "engine/src/risk/kill_switch.py"],
-      "acceptanceCriteria": ["_krw_stale=True 시 kill_switch.trigger() 호출", "Telegram 알림 발송", "KillSwitch TIER-1 발동 테스트 PASS"],
+      "passes": true,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/risk/kill_switch.py"
+      ],
+      "acceptanceCriteria": [
+        "_krw_stale=True 시 KRW soft-block 활성화 (거래 신호 필터링)",
+        "Telegram 알림 발송",
+        "KillSwitch TIER-1 발동 테스트 PASS"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: KRW 환율 120초 stale 시 경고만, 거래 중단 안 됨"
     },
@@ -2826,9 +2846,16 @@
       "title": "ONNX ML Scorer 신호 필터링 연결",
       "phase": "S8",
       "priority": 2,
-      "passes": false,
-      "files": ["engine/src/core/signal.py", "engine/src/ml/onnx_runtime.py"],
-      "acceptanceCriteria": ["signal.py에서 ml_scorer.predict_signal() 호출", "ML 신뢰도 기반 confidence 반영", "pytest 0 failures"],
+      "passes": true,
+      "files": [
+        "engine/src/core/signal.py",
+        "engine/src/ml/onnx_runtime.py"
+      ],
+      "acceptanceCriteria": [
+        "signal.py에서 ml_scorer.predict_signal() 호출",
+        "ML 신뢰도 기반 confidence 반영",
+        "pytest 0 failures"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: ONNXSignalScorer 로드만 하고 호출 안 함"
     },
@@ -2837,9 +2864,16 @@
       "title": "HMM RegimeDetector 신호 파이프라인 연결",
       "phase": "S8",
       "priority": 2,
-      "passes": false,
-      "files": ["engine/src/core/signal.py", "engine/src/tuning/regime_detector.py"],
-      "acceptanceCriteria": ["on_orderbook_update()에서 regime_detector.predict() 호출", "레짐별 min_edge 동적 조절", "CRISIS 레짐 DynamicSizer 0.25x 확인"],
+      "passes": true,
+      "files": [
+        "engine/src/core/signal.py",
+        "engine/src/tuning/regime_detector.py"
+      ],
+      "acceptanceCriteria": [
+        "on_orderbook_update()에서 regime_detector.predict() 호출",
+        "레짐별 min_edge 동적 조절",
+        "CRISIS 레짐 DynamicSizer 0.25x 확인"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: 초기화만, predict() 미호출 → 레짐 항상 NORMAL"
     },
@@ -2848,9 +2882,16 @@
       "title": "AdaptiveThreshold 엔진 연결",
       "phase": "S8",
       "priority": 2,
-      "passes": false,
-      "files": ["engine/src/main.py", "engine/src/tuning/adaptive_threshold.py"],
-      "acceptanceCriteria": ["main.py에서 AdaptiveThreshold 인스턴스화", "1시간 주기 adjust() 태스크 등록", "승률 기반 MIN_EDGE 동적 조절 테스트 PASS"],
+      "passes": true,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/tuning/adaptive_threshold.py"
+      ],
+      "acceptanceCriteria": [
+        "main.py에서 AdaptiveThreshold 인스턴스화",
+        "1시간 주기 adjust() 태스크 등록",
+        "승률 기반 MIN_EDGE 동적 조절 테스트 PASS"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: 94줄 완전 구현이나 main.py 미인스턴스화"
     },
@@ -2859,9 +2900,16 @@
       "title": "ExposureTracker 인스턴스화 + RiskGuardian 연결",
       "phase": "S8",
       "priority": 2,
-      "passes": false,
-      "files": ["engine/src/main.py", "engine/src/risk/exposure_tracker.py"],
-      "acceptanceCriteria": ["_init_risk()에서 ExposureTracker 생성", "RiskGuardian Check #4e 연결", "거래 체결 시 update_exposure() 호출"],
+      "passes": true,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/risk/exposure_tracker.py"
+      ],
+      "acceptanceCriteria": [
+        "_init_risk()에서 ExposureTracker 생성",
+        "RiskGuardian Check #4e 연결",
+        "거래 체결 시 update_exposure() 호출"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: 코드 존재하나 main.py에서 미생성"
     },
@@ -2870,9 +2918,16 @@
       "title": "CorrelationMonitor → DynamicSizer 포지션 축소 연결",
       "phase": "S8",
       "priority": 2,
-      "passes": false,
-      "files": ["engine/src/risk/guardian.py", "engine/src/execution/sizer.py"],
-      "acceptanceCriteria": ["PositionScaleEvent → DynamicSizer 연결", "상관계수 >0.7 시 포지션 자동 축소", "pytest 0 failures"],
+      "passes": true,
+      "files": [
+        "engine/src/risk/guardian.py",
+        "engine/src/execution/sizer.py"
+      ],
+      "acceptanceCriteria": [
+        "PositionScaleEvent → DynamicSizer 연결",
+        "상관계수 >0.7 시 포지션 자동 축소",
+        "pytest 0 failures"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: Check #9 로그만, DynamicSizer 미연결"
     },
@@ -2881,9 +2936,17 @@
       "title": "DEX 실연결 (GAP 8 해소)",
       "phase": "S8",
       "priority": 3,
-      "passes": false,
-      "files": ["engine/src/main.py", "engine/.env", "engine/src/infra/dex/uniswap_v3.py"],
-      "acceptanceCriteria": [".env DEX_RPC_URL + DEX_POOL_ADDRESS 설정", "CexDex 전략 자동 등록", "DEX 가격 조회 + 가스 추정 E2E 테스트"],
+      "passes": true,
+      "files": [
+        "engine/src/main.py",
+        "engine/.env",
+        "engine/src/infra/dex/uniswap_v3.py"
+      ],
+      "acceptanceCriteria": [
+        ".env DEX_RPC_URL + DEX_POOL_ADDRESS 설정",
+        "CexDex 전략 자동 등록",
+        "DEX 가격 조회 + 가스 추정 E2E 테스트"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: _build_dex_adapter() 항상 None"
     },
@@ -2892,9 +2955,16 @@
       "title": "IOC Limit Order 주요 거래소 구현",
       "phase": "S8",
       "priority": 3,
-      "passes": false,
-      "files": ["engine/src/execution/atomic.py", "engine/src/infra/exchange/native_adapter.py"],
-      "acceptanceCriteria": ["Binance/Bybit/OKX native adapter place_ioc_limit() 구현", "IOC 주문 생성→즉시체결/미체결 취소 테스트", "pytest 0 failures"],
+      "passes": true,
+      "files": [
+        "engine/src/execution/atomic.py",
+        "engine/src/infra/exchange/native_adapter.py"
+      ],
+      "acceptanceCriteria": [
+        "Binance/Bybit/OKX native adapter place_ioc_limit() 구현",
+        "IOC 주문 생성→즉시체결/미체결 취소 테스트",
+        "pytest 0 failures"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: AtomicOrderExecutor.place_ioc_limit() 데드코드"
     },
@@ -2903,9 +2973,17 @@
       "title": "ScheduledTuner 핫리로드 + 기본 활성화",
       "phase": "S8",
       "priority": 3,
-      "passes": false,
-      "files": ["engine/src/main.py", "engine/src/tuning/scheduled_tuner.py", "engine/.env"],
-      "acceptanceCriteria": [".env ENABLE_INLINE_TUNER=true 기본 설정", "strategy_params.json 핫리로드 (재시작 불필요)", "파라미터 변경→적용 테스트"],
+      "passes": true,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/tuning/scheduled_tuner.py",
+        "engine/.env"
+      ],
+      "acceptanceCriteria": [
+        ".env ENABLE_INLINE_TUNER=true 기본 설정",
+        "strategy_params.json 핫리로드 (재시작 불필요)",
+        "파라미터 변경→적용 테스트"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: ENABLE_INLINE_TUNER 미설정 → 비활성"
     },
@@ -2914,9 +2992,15 @@
       "title": "InMemoryEventBus 큐 크기 제한 강화",
       "phase": "S8",
       "priority": 3,
-      "passes": false,
-      "files": ["engine/src/infra/redis/memory_bus.py"],
-      "acceptanceCriteria": ["asyncio.Queue(maxsize=10000) 강제", "오버플로우 시 oldest 드롭 + 경고 로그", "큐 포화 graceful degradation 테스트"],
+      "passes": true,
+      "files": [
+        "engine/src/infra/redis/memory_bus.py"
+      ],
+      "acceptanceCriteria": [
+        "asyncio.Queue(maxsize=10000) 강제",
+        "오버플로우 시 oldest 드롭 + 경고 로그",
+        "큐 포화 graceful degradation 테스트"
+      ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: Redis 버전은 maxsize=10000이나 InMemory 무제한"
     }

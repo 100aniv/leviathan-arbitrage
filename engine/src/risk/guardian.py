@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -95,9 +95,11 @@ class RiskGuardian:
         max_rollback_threshold: Decimal = Decimal("0.02"),
         max_net_exposure_per_asset: Decimal = Decimal("0"),
         max_concurrent_positions: int = 20,
+        dynamic_sizer: Any | None = None,  # US-176: DynamicSizer for correlation scale-down
     ) -> None:
         import os as _os
         self._cb = circuit_breaker
+        self._dynamic_sizer = dynamic_sizer  # US-176
         self._max_position_pct = max_position_pct
         self._max_drawdown_pct = max_drawdown_pct
         self._max_exposure_pct = max_exposure_pct
@@ -290,7 +292,7 @@ class RiskGuardian:
                 ),
             )
 
-        # CHECK #9: Strategy correlation scale-down (US-118)
+        # CHECK #9: Strategy correlation scale-down (US-118 / US-176)
         if self.correlation_monitor is not None:
             events = self.correlation_monitor.check_correlations()
             for evt in events:
@@ -301,7 +303,9 @@ class RiskGuardian:
                         scale=evt.scale,
                         reason=evt.reason,
                     )
-                    # Don't reject — just log. DynamicSizer handles actual scale-down.
+                    # US-176: propagate scale to DynamicSizer (don't reject — size down)
+                    if self._dynamic_sizer is not None:
+                        self._dynamic_sizer.set_correlation_scale(proposal.strategy_id, evt.scale)
                     break
 
         # CHECK #10: Max concurrent positions (US-154)

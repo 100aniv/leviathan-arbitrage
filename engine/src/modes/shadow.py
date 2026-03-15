@@ -386,6 +386,7 @@ class ShadowMode:
         multi_signal_producer: Any | None = None,
         funding_rate_collector: Any | None = None,
         strategy_manager: Any | None = None,
+        kill_switch: Any | None = None,
     ) -> None:
         """Initialise the shadow mode orchestrator.
 
@@ -476,8 +477,12 @@ class ShadowMode:
         self._krw_rate: float = _raw_krw_rate
         self._krw_rate_task: asyncio.Task[None] | None = None
         self._krw_rate_updated_at: float = time.monotonic()
+        # US-171: KillSwitch for KRW soft-block
+        self._kill_switch = kill_switch
         self._sanity_reject_count: int = 0
         self._krw_stale: bool = False
+        self._krw_stale_count: int = 0   # US-171: debounce counter
+        self._krw_soft_blocked: bool = False  # US-171: soft-block KRW exchanges
         self._http_client: httpx.AsyncClient = httpx.AsyncClient(timeout=5.0)
 
         # Statistical arb state: rolling z-score window per symbol
@@ -1662,16 +1667,51 @@ class ShadowMode:
                 if elapsed > 120:
                     if not self._krw_stale:
                         self._krw_stale = True
+                        self._krw_stale_count = 0
                         logger.info(
                             "shadow_mode.krw_stale_entered",
                             seconds_since_update=elapsed,
                         )
+                    else:
+                        self._krw_stale_count += 1
                     logger.warning(
                         "shadow_mode.krw_rate_stale",
                         seconds_since_update=elapsed,
+                        stale_count=self._krw_stale_count,
                     )
+                    # US-171: After 3 consecutive stale checks (≈90s) trigger KillSwitch
+                    # soft-block for KRW exchanges only
+                    if self._krw_stale_count >= 3 and not self._krw_soft_blocked:
+                        self._krw_soft_blocked = True
+                        logger.warning(
+                            "shadow_mode.krw_soft_block_activated",
+                            stale_seconds=elapsed,
+                        )
+                        # Soft-block only: skip KRW exchanges in signal generation
+                        # Do NOT trigger full KillSwitch — it halts ALL trading including non-KRW pairs
+                        if self._telegram is not None:
+                            try:
+                                asyncio.create_task(self._telegram.send_alert(
+                                    f"KRW rate stale {elapsed:.0f}s — KRW exchanges soft-blocked",
+                                    level="WARNING",
+                                ))
+                            except Exception:
+                                pass
                 elif self._krw_stale:
                     self._krw_stale = False
+                    self._krw_stale_count = 0
+                    # US-171: unblock on recovery
+                    if self._krw_soft_blocked:
+                        self._krw_soft_blocked = False
+                        logger.info("shadow_mode.krw_soft_block_cleared")
+                        if self._telegram is not None:
+                            try:
+                                asyncio.create_task(self._telegram.send_alert(
+                                    "KRW rate recovered — soft-block cleared",
+                                    level="INFO",
+                                ))
+                            except Exception:
+                                pass
                     logger.info("shadow_mode.krw_stale_recovered")
 
                 await asyncio.sleep(30.0)
