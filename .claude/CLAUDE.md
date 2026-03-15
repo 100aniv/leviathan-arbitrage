@@ -187,7 +187,8 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 ## 세션 시작 프로토콜
 
 1. **SSOT.md 읽기**: 작업 시작 전 반드시 `SSOT.md`를 읽고 현재 상태를 파악할 것
-   - `SSOT.md`가 프로젝트의 **유일한 설계 문서**
+   - `SSOT.md`가 프로젝트의 **유일한 활성 설계 문서**
+   - 완료된 Phase(A~M) 이력 → `SSOT_COMPLETE.md` (개발 시 불필요, TF 검증 시에만 참조)
    - 다른 문서(docs/archive/)에 상태 정보를 기록하지 말 것
 
 2. **도구 활용 (CLI 우선)**:
@@ -202,20 +203,20 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 팀 구조 (7팀 + TF)
 
-> 팀은 기능별 정의, Stage가 필요한 팀을 호출. Stage B만 TeamCreate, 나머지 Agent() 서브에이전트.
+> 팀은 기능별 정의, Stage가 필요한 팀을 호출. Stage B Phase 1만 TeamCreate, 나머지 Agent() 서브에이전트.
 
 | 팀 | Stage | 에이전트 | 역할 |
 |----|-------|---------|------|
-| ① AESPA (기획) | A | Karina(architect/opus), Giselle(planner), NingNing(analyst), Winter(critic/opus) | Entry Gate 정합성, 기획, PLAN.md |
-| ② IVE (개발) | B | Yujin/Gaeul/Leeseo/Liz(executor), Wonyoung(test-engineer), Rei(designer) | TeamCreate 협업, 최대 6명 |
-| ③ BLACKPINK (검증) | C | Jennie(code-reviewer/opus), Lisa(critic/opus), Rose(quality-reviewer), Jisoo(security-reviewer) | 코드리뷰, 품질, 보안 |
-| ④ NewJeans (테스트) | D | Minji(shadow-tester), Hanni(qa-tester), Danielle(scientist), Haerin(browser-verifier), Hyein(debugger) | Shadow 10min+, QA, 모니터링 |
-| ⑤ LE SSERAFIM (정합성) | E | Karina(architect/opus), Sakura(ssot-keeper), Chaewon(verifier), Kazuha(git-master) | Exit Gate, SSOT, git push |
-| ⑥ ITZY (퀀트) | A+D | Yeji(quant-validator/opus), Ryujin(scientist), Lia(ml-pipeline), Chaeryeong(dex-specialist), Yuna(analyst) | 수학 검증, ML, DEX |
+| ① AESPA (기획) | A | Karina(architect/opus), NingNing(analyst), Winter(critic/opus), Giselle(planner) | Entry Gate 정합성, 요구사항, 기획비판, PLAN.md |
+| ② IVE (개발) | B-Phase1 | Yujin/Gaeul/Leeseo/Liz(executor), Wonyoung(test-engineer), Rei(designer) | TeamCreate 협업, 최대 6명 |
+| ③ BLACKPINK (코드리뷰) | C-Step1 | Jennie(code-reviewer/opus), Jisoo(security-reviewer) | 코드리뷰+품질+Shadow교차평가, 보안 |
+| ④ NewJeans (테스트) | B-Phase2 | Minji(shadow-tester), Hanni(qa-tester/haiku), Danielle(scientist/haiku), Haerin(browser-verifier), Hyein(debugger) | Shadow 10min+, QA, 모니터링 |
+| ⑤ LE SSERAFIM (릴리스) | C-Step2~3 | Karina(architect/opus), Sakura(ssot-keeper/sonnet) | Phase완료리뷰+Go/No-Go, SSOT+git push |
+| ⑥ ITZY (퀀트) | A+B | Yeji(quant-validator/opus), Ryujin(scientist), Lia(ml-pipeline), Chaeryeong(dex-specialist), Yuna(analyst) | 수학 검증, ML, DEX |
 | ⑦ Fix 루프 | L1+ | Joy(debugger), Irene(build-fixer), Wendy(code-simplifier/opus) | 에스컬레이션 시 활성화 |
-| TF TWICE | Semi/Final | Nayeon(TF리더), Karina, Jeongyeon, Momo, Sana, Mina, Dahyun, Chaeyoung, Tzuyu (9명) | 상용화 최종 검증 |
+| TF TWICE | QF/SF/Final | Nayeon(TF리더), Karina, Jeongyeon, Momo, Sana, Mina, Dahyun, Chaeyoung, Tzuyu (9명+Jisoo차출) | 상용화 최종 검증 (3-Round) |
 
-**사이클**: Stage A(기획)→B(개발)→C(검증)→D(Shadow)→E(정합성+사장님승인)→다음Phase
+**사이클**: Stage A(기획)→B(구현+검증)→C(리뷰+릴리스+사장님승인)→다음Phase
 
 ## 커스텀 에이전트 (.claude/agents/)
 
@@ -245,7 +246,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **ENGINE_ENV**: `dev|staging|prod|test`만 허용 (`development` 사용 금지)
 - **KRW 거래소**: upbit, bithumb, coinone은 KRW 페어 자동 매핑. auto-symbols `min_exchanges=3` 필수 (7로 하면 0개)
 - **Bithumb stale data**: 증분 orderbook에서 소형코인 2-10x 가격 오차 → fake spread. Phase G에서 해결
-- **Stage D 중 /compact 금지**: Shadow/리뷰 백그라운드 에이전트 실행 중 압축하면 결과 소실. Stage E 완료 + git push 후에만
+- **Stage B Phase 2 중 /compact 금지**: Shadow/QA 백그라운드 에이전트 실행 중 압축하면 결과 소실. Stage C 완료 + git push 후에만
 - **Coinone 수수료**: 0.20% → 0.02% (API 할인 적용)
 - **cancel_order**: order.symbol 전달 필수 (Binance rollback). TypeError fallback for legacy adapters
 - **friction prefix**: cost_calculator가 `paper_`/`sandbox_` prefix 자동 strip
@@ -258,24 +259,22 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → 회귀 S1~S6 (TF Semi-Final 발견, 원본 Phase 보완) → TF Semi-Final 재검증 → TF Final → Live
+- **Phase 순서**: A~M✅ → 회귀 S1~S7 ✅ → TF QF ✅ → **TF SF** (진행 중) → TF Final → Live
 - **Tests**: 4,474 passed, 0 failed, 6 skipped
-- **PRD**: `.omc/prd.json` (147개 US, 145 pass / 2 fail)
+- **PRD**: `.omc/prd.json` (159개 US, 145 pass / 14 fail)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: TF Semi-Final 재검증 → TF Final → Live
+- **다음 작업**: TF SF [단계 1-A] Delta Check 재검증 → [단계 1-B] → [단계 2] → TF Final → Live
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%
 - **GAP 분석**: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합 분석)
 
 ## 실행 워크플로우 (ralph autopilot)
 
-**5-Stage Sequential 연속 실행** (leviathan.md 참조):
-1. **Stage A** (기획): [Entry Gate(architect) + planner] 병렬 → PLAN.md → QUANT GATE → **즉시 Stage B**
-2. **Stage B** (개발): TeamCreate(IVE) → pytest PASS → TeamDelete → **즉시 Stage C**
-3. **Stage C** (검증): code-reviewer + critic + security-reviewer → **git 안 함** → **즉시 Stage D**
-4. **Stage D** (Shadow): Shadow 10min+ → QA → **즉시 Stage E**
-5. **Stage E** (정합성): [Exit Gate + verifier] 병렬 → [SSOT + git commit+push] 병렬 → **텔레그램 → 사장님 승인 대기**
+**3-Stage Sequential 연속 실행** (leviathan.md 참조):
+1. **Stage A** (기획): [Entry Gate(karina) 순차 → NingNing+Winter+Giselle 병렬] → PLAN.md → QUANT GATE → **즉시 Stage B**
+2. **Stage B** (구현+검증): TeamCreate(IVE) → pytest PASS → TeamDelete → Shadow 10min+(NewJeans) → **즉시 Stage C**
+3. **Stage C** (리뷰+릴리스): [Jennie+Jisoo 코드리뷰] → [Karina Phase완료리뷰+Go/No-Go] → [Sakura SSOT+git push] → **텔레그램 → 사장님 승인 대기**
 
-**세션 관리**: Stage A→B→C→D→E 연속 실행 (세션 초기화 없음, ralph 루프 유지).
+**세션 관리**: Stage A→B→C 연속 실행 (세션 초기화 없음, ralph 루프 유지).
 **`/compact` 절대 금지**. 컨텍스트 60% 시 텔레그램 알림 → `/clear` 시도 → 성공/실패 모두 텔레그램 알림.
 **체크포인트 복구**: `.omc/state/leviathan-progress.json` — 세션 크래시 시 `/leviathan` 재호출로 자동 재개.
 **에스컬레이션**: L0(팀 내) → L1(fix 루프) → L2(Stage A 재기획) → L3(SSOT 수정) → L4(Phase 재편) → **L5(텔레그램→사장님)**

@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-15 (Phase S8 Pre-Live Hardening 완료 — US-157~168 ALL PASS, Shadow 10min +$0.464) | 최신 커밋: PENDING
+> 마지막 업데이트: 2026-03-15 (Phase S7 Pre-Live Hardening 완료 — US-157~168 ALL PASS, Shadow 10min +$0.464) | 최신 커밋: PENDING
 > 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (159개 User Stories)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S6** ✅ → **S8** ✅ (Pre-Live Hardening) → **TF Final → Live**
+> **실행 순서**: A~M ✅ → 회귀 **S1~S7** ✅ → **TF QF** ✅ → **TF SF** (진행 중) → **TF Final → Live**
 
 ---
 
@@ -27,18 +27,19 @@
 ## 2. 현재 상태
 
 ```
-Phase:        Phase S8 Pre-Live Hardening ← ALL PASS  [S1~S6 ✅ → TF 재검증 ✅ → S8 ✅]
+Phase:        Phase S7 Pre-Live Hardening ← ALL PASS  [S1~S6 ✅ → TF 재검증 ✅ → S7 ✅]
 테스트:       4,471 passed, 0 failed, 6 skipped (2 flaky deselected)
 커버리지:     87%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    a4fa4a7
-다음 작업:    TF Final → Live
-완료된 US:    157/159 (기존 145 + Phase S8 12/12 완료)
-TF Semi-Final: FAIL(2026-03-13) → S1~S6 회귀 완료 → 재검증 조건부 PASS(2026-03-15)
-               원본 보고서: docs/checklists/tf-semi-final_20260313.md
-               재검증 보고서: docs/checklists/tf-semi-final-recheck_20260315.md (91.5% 이슈 해소)
-Phase S8:     ALL PASS (2026-03-15) — US-157~168 12개 US 전부 완료
+다음 작업:    TF SF [단계 1-A] Delta Check 재검증 → [단계 1-B] → [단계 2] → TF Final → Live
+완료된 US:    157/159 (기존 145 + Phase S7 12/12 완료)
+TF QF:        PASS(조건부, 2026-03-15) — CRITICAL 0, HIGH 0, 잔여 ~7건 MEDIUM/LOW
+              원본(FAIL): docs/checklists/tf-semi-final_20260313.md
+              재검증(PASS): docs/checklists/tf-semi-final-recheck_20260315.md (91.5% 해소)
+TF SF:        3-Round 체계 강화로 [단계 1-A]부터 재검증 필요
+Phase S7:     ALL PASS (2026-03-15) — US-157~168 12개 US 전부 완료
               Shadow 10min: 2,230 trades, 93.3% WR, +$0.464, DD=$0.222, crash=0
 인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ 7/8 HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
@@ -398,186 +399,11 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
 
-### Phase A: 인프라 재정비 (US-001~009) — ☑ ALL PASS
+> **Phase A~M 완료 상세 → [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)** (토큰 최적화로 아카이브 분리)
 
-- [x] US-001: OMC State 초기화 + project-memory 수정
-- [x] US-002: SSOT.md 생성 (기존 문서 통합)
-- [x] US-003: 커스텀 에이전트 정의 파일 생성
-- [x] US-004: settings.local.json 권한 완화
-- [x] US-005: CLAUDE.md 업데이트
-- [x] US-006: prd.json 생성
-- [x] US-007: notepad.md 생성
-- [x] US-008: 기존 문서 아카이브
-- [x] US-009: Phase A 통합 검증
+### 회귀 Phase S1~S6 (TF QF 발견 → 원본 Phase 보완)
 
-### Phase B-1: Foundation (GAP 9,10) — US-010~013 — ☑ ALL PASS
-
-- [x] US-010: okx/bitget futures 수수료 추가 (DEFAULT_FEES + WITHDRAWAL_FEES)
-- [x] US-011: Unknown exchange fallback (ValueError → 0.25% + logging)
-- [x] US-012: estimate_cost() Protocol 브릿지 (CostCalculator)
-- [x] US-013: 7개 전략 통합 테스트 (+47 tests, 3063 total)
-
-### Phase B-2: Futures Infrastructure (GAP 5,6) — US-014~018 ✅ ALL PASS
-
-- [x] US-014: BinanceFuturesCollector 검증 (17 unit tests)
-- [x] US-015: CollectorManager futures 등록 + Shadow 분리 검증 (13 unit tests)
-- [x] US-016: FundingRateCollector 구현 — 4 거래소 REST (23 unit tests)
-- [x] US-017: Engine.run()에 FundingRateCollector 연결 (shadow.py + main.py)
-- [x] US-018: Futures + FundingRate 통합 테스트 (19 integration tests)
-
-### Phase B-3: Signal Production (GAP 7,3,2) — US-019~022 ✅
-
-- [x] US-019: TriangularScanner (Bellman-Ford) — 18 unit tests
-- [x] US-020: RealDataSignalProducer (실 데이터 신호) — 10 unit tests
-- [x] US-021: Shadow mode에 RealDataSignalProducer 연결 — 384줄 인라인 삭제
-- [x] US-022: 4종 신호 타입 통합 테스트 — 17 integration tests
-
-### Phase B-4: Shadow Integration (GAP 1) — US-023~026 ✅ ALL PASS
-
-- [x] US-023: ShadowMode에 StrategyManager 주입 + route_signal() (16 tests)
-- [x] US-024: 전략별 메트릭 추적 (by_strategy + Prometheus + Telegram breakdown)
-- [x] US-025: main.py Shadow mode에 StrategyManager 전달 + start_strategy()
-- [x] US-026: Shadow 전략 통합 테스트 (10 integration tests)
-
-### Phase B-5: Multi-Leg Executor (GAP 4) — US-027~029 ✅ ALL PASS
-
-- [x] US-027: ExecutionResult N-leg 확장 (legs:list[LegResult] + compat properties)
-- [x] US-028: execute_multi_leg() + 역순 rollback + TradeRequestConsumer 라우팅
-- [x] US-029: 3-leg triangular 실행 테스트 (14 unit + 4 integration)
-
-### Phase C: Strategy Validation — US-030~036 ✅ ALL PASS
-
-- [x] US-030: cross_exchange 전략 객체 경유 Shadow 10min (132T, 100%WR, +$34.97)
-- [x] US-031: spot_futures (CONDITIONAL: 신호 생성 확인, 비용>basis로 정상 필터)
-- [x] US-032: futures_futures (CONDITIONAL: 선물 거래소 1개, 코드 검증 완료)
-- [x] US-033: funding_rate (PASS: 4거래소×8심볼 수집, 0 failures)
-- [x] US-034: triangular (CONDITIONAL: scanner 검증 완료, 실시장 cycle 미감지)
-- [x] US-035: statistical_arb (PASS: z-score 계산, 2 trades 실행)
-- [x] US-036: 전체 통합 (PASS: 7 전략 동시, PnL 분리, crash 0)
-
-### Phase D: Dashboard UX — US-037~041 — ☑ ALL PASS (코드 레벨, Chrome 검증은 D-verify)
-
-- [x] US-037: Trade History + Alerts 페이지
-- [x] US-038: Settings 페이지 + Logout 기능
-- [x] US-039: Strategy Analytics + Funding Rate 모니터
-- [x] US-040: Exchange Status 대시보드
-- [x] US-041: Mobile Responsive + 전략별 API endpoint
-
-### Phase D-verify: 브라우저 검증 — US-063~064 ☑ ALL PASS
-
-- [x] US-063: 대시보드 Chrome 브라우저 검증 — 핵심 4페이지 (Overview, Trades, Settings, Login)
-- [x] US-064: 대시보드 모바일 반응형 + Settings/Alerts 페이지 검증
-
-### Phase E-1: Production Monitoring — US-042~044 — ☑ ALL PASS
-
-- [x] US-042: Telegram 인프라 모니터링 daemon
-- [x] US-043: Grafana 대시보드 프리셋
-- [x] US-044: 자동 알림 규칙
-
-### Phase E-2: Auto-Tuning Pipeline — US-045~048 — ☑ ALL PASS
-
-- [x] US-045: Scheduled Offline Tuner (Docker)
-- [x] US-046: Shadow Runner 자동 적용 + TimescaleDB 데이터
-- [x] US-047: Adaptive Threshold + Regime Detector (28 tests, 4 MEDIUM fixes)
-- [x] US-048: 3-Layer 튜닝 통합 테스트 (17 integration tests)
-
-### Phase E-3: Production Readiness — US-049~053 — ☑ ALL PASS
-
-- [x] US-049: Capital Allocator (Kelly Criterion, Half-Kelly, 19 tests)
-- [x] US-050: Inventory Rebalancer + Balance Tracker (27 tests)
-- [x] US-051: Performance Attribution Engine (13 tests)
-- [x] US-052: TimescaleDB 자동 백업 + Position Recovery (12 tests)
-- [x] US-053: Dashboard Attribution 페이지
-
-### Phase SR: Shadow 현실성 강화 — US-058~062 ☑ ALL PASS
-
-- [x] US-058: PaperExecutor 부분체결(5%) + 주문거부(2%) 활성화 — 12 tests, 3484 total PASS
-- [x] US-059: Shadow 레그 간 실행 지연(50-300ms) 추가 — 8 tests, 3492 total PASS
-- [x] US-060: BookWalkSlippage — 오더북 깊이별 VWAP 체결 — 15 tests, 3507 total PASS
-- [x] US-061: VirtualBalanceTracker + 깊이 기반 주문 크기 제한 (15 tests, 3522 total PASS)
-- [x] US-062: 거래소별 Rate Limit 시뮬레이션 (11 tests, 3533 total PASS)
-
-### Phase G: 전략 수익성 복원 — US-066~068
-
-- [x] US-066: Stale Orderbook 감지 + 블랙리스트 + 손실 제한 — StaleOrderbookDetector 4계층 방어, 34 tests, 3609 total PASS
-- [x] US-067: 전략별 개별 1H Shadow 검증 — StrategyValidationOrchestrator 구현, STRATEGY_SIGNAL_ID_MAP 기반 격리, 18 tests, 3627 total PASS
-- [x] US-068: Shadow 기반 파라미터 재최적화 — Optuna 파이프라인 latency_arb 추가, TimescaleDB/activation 필터 연동, param_bridge 키 정규화, 13 tests, 3640 total PASS
-
-### Phase H: 대시보드/프론트 통합 완성 — US-065, US-069~072 ☑ ALL PASS
-
-- [x] US-065: Shadow→Dashboard 데이터 브리지 — ShadowMode.get_snapshot() + /api/v1/shadow/stats REST + ShadowPanel 컴포넌트 + WS feed shadow_stats 통합. 3,656 tests PASS
-- [x] US-069: Overview 종합 상황판 리디자인 — PortfolioSummary(4 KPI + 거래소 상태바) + RiskGauge(MDD 게이지) + PerformanceTrend(PnL 추세) + EventFeed(실시간 피드). 81 tests PASS
-- [x] US-070: Attribution/Funding/System 빈 페이지 완성 — 3개 페이지 실 컨텐츠 구현 (전략별 수익 분석, 펀딩레이트 추적, 인프라 상태). 81 tests PASS
-- [x] US-071: GlobalHeatmap + OrderbookView 실 데이터 연결 — REST polling fallback 구현, 거래소 선택 기능. 81 tests PASS
-- [x] US-072: 계좌 정보/총자산/거래소별 잔고 표시 — GET /api/v1/portfolio-summary + VirtualBalanceTracker 기반 거래소별 잔고 + PortfolioSummary.tsx 컴포넌트. 12 tests, 3,668 total PASS
-
-### Phase I: 거래소/전략 완성도 — US-073~076
-
-- [x] US-073: Bithumb REST 스냅샷 → 증분 orderbook 근본 해결 (누적 book, stale 5초 감지, parallel re-sync)
-- [x] US-074: Coinone WS 안정성 강화 (지터 백오프, watchdog 120초, app PING 25분, symbol stale 감지)
-- [x] US-075: futures_futures 전략 활성화 (OKX/Bybit futures 수집기, DEFAULT_EXCHANGES 8→10)
-- [x] US-076: 전략/거래소 완성도 전수 감사
-
-### Phase J-EXT: 보안+UX+엔진+인프라 강화 (6-관점 GAP 분석) — US-105~122
-
-> 6개 관점(UX, 퀀트, DevOps, PM, 보안, 경쟁분석) 통합 GAP 분석 결과.
-> 상세: `.claude/plans/modular-seeking-wreath.md`
-
-**Wave 1 — 보안 (간단, 먼저)**
-- [x] US-105: JWT 시크릿 기본값 제거 + bcrypt 비밀번호 해싱 (기본값 fallback 제거 → 미설정 시 서버 거부, 평문→bcrypt) ✅
-- [x] US-106: WebSocket 피드 JWT 인증 (WS 핸드셰이크 시 토큰 검증) ✅
-
-**Wave 2 — 대시보드 UX**
-- [x] US-107: 모드 전환 UI 연결 + 친화적 명칭 (ModeSwitch.tsx 신규, PATCH /api/v1/settings/mode, shadow→"시뮬레이션"/paper→"연습"/live→"실거래", Live 전환 시 LiveGate 확인 다이얼로그) ✅
-- [x] US-108: 포트폴리오 별도 탭 (portfolio/page.tsx + EquityCurve.tsx 신규, GET /portfolio/equity-curve + /portfolio/metrics, Sharpe/MDD/Calmar 리스크 메트릭스, 자산배분 바 차트) ✅
-- [x] US-109: 오버뷰 개선 (ROI%, 시스템 성능 위젯, "Shadow Monitor"→현재 모드명 동적 변경) ✅
-- [x] US-110: 히트맵 심볼 확장 (GlobalHeatmap.tsx Major 8/Top 20/All/Custom 드롭다운, All 시 엔진 전체 심볼 표시, Custom 드롭다운 로컬 저장) ✅
-- [x] US-111: 거래 설명 기능 ("왜 이 거래를?" — GET /trades/{id} + TradeDetail 사이드 패널, reason/spread_bps/fee_usd/net_pnl)
-- [x] US-112: 트레이드 필터링 + CSV 내보내기 (날짜/전략/거래소/심볼 필터 + RFC 4180 CSV 다운로드)
-- [x] US-113: 용어 친화화 + 툴팁 ("War Room"→"대시보드", "MIN_EDGE_BPS"→"최소 수익 기준" + info 아이콘) ✅
-
-**Wave 3 — 엔진 강화**
-- [x] US-114: 동적 포지션 사이징 (신뢰도(edge) × 레짐(RegimeDetector) × 유동성(DepthAnalyzer) 기반, CRISIS 25%, LOW vol 150%) ✅
-- [x] US-115: 슬리피지 피드백 루프 (실제 체결가 vs 예상가 비교 → EMA로 모델 파라미터 자동 조정) ✅
-- [x] US-116: TCA 모듈 + 실행 레이턴시 위젯 (TCAAnalyzer + PercentileTracker, GET /api/v1/tca/summary JWT, TCAWidget.tsx System 탭) ✅
-- [x] US-117: 텔레그램 양방향 명령어 (/status, /kill, /mode, /balance — 단일 봇으로 통합) ✅
-- [x] US-118: 전략 간 상관관계 모니터링 (30-trade 롤링 상관계수, >0.7 시 소규모 전략 50% 축소) ✅
-- [x] US-119: IOC 주문 타입 (IOC 리밋 우선 → 타임아웃 시 마켓 폴백) ✅
-- [x] US-120: 인벤토리 리밸런싱 통합 확인 (main.py wiring + _rebalancer_loop 4h 주기 + Telegram CRITICAL/WARNING 알람) ✅
-
-### Phase K: Regime Detection 기반 구축 — US-081~085
-
-- [x] US-081: ML 의존성 + HMM 3-regime 설계 (hmmlearn/sklearn [ml] dep, MarketRegime CALM/NORMAL/VOLATILE 확장, HMMRegimeDetector 클래스) ✅
-- [x] US-082: 레짐 피처 엔지니어링 (RegimeFeaturePipeline 10-feature: vol×3, spread×2, volume×2, momentum×2, order_flow×1 + normalize + fill_missing) ✅
-- [x] US-083: HMM 학습 파이프라인 (HMMTrainer: fetch→extract→fit→캐시, 주간 배치 스케줄러, predict <2ms) ✅
-- [x] US-084: 레짐→시그널 통합 (REGIME_MIN_EDGE: CALM:3bps, NORMAL:5bps, VOLATILE:8bps, CRISIS:15bps + SignalGenerator regime_detector 파라미터) ✅
-- [x] US-085: Walk-forward 레짐 검증 (RegimeWalkForwardAnalyzer: 레짐-성과 상관분석, regime-adaptive vs fixed PnL 비교, walk-forward PASS 검증) ✅
-
-### Phase L: DEX 실시간 + 가스비 통합 — US-086~090
-
-- [x] US-086: 실시간 가스비 오라클 (GasOracle: 6 chains, 30초 캐시, RPC→fallback, [dex] optional dep) ✅
-- [x] US-087: CostCalculator DEX 확장 (LP fee + gas + MEV 추정 + bridge cost) ✅
-- [x] US-088: Uniswap V3 실시간 가격/슬리피지 (slot0 → 가격, liquidity → VWAP) ✅
-- [x] US-089: CEX-DEX 스프레드 스캐너 (net spread 가스비 차감 후) ✅
-- [x] US-090: CEX-DEX Shadow 검증 ✅
-
-### Phase M: 로컬 ML 시그널 파이프라인 — US-091~096
-
-- [x] US-091: ML 피처 파이프라인 (orderbook/volatility/volume/regime/execution) ✅
-- [x] US-092: XGBoost 학습 루프 (주간 배치, optuna HPO) ✅
-- [x] US-093: ONNX 내보내기 + 버전관리 (onnxmltools, opset 관리) ✅
-- [x] US-094: ONNX Runtime 추론 통합 (<1ms 보장, SignalGenerator 연동) ✅
-- [x] US-095: ML 시그널 백테스트 (walk-forward A/B 비교) ✅
-- [x] US-096: Production Canary (Paper→Shadow ML 시그널 검증) ✅
-
-### Phase J-EXT Wave 4 — 인프라 (K/L/M 완료 후 실행) — US-121~122
-
-- [x] US-121: Loki + Promtail 로그 집계 (Grafana 연동, 크로스 컨테이너 검색) ✅
-- [x] US-122: WAL 백업 + PITR (RPO <1시간, 주간 복원 검증) ✅
-
-### 회귀 Phase S1~S6 (TF Semi-Final 발견 → 원본 Phase 보완)
-
-> **S1~S6은 새로운 Phase가 아닌, TF Semi-Final 검증에서 발견된 원본 Phase(A~M)의 미비점 회귀 수정.**
+> **S1~S6은 새로운 Phase가 아닌, TF Quarter-Final(QF) 검증에서 발견된 원본 Phase(A~M)의 미비점 회귀 수정.**
 > TF는 검사 프로세스이며, 실패 시 원본 Phase로 회귀하여 보완한다. S1~S6 완료 후 TF 재검증.
 > 상세 매핑 (원본 Phase↔회귀 US 역추적): `docs/checklists/tf-semi-final-consolidated_20260313.md`
 > 의존성: S1 → (S2 ∥ S3) → S4 → S5 → S6
@@ -658,7 +484,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-150: CLAUDE.md 현행화 — Tests 4,460, PRD 145/2, 다음작업 TF재검증 ✅
 - [x] US-151: SSOT.md 수식/체크 코드 동기화 — §4.3 이미 정합 확인, §4.2 ETH L2 비용 테이블 추가 ✅
 
-#### Phase S8: Pre-Live Hardening — US-157~168 ALL PASS (2026-03-15)
+#### Phase S7: Pre-Live Hardening — US-157~168 ALL PASS (2026-03-15)
 
 - [x] US-157: Config 아키텍처 분리 — engine/config/trading.json 생성, config.py 로더 ✅
 - [x] US-158: okx_futures + bybit_futures 활성 거래소 추가 — trading.json active_exchanges ✅
@@ -680,11 +506,41 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-### TF Semi-Final: 상용화 검증
+### TF Quarter-Final (QF): Development Verification — ✅ PASS
 
-> **진입 가드**: S1~S6 전부 완료 + pytest 0 fail + Docker 전 서비스 healthy + API 키 로테이션
-> **규칙**: 전 단계 ALL PASS 시에만 체크. 개별 단계 통과는 체크하지 않음.
-> **FAIL 시**: [단계 5] 회귀 수행 → 5-Stage(A~E) 사이클 → TF 재검증. 로그 누적.
+> **핵심 질문**: "코드가 올바르고, 빠진 것이 없는가?"
+> **진입 가드**: 회귀 Phase 전부 완료 + pytest 0 fail + Docker healthy
+> **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → QF 재검증
+> **PASS 기준**: CRITICAL 0, HIGH 0, MEDIUM ≤ 5 (자금 손실 경로 아님)
+
+**[단계 0] Smoke Test Gate**
+- [x] 전체 pytest PASS (4,471 passed, 0 failed)
+- [x] Docker 전 컨테이너 healthy (7/8, promtail 비핵심)
+- [x] 통합 Shadow 10min (crash=0, 전략 신호 흐름 정상, PnL 기록 확인)
+
+**[단계 1] 정합성 확인**
+- [x] Karina: SSOT.md + prd.json + CLAUDE.md 3-way 정합성 확인
+- [x] 누락 US/Phase 발견 시 새 Phase/US 생성
+
+**[단계 2] 체크리스트 수립 (The Blueprint)**
+- [x] Karina + 도메인 전문가 협의 → '완성 기준' 수립
+- [x] 분야별 확인 체크리스트 문서 생성
+- [x] Nayeon(TF 리더) 상용화 기준 부합 여부 최종 승인
+
+**[단계 3] 교차 검증 (The Deep Dive)**
+- [x] Jeongyeon(엔진): 초기화 체인, 전략 등록, 어댑터, RiskGuardian, KillSwitch, Shutdown, dead wiring
+- [x] Momo(인프라): Docker, DB 스키마, Redis 인증, Nginx, .env 동기화, 포트, 리소스 제한, 백업
+- [x] Dahyun(퀀트): 슬리피지 모델, 수수료 정합, 마찰력 공식, Sharpe, MDD 단위, 기본값 위험
+- [x] Sana(데이터): Shadow 완전성, PnL 기록, WS 흐름, KRW 환율, 피드 연결 상태
+- [x] Mina(UI/UX): 대시보드 4페이지 렌더링, 로그인, API 응답, 모바일 반응형, 콘솔 에러 0건
+- [x] Jisoo(보안): JWT 인증, API 키 노출, CSP 헤더, IP whitelist, Redis commands, .gitignore
+- [x] Karina 합동 점검: 실전적 질의응답
+
+**[단계 4] 최종 확인 + 회귀 (The Feedback Loop)**
+- [x] Karina → Nayeon 보고
+- [x] Chaeyoung/Tzuyu QA 감사단 압박 면접
+- [x] #1 FAIL → 회귀 Phase S1~S6 생성 → 3-Stage(A~C) 수정
+- [x] #2 재검증 → 조건부 PASS (CRITICAL 0, HIGH 0)
 
 #### 검증 이력
 
@@ -698,206 +554,129 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > 판정: **조건부 PASS** — 원본 59개 이슈 중 CRITICAL 9→0, HIGH 12→0 (91.5% 해소)
 > 회귀 수정: S1~S6 (33/35 US PASS, 2개 Phase F 대기)
 > 재검증 보고서: `docs/checklists/tf-semi-final-recheck_20260315.md`
-> **TF Final 진입 조건**:
->   1. 72H Shadow에서 auto-discovery 175 심볼 활성화
->   2. Rebalancer balance_feed 연결 (Phase F)
->   3. Daily Returns UI 완성 (Live 이후)
->   4. 호스트 crontab db-backup 문서화
 
-**[단계 0] Smoke Test Gate**
-- [ ] 전체 pytest PASS (0 failures)
-- [ ] Docker 전 컨테이너 healthy
-- [ ] 통합 Shadow 10min (crash=0, 전략 신호 흐름 정상, PnL 기록 확인)
-- [ ] 실패 시 TF 소집하지 않고 해당 Phase로 회귀
+### TF Semi-Final (SF): System Validation — 진행 중
 
-**[단계 1] 정합성 확인**
-- [ ] SSOT.md + prd.json + CLAUDE.md 3-way 정합성 PASS
-- [ ] 누락 US/Phase 없음 확인
-
-**[단계 2] 체크리스트 수립 (The Blueprint)**
-- [ ] Karina + 도메인 전문가 협의 → 완성 기준 수립
-- [ ] 분야별 확인 체크리스트 문서 생성
-- [ ] Nayeon(TF 리더) 상용화 기준 부합 승인
-
-**[단계 3] 교차 검증 (The Deep Dive)**
-- [ ] 전문가별 체크리스트 기반 자기 분야 검증 (병렬)
-- [ ] Karina 합동 점검: 실전적 질의응답
-
-**[단계 4] 최종 확인 + 회귀 판정 (The Feedback Loop)**
-- [ ] Karina → Nayeon 보고
-- [ ] Chaeyoung/Tzuyu QA 감사단 압박 면접
-- [ ] Nayeon(TF 리더) 최종 판정: PASS → Final 진출 / FAIL → [단계 5] 회귀 수행
-
-**[단계 5] 회귀 수행 (FAIL 시에만)**
-- [ ] 5-1. 미비점 분석 → 원본 Phase별 회귀 US 생성 (각 US에 `← 원본 Phase US-XXX 사유` 역추적 주석)
-- [ ] 5-2. 기존 Phase/US 의존성 분석 → 회귀 Phase 실행 순서 결정
-- [ ] 5-3. SSOT.md §7에 회귀 Phase/US 추가 (TF 섹션 위, 원본 Phase 다음 배치)
-- [ ] 5-4. SSOT.md §9 알려진 이슈 정리:
-  - 해결된 이슈 → RESOLVED 테이블로 이동 (취소선 방치 금지)
-  - 미해결 이슈 중 US로 반영할 것 → 회귀 Phase US에 포함
-  - 신규 발견 이슈 → 해당 심각도(CRITICAL/HIGH/MEDIUM/LOW)에 추가 + 회귀 US 생성
-- [ ] 5-5. prd.json에 신규 회귀 US 추가 (passes:false)
-- [ ] 5-6. 통합 추적 문서 생성/갱신: `docs/checklists/tf-semi-final-consolidated_YYYYMMDD.md`
-- [ ] 5-7. 회귀 Phase 개발 → 5-Stage(A~E) 사이클 → TF 재검증
-
-### TF Final: 라이브 전환 (Semi-Final 재검증 통과 후)
-
-> **진입 가드**: TF Semi-Final 전 단계 PASS. 미비점 0건.
-> **목표**: Progressive Shadow 72H 통과 → Master Inspection → Live Kick-Off.
+> **핵심 질문**: "72시간 동안 실제로 돈을 벌 수 있는가?"
+> **진입 가드**: TF QF PASS
+> **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → SF 재검증 (QF 스킵, 구조적 결함 시 QF부터)
+> **PASS 기준**: 72H 6-Stage ALL PASS + 전략별 WR>50% + E2E 10/10 + LiveGate 6-check
 
 #### 검증 이력
 
-> **[단계 1] PASS (2026-03-15)**
-> 판정: ALL PASS — CRITICAL 0, RISK 4 (Live 전환 시 주의), NOTE 3 → Phase S8 생성 (US-157~166)
+> **[단계 1-A] ALL PASS (2026-03-15)**
+> 판정: ALL PASS — CRITICAL 0, RISK 4 (Live 전환 시 주의), NOTE 3 → Phase S7 생성
 > 보고서: `docs/checklists/tf-final-stage1_20260315.md`
-> 전문가: Karina(ALL PASS), Jeongyeon(ALL PASS), Dahyun(ALL PASS), Momo(CONDITIONAL PASS), Chaeyoung(0 CRITICAL, 4 RISK), Tzuyu(APPROVE)
+> 전문가: Karina(ALL PASS), Jeongyeon(ALL PASS), Dahyun(ALL PASS), Momo(CONDITIONAL), Chaeyoung(0 CRITICAL, 4 RISK), Tzuyu(APPROVE)
+>
+> **[단계 2] Stage 1 PASS (8h28m)**
 > Progressive Shadow Stage 1: 8h28m, 502 trades, 91.8% WR, crash=0
-> **후속**: Phase S8 (Pre-Live Hardening) 삽입 후 [단계 2] 계속
+> **후속**: Phase S7 (Pre-Live Hardening) 완료 → 3-Round 체계 강화로 [단계 1-A]부터 재검증
 
-**[단계 1] 전체 시스템 체크리스트**
-- [x] Semi-Final 전문가 리스폰 + 전체 프로그램 응집도/결합도 점검
-- [x] 모든 기능이 main.py에서 동시 동작 확인 (8전략 + 10거래소 + 리스크 + 모니터링)
-- [x] 엔드투엔드 데이터 흐름: WS수신→신호생성→전략평가→실행→PnL기록→대시보드표시
+**[단계 1-A] 경량 재확인 (Delta Check)** ← 3-Round 체계 강화로 재검증 필요
+- [ ] QF 이후 변경분 CRITICAL/HIGH 신규 0건 (S7 + 3-Round 문서 변경분 포함)
+- [ ] 전체 프로그램 응집도/결합도 점검 (8전략+10거래소+리스크+모니터링)
+- [ ] 엔드투엔드 데이터 흐름 확인
+
+**[단계 1-B] 전략별 독립 검증 (Strategy Isolation)**
+- [ ] 각 활성 전략 단독 10분 Shadow (P&L, WR, Sharpe, MDD 개별)
+- [ ] 손실 전략 식별 → disabled_strategies 판단
+- [ ] 전략 간 상관관계 분석
 
 **[단계 2] Progressive Shadow (72H)**
-- [ ] Stage 1: 1H → 기본 동작 확인 (crash=0, 신호 흐름 정상)
-- [ ] Stage 2: 2H → 승률/PnL 추세 안정성 (WR>50%, PnL 양수)
-- [ ] Stage 3: 6H → 전략별 메트릭 분리 + 마찰력 정확도 검증
-- [ ] Stage 4: 12H → 메모리 누수/리소스 사용량 안정성
+- [ ] Stage 1:  1H → crash=0, 신호 흐름, 거래소 10/10
+- [ ] Stage 2:  2H → WR>60%, PnL>0, 전략별 분리 리포트
+- [ ] Stage 3:  6H → 각 전략 WR>50%, 마찰력 오차<20%
+- [ ] Stage 4: 12H → 메모리<100MB증가, CPU<80%, WS 재연결
 - [ ] Stage 5: 24H → Sharpe>2.0, MDD<5%, 일일 PnL 양수
-- [ ] Stage 6: 72H → LiveGate 6-check 전체 PASS → Live 전환 승인
+- [ ] Stage 6: 72H → LiveGate 6-check 전체 PASS
 
-**[단계 3] Master Inspection**
-- [ ] 전체 시스템의 '결' 맞춤 (UI 프레임, API 응답 일관성, 로그 포맷)
-- [ ] LiveGate 6-check 자동 평가 확인 (Sharpe≥2.5, MDD<5%, 신호≥100/day, KillSwitch/CB/Health)
-- [ ] Preflight 10항목 통과
+**[단계 3-A] E2E 사용자 시나리오 (UAT)**
+- [ ] 로그인 → JWT 쿠키 → 리다이렉트
+- [ ] Overview/Strategies/Portfolio/Settings 4페이지
+- [ ] 모바일 반응형 (375px, 768px)
+- [ ] WebSocket 실시간 갱신
+- [ ] Kill Switch → Telegram < 5초
+- [ ] API 전 엔드포인트 200 + 콘솔 에러 0건
 
-**[단계 4] Live Kick-Off**
+**[단계 3-B] Master Inspection**
+- [ ] 코드 품질 (TODO/FIXME, dead code, 하드코딩)
+- [ ] 로그 품질 + 설정 일관성
+
+**[단계 3-C] 알림 체계 종합 검증**
+- [ ] Telegram 거래/워크플로우 알림 수신
+- [ ] Kill Switch → 알림 → 거래 중단 < 5초
+- [ ] Alertmanager 규칙 → 라우팅 → 수신
+
+### TF Final (F): Operations Readiness — 미시작
+
+> **핵심 질문**: "문제가 생기면 대응할 수 있는가? 실제 돈을 안전하게 운용할 준비가 되었는가?"
+> **진입 가드**: TF SF 전 단계 PASS + 72H Shadow ALL PASS
+> **PASS 기준**: ORR 완비 + DR 6/6 PASS + Canary 7일 P&L>0
+
+**[단계 1] Operations Readiness Review (ORR)**
+- [ ] 일일 점검 체크리스트 작성
+- [ ] 장애 대응 절차 (IRP: P1/P2/P3)
+- [ ] 에스컬레이션 경로 + 당직 체계
+
+**[단계 2] Disaster Recovery (DR) 훈련**
+- [ ] DR-1: 엔진 crash → 재시작 → 포지션 복구
+- [ ] DR-2: DB 장애 → WAL/PITR 복구
+- [ ] DR-3: 거래소 API 장애 → CircuitBreaker
+- [ ] DR-4: Redis 장애 → 상태 복구
+- [ ] DR-5: 네트워크 단절 → WS 재연결
+- [ ] DR-6: 코드 롤백 → 안전 상태 복원
+
+**[단계 3] Sandbox 실거래 테스트**
+- [ ] Binance Testnet 주문 흐름 (생성→체결→취소)
+- [ ] 비 testnet 거래소 API 조회 검증
+
+**[단계 4] 자본/리스크 한도 확정**
+- [ ] trading.json 운영 파라미터 확정 (사장님 승인)
+- [ ] DynamicSizer 파라미터 검증
+
+**[단계 5] Canary Deployment (1% 자본, 7일)**
+- [ ] Alpha $70/exchange × 10 = $700, 7일 실거래
+- [ ] 일일 3-way 리콘실리에이션
+- [ ] 슬리피지/수수료 실측 비교
+
+**[단계 6] Live Kick-Off**
 - [ ] Nayeon(TF 리더) 최종 서명
+- [ ] Jisoo 보안 최종 점검
 - [ ] 사장님 승인
-- [ ] EXECUTION_MODE=live 전환
-- [ ] 소액 실 거래 1건 이상 성공 확인
-- [ ] Telegram 실시간 알림 수신 확인
+- [ ] Alpha → Beta 확대 또는 Full Live
 
 ---
 
-## 8. 결정 로그
-
-| 날짜 | 결정 | 근거 |
-|------|------|------|
-| Phase 4 | ccxt 미사용, 네이티브 어댑터 | ccxt 레이턴시 오버헤드, 커스텀 최적화 불가 |
-| Phase 8 | Testnet 단계 제거 | 거래소별 testnet 불안정, Shadow가 대체 |
-| 7.3b | max_spread_pct=5.0 게이트 | Bithumb 허위 스프레드 60%+ 방지 |
-| 7.3b | 배치 WS 구독 훅 추가 | Upbit/Bithumb 단일 구독 메시지 요구 |
-| 7.3d | KRW dual-source 실시간 환율 | 정적 1380 vs 실제 1477 괴리 해소 |
-| 7.3d | MIN_PRICE_USD=0.10 | 소액 코인 슬리피지 리스크 감소 |
-| 7.3h | MIN_EDGE_BPS=5 확정 | 40=없음, 30=거의없음, 5=모든 시간대 수익 |
-| 7.3j | PaperExecutor ZERO slippage | 이중 슬리피지 계산 방지 (CEXOrderbook이 유일 소스) |
-| 7.3k | transfer_coin 동적 할당 | network cost: BTC=$1.39, ETH=$0.06~$4.50 (거래소별, L2 Arbitrum 우선), XRP=$0.40 등 |
-| SR | Docker Shadow 필수화 | Shadow 테스트 중 Docker 미실행 발견. graceful degradation으로 거래 로직 유효하나 TimescaleDB/Redis 미저장. 향후 Shadow 실행 전 `docker compose up -d` 필수 |
-| SR | Phase D 브라우저 테스트 필수화 | US-037~041, US-053 대시보드 US가 `npm run build`만으로 passes:true 처리됨. 실제 Chrome 렌더링/API 연동/WebSocket 피드 검증 미완. Phase D 완료 기준에 Chrome 브라우저 테스트 추가 |
-| SR | Shadow 현실성 6개 GAP 식별 (SG-1~SG-6) | PaperExecutor가 데모급(100% fill, 0ms delay, 무한잔고). 상용급 전환 위해 부분체결/지연/깊이VWAP/가상잔고/Rate Limit 추가 필요 |
-| Phase G | 4계층 stale 방어 (cross-validation + periodic refresh + update_count gate + loss cap) | 1H Shadow -$1,937 fat-tail 방지, defense-in-depth |
-| Phase G | 단일 ShadowMode 인스턴스 재사용 + 동적 _disabled_strategies 전환 | WS 재연결 비용 절감 (7×30s 절약), VirtualBalanceTracker/RateLimiter/StaleDetector reset으로 전략 간 격리 보장 |
-| Phase G | latency_arb Optuna 튜닝 파이프라인 추가 | US-068: statistical_arb/cex_dex 제외, activation filter 결과 연동, TimescaleDB 데이터 기반 최적화 |
-| Phase G | param_bridge 키 정규화 (max_position_size_usdt) | strategy_params.json의 '최대_포지션_크기_usdt'를 'max_position_size_usdt'로 정규화하여 Optuna 반환값과 일치 |
-| Phase H US-065 | ShadowMode.get_snapshot() 공개 메서드 + EngineContext.shadow_mode 필드 | Shadow 메트릭을 REST/WS 양방향으로 대시보드에 노출. shadow_router 별도 마운트로 관심사 분리. ShadowPanel 조건부 렌더링으로 Shadow 모드 비활성 시 UI 숨김 |
-| Phase H US-069 | 4개 신규 컴포넌트 + Overview 페이지 리디자인 | PortfolioSummary(상태 배지 + 4 KPI), RiskGauge(SVG 게이지), PerformanceTrend(선 그래프), EventFeed(피드). grid 반응형 레이아웃 (1-col mobile, 2-col xl+). useEngineWs() + useApi() hook으로 실시간 데이터 연동 |
-| Phase H US-070 | Attribution/Funding/System 페이지 실 컨텐츠 구현 | 3개 빈 페이지를 함수형 컴포넌트로 변환. REST API 연동 (getAttributionData, getFundingMetrics, getSystemHealth). 테스트 통합 (81 total) |
-| Phase H US-071 | GlobalHeatmap + OrderbookView REST polling fallback | API 장애 시 mock 데이터로 fallback. 거래소 드롭다운 선택기 추가. 재시도 로직 (exponential backoff) |
-| Phase H US-072 | VirtualBalanceTracker 기반 포트폴리오 요약 API | /api/v1/portfolio-summary 신설. Shadow 모드에서 VirtualBalanceTracker 직접 조회, 비Shadow 시 exchange_status fallback. PortfolioSummary.tsx로 거래소별 잔고 breakdown + mode badge 표시 |
-| Phase I US-073 | Bithumb 누적 orderbook 방식 채택 | REST 스냅샷 후 증분 적용(full_snapshot→updates). 허위 스프레드 근본 해결. stale 5초 감지 + parallel re-sync로 데이터 신뢰성 확보 |
-| Phase I US-074 | 지터 백오프 공통화 + Coinone watchdog | 재연결 지터(jitter backoff) 패턴 공통화. Coinone watchdog 120초, app PING 25분으로 장시간 연결 안정성 확보. symbol stale 감지 추가 |
-| Phase I US-075 | OKX/Bybit futures -SWAP 접미사 + DEFAULT_EXCHANGES 8→10 | okx_futures/bybit_futures 수집기 신설. 심볼 형식: BTC-USDT-SWAP (OKX), BTCUSDT (Bybit). futures_futures 전략 활성화 조건(2+ 선물 거래소) 충족 |
-| Phase J-EXT US-106 | WS JWT: query param ?token= 우선 + cookie leviathan_token fallback | 브라우저 WebSocket API가 커스텀 헤더 미지원. 업계 표준(Socket.IO, Slack). accept()→close(4003) 패턴으로 미인증 연결 즉시 거부 |
-| Phase J-EXT US-107 | ModeSwitch: PATCH /api/v1/settings/mode + LiveGate 확인 다이얼로그 | Live 전환 시 6-check LiveGate 통과 여부 사전 확인. 한글 명칭(시뮬레이션/연습/실거래)으로 비개발자 친화적 UX 개선 |
-| Phase J-EXT US-108 | 포트폴리오 탭 신설: equity-curve + metrics 별도 API | Overview 과부하 방지. EquityCurve.tsx + 자산배분 바 차트로 수익성 가시화. Sharpe/MDD/Calmar 3종 리스크 지표 통합 |
-| Phase J-EXT US-110 | GlobalHeatmap 심볼 필터: Major 8/Top 20/All/Custom + 로컬 저장 | All 모드에서 엔진 전체 175심볼 렌더링. Custom 설정은 localStorage 저장으로 세션 유지 |
-| Phase J-EXT W3-B1 | Telegram fail-closed auth: 빈 allowed_chat_ids → 전부 차단 | TelegramCommandHandler 요청 시 미설정 상황 fail-closed 원칙 적용. 인가된 chat_ids 없으면 명령어 거부 |
-| Phase J-EXT W3-B1 | CorrelationMonitor → Guardian check() #9 통합 | 5개 모듈(DynamicSizer, SlippageFeedbackLoop, CorrelationMonitor, TelegramCommandHandler, AtomicOrderExecutor) main.py wiring 필수화. CorrelationMonitor 결과는 Guardian check #9로 로그만 기록, DynamicSizer가 실제 포지션 축소 담당 |
+## 8. 결정 로그 → [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md) (27개 결정, 전부 코드 반영 완료)
 
 ---
 
 ## 9. 알려진 이슈
 
-### CRITICAL — Architecture GAPs (10건)
+> RESOLVED 이슈는 [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md) §9로 이동 (취소선 처리)
 
-> 전체 플랜: `.claude/plans/jazzy-wishing-avalanche.md` Part 11 참조
-> 의존성 순서: GAP9→10→(5,6,7 병렬)→3→(1,2)→4
+### CRITICAL — Architecture GAPs (미해결 3건 / 전체 10건)
 
 | GAP | 설명 | 파일:라인 | 해결 Phase | 크기 |
 |-----|------|----------|-----------|------|
-| **1** | ~~Shadow가 Strategy 객체 우회 — StrategyManager.route_signal() 도입~~ | `shadow.py:878-909` | ~~B-4~~ **RESOLVED** | L |
-| **2** | ~~SignalGenerator가 cross_exchange 신호만 생산 — RealDataSignalProducer 도입~~ | `core/real_signal.py` | ~~B-3~~ **RESOLVED** | M |
 | **3** | MultiStrategySignalProducer Paper 모드에서만 동작 | `main.py:842-873` | B-3 | L |
-| **4** | ~~AtomicExecutor 2-Leg만 지원 — execute_multi_leg() N-leg 도입~~ | `executor.py:298-380` | ~~B-5~~ **RESOLVED** | L |
-| **5** | ~~Futures 데이터 파이프라인 부재~~ | `collectors/binance_futures_collector.py` | ~~B-2~~ **RESOLVED** | L |
-| **6** | ~~Funding Rate Collector 부재~~ | `collectors/funding_rate_collector.py` | ~~B-2~~ **RESOLVED** | M |
 | **7** | Triangular Scanner 부재 | `triangular.py:63-68` | B-3 | M |
 | **8** | DEX Adapter 완전 Stub | `cex_dex.py:30-68` | F (미래) | XL |
-| **9** | ~~Fee Model에 okx/bitget futures 누락 + ValueError~~ | `fee_model.py` | ~~B-1~~ **RESOLVED** | S |
-| **10** | ~~CostCalculator Protocol 불일치 (estimate_cost 없음)~~ | `cost_calculator.py` | ~~B-1~~ **RESOLVED** | M |
 
-### CRITICAL — Shadow Realism GAPs (6건, Phase SR)
-
-> 상세: `.claude/plans/jazzy-wishing-avalanche.md` Part 23 참조
-> PaperExecutor가 데모급 → 상용급 전환 필요
-
-| GAP | 설명 | 현재 상태 | 해결 US |
-|-----|------|----------|---------|
-| **SG-1** | ~~partial_fill_rate=0.0, rejection_rate=0.0~~ | partial_fill=0.05, rejection=0.02 활성 | ~~US-058~~ **RESOLVED** |
-| **SG-2** | ~~레그 간 0ms 동기 실행~~ | 50-300ms 랜덤 지연 활성 | ~~US-059~~ **RESOLVED** |
-| **SG-3** | ~~PowerLawSlippage(k=1.0) — 오더북 깊이 미반영~~ | BookWalkSlippage VWAP 활성 | ~~US-060~~ **RESOLVED** |
-| **SG-4** | ~~무한 가상 잔고, 소진 추적 없음~~ | VirtualBalanceTracker 활성 ($10M/exchange, 리밸런스 경고) | ~~US-061~~ **RESOLVED** |
-| **SG-5** | ~~trade_size=Decimal("1") 하드코딩~~ | compute_depth_trade_size (L1×0.10, [0.001,10]) | ~~US-061~~ **RESOLVED** |
-| **SG-6** | ~~Rate limit 시뮬레이션 없음~~ | ShadowRateLimiter 토큰 버킷 활성 (거래소별 order rate) | ~~US-062~~ **RESOLVED** |
-
-### HIGH
+### HIGH (4건)
 
 | 이슈 | 설명 | 완화책 |
 |------|------|--------|
 | **Phase D 대시보드 브라우저 미검증** | US-037~041, US-053 코드 레벨만 검증(`npm run build`). Chrome 렌더링, API 연동, WebSocket 실시간 피드, 모바일 반응형 미확인 | Phase D 재검증 US 추가 (Chrome 브라우저 테스트 필수) |
 | **Shadow 실행 시 Docker 미실행 위험** | Docker 없이 Shadow 실행 시 거래 로직은 유효하나 TimescaleDB/Redis 미저장 → 메트릭 유실 | Shadow 실행 전 `docker compose up -d` 필수 (leviathan.md에 명시) |
 | **AtomicOrderExecutor: place_ioc_limit() 미구현** | Native Adapter에서 IOC limit 주문 지원 부재 → 모든 거래소에서 US-119 IOC fallback(limit→market) 동작만 수행 | Phase K/L에서 거래소별 실제 API 연동 시 추가 (현재는 코드만 검증) |
-| ~~Bithumb 증분 Orderbook~~ | ~~스냅샷 없이 증분만 수신 → 허위 스프레드~~ | **RESOLVED (US-073)** |
-| ~~Shadow 손실 전략 미비활성화~~ | ~~`SHADOW_DISABLED_STRATEGIES` 메커니즘(US-066)은 구현됐으나 engine/.env에 미설정~~ | **RESOLVED (US-156)** |
 | 마찰 vs Gross Spread | 대부분 알트 spread 2-25bps, friction ~20bps | MIN_EDGE_BPS=5 + 고스프레드 심볼 집중 |
 
-### MEDIUM
-
-| 이슈 | 설명 | 상태 |
-|------|------|------|
-| ~~전략 6개 비활성~~ | ~~GAP 1-7로 cross_exchange만 Shadow 동작~~ | **RESOLVED (J-EXT)** |
-| ~~httpx 클라이언트 재생성~~ | ~~매 요청마다 httpx.AsyncClient 재생성 → 성능~~ | **RESOLVED (S8 US-168)** |
-| ~~InMemoryEventBus unbounded~~ | ~~asyncio.Queue 크기 제한 없음 (Paper/Shadow 한정)~~ | **RESOLVED (S8 US-160)** |
-| ~~KRW stale rate 경고만~~ | ~~120s stale 감지하지만 경고만, 거래 중단 로직 부재~~ | **RESOLVED (S8 US-161)** |
-| ~~Auto-discovery 저유동성~~ | ~~volume 필터 없음, min_price_usd=0.10만 존재~~ | **RESOLVED (S8 US-162)** |
-| ~~Shadow PnL 구조적 낙관 편향~~ | ~~partial_fill=0, rejection=0 기본값~~ | **RESOLVED (US-058/059)** |
-| ~~_reconcile_loop stub~~ | ~~main.py:1768-1776 로그만 출력, 실제 reconciliation 미구현~~ | **RESOLVED (S8 US-159)** |
-| ~~.env 민감/비민감 혼재~~ | ~~60+항목 .env에 혼재, 상용급 config 분리 필요~~ | **RESOLVED (S8 US-157)** |
-| ~~Dashboard 로그인 불가~~ | ~~웹 UIUX 로그인 실패~~ | **RESOLVED (S8 US-163)** |
-| ~~okx_futures/bybit_futures 누락~~ | ~~TRADING_ACTIVE_EXCHANGES에 선물 2개 거래소 미포함~~ | **RESOLVED (S8 US-158)** |
-
-### LOW
+### LOW (3건)
 
 | 이슈 | 설명 | 상태 |
 |------|------|------|
 | Coinone Rate Limit | 30min PING keepalive 유지 실패 가능 | 자동 재연결 구현됨 |
 | 빈 Orderbook 경고 | 타이밍 레이스 (collector 전 신호 평가) | crash 없음, 신호 무시 |
-| cex_dex 미구현 | _build_dex_adapter() 항상 None | TF (GAP 8) |
-
-### RESOLVED
-
-| 이슈 | 해결 |
-|------|------|
-| GAP 5: Futures 데이터 파이프라인 | BinanceFuturesCollector 검증 + Shadow futures_books 분리 (Phase B-2) |
-| GAP 6: Funding Rate Collector | 4 거래소 REST collector + Engine wiring (Phase B-2) |
-| MIN_EDGE_BPS 최적화 | 5bps 확정 (Phase 7.3h) |
-| _krw_rate=0 ZeroDivisionError | fallback 1380 가드 추가 (Phase 7.3f) |
-| KRW/USDT 정적 환율 | dual-source 동적 조회 구현 (Phase 7.3d) |
-| 이중 슬리피지 | PaperExecutor ZERO slippage 적용 (Phase 7.3j) |
-| PowerLawSlippage k/gamma 무시 | 실제 공식 적용 완료 (Phase 3.5) |
-| Stale Orderbook fat-tail loss | StaleOrderbookDetector 4계층 방어 + loss cap $50 (Phase G US-066) |
-| Bithumb 증분 Orderbook | 누적 orderbook + REST re-sync + stale 5초 감지 (Phase I US-073) |
-| Shadow 손실 전략 미비활성화 | SHADOW_DISABLED_STRATEGIES .env 설정 — stat_arb/spot_futures/latency_arb 비활성 (Phase S5 US-156) |
-| 전략 6개 비활성 | Phase J-EXT Wave 1~4에서 전략 연결 완료 |
+| cex_dex 미구현 | _build_dex_adapter() 항상 None | TF Final (GAP 8) |
