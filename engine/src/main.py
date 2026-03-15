@@ -256,6 +256,12 @@ class Engine:
     # ------------------------------------------------------------------
 
     async def _init_config(self) -> None:
+        # Convert TRADING_SYMBOLS=auto to valid JSON before pydantic-settings parsing.
+        # pydantic-settings tries json.loads() on list[str] fields; "auto" is not valid JSON.
+        raw_symbols = os.environ.get("TRADING_SYMBOLS", "").strip()
+        if raw_symbols.lower() == "auto":
+            os.environ["TRADING_SYMBOLS"] = '["auto"]'
+
         try:
             self._settings = get_settings()
             self.context.environment = self._settings.engine_env
@@ -269,6 +275,41 @@ class Engine:
             self._settings = Settings()
             self.context.environment = "dev"
             self.context.execution_mode = "paper"
+
+        # Auto-discover trading symbols from exchange APIs
+        await self._resolve_symbols()
+
+    async def _resolve_symbols(self) -> None:
+        """Resolve 'auto' symbols to actual trading pairs via exchange API discovery.
+
+        When TRADING_SYMBOLS=auto, queries Binance/Upbit/Bithumb APIs to find
+        symbols common to >= min_exchanges. New listings are picked up on restart;
+        delistings are excluded automatically.
+        """
+        if not self._settings or self._settings.trading.symbols != ["auto"]:
+            return
+
+        from src.collectors.symbol_discovery import discover_common_symbols
+
+        min_ex = self._settings.trading.symbol_min_exchanges
+        try:
+            symbols = await discover_common_symbols(min_exchanges=min_ex)
+            if symbols:
+                self._settings.trading.symbols = symbols
+                logger.info(
+                    "Auto-discovered %d trading symbols (min_exchanges=%d)",
+                    len(symbols), min_ex,
+                )
+            else:
+                self._settings.trading.symbols = ["BTC/USDT", "ETH/USDT", "XRP/USDT"]
+                logger.warning(
+                    "Symbol auto-discovery returned empty — using fallback 3 symbols"
+                )
+        except Exception as exc:
+            self._settings.trading.symbols = ["BTC/USDT", "ETH/USDT", "XRP/USDT"]
+            logger.warning(
+                "Symbol auto-discovery failed (using fallback): %s", exc
+            )
 
     # ------------------------------------------------------------------
     # Step 2: Infrastructure (EventBus)

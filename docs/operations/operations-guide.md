@@ -516,6 +516,70 @@ Docker Compose의 `db-backup` 서비스가 매일 자동 백업 실행 (7일 보
 docker run --rm -v leviathan_db_backups:/backups alpine ls -lh /backups/
 ```
 
+### 7.4 호스트 Crontab 설정 (WAL 백업 + PITR)
+
+> **목적**: Docker 내부 백업 외에, 호스트 레벨에서 WAL 아카이빙 + 풀 백업을 실행하여 RPO < 1시간 보장.
+> **스크립트**: `infra/backup/wal-backup.sh`
+
+#### 설치 절차
+
+```bash
+# 1. 스크립트 실행 권한 부여
+chmod +x /path/to/arbitrage_OMC/infra/backup/wal-backup.sh
+
+# 2. 백업 디렉토리 생성
+mkdir -p /backups/full /backups/wal_archive /backups/restore_test
+
+# 3. crontab 편집
+crontab -e
+```
+
+#### 권장 Crontab 항목
+
+```cron
+# === LEVIATHAN DB Backup ===
+
+# 매일 03:00 UTC — 풀 백업 (pg_dump + WAL 정리, 7일 보관)
+0 3 * * * /path/to/arbitrage_OMC/infra/backup/wal-backup.sh backup >> /var/log/leviathan-backup.log 2>&1
+
+# 매주 일요일 06:00 UTC — 복원 검증 (백업 무결성 확인)
+0 6 * * 0 /path/to/arbitrage_OMC/infra/backup/wal-backup.sh verify >> /var/log/leviathan-backup.log 2>&1
+```
+
+#### 환경 변수 (선택)
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `BACKUP_DIR` | `/backups` | 백업 저장 경로 |
+| `RETENTION_DAYS` | `7` | 풀 백업 보관 기간 (일) |
+| `PGHOST` | `timescaledb` | DB 호스트 (Docker: `timescaledb`, 로컬: `localhost`) |
+| `PGPORT` | `5432` | DB 포트 |
+| `PGUSER` | `leviathan` | DB 사용자 |
+| `PGDATABASE` | `leviathan` | DB 이름 |
+
+#### 검증 명령
+
+```bash
+# 마지막 백업 시점 확인
+cat /backups/last_full_backup.txt
+
+# WAL 아카이브 상태 (최근 1시간 내 파일 존재해야 RPO 충족)
+find /backups/wal_archive -name "0*" -mmin -60 | wc -l
+
+# 수동 복원 테스트 (별도 테스트 DB에 복원 후 삭제)
+/path/to/arbitrage_OMC/infra/backup/wal-backup.sh restore-test
+
+# 백업 로그 확인
+tail -50 /var/log/leviathan-backup.log
+```
+
+#### 주의사항
+
+- `PGHOST`는 호스트에서 실행 시 `localhost`, Docker 내부에서 실행 시 `timescaledb`
+- Docker 볼륨 내 데이터를 호스트에서 백업하려면 `docker compose exec timescaledb` 경유 필요
+- 프로덕션 환경에서는 외부 스토리지(S3, GCS)로 백업 복제 권장
+- `RETENTION_DAYS` 변경 시 디스크 용량 확인 (풀 백업 ~50MB/일 예상)
+
 ---
 
 ## 관련 문서

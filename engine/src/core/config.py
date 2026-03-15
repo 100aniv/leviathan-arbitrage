@@ -131,8 +131,12 @@ class TradingSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="TRADING_")
 
     symbols: list[str] = Field(
-        default=["BTC/USDT"],
-        description="Trading pairs to monitor/trade",
+        default=["auto"],
+        description="Trading pairs. ['auto'] = dynamic discovery at startup via exchange APIs.",
+    )
+    symbol_min_exchanges: int = Field(
+        default=3,
+        description="Min exchanges a symbol must be listed on for auto-discovery (3=~175, 2=~300+)",
     )
     active_exchanges: list[str] = Field(
         default=["binance", "bybit", "okx", "bitget"],

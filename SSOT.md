@@ -27,17 +27,18 @@
 ## 2. 현재 상태
 
 ```
-Phase:        S6 Documentation Sync ← COMPLETE  [S1 ✅ → S2 ✅ → S3 ✅ → S4 ✅ → S5 ✅ → S6 ✅ COMPLETE → TF 재검증]
-테스트:       4,460 passed, 0 failed, 6 skipped
+Phase:        TF Semi-Final 재검증 ← 조건부 PASS  [S1 ✅ → S2 ✅ → S3 ✅ → S4 ✅ → S5 ✅ → S6 ✅ → TF 재검증 ✅]
+테스트:       4,474 passed, 0 failed, 6 skipped
 커버리지:     87%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    67ffc98
-다음 작업:    TF Semi-Final 재검증 → TF Final → Live
+최신 커밋:    42faa81
+다음 작업:    TF Final → Live
 완료된 US:    145/147 (기존 142 + Phase S6 3/3 PASS)
-TF Semi-Final: FAIL → S1~S6 회귀 수정 완료 (S1 ✅, S2 ✅, S3 ✅, S4 ✅, S5 ✅, S6 ✅)
-               보고서: docs/checklists/tf-semi-final_20260313.md
-인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ ALL HEALTHY
+TF Semi-Final: FAIL(2026-03-13) → S1~S6 회귀 완료 → 재검증 조건부 PASS(2026-03-15)
+               원본 보고서: docs/checklists/tf-semi-final_20260313.md
+               재검증 보고서: docs/checklists/tf-semi-final-recheck_20260315.md (91.5% 이슈 해소)
+인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ 7/8 HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
 
@@ -647,7 +648,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - **Auto-Tuner**: TimescaleDB async loader 동작, ScheduledTuner 매주 실행 확인
 - **Attribution**: 과거 거래 이력 TimescaleDB 조회 가능, materialized views 생성 완료
 - **손실 전략 비활성화**: SHADOW_DISABLED_STRATEGIES 설정으로 stat_arb/spot_futures/latency_arb 비활성, Shadow PnL 양수 전환
-- **pytest**: 4,460 passed, 0 failed, 6 skipped | tsc: 0 errors
+- **pytest**: 4,474 passed, 0 failed, 6 skipped | tsc: 0 errors
 
 #### Phase S6: Documentation Sync — US-149~151 ✅ ALL PASS (← A 보완, 최후 실행)
 
@@ -670,6 +671,16 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > 프로세스 상세: `docs/checklists/tf-semi-final-consolidated_20260313.md`
 > 교차검증 보고서: `docs/checklists/tf-semi-final_20260313.md`
 > TF 리더 판정문: `docs/checklists/tf-semi-final-verdict_20260313.md`
+
+> **#2 조건부 PASS (2026-03-15) ← CURRENT**
+> 판정: **조건부 PASS** — 원본 59개 이슈 중 CRITICAL 9→0, HIGH 12→0 (91.5% 해소)
+> 회귀 수정: S1~S6 (33/35 US PASS, 2개 Phase F 대기)
+> 재검증 보고서: `docs/checklists/tf-semi-final-recheck_20260315.md`
+> **TF Final 진입 조건**:
+>   1. 72H Shadow에서 auto-discovery 175 심볼 활성화
+>   2. Rebalancer balance_feed 연결 (Phase F)
+>   3. Daily Returns UI 완성 (Live 이후)
+>   4. 호스트 crontab db-backup 문서화
 
 **[단계 0] Smoke Test Gate**
 - [ ] 전체 pytest PASS (0 failures)
