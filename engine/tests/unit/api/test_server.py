@@ -32,16 +32,12 @@ class TestHealthRoute:
         data = client.get("/health").json()
         assert data["status"] == "ok"
 
-    def test_health_includes_engine_running(self, client, context):
-        context.running = False
+    def test_health_no_internal_state_exposed(self, client):
+        """TF-QF MEDIUM-1: /health must not leak engine_running or kill_switch_active."""
         data = client.get("/health").json()
-        assert "engine_running" in data
-        assert data["engine_running"] is False
-
-    def test_health_running_true(self, client, context):
-        context.running = True
-        data = client.get("/health").json()
-        assert data["engine_running"] is True
+        assert "engine_running" not in data
+        assert "kill_switch_active" not in data
+        assert data == {"status": "ok"}
 
 
 class TestStatusRoute:

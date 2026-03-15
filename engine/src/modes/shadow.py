@@ -498,6 +498,17 @@ class ShadowMode:
         # Futures exchanges for identification
         self._futures_exchanges: set[str] = {"binance_futures", "okx_futures", "bybit_futures"}
 
+        # US-066: Stale orderbook defense — cross-validation + blacklist
+        from src.core.stale_detector import StaleOrderbookDetector
+        self._stale_detector = StaleOrderbookDetector(
+            deviation_pct=float(os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10")),
+            blacklist_ttl_s=float(os.getenv("STALE_BLACKLIST_TTL_S", "300")),
+        )
+
+        # US-182: LatencyTracker for latency arb signal evaluation
+        from src.core.latency_tracker import LatencyTracker
+        self._latency_tracker = LatencyTracker()
+
         # RealDataSignalProducer: replaces inline _evaluate_* methods
         self._real_signal_producer: RealDataSignalProducer | None = None
         if self._multi_signal_producer is not None:
@@ -505,14 +516,9 @@ class ShadowMode:
                 multi_signal_producer=self._multi_signal_producer,
                 triangular_scanner=TriangularScanner(),
                 futures_exchanges=self._futures_exchanges,
+                latency_tracker=self._latency_tracker,
+                stale_detector=self._stale_detector,
             )
-
-        # US-066: Stale orderbook defense — cross-validation + blacklist
-        from src.core.stale_detector import StaleOrderbookDetector
-        self._stale_detector = StaleOrderbookDetector(
-            deviation_pct=float(os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10")),
-            blacklist_ttl_s=float(os.getenv("STALE_BLACKLIST_TTL_S", "300")),
-        )
 
         # US-066/US-156: Strategy blacklist — comma-separated strategy IDs to disable
         _disabled_raw = os.environ.get("SHADOW_DISABLED_STRATEGIES", "")

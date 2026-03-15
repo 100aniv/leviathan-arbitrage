@@ -117,10 +117,10 @@ class StrategyValidationOrchestrator:
                     "PROFITABLE %s: PnL=$%+.4f WR=%.1f%% trades=%d",
                     strategy_id, result.pnl, result.win_rate * 100, result.trades,
                 )
-            elif result.reason.startswith("insufficient"):
+            elif result.reason.startswith("unverified/insufficient"):
                 self._report.insufficient_data.append(strategy_id)
                 logger.warning(
-                    "INSUFFICIENT_DATA %s: %d trades < %d min",
+                    "UNVERIFIED %s: %d trades < %d min",
                     strategy_id, result.trades, self._min_trades,
                 )
             else:
@@ -199,9 +199,10 @@ class StrategyValidationOrchestrator:
         losses = stats.get("losses", 0)
 
         # Classify
+        # US-185: insufficient_data classified as unverified (not disabled, may activate on next run)
         if trades < self._min_trades:
             profitable = False
-            reason = f"insufficient_data ({trades} trades < {self._min_trades} min)"
+            reason = f"unverified/insufficient_data ({trades} trades < {self._min_trades} min)"
         elif pnl > 0:
             profitable = True
             reason = f"profitable (PnL=${pnl:+.4f}, WR={win_rate:.1%})"
@@ -268,7 +269,15 @@ class StrategyValidationOrchestrator:
 
         results_dict = {}
         for sid, result in self._report.strategies.items():
+            # US-185: status field (enabled/disabled/unverified)
+            if result.profitable:
+                status = "enabled"
+            elif result.reason.startswith("unverified/insufficient"):
+                status = "unverified"
+            else:
+                status = "disabled"
             results_dict[sid] = {
+                "status": status,
                 "profitable": result.profitable,
                 "trades": result.trades,
                 "pnl": result.pnl,
@@ -277,6 +286,7 @@ class StrategyValidationOrchestrator:
                 "elapsed_s": result.elapsed_s,
             }
 
+        # US-185: unverified strategies are NOT disabled — they may activate on next run
         config = {
             "_meta": {
                 "source": "US-067 StrategyValidationOrchestrator",
@@ -285,8 +295,9 @@ class StrategyValidationOrchestrator:
                 "min_trades_threshold": self._report.min_trades_threshold,
             },
             "active_strategies": self._report.profitable,
-            "disabled_strategies": self._report.unprofitable + self._report.insufficient_data,
-            "shadow_disabled_env": ",".join(self._report.unprofitable + self._report.insufficient_data),
+            "unverified_strategies": self._report.insufficient_data,
+            "disabled_strategies": self._report.unprofitable,
+            "shadow_disabled_env": ",".join(self._report.unprofitable),
             "results": results_dict,
             "combined_validation": self._report.combined_result,
         }

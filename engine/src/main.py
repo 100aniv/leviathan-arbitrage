@@ -1040,11 +1040,21 @@ class Engine:
                 check_interval_s=float(os.getenv("REBALANCER_CHECK_INTERVAL_S", "14400")),
                 min_transfer_usd=float(os.getenv("REBALANCER_MIN_TRANSFER_USD", "50")),
             )
-            logger.info(
-                "InventoryRebalancer initialized (threshold=%.0f%%, interval=%.0fh, balance_feed=NOT_CONNECTED)",
-                self._rebalancer.deviation_threshold * 100,
-                self._rebalancer.check_interval_s / 3600,
-            )
+            # Connect exchange balance feeds (US-QF: balance_feed NOT_CONNECTED 해소)
+            if self._exchanges:
+                await self._rebalancer.connect_exchange_feeds(self._exchanges)
+                logger.info(
+                    "InventoryRebalancer initialized (threshold=%.0f%%, interval=%.0fh, balance_feed=CONNECTED, exchanges=%d)",
+                    self._rebalancer.deviation_threshold * 100,
+                    self._rebalancer.check_interval_s / 3600,
+                    len(self._exchanges),
+                )
+            else:
+                logger.info(
+                    "InventoryRebalancer initialized (threshold=%.0f%%, interval=%.0fh, balance_feed=NOT_CONNECTED)",
+                    self._rebalancer.deviation_threshold * 100,
+                    self._rebalancer.check_interval_s / 3600,
+                )
         except Exception as exc:
             logger.warning("InventoryRebalancer init failed (non-fatal): %s", exc)
 

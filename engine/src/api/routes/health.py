@@ -9,10 +9,9 @@ router = APIRouter()
 
 @router.get("/health")
 async def health(request: Request) -> JSONResponse:
-    """Liveness probe — returns 200 when the process is alive."""
-    ctx = request.app.state.engine_context
-    return JSONResponse({
-        "status": "ok",
-        "engine_running": ctx.running,
-        "kill_switch_active": ctx.kill_switch_active,
-    })
+    """Liveness probe — returns 200 when the process is alive.
+
+    Security: internal state (engine_running, kill_switch_active) removed
+    to prevent reconnaissance via unauthenticated endpoint (TF-QF MEDIUM-1).
+    """
+    return JSONResponse({"status": "ok"})

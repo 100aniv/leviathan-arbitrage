@@ -3003,6 +3003,126 @@
       ],
       "dependencies": [],
       "source": "Phase S8 심층 조사: Redis 버전은 maxsize=10000이나 InMemory 무제한"
+    },
+    {
+      "id": "US-181",
+      "title": "RealDataSignalProducer에 statistical_arb evaluator 구현",
+      "phase": "S9",
+      "priority": 1,
+      "passes": false,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/strategies/statistical_arb.py"
+      ],
+      "acceptanceCriteria": [
+        "RealDataSignalProducer._evaluate_statistical_arb() 메서드 존재",
+        "on_orderbook_update()에서 _evaluate_statistical_arb() 호출",
+        "Shadow 10min 실행 시 statistical_arb_zscore 시그널 1건 이상 생산",
+        "단위 테스트 5건 이상 추가"
+      ],
+      "dependencies": [],
+      "source": "← statistical_arb_v1 시그널 생산 파이프라인 미구현 (TF QF CRITICAL-2)"
+    },
+    {
+      "id": "US-182",
+      "title": "RealDataSignalProducer에 latency_arb evaluator 구현",
+      "phase": "S9",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/strategies/latency_arb.py",
+        "engine/src/core/latency_tracker.py"
+      ],
+      "acceptanceCriteria": [
+        "RealDataSignalProducer._evaluate_latency_arb() 메서드 존재",
+        "on_orderbook_update()에서 _evaluate_latency_arb() 호출",
+        "LatencyTracker EMA 차이 > threshold 시 시그널 생산",
+        "StaleOrderbookDetector 교차검증 적용으로 Korean stale data 방어",
+        "단위 테스트 5건 이상 추가"
+      ],
+      "dependencies": [],
+      "source": "← latency_arb_v1 시그널 생산 파이프라인 미구현 (TF QF CRITICAL-2)"
+    },
+    {
+      "id": "US-183",
+      "title": "spot_futures 전략: 동일 거래소(non-Korean) 경로 활성화",
+      "phase": "S9",
+      "priority": 3,
+      "passes": false,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/strategies/spot_futures.py",
+        "engine/config/trading.json"
+      ],
+      "acceptanceCriteria": [
+        "Binance spot vs Binance Futures 간 basis 시그널 생산 확인",
+        "Korean exchanges는 spot-futures에서 계속 제외",
+        "trading.json disabled_strategies에서 spot_futures_v1 제거",
+        "Shadow 10min: spot_futures_basis 시그널 1건 이상, PnL >= 0",
+        "단위 테스트 3건 이상 추가"
+      ],
+      "dependencies": [],
+      "source": "← spot_futures_v1 Korean stale data로 전면 비활성화 (TF QF CRITICAL-1)"
+    },
+    {
+      "id": "US-184",
+      "title": "futures_futures 전략: stale spread 방어 + 재활성화",
+      "phase": "S9",
+      "priority": 4,
+      "passes": false,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/strategies/futures_futures.py",
+        "engine/src/core/stale_detector.py"
+      ],
+      "acceptanceCriteria": [
+        "futures_futures evaluator에 StaleOrderbookDetector 교차검증 적용",
+        "spread < min_spread_bps 필터 + 이상치(>500bps) 자동 거부",
+        "SHADOW_DISABLED_STRATEGIES에서 futures_futures_v1 제거",
+        "Shadow 10min: futures_futures 순손실 없음",
+        "단위 테스트 5건 이상 추가"
+      ],
+      "dependencies": [],
+      "source": "← futures_futures_v1 stale spread 손실로 비활성화 (TF QF 중 발견)"
+    },
+    {
+      "id": "US-185",
+      "title": "StrategyValidationOrchestrator 검증 duration 현실화",
+      "phase": "S9",
+      "priority": 5,
+      "passes": false,
+      "files": [
+        "engine/src/modes/strategy_validation.py",
+        "engine/config/strategy_activation.json"
+      ],
+      "acceptanceCriteria": [
+        "STRATEGY_VALIDATION_DURATION_S 기본값 60초 이상",
+        "insufficient_data 결과 시 disabled가 아닌 unverified로 분류",
+        "unverified 전략은 ScheduledTuner에서 비활성화하지 않음",
+        "단위 테스트 3건 이상 추가"
+      ],
+      "dependencies": [],
+      "source": "← strategy_activation.json 7/7 disabled (TF QF CRITICAL-3, 5초 검증 부족)"
+    },
+    {
+      "id": "US-186",
+      "title": "8개 전략 전체 Shadow 30min 통합 검증",
+      "phase": "S9",
+      "priority": 6,
+      "passes": false,
+      "files": [
+        "engine/.env"
+      ],
+      "acceptanceCriteria": [
+        "SHADOW_DISABLED_STRATEGIES='' 빈값으로 전략 비활성화 없음",
+        "8개 전략 모두 시그널 1건 이상 생산",
+        "전략별 PnL 기록: 7/8 이상 PnL >= 0",
+        "총합 PnL > 0",
+        "crash=0, 30분 완주"
+      ],
+      "dependencies": ["US-181", "US-182", "US-183", "US-184", "US-185"],
+      "source": "← 사장님 지적: 전체 8개 전략 활성화 + 검증 필수"
     }
   ]
 }

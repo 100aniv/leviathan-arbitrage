@@ -4,11 +4,7 @@
     "upbit", "bithumb", "coinone",
     "binance_futures", "okx_futures", "bybit_futures"
   ],
-  "disabled_strategies": [
-    "statistical_arb_v1",
-    "spot_futures_v1",
-    "latency_arb_v1"
-  ],
+  "disabled_strategies": [],
   "risk": {
     "max_position_usd": 1000,
     "max_daily_loss_usd": 500,
