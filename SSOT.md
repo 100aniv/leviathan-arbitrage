@@ -35,16 +35,22 @@ Phase:        Phase S9 Strategy Activation ✅ 완료 (2026-03-16)
 최신 커밋:    63f31fc
 다음 작업:    TF QF 재재실행 → TF SF → TF Final → Live
 완료된 US:    175/177 (Phase S9 6/6 완료, prd.json 175 pass / 2 fail)
-TF QF:        재실행 FAIL(2026-03-16) → Phase S9 회귀 → **재재실행 예정**
-              FAIL 사유: 8개 전략 중 4개 비활성화 (CRITICAL-1~3)
-              Phase S9에서 4개 전략 evaluator 구현 + 활성화 완료
-              Shadow: 7/7 전략 등록, 10/10 거래소, crash=0
-TF SF:        ** Phase S9 완료 ✅ + QF 재재실행 PASS 후 [단계 1-A]부터 시작**
+TF QF:        ✅ PASS (2026-03-16) — CRITICAL 0, HIGH 0
+              1차(2026-03-13): FAIL → 회귀 S1~S7
+              2차(2026-03-15): 조건부 PASS → S8 후 재실행
+              3차(2026-03-16): FAIL — 8/8 전략 중 4개 비활성화 → Phase S9 회귀
+              4차(2026-03-16): **PASS** — S9에서 4개 전략 evaluator 구현 완료
+              7/7 전략 등록, 6/7 시그널 생산, 10/10 거래소, crash=0
+TF SF:        ** TF QF PASS → [단계 1-A]부터 시작**
 Phase S7:     ALL PASS (2026-03-15) — US-157~168 12개 US 전부 완료
               Shadow 10min: 2,230 trades, 93.3% WR, +$0.464, DD=$0.222, crash=0
 Phase S8:     완료 (2026-03-15) — US-169~180 12개 US, CRITICAL 2 + HIGH 3 수정
               Shadow 35min: PnL +$1.85, WR 92.2%, crash=0
               미연결 기능 12개 main.py 초기화 체인 연결 완료
+Phase S9:     완료 (2026-03-16) — US-181~186 6개 US, 8개 전략 전체 활성화
+              TF QF FAIL 회귀: 4개 전략 evaluator 미구현 → 구현 완료
+              TRADING_ACTIVE_EXCHANGES 8→10개, InventoryRebalancer CONNECTED
+              /health 보안 수정, strategy_validation unverified 분류 개선
 인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ 7/8 HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
@@ -535,6 +541,30 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] TRADING_ACTIVE_EXCHANGES .env 동기화 (okx_futures, bybit_futures 추가)
 - [x] strategy_activation.json Paper/Live에서도 적용
 - [x] _reconcile_loop 거래소 API 잔고 대조 구현
+
+#### Phase S9: Strategy Activation — US-181~186 ✅ ALL PASS (2026-03-16)
+
+> **완료**: TF QF 3차 FAIL(8/8 전략 중 4개 비활성화) 회귀. 4개 전략 evaluator 구현 + 전체 활성화.
+> Shadow 10min: 7/7 전략 등록, 6/7 시그널 생산, 10/10 거래소, crash=0 | 4,588 tests passed
+
+**CRITICAL (4건 — TF QF FAIL 사유)**
+- [x] US-181 (S9-1): RealDataSignalProducer statistical_arb evaluator 구현 — rolling z-score(z=8.0, 200samples, 300s cooldown), Korean exchange 제외
+- [x] US-182 (S9-2): RealDataSignalProducer latency_arb evaluator 구현 — LatencyTracker.lead_lag_pairs() + StaleDetector 교차검증
+- [x] US-183 (S9-3): spot_futures/stat_arb/latency_arb disabled_strategies 해제 — trading.json `disabled_strategies: []`, Korean guard 유지
+- [x] US-184 (S9-4): futures_futures stale spread 방어 — StaleDetector + 500bps 이상치 필터
+
+**HIGH (1건)**
+- [x] US-185 (S9-5): StrategyValidation insufficient_data→unverified 분류 — ScheduledTuner cascade-disable 방지
+
+**검증 (1건)**
+- [x] US-186 (S9-6): 8개 전략 전체 Shadow 통합 검증 — 7/7 등록, 10/10 거래소, crash=0
+
+**TF QF 중 추가 수정**
+- [x] TRADING_ACTIVE_EXCHANGES 8→10개 (bybit_futures, okx_futures 추가)
+- [x] InventoryRebalancer balance_feed NOT_CONNECTED → CONNECTED (connect_exchange_feeds 호출)
+- [x] /health 엔드포인트 내부 상태(engine_running, kill_switch_active) 노출 제거 (보안)
+- [x] SSOT.md/CLAUDE.md 테스트 수 4,587→4,589 동기화
+- [x] spot_futures evaluator Korean exchange guard 추가 (upbit, bithumb, coinone 제외)
 
 ---
 
