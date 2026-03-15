@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-15 (Phase S8 System Integration Hardening 완료 — 12개 GAP 해소, 4587 tests) | 최신 커밋: PENDING
+> 마지막 업데이트: 2026-03-15 (Phase S8 System Integration Hardening 완료 — 12개 GAP 해소, 4587 tests) | 최신 커밋: 388e6bf
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (171개 User Stories, 169 pass / 2 fail)
 > **실행 순서**: A~M ✅ → 회귀 **S1~S7** ✅ → TF QF ✅ → TF SF (중단) → **Phase S8** ✅ → **TF QF 재실행** → TF SF → TF Final → Live
 
@@ -32,7 +32,7 @@ Phase:        Phase S8 System Integration Hardening ✅ 완료 (2026-03-15)
 커버리지:     87%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    PENDING
+최신 커밋:    388e6bf
 다음 작업:    TF QF 재실행 → TF SF → TF Final → Live
 완료된 US:    169/171 (Phase S8 12/12 완료, prd.json 169 pass / 2 fail)
 TF QF:        PASS(조건부, 2026-03-15) — CRITICAL 0, HIGH 0, 잔여 ~7건 MEDIUM/LOW
