@@ -706,7 +706,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | **ExposureTracker 미인스턴스화** | 코드 존재하나 main.py에서 생성 안 됨 → 순노출도 추적 불가 | **S8** | US-175 |
 | **CorrelationMonitor 로그만** | Check #9가 로그만 → DynamicSizer 포지션 축소 실제 미연결 | **S8** | US-176 |
 | **Phase D 대시보드 브라우저 미검증** | Chrome 렌더링, API 연동, WebSocket, 모바일 반응형 미확인 | TF SF [단계 3-A] | — |
-| **Shadow 실행 시 Docker 미실행 위험** | TimescaleDB/Redis 미저장 → 메트릭 유실 | 절차적 (문서화 완료) | — |
+| **Shadow 실행 시 Docker 미실행 위험** | TimescaleDB/Redis 미저장 → 메트릭 유실 | **S8** | 엔진 시작 시 Docker pre-flight 체크 추가 (S8 설정/환경 갭 항목) |
 | **AtomicOrderExecutor: place_ioc_limit() 미구현** | Native Adapter IOC 미지원 → fallback 동작만 | **S8** | US-178 |
 | **마찰 vs Gross Spread** | 대부분 알트 spread 2-25bps, friction ~20bps | **S8** | US-174 (AdaptiveThreshold로 동적 조절) |
 
