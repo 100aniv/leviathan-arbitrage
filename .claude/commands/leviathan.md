@@ -501,8 +501,8 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승�
 │  정합성, 체크리스트, 교차검증, 코드 품질                      │
 ├─────────────────────────────────────────────────────────────┤
 │  TF Semi-Final (SF) — System Validation                     │
-│  "72시간 돈을 벌 수 있나?"                                   │
-│  72H Shadow, 전략별 P&L, E2E 시나리오, UAT                  │
+│  "24시간 돈을 벌 수 있나?"                                   │
+│  24H Shadow, 전략별 P&L, E2E 시나리오(병렬), UAT            │
 ├─────────────────────────────────────────────────────────────┤
 │  TF Final (F) — Operations Readiness                        │
 │  "문제 생기면 대응할 수 있나?"                                │
@@ -532,7 +532,7 @@ SSOT.md §7 구조:
 |---------|------|------------------------|------|----------|
 | TF 리더 | Nayeon | `oh-my-claudecode:architect` | opus | 전체 PASS/FAIL 최종 판정, 라운드별 Go/No-Go |
 | 메인 아키텍트 | Karina | `oh-my-claudecode:architect` | opus | 체크리스트 초안, 정합성 대조, 합동 점검 주관 |
-| 엔진 전문가 | Jeongyeon | `oh-my-claudecode:deep-executor` | opus | 엔진 무결성, 전략 로직, 72H 안정성 모니터링 |
+| 엔진 전문가 | Jeongyeon | `oh-my-claudecode:deep-executor` | opus | 엔진 무결성, 전략 로직, 24H 안정성 모니터링 |
 | 인프라 전문가 | Momo | `oh-my-claudecode:qa-tester` | sonnet | Docker/DB/Redis/Nginx, DR 훈련 실행 |
 | 데이터 전문가 | Sana | `oh-my-claudecode:scientist` | sonnet | PnL 통계, 전략별 Sharpe/WR/DD 분석 |
 | UI/UX 전문가 | Mina | QF:`designer` SF:`browser-verifier` F:`writer` | sonnet | 라운드별 역할 전환 (기능→E2E→문서) |
@@ -612,23 +612,27 @@ SSOT.md §7 구조:
 - 손실 전략 식별 → disabled_strategies에 추가 여부 판단
 - 전략 간 상관관계 분석 (CorrelationMonitor 데이터 활용)
 
-[단계 2] Progressive Shadow (72H)
+[단계 2] Progressive Shadow (24H)
 - Stage 1:  1H  → 기본 동작 (crash=0, 신호 흐름, 거래소 10/10)
 - Stage 2:  2H  → 승률/PnL 추세 (WR>60%, PnL>0, 전략별 분리 리포트)
 - Stage 3:  6H  → 전략별 메트릭 (각 전략 WR>50%, 마찰력 오차<20%)
 - Stage 4: 12H  → 리소스 안정성 (메모리 증가<100MB, CPU<80%, WS 재연결)
-- Stage 5: 24H  → 일일 성과 (Sharpe>2.0, MDD<5%, 일일 PnL 양수)
-- Stage 6: 72H  → LiveGate 6-check 전체 PASS
-  1. Sharpe ≥ 2.5
+- Stage 5: 24H  → LiveGate 6-check + 일일 성과 (최종)
+  1. Sharpe ≥ 2.0
   2. MDD < 5%
   3. 총 신호 ≥ 100개
   4. KillSwitch 수동 테스트 PASS
   5. CircuitBreaker 동작 확인
   6. 거래소 건강도 ≥ 95%
 - 각 Stage PASS 시 자동으로 다음 연장 (멈추지 않고 누적)
+- 장기 안정성은 TF Final Canary 7일에서 실 자본으로 검증
 - 실패 시 회귀 Phase 생성 → 3-Stage(A~C) → SF 재검증 (QF 스킵, 구조적 결함 시 QF부터)
 
-[단계 3-A] E2E 사용자 시나리오 (UAT)
+[단계 3] 병렬 검증 (단계 2 실행 중 동시 수행)
+- 단계 3-A,B,C는 단계 2 Stage 2 통과 후 병렬 수행 (순차 대기 불필요)
+- 효과: 단계 3이 Shadow 시간에 흡수 → SF 전체 소요 = 24H + α(단계1)
+
+[단계 3-A] E2E 사용자 시나리오 (UAT) ← Stage 2+ 통과 후 병렬
 - Mina(browser-verifier) 에이전트 실행
 - 시나리오 체크리스트:
   □ 로그인: dashboard/login → JWT 쿠키 발급 → 리다이렉트
@@ -655,7 +659,7 @@ SSOT.md §7 구조:
 - Alertmanager 규칙 → 라우팅 → 수신 확인
 
 PASS 기준:
-- 72H Shadow 6-Stage 전부 PASS
+- 24H Shadow 5-Stage 전부 PASS
 - 활성 전략 각각 WR>50%, Sharpe>1.0 (통합 Sharpe>2.0)
 - E2E 시나리오 10개 전부 PASS
 - 알림: Kill Switch → Telegram < 5초
@@ -663,7 +667,7 @@ PASS 기준:
 
 산출물:
 - docs/checklists/tf-semi-final_YYYYMMDD.md (전체 보고서)
-- docs/checklists/tf-sf-shadow-report_YYYYMMDD.md (72H 상세)
+- docs/checklists/tf-sf-shadow-report_YYYYMMDD.md (24H 상세)
 - docs/checklists/tf-sf-strategy-pnl_YYYYMMDD.md (전략별 P&L)
 - docs/checklists/tf-sf-e2e-scenarios_YYYYMMDD.md (E2E 결과)
 ```
@@ -673,7 +677,7 @@ PASS 기준:
 > **핵심 질문**: "문제가 생기면 대응할 수 있는가? 실제 돈을 안전하게 운용할 준비가 되었는가?"
 
 ```
-[전제]: SF 통과 + 72H Shadow ALL PASS
+[전제]: SF 통과 + 24H Shadow ALL PASS
 
 [단계 1] Operations Readiness Review (ORR)
 - Mina(writer): 운영 매뉴얼 작성

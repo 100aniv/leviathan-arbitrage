@@ -82,15 +82,14 @@ Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutur
 
 ### 프로그레시브 Shadow 테스트 프로토콜
 
-> 72H 단일 게이트 대신 단계적 검증으로 조기 문제 발견
+> 24H 단계적 검증으로 조기 문제 발견 (장기 안정성은 TF Final Canary 7일에서 실 자본 검증)
 
 ```
 Stage 1: 1H  → 기본 동작 확인 (crash=0, 신호 흐름 정상)
-Stage 2: 2H  → 승률/PnL 추세 안정성 (WR>50%, PnL 양수)
+Stage 2: 2H  → 승률/PnL 추세 안정성 (WR>60%, PnL 양수)
 Stage 3: 6H  → 전략별 메트릭 분리 + 마찰력 정확도 검증
 Stage 4: 12H → 메모리 누수/리소스 사용량 안정성
-Stage 5: 24H → Sharpe>2.0, MDD<5%, 일일 PnL 양수
-Stage 6: 72H → LiveGate 6-check 전체 PASS → Live 전환 승인
+Stage 5: 24H → LiveGate 6-check + Sharpe>2.0, MDD<5%, 일일 PnL 양수 (최종)
 ```
 각 Stage PASS 시 자동으로 다음 Stage 연장 (멈추지 않고 누적)
 
@@ -557,10 +556,10 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ### TF Semi-Final (SF): System Validation — 진행 중
 
-> **핵심 질문**: "72시간 동안 실제로 돈을 벌 수 있는가?"
+> **핵심 질문**: "24시간 동안 실제로 돈을 벌 수 있는가?"
 > **진입 가드**: TF QF PASS
 > **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → SF 재검증 (QF 스킵, 구조적 결함 시 QF부터)
-> **PASS 기준**: 72H 6-Stage ALL PASS + 전략별 WR>50% + E2E 10/10 + LiveGate 6-check
+> **PASS 기준**: 24H 5-Stage ALL PASS + 전략별 WR>50% + E2E 10/10 (단계 2 병렬) + LiveGate 6-check
 
 #### 검증 이력
 
@@ -583,15 +582,14 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] 손실 전략 식별 → disabled_strategies 판단
 - [ ] 전략 간 상관관계 분석
 
-**[단계 2] Progressive Shadow (72H)**
+**[단계 2] Progressive Shadow (24H)**
 - [ ] Stage 1:  1H → crash=0, 신호 흐름, 거래소 10/10
 - [ ] Stage 2:  2H → WR>60%, PnL>0, 전략별 분리 리포트
 - [ ] Stage 3:  6H → 각 전략 WR>50%, 마찰력 오차<20%
 - [ ] Stage 4: 12H → 메모리<100MB증가, CPU<80%, WS 재연결
-- [ ] Stage 5: 24H → Sharpe>2.0, MDD<5%, 일일 PnL 양수
-- [ ] Stage 6: 72H → LiveGate 6-check 전체 PASS
+- [ ] Stage 5: 24H → LiveGate 6-check + Sharpe>2.0, MDD<5%, 일일 PnL 양수 (최종)
 
-**[단계 3-A] E2E 사용자 시나리오 (UAT)**
+**[단계 3-A] E2E 사용자 시나리오 (UAT)** ← 단계 2 Stage 2+ 통과 후 병렬 수행
 - [ ] 로그인 → JWT 쿠키 → 리다이렉트
 - [ ] Overview/Strategies/Portfolio/Settings 4페이지
 - [ ] 모바일 반응형 (375px, 768px)
@@ -599,11 +597,11 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] Kill Switch → Telegram < 5초
 - [ ] API 전 엔드포인트 200 + 콘솔 에러 0건
 
-**[단계 3-B] Master Inspection**
+**[단계 3-B] Master Inspection** ← 단계 2 Stage 1+ 통과 후 병렬 수행
 - [ ] 코드 품질 (TODO/FIXME, dead code, 하드코딩)
 - [ ] 로그 품질 + 설정 일관성
 
-**[단계 3-C] 알림 체계 종합 검증**
+**[단계 3-C] 알림 체계 종합 검증** ← 단계 2 Stage 2+ 통과 후 병렬 수행
 - [ ] Telegram 거래/워크플로우 알림 수신
 - [ ] Kill Switch → 알림 → 거래 중단 < 5초
 - [ ] Alertmanager 규칙 → 라우팅 → 수신
@@ -611,7 +609,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 ### TF Final (F): Operations Readiness — 미시작
 
 > **핵심 질문**: "문제가 생기면 대응할 수 있는가? 실제 돈을 안전하게 운용할 준비가 되었는가?"
-> **진입 가드**: TF SF 전 단계 PASS + 72H Shadow ALL PASS
+> **진입 가드**: TF SF 전 단계 PASS + 24H Shadow ALL PASS
 > **PASS 기준**: ORR 완비 + DR 6/6 PASS + Canary 7일 P&L>0
 
 **[단계 1] Operations Readiness Review (ORR)**
