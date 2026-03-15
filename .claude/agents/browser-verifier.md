@@ -1,3 +1,9 @@
+---
+name: browser-verifier
+description: "Chrome 브라우저 대시보드 통합 검증 전문 에이전트."
+model: haiku
+---
+
 # Browser Verifier Agent
 
 Chrome 브라우저 통합 검증 전문 에이전트.

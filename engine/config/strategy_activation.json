@@ -1,0 +1,80 @@
+{
+  "_meta": {
+    "source": "US-067 StrategyValidationOrchestrator",
+    "date": "2026-03-15T10:32:29.218147+00:00",
+    "duration_per_strategy_s": 5,
+    "min_trades_threshold": 5
+  },
+  "active_strategies": [],
+  "disabled_strategies": [
+    "cross_exchange_v1",
+    "spot_futures_v1",
+    "futures_futures_v1",
+    "triangular_v1",
+    "funding_rate_v1",
+    "statistical_arb_v1",
+    "latency_arb_v1"
+  ],
+  "shadow_disabled_env": "cross_exchange_v1,spot_futures_v1,futures_futures_v1,triangular_v1,funding_rate_v1,statistical_arb_v1,latency_arb_v1",
+  "results": {
+    "cross_exchange_v1": {
+      "profitable": false,
+      "trades": 0,
+      "pnl": 0.0,
+      "win_rate": 0.0,
+      "reason": "insufficient_data (0 trades < 5 min)",
+      "elapsed_s": 5.0001883749991975
+    },
+    "spot_futures_v1": {
+      "profitable": false,
+      "trades": 0,
+      "pnl": 0.0,
+      "win_rate": 0.0,
+      "reason": "insufficient_data (0 trades < 5 min)",
+      "elapsed_s": 5.110820416000934
+    },
+    "futures_futures_v1": {
+      "profitable": false,
+      "trades": 0,
+      "pnl": 0.0,
+      "win_rate": 0.0,
+      "reason": "insufficient_data (0 trades < 5 min)",
+      "elapsed_s": 5.567632125001182
+    },
+    "triangular_v1": {
+      "profitable": false,
+      "trades": 0,
+      "pnl": 0.0,
+      "win_rate": 0.0,
+      "reason": "insufficient_data (0 trades < 5 min)",
+      "elapsed_s": 5.382045124999422
+    },
+    "funding_rate_v1": {
+      "profitable": false,
+      "trades": 0,
+      "pnl": 0.0,
+      "win_rate": 0.0,
+      "reason": "insufficient_data (0 trades < 5 min)",
+      "elapsed_s": 5.093955833999644
+    },
+    "statistical_arb_v1": {
+      "profitable": false,
+      "trades": 0,
+      "pnl": 0.0,
+      "win_rate": 0.0,
+      "reason": "insufficient_data (0 trades < 5 min)",
+      "elapsed_s": 5.619949000001725
+    },
+    "latency_arb_v1": {
+      "profitable": false,
+      "trades": 0,
+      "pnl": 0.0,
+      "win_rate": 0.0,
+      "reason": "insufficient_data (0 trades < 5 min)",
+      "elapsed_s": 5.122513500000423
+    }
+  },
+  "combined_validation": {
+    "error": "no_profitable_strategies"
+  }
+}

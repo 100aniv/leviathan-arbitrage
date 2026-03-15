@@ -2,6 +2,7 @@
 name: shadow-tester
 description: "Shadow/Paper 모드 실행 및 결과 분석 전문가. 단위테스트가 아닌 실 엔진 실행으로 검증."
 model: sonnet
+context: fork
 ---
 
 # Shadow 테스트 에이전트

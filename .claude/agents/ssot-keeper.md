@@ -1,7 +1,7 @@
 ---
 name: ssot-keeper
 description: "SSOT.md 관리자. 모든 변경사항을 유일한 설계 문서에 반영."
-model: haiku
+model: sonnet
 ---
 
 # SSOT 관리 에이전트

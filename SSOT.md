@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-15 (Phase S7 Pre-Live Hardening 완료 — US-157~168 ALL PASS, Shadow 10min +$0.464) | 최신 커밋: PENDING
-> 실행 플랜: `.claude/plans/smooth-tickling-giraffe.md` (강화 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (159개 User Stories)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S7** ✅ → **TF QF** ✅ → **TF SF** (진행 중) → **TF Final → Live**
+> 마지막 업데이트: 2026-03-15 (Phase S8 System Integration Hardening 계획 수립 — 12개 GAP 해소 예정) | 최신 커밋: PENDING
+> 실행 플랜: `.claude/plans/goofy-napping-feather.md` (Phase S8 계획) | GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (159+12개 User Stories)
+> **실행 순서**: A~M ✅ → 회귀 **S1~S7** ✅ → TF QF ✅ → TF SF (중단) → **Phase S8** (진행 예정) → **TF QF 재실행** → TF SF → TF Final → Live
 
 ---
 
@@ -27,20 +27,24 @@
 ## 2. 현재 상태
 
 ```
-Phase:        Phase S7 Pre-Live Hardening ← ALL PASS  [S1~S6 ✅ → TF 재검증 ✅ → S7 ✅]
+Phase:        Phase S8 System Integration Hardening ← 계획 수립 완료, 구현 대기
 테스트:       4,474 passed, 0 failed, 6 skipped (2 flaky deselected)
 커버리지:     87%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    a4fa4a7
-다음 작업:    TF SF [단계 1-A] Delta Check 재검증 → [단계 1-B] → [단계 2] → TF Final → Live
-완료된 US:    157/159 (기존 145 + Phase S7 12/12 완료, prd.json 동기화 완료)
+최신 커밋:    e43b2ec
+다음 작업:    Phase S8 구현 (12 US) → TF QF 재실행 → TF SF → TF Final → Live
+완료된 US:    157/171 (기존 157 + Phase S8 0/12 예정, prd.json 업데이트 예정)
 TF QF:        PASS(조건부, 2026-03-15) — CRITICAL 0, HIGH 0, 잔여 ~7건 MEDIUM/LOW
               원본(FAIL): docs/checklists/tf-semi-final_20260313.md
               재검증(PASS): docs/checklists/tf-semi-final-recheck_20260315.md (91.5% 해소)
-TF SF:        3-Round 체계 강화로 [단계 1-A]부터 재검증 필요
+              ** S8 완료 후 전체 QF 재실행 예정 (TWICE 9명, 142항목 + S8 항목)**
+TF SF:        ** 중단 → Phase S8 완료 + QF 재실행 PASS 후 [단계 1-A]부터 재시작**
 Phase S7:     ALL PASS (2026-03-15) — US-157~168 12개 US 전부 완료
               Shadow 10min: 2,230 trades, 93.3% WR, +$0.464, DD=$0.222, crash=0
+Phase S8:     계획 수립 완료 (2026-03-15) — US-169~180 12개 US, 구현 대기
+              심층 조사 결과: 구현되었으나 엔진 미연결 기능 12개 발견 (CRITICAL 3, HIGH 5, MEDIUM 4)
+              플랜: .claude/plans/goofy-napping-feather.md
 인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ 7/8 HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
@@ -393,7 +397,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 159개 User Stories, 157개 완료, 2개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 171개 User Stories, 157개 완료, 12개 S8 대기, 2개 미완)
 
 > **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -503,6 +507,35 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - **코드리뷰**: CRITICAL 1 + HIGH 2 발견 → 즉시 수정 (get_all_balances→summary, telegram close, min_volume_usd env)
 - **테스트**: 4,471 passed, 0 failed, 6 skipped
 
+#### Phase S8: System Integration Hardening — US-169~180 (계획 수립 완료, 구현 대기)
+
+> **심층 조사 결과**: 구현은 되어있지만 엔진에 연결되지 않은 기능 12개 발견.
+> TF SF 중단 → S8 수정 → TF QF 재실행 → TF SF → TF Final → Live
+> 플랜: `.claude/plans/goofy-napping-feather.md`
+
+**CRITICAL (3건)**
+- [ ] US-169 (S8-1): MultiStrategySignalProducer LIVE 모드 연결 — Paper/Shadow만 동작, LIVE에서 5/8 전략 신호 0건
+- [ ] US-170 (S8-2): Triangular Scanner 구현 — 전략 코드만 존재, 신호 생성 Scanner 부재 (GAP 7 해소)
+- [ ] US-171 (S8-3): KRW Staleness → KillSwitch 연결 — 120초 stale 시 경고만, 거래 중단 안 됨
+
+**HIGH (5건)**
+- [ ] US-172 (S8-4): ONNX ML Scorer 신호 필터링 연결 — 로드만 하고 signal.py에서 호출 안 함
+- [ ] US-173 (S8-5): HMM RegimeDetector 신호 파이프라인 연결 — 초기화만, predict() 미호출 → 레짐 항상 NORMAL
+- [ ] US-174 (S8-6): AdaptiveThreshold 엔진 연결 — 94줄 구현 완료이나 main.py 미인스턴스화
+- [ ] US-175 (S8-7): ExposureTracker 인스턴스화 + RiskGuardian 연결 — 코드 존재하나 미생성
+- [ ] US-176 (S8-8): CorrelationMonitor → DynamicSizer 포지션 축소 연결 — Check #9 로그만
+
+**MEDIUM (4건)**
+- [ ] US-177 (S8-9): DEX 실연결 — _build_dex_adapter() 항상 None (GAP 8 해소)
+- [ ] US-178 (S8-10): IOC Limit Order 주요 거래소 구현 — Binance/Bybit/OKX native adapter
+- [ ] US-179 (S8-11): ScheduledTuner 핫리로드 + 기본 활성화 — 파라미터 재시작 없이 반영
+- [ ] US-180 (S8-12): InMemoryEventBus 큐 크기 제한 — maxsize 강제 + drop oldest
+
+**추가 설정/환경 갭 수정 (S8 내 포함)**
+- [ ] TRADING_ACTIVE_EXCHANGES .env 동기화 (okx_futures, bybit_futures 추가)
+- [ ] strategy_activation.json Paper/Live에서도 적용
+- [ ] _reconcile_loop 거래소 API 잔고 대조 구현
+
 ---
 
 ### TF Quarter-Final (QF): Development Verification — ✅ PASS
@@ -554,12 +587,13 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > 회귀 수정: S1~S6 (33/35 US PASS, 2개 Phase F 대기)
 > 재검증 보고서: `docs/checklists/tf-semi-final-recheck_20260315.md`
 
-### TF Semi-Final (SF): System Validation — 진행 중
+### TF Semi-Final (SF): System Validation — **중단 (Phase S8 완료 + QF 재실행 후 재개)**
 
 > **핵심 질문**: "24시간 동안 실제로 돈을 벌 수 있는가?"
 > **진입 가드**: TF QF PASS
 > **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → SF 재검증 (QF 스킵, 구조적 결함 시 QF부터)
 > **PASS 기준**: 24H 5-Stage ALL PASS + 전략별 WR>50% + E2E 10/10 (단계 2 병렬) + LiveGate 6-check
+> **중단 사유**: 심층 조사 결과 미연결 기능 12개 발견. S8 해소 후 QF 재실행 → SF [단계 1-A]부터 재시작
 
 #### 검증 이력
 
@@ -654,27 +688,32 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 > RESOLVED 이슈는 [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md) §9로 이동 (취소선 처리)
 
-### CRITICAL — Architecture GAPs (미해결 3건 / 전체 10건)
+### CRITICAL — Architecture GAPs (미해결 3건 / 전체 10건) → **Phase S8에서 전부 해소 예정**
 
-| GAP | 설명 | 파일:라인 | 해결 Phase | 크기 |
-|-----|------|----------|-----------|------|
-| **3** | MultiStrategySignalProducer Paper 모드에서만 동작 | `main.py:842-873` | B-3 | L |
-| **7** | Triangular Scanner 부재 | `triangular.py:63-68` | B-3 | M |
-| **8** | DEX Adapter 완전 Stub | `cex_dex.py:30-68` | F (미래) | XL |
+| GAP | 설명 | 파일:라인 | 해결 Phase | 크기 | S8 US |
+|-----|------|----------|-----------|------|-------|
+| **3** | MultiStrategySignalProducer Paper/Shadow에서만 동작 (LIVE 5/8 전략 신호 0건) | `main.py:842-873` | **S8** | L | US-169 |
+| **7** | Triangular Scanner 부재 (전략 코드만, 신호 생성 없음) | `triangular.py:63-68` | **S8** | M | US-170 |
+| **8** | DEX Adapter: _build_dex_adapter() 항상 None (Uniswap V3 코드 존재하나 미연결) | `cex_dex.py:30-68` | **S8** | XL | US-177 |
 
-### HIGH (4건)
+### HIGH (9건 — 기존 4건 + 심층 조사 5건 추가)
 
-| 이슈 | 설명 | 완화책 |
-|------|------|--------|
-| **Phase D 대시보드 브라우저 미검증** | US-037~041, US-053 코드 레벨만 검증(`npm run build`). Chrome 렌더링, API 연동, WebSocket 실시간 피드, 모바일 반응형 미확인 | Phase D 재검증 US 추가 (Chrome 브라우저 테스트 필수) |
-| **Shadow 실행 시 Docker 미실행 위험** | Docker 없이 Shadow 실행 시 거래 로직은 유효하나 TimescaleDB/Redis 미저장 → 메트릭 유실 | Shadow 실행 전 `docker compose up -d` 필수 (leviathan.md에 명시) |
-| **AtomicOrderExecutor: place_ioc_limit() 미구현** | Native Adapter에서 IOC limit 주문 지원 부재 → 모든 거래소에서 US-119 IOC fallback(limit→market) 동작만 수행 | Phase K/L에서 거래소별 실제 API 연동 시 추가 (현재는 코드만 검증) |
-| 마찰 vs Gross Spread | 대부분 알트 spread 2-25bps, friction ~20bps | MIN_EDGE_BPS=5 + 고스프레드 심볼 집중 |
+| 이슈 | 설명 | 해결 Phase | S8 US |
+|------|------|-----------|-------|
+| **ONNX ML Scorer 미연결** | ONNXSignalScorer 로드만 하고 signal.py에서 호출 안 함 → ML 모델 완전 무시 | **S8** | US-172 |
+| **HMM RegimeDetector 미연결** | 초기화만, predict() 미호출 → 레짐 항상 NORMAL, min_edge 동적 조절 불가 | **S8** | US-173 |
+| **AdaptiveThreshold 미연결** | 94줄 완전 구현이나 main.py에서 인스턴스화/호출 안 함 → MIN_EDGE 영원히 정적 | **S8** | US-174 |
+| **ExposureTracker 미인스턴스화** | 코드 존재하나 main.py에서 생성 안 됨 → 순노출도 추적 불가 | **S8** | US-175 |
+| **CorrelationMonitor 로그만** | Check #9가 로그만 → DynamicSizer 포지션 축소 실제 미연결 | **S8** | US-176 |
+| **Phase D 대시보드 브라우저 미검증** | Chrome 렌더링, API 연동, WebSocket, 모바일 반응형 미확인 | TF SF [단계 3-A] | — |
+| **Shadow 실행 시 Docker 미실행 위험** | TimescaleDB/Redis 미저장 → 메트릭 유실 | 절차적 (문서화 완료) | — |
+| **AtomicOrderExecutor: place_ioc_limit() 미구현** | Native Adapter IOC 미지원 → fallback 동작만 | **S8** | US-178 |
+| **마찰 vs Gross Spread** | 대부분 알트 spread 2-25bps, friction ~20bps | **S8** | US-174 (AdaptiveThreshold로 동적 조절) |
 
 ### LOW (3건)
 
-| 이슈 | 설명 | 상태 |
-|------|------|------|
-| Coinone Rate Limit | 30min PING keepalive 유지 실패 가능 | 자동 재연결 구현됨 |
-| 빈 Orderbook 경고 | 타이밍 레이스 (collector 전 신호 평가) | crash 없음, 신호 무시 |
-| cex_dex 미구현 | _build_dex_adapter() 항상 None | TF Final (GAP 8) |
+| 이슈 | 설명 | 상태 | S8 반영 |
+|------|------|------|---------|
+| Coinone Rate Limit | 30min PING keepalive 유지 실패 가능 | ✅ 자동 재연결 구현됨 | 해결 완료 |
+| 빈 Orderbook 경고 | 타이밍 레이스 (collector 전 신호 평가) | ✅ crash 없음, 신호 무시 | 해결 완료 |
+| ~~cex_dex 미구현~~ | ~~_build_dex_adapter() 항상 None~~ | **S8 US-177에서 해소 예정** | US-177 |
