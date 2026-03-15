@@ -3009,7 +3009,7 @@
       "title": "RealDataSignalProducer에 statistical_arb evaluator 구현",
       "phase": "S9",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/real_signal_producer.py",
         "engine/src/strategies/statistical_arb.py"
@@ -3028,7 +3028,7 @@
       "title": "RealDataSignalProducer에 latency_arb evaluator 구현",
       "phase": "S9",
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/real_signal_producer.py",
         "engine/src/strategies/latency_arb.py",
@@ -3049,7 +3049,7 @@
       "title": "spot_futures 전략: 동일 거래소(non-Korean) 경로 활성화",
       "phase": "S9",
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/real_signal_producer.py",
         "engine/src/strategies/spot_futures.py",
@@ -3070,7 +3070,7 @@
       "title": "futures_futures 전략: stale spread 방어 + 재활성화",
       "phase": "S9",
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/real_signal_producer.py",
         "engine/src/strategies/futures_futures.py",
@@ -3091,7 +3091,7 @@
       "title": "StrategyValidationOrchestrator 검증 duration 현실화",
       "phase": "S9",
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/strategy_validation.py",
         "engine/config/strategy_activation.json"
@@ -3110,7 +3110,7 @@
       "title": "8개 전략 전체 Shadow 30min 통합 검증",
       "phase": "S9",
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/.env"
       ],
@@ -3121,7 +3121,13 @@
         "총합 PnL > 0",
         "crash=0, 30분 완주"
       ],
-      "dependencies": ["US-181", "US-182", "US-183", "US-184", "US-185"],
+      "dependencies": [
+        "US-181",
+        "US-182",
+        "US-183",
+        "US-184",
+        "US-185"
+      ],
       "source": "← 사장님 지적: 전체 8개 전략 활성화 + 검증 필수"
     }
   ]

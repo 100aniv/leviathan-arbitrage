@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-15 (Phase S8 System Integration Hardening 완료 — 12개 GAP 해소, 4589 tests) | 최신 커밋: 388e6bf
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (171개 User Stories, 169 pass / 2 fail)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S7** ✅ → TF QF ✅ → TF SF (중단) → **Phase S8** ✅ → **TF QF 재실행** → TF SF → TF Final → Live
+> 마지막 업데이트: 2026-03-16 (Phase S9 Strategy Activation 완료 — 4개 전략 활성화, 4588 tests) | 최신 커밋: 63f31fc
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (177개 User Stories, 175 pass / 2 fail)
+> **실행 순서**: A~M ✅ → 회귀 **S1~S8** ✅ → TF QF FAIL → **Phase S9** ✅ → **TF QF 재재실행** → TF SF → TF Final → Live
 
 ---
 
@@ -27,19 +27,19 @@
 ## 2. 현재 상태
 
 ```
-Phase:        Phase S8 System Integration Hardening ✅ 완료 (2026-03-15)
-테스트:       4,589 passed, 0 failed, 12 skipped
-커버리지:     87%
+Phase:        Phase S9 Strategy Activation ✅ 완료 (2026-03-16)
+테스트:       4,588 passed, 0 failed, 12 skipped
+커버리지:     86%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    388e6bf
-다음 작업:    TF QF 재실행 → TF SF → TF Final → Live
-완료된 US:    169/171 (Phase S8 12/12 완료, prd.json 169 pass / 2 fail)
-TF QF:        PASS(조건부, 2026-03-15) — CRITICAL 0, HIGH 0, 잔여 ~7건 MEDIUM/LOW
-              원본(FAIL): docs/checklists/tf-semi-final_20260313.md
-              재검증(PASS): docs/checklists/tf-semi-final-recheck_20260315.md (91.5% 해소)
-              ** S8 완료 후 전체 QF 재실행 예정 (TWICE 9명, 142항목 + S8 항목)**
-TF SF:        ** 중단 → Phase S8 완료 ✅ + QF 재실행 PASS 후 [단계 1-A]부터 재시작**
+최신 커밋:    63f31fc
+다음 작업:    TF QF 재재실행 → TF SF → TF Final → Live
+완료된 US:    175/177 (Phase S9 6/6 완료, prd.json 175 pass / 2 fail)
+TF QF:        재실행 FAIL(2026-03-16) → Phase S9 회귀 → **재재실행 예정**
+              FAIL 사유: 8개 전략 중 4개 비활성화 (CRITICAL-1~3)
+              Phase S9에서 4개 전략 evaluator 구현 + 활성화 완료
+              Shadow: 7/7 전략 등록, 10/10 거래소, crash=0
+TF SF:        ** Phase S9 완료 ✅ + QF 재재실행 PASS 후 [단계 1-A]부터 시작**
 Phase S7:     ALL PASS (2026-03-15) — US-157~168 12개 US 전부 완료
               Shadow 10min: 2,230 trades, 93.3% WR, +$0.464, DD=$0.222, crash=0
 Phase S8:     완료 (2026-03-15) — US-169~180 12개 US, CRITICAL 2 + HIGH 3 수정
