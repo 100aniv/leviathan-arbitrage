@@ -6,6 +6,7 @@
 .env
 .env.local
 .env.*.local
+docker-compose.override.yml
 *.key
 *.pem
 *.p12

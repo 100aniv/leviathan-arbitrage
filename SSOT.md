@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-17 (Phase S12 완료 — SmartTelegramAlerter, Analytics/Alerts/Portfolio/Settings 페이지, 사이드바 재구성, Telegram Bot 커맨드, 주간 리포트) | 최신 커밋: 1ce693e
+> 마지막 업데이트: 2026-03-17 (Phase S12 완료 — SmartTelegramAlerter, Analytics/Alerts/Portfolio/Settings 페이지, 사이드바 재구성, Telegram Bot 커맨드, 주간 리포트) | 최신 커밋: 3f896e8
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (211개 User Stories, 209 pass / 2 pending — 9개 US는 과거 삭제/합병으로 prd.json에서 제거됨)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** ✅ → TF QF 재실행(단계 3.5) → **Phase S11** ✅ → TF SF(순차 OFF→ON) → **Phase S12** ✅ → TF Final → Live
+> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** ✅ → **Phase S11** ✅ → **Phase S12** ✅ → TF QF 5차 ✅ → TF SF → TF Final → Live
 
 ---
 
@@ -32,18 +32,18 @@ Phase:        Phase S12 Extended UX + Analytics ✅ (2026-03-17)
 커버리지:     86%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    1ce693e
-다음 작업:    TF QF 재실행(단계 3.5) → TF SF → TF Final → Live
+최신 커밋:    3f896e8
+다음 작업:    TF SF → TF Final → Live
 완료된 US:    209/211 (S12 완료 2026-03-17, prd.json 209 pass / 2 pending — Phase F US-055, US-056만 남음)
-TF QF:        ✅ PASS (2026-03-16) — CRITICAL 0, HIGH 0 (단계 3.5 조립 검증 추가 예정)
-              1차(2026-03-13): FAIL → 회귀 S1~S7
-              2차(2026-03-15): 조건부 PASS → S8 후 재실행
+TF QF:        ✅ PASS 5차 (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 (자금 손실 경로 0건)
+              5차(2026-03-17): **PASS** — S10+S11+S12 완료 후, 단계 3.5 조립 검증 포함 (4/4 sub-check PASS)
+              4차(2026-03-16): PASS — S9에서 4개 전략 evaluator 구현 완료
               3차(2026-03-16): FAIL — 8/8 전략 중 4개 비활성화 → Phase S9 회귀
-              4차(2026-03-16): **PASS** — S9에서 4개 전략 evaluator 구현 완료
-TF SF:        ❌ Stage 2 FAIL (2H Shadow PnL -$78.82) → Phase S10 회귀
+              2차(2026-03-15): 조건부 PASS → S8 후 재실행
+              1차(2026-03-13): FAIL → 회귀 S1~S7
+TF SF:        ❌ Stage 2 FAIL → S10+S11+S12 완료 → TF QF 5차 PASS → TF SF Stage 1부터 재시작 예정
               Stage 1: 1H PnL +$18.18 PASS
               Stage 2: 2H PnL -$78.82 FAIL (stat_arb -$127, 전략 영역 겹침, Auto-tuner 미작동)
-              S10+S11 완료 후 TF QF 재실행 → TF SF Stage 1부터 재시작
 Phase S7:     ALL PASS (2026-03-15) — US-157~168 12개 US 전부 완료
 Phase S8:     완료 (2026-03-15) — US-169~180 12개 US, CRITICAL 2 + HIGH 3 수정
 Phase S9:     완료 (2026-03-16) — US-181~186 6개 US, 8개 전략 전체 활성화
