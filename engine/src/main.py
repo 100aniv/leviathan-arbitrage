@@ -483,6 +483,17 @@ class Engine:
             self._telegram = get_telegram_alerter()
             if self._telegram._enabled:
                 logger.info("Telegram alerter enabled")
+                # US-213: Wrap with SmartTelegramAlerter for dedup + INFO batching
+                try:
+                    from src.infra.telegram_smart import SmartTelegramAlerter
+                    self._smart_telegram = SmartTelegramAlerter(
+                        alerter=self._telegram,
+                        redis_client=getattr(self, "_redis", None),
+                    )
+                    logger.info("SmartTelegramAlerter enabled (dedup + batching)")
+                except Exception as exc:
+                    self._smart_telegram = None
+                    logger.warning("SmartTelegramAlerter init failed (non-fatal): %s", exc)
             else:
                 logger.info("Telegram alerter disabled (set TELEGRAM_ENABLED=true to enable)")
         except Exception as exc:
@@ -1440,6 +1451,13 @@ class Engine:
 
                 async def _kill_fn() -> str:
                     halt_local()
+                    # Send kill switch event notification back via Telegram
+                    try:
+                        from src.risk.kill_switch import KillSwitchEvent
+                        event = KillSwitchEvent(reason="Telegram /kill command")
+                        await self._telegram.send_kill_switch_event(event)
+                    except Exception:
+                        pass  # Best-effort notification
                     return "KillSwitch activated via Telegram"
 
                 async def _mode_fn() -> str:
@@ -1461,6 +1479,12 @@ class Engine:
         if self._rebalancer is not None:
             tasks.append(asyncio.create_task(
                 self._rebalancer_loop(), name="rebalancer"
+            ))
+
+        # US-213: SmartTelegramAlerter flush loop (QF 3.5 fix)
+        if getattr(self, "_smart_telegram", None) is not None:
+            tasks.append(asyncio.create_task(
+                self._smart_telegram.start_flush_loop(), name="smart_telegram_flush"
             ))
 
         # US-173: RegimeDetector background task (60s periodic)

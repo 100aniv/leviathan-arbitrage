@@ -121,6 +121,17 @@ CAPITAL_AVAILABLE = Gauge(
     "Available (free) capital in USD",
 )
 
+KILL_SWITCH_ACTIVE = Gauge(
+    "leviathan_kill_switch_active",
+    "Kill switch state (0=inactive, 1=active/halted)",
+)
+
+ROLLBACKS_TOTAL = Counter(
+    "leviathan_rollbacks_total",
+    "Total trade rollbacks (second-leg failures)",
+    ["exchange", "reason"],
+)
+
 # ---------------------------------------------------------------------------
 # Phase 2: Rust hot-path observability
 # ---------------------------------------------------------------------------

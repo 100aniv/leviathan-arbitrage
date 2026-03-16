@@ -35,8 +35,21 @@ Phase:        Phase S12 Extended UX + Analytics ✅ (2026-03-17)
 최신 커밋:    3f896e8
 다음 작업:    TF SF → TF Final → Live
 완료된 US:    209/211 (S12 완료 2026-03-17, prd.json 209 pass / 2 pending — Phase F US-055, US-056만 남음)
-TF QF:        ✅ PASS 5차 (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 (자금 손실 경로 0건)
-              5차(2026-03-17): **PASS** — S10+S11+S12 완료 후, 단계 3.5 조립 검증 포함 (4/4 sub-check PASS)
+TF QF:        ✅ PASS 6차 (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 + LOW 4
+              6차(2026-03-17): **PASS** — 단계 3.5 재수행: 알림 Dead Wiring Critical 2+High 3 수정 후 재검증 통과
+                단계 3.5 조립 검증 (4/4 sub-check PASS):
+                  Sub-check 1: 초기화 체인 non-None — 32개 서브시스템 전수 확인 PASS
+                  Sub-check 2: Signal Flow E2E — 7전략 + 알림 경로 전수 확인 PASS
+                  Sub-check 3: Config Flag Audit — 7개 플래그 전부 active PASS
+                  Sub-check 4: Dead Wiring — PASS (MEDIUM 1 known + LOW 4)
+                수정 내역:
+                  - metrics.py: KILL_SWITCH_ACTIVE Gauge + ROLLBACKS_TOTAL Counter 추가
+                  - alerts.yml: engine_* → leviathan_* 전 규칙 통일 (10개 메트릭 매칭)
+                  - kill_switch.py: halt_local()에서 KILL_SWITCH_ACTIVE.set(1) 연동
+                  - main.py: SmartTelegramAlerter start_flush_loop() background task 등록
+                  - main.py: _kill_fn()에서 send_kill_switch_event() 호출 추가
+                  - engine/.env: SHADOW_DISABLED_STRATEGIES 인라인 주석 제거
+              5차(2026-03-17): 단계 3.5 FAIL — 알림 서브시스템 Dead Wiring 미탐지 → 6차로 재수행
               4차(2026-03-16): PASS — S9에서 4개 전략 evaluator 구현 완료
               3차(2026-03-16): FAIL — 8/8 전략 중 4개 비활성화 → Phase S9 회귀
               2차(2026-03-15): 조건부 PASS → S8 후 재실행

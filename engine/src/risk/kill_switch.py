@@ -40,6 +40,12 @@ def halt_local() -> None:
     sub-microsecond halt propagation to Rust hot-path code.
     """
     _HALT_FLAG.set()
+    # Update Prometheus metric (QF 3.5 fix — alerts.yml references this)
+    try:
+        from src.infra.metrics import KILL_SWITCH_ACTIVE
+        KILL_SWITCH_ACTIVE.set(1)
+    except Exception:
+        pass  # metrics import fail is non-fatal
     # Also set Rust AtomicBool if available (Phase 2.3) — cached reference
     rust_ks = _get_rust_ks()
     if rust_ks is not None:

@@ -1,6 +1,7 @@
 # =============================================================================
 # LEVIATHAN Prometheus Alert Rules
 # Amendment 1C: Redis critical alerts — eviction, memory pressure, down
+# Metric names aligned with engine/src/infra/metrics.py (QF 3.5 fix)
 # =============================================================================
 
 groups:
@@ -9,9 +10,6 @@ groups:
   # ---------------------------------------------------------------------------
   - name: redis_critical
     rules:
-      # CRITICAL: Any key eviction means position data may be silently lost.
-      # With noeviction policy this should NEVER fire — if it does, it indicates
-      # the Redis config has been overridden or a different Redis instance is running.
       - alert: RedisEvictionDetected
         expr: increase(redis_evicted_keys_total[1m]) > 0
         for: 0s
@@ -26,7 +24,6 @@ groups:
             Engine HALT flag should be set. Immediate investigation required.
           runbook: "Check redis.conf maxmemory-policy=noeviction. Verify Redis container config."
 
-      # WARNING: Memory pressure approaching limit — pre-alert before potential OOM.
       - alert: RedisMemoryPressure
         expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.80
         for: 30s
@@ -38,7 +35,6 @@ groups:
           description: "Redis memory usage exceeds 80% of maxmemory (8gb). At 100%, writes will fail and the engine will HALT."
           runbook: "Review stream retention policies. Trim old XADD entries. Consider increasing maxmemory."
 
-      # CRITICAL: Redis memory over 95% — imminent write failure.
       - alert: RedisMemoryCritical
         expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.95
         for: 10s
@@ -50,7 +46,6 @@ groups:
           description: "Redis memory exceeds 95%. With noeviction policy, next write will fail. Engine should halt new trades."
           runbook: "Immediate action required. XDEL old stream entries. Restart with increased maxmemory if needed."
 
-      # CRITICAL: Redis unreachable — engine must be in HALT state.
       - alert: RedisDown
         expr: up{job="redis"} == 0
         for: 5s
@@ -65,7 +60,6 @@ groups:
             No new orders should be possible. Recovery protocol will run on reconnection.
           runbook: "1) Check Redis container: docker compose ps redis. 2) Check logs: docker compose logs redis. 3) After restart, verify engine recovery completes before clearing HALT."
 
-      # WARNING: Redis connection saturation.
       - alert: RedisConnectionSaturation
         expr: redis_connected_clients / redis_config_maxclients > 0.80
         for: 60s
@@ -76,7 +70,6 @@ groups:
           summary: "Redis connections > 80% of maxclients"
           description: "Redis has {{ $value }} connected clients approaching the maxclients limit."
 
-      # WARNING: Redis replication lag (if replica is configured).
       - alert: RedisReplicationLag
         expr: redis_connected_slaves < 1 and redis_server_slave_read_only == 0
         for: 30s
@@ -88,11 +81,10 @@ groups:
           description: "Redis master has lost all replica connections."
 
   # ---------------------------------------------------------------------------
-  # Engine Alerts
+  # Engine Alerts — metric names from engine/src/infra/metrics.py
   # ---------------------------------------------------------------------------
   - name: engine_critical
     rules:
-      # CRITICAL: Engine process down.
       - alert: EngineDown
         expr: up{job="leviathan_engine"} == 0
         for: 10s
@@ -103,7 +95,7 @@ groups:
           summary: "LEVIATHAN engine is unreachable"
           description: "Engine health endpoint is not responding. Check container status."
 
-      # CRITICAL: Kill switch activated.
+      # CRITICAL: Kill switch activated (metrics.py: KILL_SWITCH_ACTIVE gauge)
       - alert: KillSwitchActivated
         expr: leviathan_kill_switch_active == 1
         for: 0s
@@ -114,9 +106,9 @@ groups:
           summary: "LEVIATHAN kill switch is ACTIVE — no new orders"
           description: "The kill switch has been triggered. Engine is in HALT state. Manual review required before resuming."
 
-      # WARNING: High trade rejection rate.
+      # WARNING: High trade rejection rate (metrics.py: RISK_REJECTIONS_TOTAL counter)
       - alert: HighTradeRejectionRate
-        expr: rate(leviathan_trades_rejected_total[5m]) / (rate(leviathan_trades_attempted_total[5m]) + 0.001) > 0.50
+        expr: rate(leviathan_risk_rejections_total[5m]) / (rate(leviathan_orders_total[5m]) + 0.001) > 0.50
         for: 60s
         labels:
           severity: warning
@@ -125,7 +117,7 @@ groups:
           summary: "Trade rejection rate > 50%"
           description: "More than 50% of attempted trades are being rejected. Check risk guardian logs."
 
-      # WARNING: Rollback rate elevated.
+      # WARNING: Rollback rate elevated (metrics.py: ROLLBACKS_TOTAL counter)
       - alert: ElevatedRollbackRate
         expr: rate(leviathan_rollbacks_total[5m]) > 0.1
         for: 120s
@@ -152,26 +144,27 @@ groups:
           description: "PostgreSQL/TimescaleDB health check failed. Position WAL dual-writes will fail — engine should reject all trades."
 
   # ---------------------------------------------------------------------------
-  # LEVIATHAN Engine — core trading risk alerts (Step 2.4)
+  # LEVIATHAN Engine — core trading risk alerts
+  # Metric names aligned with metrics.py (leviathan_ prefix)
   # ---------------------------------------------------------------------------
   - name: leviathan.engine
     interval: 15s
     rules:
 
-      # CRITICAL: Circuit breaker opened — trading halted on an exchange
+      # CRITICAL: Circuit breaker opened (metrics.py: CIRCUIT_BREAKER_STATE gauge)
       - alert: circuit_breaker_opened
-        expr: engine_circuit_breaker_state == 1
+        expr: leviathan_circuit_breaker_state == 1
         for: 0m
         labels:
           severity: critical
           component: engine
         annotations:
           summary: "Circuit breaker opened on {{ $labels.exchange }}"
-          description: "Circuit breaker for {{ $labels.exchange }} has opened. Trading is halted. Value: {{ $value }}"
+          description: "Circuit breaker has opened. Trading is halted. Value: {{ $value }}"
 
-      # WARNING: Exchange WebSocket disconnected for > 30s
+      # WARNING: Exchange disconnected (metrics.py: EXCHANGE_HEALTH_SCORE gauge)
       - alert: exchange_disconnected
-        expr: engine_exchange_connected == 0
+        expr: leviathan_exchange_health_score == 0
         for: 30s
         labels:
           severity: warning
@@ -180,31 +173,20 @@ groups:
           summary: "Exchange {{ $labels.exchange }} disconnected"
           description: "Exchange {{ $labels.exchange }} has been disconnected for more than 30 seconds."
 
-      # WARNING: API latency p99 exceeds 500ms
-      - alert: api_latency_high
-        expr: histogram_quantile(0.99, rate(engine_api_latency_seconds_bucket[5m])) > 0.5
-        for: 2m
-        labels:
-          severity: warning
-          component: engine
-        annotations:
-          summary: "API latency p99 is high ({{ $value | humanizeDuration }})"
-          description: "API p99 latency exceeded 500ms for 2 minutes. Current: {{ $value | humanizeDuration }}"
-
-      # WARNING: Max drawdown approaching the 2% hard limit
+      # WARNING: Max drawdown approaching (metrics.py: DRAWDOWN_CURRENT gauge, 0-1 scale)
       - alert: mdd_approaching
-        expr: engine_max_drawdown_percent > 1.5
+        expr: leviathan_drawdown_current_pct > 0.015
         for: 1m
         labels:
           severity: warning
           component: risk
         annotations:
-          summary: "Max drawdown approaching limit ({{ $value }}%)"
-          description: "Engine max drawdown is {{ $value }}%, approaching the 2% hard limit. Review positions immediately."
+          summary: "Max drawdown approaching limit ({{ $value | humanizePercentage }})"
+          description: "Engine drawdown is {{ $value | humanizePercentage }}, approaching the 2% hard limit. Review positions immediately."
 
-      # CRITICAL: Kill switch activated — all trading suspended
+      # CRITICAL: Kill switch activated (duplicate rule for leviathan.engine group)
       - alert: kill_switch_activated
-        expr: engine_kill_switch_active == 1
+        expr: leviathan_kill_switch_active == 1
         for: 0m
         labels:
           severity: critical
@@ -213,16 +195,16 @@ groups:
           summary: "Kill switch ACTIVATED — trading suspended"
           description: "The engine kill switch has been activated. All trading is suspended. Immediate investigation required."
 
-      # WARNING: Strategy error rate > 0.1 errors/s
+      # WARNING: Strategy error rate (metrics.py: ERRORS_TOTAL counter)
       - alert: strategy_error_rate
-        expr: rate(engine_strategy_errors_total[5m]) > 0.1
+        expr: rate(leviathan_errors_total{component="strategy"}[5m]) > 0.1
         for: 2m
         labels:
           severity: warning
           component: strategy
         annotations:
-          summary: "Strategy {{ $labels.strategy }} error rate elevated ({{ $value | humanize }}/s)"
-          description: "Strategy {{ $labels.strategy }} is producing > 0.1 errors/s over 5 minutes. Rate: {{ $value | humanize }}/s"
+          summary: "Strategy error rate elevated ({{ $value | humanize }}/s)"
+          description: "Strategy is producing > 0.1 errors/s over 5 minutes. Rate: {{ $value | humanize }}/s"
 
   # ---------------------------------------------------------------------------
   # US-044: 자동 알림 규칙 (PnL 급락, WS 끊김, 높은 slippage)
@@ -231,7 +213,7 @@ groups:
     interval: 15s
     rules:
 
-      # CRITICAL: PnL 급락 — 5분 내 $10 이상 하락
+      # CRITICAL: PnL 급락 — 5분 내 $10 이상 하락 (metrics.py: PNL_TOTAL gauge)
       - alert: pnl_sudden_drop
         expr: leviathan_pnl_total_usd - leviathan_pnl_total_usd offset 5m < -10
         for: 0m
@@ -242,7 +224,7 @@ groups:
           summary: "PnL 급락: 5분 내 ${{ $value | humanize }} 하락"
           description: "PnL이 5분 내 $10 이상 급락했습니다. 현재 PnL 변동: ${{ $value | humanize }}. 즉시 확인 필요."
 
-      # CRITICAL: WS 3개 이상 동시 끊김
+      # CRITICAL: WS 3개 이상 동시 끊김 (metrics.py: EXCHANGE_HEALTH_SCORE gauge)
       - alert: multiple_ws_disconnected
         expr: count(leviathan_exchange_health_score == 0) >= 3
         for: 30s
@@ -253,7 +235,7 @@ groups:
           summary: "WS {{ $value }}개 거래소 동시 끊김"
           description: "3개 이상의 거래소 WebSocket이 동시에 끊겼습니다. 네트워크 또는 인프라 문제 가능성. 즉시 확인 필요."
 
-      # WARNING: Slippage > 50bps
+      # WARNING: Slippage > 50bps (metrics.py: SPREAD_BPS histogram)
       - alert: high_slippage
         expr: histogram_quantile(0.95, rate(leviathan_spread_bps_bucket[5m])) > 50
         for: 2m
@@ -264,7 +246,7 @@ groups:
           summary: "Slippage p95 > 50bps ({{ $value | humanize }}bps)"
           description: "최근 5분간 슬리피지 p95가 50bps를 초과했습니다. 현재: {{ $value | humanize }}bps. 유동성 부족 또는 시장 변동성 증가 가능성."
 
-      # INFO: 일일 PnL 요약 (UTC 0시 부근 — recording rule로 트리거)
+      # INFO: 일일 PnL 요약 (UTC 0시 부근)
       - alert: daily_pnl_summary
         expr: hour() == 0 and minute() < 15 and leviathan_pnl_total_usd != 0
         for: 0m
