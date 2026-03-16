@@ -1453,8 +1453,9 @@ class Engine:
                     halt_local()
                     # Send kill switch event notification back via Telegram
                     try:
+                        import time as _time
                         from src.risk.kill_switch import KillSwitchEvent
-                        event = KillSwitchEvent(reason="Telegram /kill command")
+                        event = KillSwitchEvent(trigger_ts=_time.perf_counter())
                         await self._telegram.send_kill_switch_event(event)
                     except Exception:
                         pass  # Best-effort notification
