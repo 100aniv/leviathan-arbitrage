@@ -3471,12 +3471,10 @@
       "title": "MissionControlStrip 상시 상태바",
       "phase": "S11",
       "priority": 1,
-      "passes": false,
-      "files": [
-        "dashboard/src/components/MissionControlStrip.tsx"
-      ],
-      "acceptanceCriteria": [],
-      "dependencies": [],
+      "passes": true,
+      "files": ["dashboard/src/components/MissionControlStrip.tsx"],
+      "acceptanceCriteria": ["40px 고정 상태바 전 페이지 표시", "EQUITY/PnL/WIN%/ACTIVE/MODE/KILL SWITCH 표시", "WebSocket 실시간 갱신", "모바일 반응형"],
+      "dependencies": ["US-210"],
       "source": "3초 규칙 — 전 페이지 상태 표시"
     },
     {
@@ -3484,11 +3482,9 @@
       "title": "Overview 페이지 재설계",
       "phase": "S11",
       "priority": 1,
-      "passes": false,
-      "files": [
-        "dashboard/src/app/page.tsx"
-      ],
-      "acceptanceCriteria": [],
+      "passes": true,
+      "files": ["dashboard/src/app/page.tsx"],
+      "acceptanceCriteria": ["3초 규칙 정보 계층", "기존 컴포넌트 재배치", "npm run build 성공"],
       "dependencies": [],
       "source": "정보 계층 재구성"
     },
@@ -3497,12 +3493,10 @@
       "title": "Strategies 페이지 Health Score 카드",
       "phase": "S11",
       "priority": 2,
-      "passes": false,
-      "files": [
-        "dashboard/src/app/strategies/page.tsx"
-      ],
-      "acceptanceCriteria": [],
-      "dependencies": [],
+      "passes": true,
+      "files": ["dashboard/src/app/strategies/page.tsx"],
+      "acceptanceCriteria": ["전략별 0-100 Health Score 카드", "7개 전략 각각 카드 표시", "활성/비활성 상태"],
+      "dependencies": ["US-211"],
       "source": "전략별 0-100 건강 점수"
     },
     {
@@ -3510,12 +3504,10 @@
       "title": "System/Operations 페이지 Kill Switch + 인프라",
       "phase": "S11",
       "priority": 1,
-      "passes": false,
-      "files": [
-        "dashboard/src/app/system/page.tsx"
-      ],
-      "acceptanceCriteria": [],
-      "dependencies": [],
+      "passes": true,
+      "files": ["dashboard/src/app/system/page.tsx"],
+      "acceptanceCriteria": ["2-click Kill Switch (3초 카운트다운)", "Docker/DB/Redis 상태 표시", "거래소 레이턴시"],
+      "dependencies": ["US-211"],
       "source": "2-click Kill Switch + Docker/DB/Redis 상태"
     },
     {
@@ -3523,11 +3515,9 @@
       "title": "텔레그램 한국어 템플릿 (인프라봇)",
       "phase": "S11",
       "priority": 2,
-      "passes": false,
-      "files": [
-        "engine/src/infra/telegram.py"
-      ],
-      "acceptanceCriteria": [],
+      "passes": true,
+      "files": ["engine/src/infra/telegram.py"],
+      "acceptanceCriteria": ["가동 리포트 한국어 양식", "장애 경보 한국어 양식", "단위테스트 통과"],
       "dependencies": [],
       "source": "가동 리포트, 장애 경보 한국어"
     },
@@ -3536,11 +3526,9 @@
       "title": "텔레그램 한국어 템플릿 (거래봇)",
       "phase": "S11",
       "priority": 2,
-      "passes": false,
-      "files": [
-        "engine/src/infra/telegram.py"
-      ],
-      "acceptanceCriteria": [],
+      "passes": true,
+      "files": ["engine/src/infra/telegram.py"],
+      "acceptanceCriteria": ["체결 알림 한국어 양식", "일일 정산 리포트 한국어 양식", "단위테스트 통과"],
       "dependencies": [],
       "source": "체결 알림, 일일 정산 한국어"
     },
@@ -3549,11 +3537,9 @@
       "title": "텔레그램 심각도 필터링",
       "phase": "S11",
       "priority": 2,
-      "passes": false,
-      "files": [
-        "engine/src/infra/telegram.py"
-      ],
-      "acceptanceCriteria": [],
+      "passes": true,
+      "files": ["engine/src/infra/telegram.py"],
+      "acceptanceCriteria": ["EMERGENCY=즉시 CRITICAL=1분 WARNING=5분 INFO=30분배치", "심각도별 rate limiting", "단위테스트 통과"],
       "dependencies": [],
       "source": "알림 피로 방지"
     },
@@ -3562,11 +3548,9 @@
       "title": "WebSocket payload 확장",
       "phase": "S11",
       "priority": 3,
-      "passes": false,
-      "files": [
-        "engine/src/api/websocket.py"
-      ],
-      "acceptanceCriteria": [],
+      "passes": true,
+      "files": ["engine/src/api/websocket.py"],
+      "acceptanceCriteria": ["state_update에 total_equity/win_rate/active_strategy_count 추가", "하위호환", "단위테스트 통과"],
       "dependencies": [],
       "source": "total_equity, win_rate, active_strategy_count"
     },
@@ -3575,11 +3559,9 @@
       "title": "9개 신규 API 엔드포인트",
       "phase": "S11",
       "priority": 2,
-      "passes": false,
-      "files": [
-        "engine/src/api/server.py"
-      ],
-      "acceptanceCriteria": [],
+      "passes": true,
+      "files": ["engine/src/api/server.py"],
+      "acceptanceCriteria": ["9개 엔드포인트 구현 (positions, daily-returns, logs, db-metrics, redis-metrics, alerts/ack, alerts/resolve, test-alert, exchanges/reconnect)", "JWT 인증", "단위테스트"],
       "dependencies": [],
       "source": "portfolio/positions, system/logs, alerts/acknowledge 등"
     },
@@ -3588,12 +3570,10 @@
       "title": "대시보드 백엔드 연동 검증",
       "phase": "S11",
       "priority": 5,
-      "passes": false,
-      "files": [
-        "dashboard/src/app/"
-      ],
-      "acceptanceCriteria": [],
-      "dependencies": [],
+      "passes": true,
+      "files": ["dashboard/src/app/"],
+      "acceptanceCriteria": ["모든 페이지 실데이터 표시", "콘솔 에러 0건", "npm run build 성공", "모바일 375px/768px"],
+      "dependencies": ["US-203","US-204","US-205","US-206","US-210","US-211"],
       "source": "모든 페이지 실데이터 + 콘솔 에러 0건"
     },
     {

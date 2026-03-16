@@ -259,11 +259,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S9 ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** ✅ → TF QF 재실행(단계 3.5 추가) → **Phase S11**(UI/UX, 10 US) → TF SF(순차 OFF→ON) → Phase S12 → TF Final → Live
-- **Tests**: 4,602 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (211개 US, 191 pass / 20 pending)
+- **Phase 순서**: A~M✅ → S1~S9 ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** ✅ → TF QF 재실행(단계 3.5 추가) → **Phase S11** ✅ → TF SF(순차 OFF→ON) → **Phase S12** → TF Final → Live
+- **Tests**: 4,647 passed, 0 failed, 12 skipped
+- **PRD**: `.omc/prd.json` (211개 US, 201 pass / 10 pending)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: Phase S11 (US-203~212, UI/UX) → TF QF 재실행(단계 3.5) → TF SF → TF Final → Live
+- **다음 작업**: TF QF 재실행(단계 3.5) → TF SF(순차 OFF→ON) → Phase S12 (US-213~220) → TF Final → Live
 - **Phase S10 핵심**: ✅ 완료 — latency_arb 병합(8→7전략), stat_arb cross-asset, AdaptiveThreshold 복합지표, futures stale guard
 - **Phase S10 플랜**: `.claude/plans/goofy-napping-feather.md`
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%

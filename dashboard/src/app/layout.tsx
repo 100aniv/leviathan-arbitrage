@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
+import { MissionControlStrip } from "@/components/MissionControlStrip";
 
 export const metadata: Metadata = {
   title: "LEVIATHAN · War Room Dashboard",
@@ -13,19 +14,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="flex min-h-screen bg-terminal-bg text-terminal-text font-sans">
         <Sidebar />
         <div className="flex flex-col flex-1 min-w-0">
-          {/* Top header — desktop only */}
-          <header className="hidden md:flex items-center justify-between px-6 py-3 border-b border-terminal-border bg-terminal-surface/50 backdrop-blur shrink-0">
-            <h1 className="text-xs font-mono text-terminal-subtle uppercase tracking-widest">
-              LEVIATHAN 대시보드
-            </h1>
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-profit animate-pulse" aria-hidden />
-              <span className="text-xs font-mono text-terminal-subtle">ENGINE ONLINE</span>
-            </div>
-          </header>
+          {/* MissionControlStrip — mt-14 pushes it below the mobile hamburger (h-14) */}
+          <div className="mt-14 md:mt-0 shrink-0">
+            <MissionControlStrip />
+          </div>
 
-          {/* Page content — extra top padding on mobile for fixed hamburger bar */}
-          <main className="flex-1 overflow-auto p-6 pt-20 md:pt-6">
+          {/* Page content */}
+          <main className="flex-1 overflow-auto p-6">
             {children}
           </main>
         </div>

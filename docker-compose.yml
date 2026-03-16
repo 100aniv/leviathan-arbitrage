@@ -18,6 +18,7 @@ volumes:
   grafana_data:
   loki_data:
   db_backups:
+  promtail_positions:
 
 services:
   # ---------------------------------------------------------------------------
@@ -415,11 +416,14 @@ services:
     container_name: leviathan-promtail
     restart: unless-stopped
     command: -config.file=/etc/promtail/promtail-config.yaml
+    environment:
+      - DOCKER_API_VERSION=1.41
     networks:
       - leviathan
     volumes:
       - ./infra/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail_positions:/var/log/promtail
     depends_on:
       loki:
         condition: service_healthy

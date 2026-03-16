@@ -2275,6 +2275,17 @@ class Engine:
                     except Exception:
                         pass
 
+                # US-210: Compute extended fields
+                total_equity = realized + unrealized
+                active_strategy_count = sum(
+                    1 for info in self.context.strategies.values()
+                    if info.get("enabled", False)
+                )
+                # Win rate from shadow stats or 0
+                feed_win_rate = 0.0
+                if shadow_stats:
+                    feed_win_rate = float(shadow_stats.get("win_rate", 0.0))
+
                 await ws.broadcast({
                     "type": "state_update",
                     "data": {
@@ -2291,6 +2302,10 @@ class Engine:
                         "positions": positions,
                         "position_count": len(positions),
                         "shadow_stats": shadow_stats,
+                        # US-210: Extended fields
+                        "total_equity": total_equity,
+                        "win_rate": feed_win_rate,
+                        "active_strategy_count": active_strategy_count,
                     },
                     "ts": time.time(),
                 })

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -96,4 +97,36 @@ async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
     return JSONResponse({
         "mode": ctx.execution_mode,
         "livegate": livegate_result,
+    })
+
+
+@router.post("/settings/test-alert", dependencies=[Depends(require_auth)])
+async def send_test_alert(request: Request) -> JSONResponse:
+    """US-211: Send a test alert to Telegram to verify connectivity."""
+    ctx = request.app.state.engine_context
+
+    # Append a test alert to alert_history
+    test_alert = {
+        "id": f"test-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+        "type": "test",
+        "severity": "info",
+        "message": "테스트 알림입니다 / Test alert",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    ctx.alert_history.append(test_alert)
+
+    # Try to send via Telegram if available
+    telegram_sent = False
+    engine = getattr(ctx, "engine", None)
+    telegram = getattr(engine, "_telegram", None) if engine else None
+    if telegram is not None:
+        try:
+            telegram_sent = await telegram.send_alert("🔔 테스트 알림 / Test alert", level="INFO")
+        except Exception as exc:
+            logger.warning("Test alert Telegram send failed: %s", exc)
+
+    return JSONResponse({
+        "status": "sent",
+        "telegram_delivered": telegram_sent,
+        "alert": test_alert,
     })

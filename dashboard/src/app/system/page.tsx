@@ -1,9 +1,25 @@
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
 import { useApi } from '@/hooks/useApi';
-import { getHealth, getStatus, getExchangeStatus, getSystemContainers, getSystemResources } from '@/lib/api';
-import type { HealthResponse, StatusResponse, ExchangeStatus, ContainerStatus, SystemResources } from '@/types';
+import {
+  getHealth,
+  getStatus,
+  getExchangeStatus,
+  getSystemContainers,
+  getSystemResources,
+  killEngine,
+} from '@/lib/api';
+import type {
+  HealthResponse,
+  StatusResponse,
+  ExchangeStatus,
+  ContainerStatus,
+  SystemResources,
+} from '@/types';
 import { TCAWidget } from '@/components/TCAWidget';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86400);
@@ -31,6 +47,165 @@ function ContainerBadge({ status }: { status: ContainerStatus['status'] }) {
   return <span className="badge-loss">error</span>;
 }
 
+// ─── Kill Switch Panel ────────────────────────────────────────────────────────
+
+type KillState = 'idle' | 'confirming' | 'ready' | 'executing' | 'halted';
+const COUNTDOWN_SEC = 3;
+
+function KillSwitchPanel({ isAlreadyActive }: { isAlreadyActive: boolean }) {
+  const [state, setState] = useState<KillState>(isAlreadyActive ? 'halted' : 'idle');
+  const [countdown, setCountdown] = useState(COUNTDOWN_SEC);
+
+  // Start countdown when confirming
+  useEffect(() => {
+    if (state !== 'confirming') return;
+    setCountdown(COUNTDOWN_SEC);
+    const tick = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(tick);
+          setState('ready');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1_000);
+    return () => clearInterval(tick);
+  }, [state]);
+
+  // Sync with server state (if engine reports kill active, show halted)
+  useEffect(() => {
+    if (isAlreadyActive && state === 'idle') setState('halted');
+  }, [isAlreadyActive, state]);
+
+  const handleExecute = useCallback(async () => {
+    setState('executing');
+    try {
+      await killEngine('manual kill switch — system page');
+      setState('halted');
+    } catch {
+      setState('ready');
+    }
+  }, []);
+
+  const handleCancel = () => setState('idle');
+
+  if (state === 'halted') {
+    return (
+      <div
+        role="alert"
+        className="border border-loss/60 bg-loss/8 p-4 flex items-center gap-3"
+      >
+        <span className="w-2.5 h-2.5 rounded-full bg-loss animate-pulse shrink-0" />
+        <div>
+          <p className="text-xs font-mono uppercase tracking-[0.2em] text-loss">
+            System Halted — All Trading Suspended
+          </p>
+          <p className="text-[10px] font-mono text-terminal-subtle mt-0.5">
+            Manual restart required to resume operations.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === 'idle') {
+    return (
+      <div className="border border-terminal-border/50 bg-terminal-surface p-4 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-terminal-subtle mb-0.5">
+            Kill Switch
+          </p>
+          <p className="text-xs font-mono text-terminal-text">
+            Emergency stop — halts all trading immediately.
+          </p>
+        </div>
+        <button
+          onClick={() => setState('confirming')}
+          aria-label="Activate emergency stop"
+          className="shrink-0 flex items-center gap-2 px-4 py-2 border border-loss/40 bg-loss/8 text-loss/80 text-xs font-mono uppercase tracking-widest hover:bg-loss/15 hover:border-loss/70 hover:text-loss transition-all active:scale-95"
+        >
+          <span className="w-2 h-2 rounded-full bg-loss/60 shrink-0" />
+          Emergency Stop
+        </button>
+      </div>
+    );
+  }
+
+  // confirming or ready
+  const progress = state === 'ready' ? 100 : ((COUNTDOWN_SEC - countdown) / COUNTDOWN_SEC) * 100;
+  const canExecute = state === 'ready';
+
+  return (
+    <div
+      role="alertdialog"
+      aria-labelledby="ks-title"
+      className="border border-loss/60 bg-terminal-surface p-4 space-y-4"
+    >
+      {/* Danger header */}
+      <div className="flex items-start gap-3">
+        <span className="w-2.5 h-2.5 rounded-full bg-loss animate-pulse mt-0.5 shrink-0" />
+        <div>
+          <p id="ks-title" className="text-xs font-mono uppercase tracking-[0.2em] text-loss">
+            ⚠ Emergency Stop — Confirm Action
+          </p>
+          <p className="text-[11px] font-mono text-terminal-text mt-1 leading-relaxed">
+            This will immediately halt ALL trading operations. Open positions will remain open.
+            A manual restart is required to resume.
+          </p>
+        </div>
+      </div>
+
+      {/* Countdown bar */}
+      <div className="space-y-1.5">
+        <div className="flex justify-between text-[10px] font-mono text-terminal-subtle">
+          <span>{canExecute ? 'Ready to execute' : `Activating in ${countdown}s…`}</span>
+          <span className={canExecute ? 'text-loss' : 'text-warn'}>
+            {canExecute ? 'ARMED' : `${countdown}s`}
+          </span>
+        </div>
+        <div className="h-1 bg-terminal-muted/30 overflow-hidden">
+          <div
+            className={`h-full transition-all duration-1000 ${canExecute ? 'bg-loss' : 'bg-warn'}`}
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex items-center gap-3 justify-end">
+        <button
+          onClick={handleCancel}
+          className="px-4 py-2 text-xs font-mono uppercase tracking-widest border border-terminal-border text-terminal-subtle hover:text-terminal-text hover:border-terminal-muted transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleExecute}
+          disabled={!canExecute}
+          aria-label="Execute kill switch"
+          className={`px-5 py-2 text-xs font-mono uppercase tracking-widest border transition-all ${
+            canExecute
+              ? 'border-loss bg-loss/15 text-loss hover:bg-loss/25 active:scale-95 cursor-pointer'
+              : 'border-loss/30 bg-loss/5 text-loss/40 cursor-not-allowed'
+          }`}
+        >
+          {state === 'executing' ? (
+            <span className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-loss animate-ping" />
+              Executing…
+            </span>
+          ) : (
+            'Execute Kill Switch'
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function SystemPage() {
   const {
     data: health,
@@ -52,17 +227,6 @@ export default function SystemPage() {
     { refreshInterval: 5000 },
   );
 
-  const engineStatus  = health?.status ?? 'unknown';
-  const uptime        = (status as (typeof status & { uptime_seconds?: number }) | undefined)?.uptime_seconds;
-  const killActive    = status?.kill_switch_active ?? false;
-  const strategyCount = status?.strategy_count ?? 0;
-  const environment   = status?.environment ?? '—';
-
-  const hasError = healthError || statusError;
-  const isLoading = (healthLoading && !health) || (statusLoading && !status);
-
-  const exchangeList = Object.entries(exchanges ?? {});
-
   const { data: containers, isLoading: containersLoading } = useApi<ContainerStatus[]>(
     '/api/v1/system/containers',
     getSystemContainers,
@@ -75,17 +239,37 @@ export default function SystemPage() {
     { refreshInterval: 5000 },
   );
 
+  const engineStatus  = health?.status ?? 'unknown';
+  const uptime        = (status as (typeof status & { uptime_seconds?: number }) | undefined)?.uptime_seconds;
+  const killActive    = status?.kill_switch_active ?? false;
+  const strategyCount = status?.strategy_count ?? 0;
+  const environment   = status?.environment ?? '—';
+
+  const hasError  = healthError || statusError;
+  const isLoading = (healthLoading && !health) || (statusLoading && !status);
+  const exchangeList = Object.entries(exchanges ?? {});
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-mono font-semibold text-terminal-text">System Health</h2>
-          <p className="text-xs font-mono text-terminal-subtle mt-1">Engine status, connectivity, and diagnostics</p>
+          <p className="text-xs font-mono text-terminal-subtle mt-1">
+            Engine status, connectivity, and diagnostics
+          </p>
         </div>
         {!isLoading && !hasError && (
           <span className="text-[9px] font-mono text-profit animate-pulse">● LIVE</span>
         )}
+      </div>
+
+      {/* Kill Switch — Operations section */}
+      <div className="space-y-1">
+        <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-terminal-subtle">
+          Operations
+        </p>
+        <KillSwitchPanel isAlreadyActive={killActive} />
       </div>
 
       {/* Top stats */}
@@ -95,8 +279,8 @@ export default function SystemPage() {
           <p className="stat-value">
             <StatusDot status={engineStatus as 'healthy' | 'degraded' | 'unhealthy' | 'unknown'} />
             <span className={
-              engineStatus === 'healthy' ? 'text-profit' :
-              engineStatus === 'degraded' ? 'text-warn' : 'text-loss'
+              engineStatus === 'healthy'  ? 'text-profit' :
+              engineStatus === 'degraded' ? 'text-warn'   : 'text-loss'
             }>
               {engineStatus.toUpperCase()}
             </span>
@@ -123,11 +307,12 @@ export default function SystemPage() {
         </div>
       </div>
 
+      {/* Exchange connections + Engine stats */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Exchange connections — real API data */}
+        {/* Exchange connections with WS latency */}
         <div className="bg-terminal-surface border border-terminal-border p-4">
           <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle block mb-4">
-            Exchange Connections
+            Exchange Connections &amp; Latency
           </span>
           {(isLoading || exchangesLoading) && exchangeList.length === 0 ? (
             <div className="space-y-2">
@@ -142,15 +327,26 @@ export default function SystemPage() {
                   key={id}
                   className="flex items-center justify-between px-3 py-1.5 bg-terminal-bg border border-terminal-border/40"
                 >
-                  <span className="text-xs font-mono text-terminal-subtle uppercase tracking-wider">{id}</span>
-                  <div className="flex items-center gap-3">
+                  <span className="text-xs font-mono text-terminal-subtle uppercase tracking-wider w-24 shrink-0">
+                    {id}
+                  </span>
+                  <div className="flex items-center gap-3 ml-auto">
+                    {/* WS latency badge */}
+                    <span className={`text-[10px] font-mono tabular-nums px-1.5 py-0.5 border ${
+                      ex.latency_ms < 50  ? 'border-profit/30 text-profit' :
+                      ex.latency_ms < 200 ? 'border-warn/30 text-warn'     : 'border-loss/30 text-loss'
+                    }`}>
+                      {ex.latency_ms}ms
+                    </span>
                     <span className="text-[10px] font-mono text-terminal-subtle tabular-nums">
-                      {ex.latency_ms}ms · {ex.symbols_count}s
+                      {ex.symbols_count}s
                     </span>
                     <div className="flex items-center gap-1.5">
-                      <span className={`w-1.5 h-1.5 rounded-full ${ex.connected ? 'bg-profit animate-pulse' : 'bg-loss'}`} />
+                      <span className={`w-1.5 h-1.5 rounded-full ${
+                        ex.connected ? 'bg-profit animate-pulse' : 'bg-loss'
+                      }`} />
                       <span className={`text-[10px] font-mono ${ex.connected ? 'text-profit' : 'text-loss'}`}>
-                        {ex.connected ? 'CONNECTED' : 'OFFLINE'}
+                        {ex.connected ? 'OK' : 'DOWN'}
                       </span>
                     </div>
                   </div>
@@ -158,9 +354,8 @@ export default function SystemPage() {
               ))}
             </div>
           ) : (
-            /* Fallback: show status-based list */
             <div className="space-y-1.5">
-              {['Binance', 'Bybit', 'OKX', 'Bitget', 'Upbit', 'Bithumb', 'Coinone', 'TimescaleDB'].map(label => (
+              {['Binance', 'Bybit', 'OKX', 'Bitget', 'Upbit', 'Bithumb', 'Coinone'].map(label => (
                 <div
                   key={label}
                   className="flex items-center justify-between px-3 py-1.5 bg-terminal-bg border border-terminal-border/40"
@@ -218,8 +413,8 @@ export default function SystemPage() {
                 >
                   <span className="text-[11px] font-mono text-terminal-subtle">{label}</span>
                   <span className={`text-[11px] font-mono tabular-nums ${
-                    value === 'HALTED' || value === 'NO' ? 'text-loss' :
-                    value === 'READY' || value === 'YES' || value === 'HEALTHY' ? 'text-profit' :
+                    value === 'HALTED' || value === 'NO'                    ? 'text-loss'   :
+                    value === 'READY'  || value === 'YES' || value === 'HEALTHY' ? 'text-profit' :
                     'text-terminal-text'
                   }`}>
                     {isLoading && value === '—' ? (
@@ -233,7 +428,7 @@ export default function SystemPage() {
         </div>
       </div>
 
-      {/* Docker containers — live API */}
+      {/* Docker containers */}
       <div className="bg-terminal-surface border border-terminal-border p-4">
         <div className="flex items-center justify-between mb-4">
           <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">
@@ -272,12 +467,12 @@ export default function SystemPage() {
           </div>
         ) : (
           <div className="flex items-center justify-center py-8">
-            <span className="text-xs font-mono text-terminal-subtle">Docker 연결 대기 중...</span>
+            <span className="text-xs font-mono text-terminal-subtle">Docker 연결 대기 중…</span>
           </div>
         )}
       </div>
 
-      {/* Resource Usage — live API */}
+      {/* Resource usage */}
       <div className="bg-terminal-surface border border-terminal-border p-4">
         <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle block mb-4">
           Resource Usage
@@ -291,9 +486,32 @@ export default function SystemPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
-              { label: 'CPU Usage', value: resources?.cpu_pct != null ? `${resources.cpu_pct.toFixed(1)}%` : '—', bar: resources?.cpu_pct ?? 0, color: '#00ff88' },
-              { label: 'Memory',    value: resources?.memory_used_gb != null && resources?.memory_total_gb != null ? `${resources.memory_used_gb.toFixed(1)} / ${resources.memory_total_gb.toFixed(0)} GB` : '—', bar: resources?.memory_used_gb != null && resources?.memory_total_gb ? Math.min(resources.memory_used_gb / resources.memory_total_gb * 100, 100) : 0, color: '#3b82f6' },
-              { label: 'Disk',      value: resources?.disk_used_gb != null && resources?.disk_total_gb != null ? `${resources.disk_used_gb.toFixed(0)} / ${resources.disk_total_gb.toFixed(0)} GB` : '—', bar: resources?.disk_used_gb != null && resources?.disk_total_gb ? Math.min(resources.disk_used_gb / resources.disk_total_gb * 100, 100) : 0, color: '#f59e0b' },
+              {
+                label: 'CPU Usage',
+                value: resources?.cpu_pct != null ? `${resources.cpu_pct.toFixed(1)}%` : '—',
+                bar:   resources?.cpu_pct ?? 0,
+                color: '#00ff88',
+              },
+              {
+                label: 'Memory',
+                value: resources?.memory_used_gb != null && resources?.memory_total_gb != null
+                  ? `${resources.memory_used_gb.toFixed(1)} / ${resources.memory_total_gb.toFixed(0)} GB`
+                  : '—',
+                bar: resources?.memory_used_gb != null && resources?.memory_total_gb
+                  ? Math.min(resources.memory_used_gb / resources.memory_total_gb * 100, 100)
+                  : 0,
+                color: '#3b82f6',
+              },
+              {
+                label: 'Disk',
+                value: resources?.disk_used_gb != null && resources?.disk_total_gb != null
+                  ? `${resources.disk_used_gb.toFixed(0)} / ${resources.disk_total_gb.toFixed(0)} GB`
+                  : '—',
+                bar: resources?.disk_used_gb != null && resources?.disk_total_gb
+                  ? Math.min(resources.disk_used_gb / resources.disk_total_gb * 100, 100)
+                  : 0,
+                color: '#f59e0b',
+              },
             ].map(({ label, value, bar, color }) => (
               <div key={label} className="space-y-2">
                 <div className="flex justify-between text-[11px] font-mono">
@@ -312,7 +530,7 @@ export default function SystemPage() {
         )}
       </div>
 
-      {/* TCA — Execution Quality (US-116) */}
+      {/* TCA — Execution Quality */}
       <TCAWidget />
     </div>
   );

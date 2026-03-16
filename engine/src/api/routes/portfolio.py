@@ -99,6 +99,65 @@ async def get_portfolio_summary(request: Request) -> JSONResponse:
     })
 
 
+@router.get("/portfolio/positions", dependencies=[Depends(require_auth)])
+async def get_positions(request: Request) -> JSONResponse:
+    """US-211: Return current open positions."""
+    ctx = request.app.state.engine_context
+    positions: list[dict[str, Any]] = []
+
+    pm = getattr(ctx, "position_manager", None)
+    if pm is not None:
+        try:
+            for p in pm.get_all_positions():
+                positions.append({
+                    "strategy_id": getattr(p, "strategy_id", "unknown"),
+                    "exchange_id": getattr(p, "exchange_id", "unknown"),
+                    "symbol": getattr(p, "symbol", "unknown"),
+                    "side": getattr(p, "side", "unknown"),
+                    "size": float(getattr(p, "size", 0)),
+                    "entry_price": float(getattr(p, "entry_price", 0)),
+                    "unrealized_pnl": float(getattr(p, "unrealized_pnl", 0)),
+                })
+        except (AttributeError, TypeError, RuntimeError):
+            pass
+
+    if not positions:
+        for p in ctx.positions:
+            positions.append(p if isinstance(p, dict) else {"raw": str(p)})
+
+    return JSONResponse(positions)
+
+
+@router.get("/portfolio/daily-returns", dependencies=[Depends(require_auth)])
+async def get_daily_returns(request: Request) -> JSONResponse:
+    """US-211: Return daily returns array."""
+    ctx = request.app.state.engine_context
+    returns: list[dict[str, Any]] = []
+
+    shadow = getattr(ctx, "shadow_mode", None)
+    if shadow is not None and hasattr(shadow, "get_snapshot"):
+        try:
+            snapshot = shadow.get_snapshot()
+            total_pnl = float(snapshot.get("total_pnl", 0))
+            returns.append({
+                "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "pnl": round(total_pnl, 6),
+                "trades": int(snapshot.get("total_trades", 0)),
+            })
+        except Exception:
+            pass
+
+    if not returns:
+        total = float(ctx.realized_pnl or 0) + float(ctx.unrealized_pnl or 0)
+        returns.append({
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "pnl": round(total, 6),
+            "trades": len(ctx.trade_history),
+        })
+
+    return JSONResponse(returns)
+
+
 @router.get("/portfolio/equity-curve", dependencies=[Depends(require_auth)])
 async def get_equity_curve(request: Request) -> JSONResponse:
     """Return daily equity curve data for charting."""

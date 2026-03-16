@@ -3,9 +3,14 @@
 Async, fire-and-forget Telegram bot integration.
 Rate limited to 20 msgs/min (Telegram API limit).
 Failures are logged but NEVER crash the engine.
+
+US-207: Korean infra bot templates (daily report, kill switch, circuit breaker, DB)
+US-208: Korean trade bot templates (fill notification, daily settlement)
+US-209: Severity-based rate limiting (EMERGENCY/CRITICAL/WARNING/INFO)
 """
 from __future__ import annotations
 
+import enum
 import os
 import time
 from collections import deque
@@ -33,6 +38,51 @@ _LEVEL_EMOJI: dict[str, str] = {
     "ERROR": "❌",
     "CRITICAL": "🚨",
 }
+
+
+# ---------------------------------------------------------------------------
+# US-209: Alert severity enum & rate-limit intervals
+# ---------------------------------------------------------------------------
+
+
+class AlertSeverity(enum.Enum):
+    """Alert severity levels with per-level rate-limit intervals (seconds)."""
+
+    EMERGENCY = 0    # Send immediately, no throttle
+    CRITICAL = 60    # At most once per 60s
+    WARNING = 300    # At most once per 300s
+    INFO = 1800      # Batch: at most once per 1800s
+
+    @property
+    def min_interval(self) -> int:
+        return self.value
+
+
+class SeverityFilter:
+    """Per-severity rate limiter for Telegram alerts (US-209).
+
+    Tracks the last send time per severity level and decides whether
+    a new message of that severity should be sent.
+    """
+
+    def __init__(self) -> None:
+        self._last_sent: dict[AlertSeverity, float] = {}
+
+    def should_send(self, severity: AlertSeverity) -> bool:
+        """Return True if enough time has elapsed since the last send for this severity."""
+        if severity == AlertSeverity.EMERGENCY:
+            return True
+        now = time.monotonic()
+        last = self._last_sent.get(severity, 0.0)
+        return (now - last) >= severity.min_interval
+
+    def record_send(self, severity: AlertSeverity) -> None:
+        """Record that a message of this severity was just sent."""
+        self._last_sent[severity] = time.monotonic()
+
+    def reset(self) -> None:
+        """Clear all rate-limit state."""
+        self._last_sent.clear()
 
 
 class TelegramAlerter:
@@ -76,6 +126,8 @@ class TelegramAlerter:
 
         # Sliding-window rate limiter: stores timestamps of recent sends.
         self._send_times: deque[float] = deque()
+        # US-209: Per-severity rate limiter
+        self._severity_filter = SeverityFilter()
         # Reusable HTTP client for connection pooling (US-168)
         self._http_client: httpx.AsyncClient | None = None
 
@@ -229,6 +281,197 @@ class TelegramAlerter:
             f"<b>Net Edge:</b>   {net_edge}%",
             f"<b>Confidence:</b> {confidence_pct:.1f}%",
         ]
+        return await self._send("\n".join(lines))
+
+    # ---------------------------------------------------------------------------
+    # US-209: Severity-filtered alert
+    # ---------------------------------------------------------------------------
+
+    async def send_alert_with_severity(
+        self, message: str, severity: AlertSeverity
+    ) -> bool:
+        """Send an alert respecting per-severity rate limits.
+
+        Args:
+            message: Human-readable alert text (HTML allowed).
+            severity: AlertSeverity enum value.
+
+        Returns:
+            True if the message was sent, False if throttled or failed.
+        """
+        if not self._severity_filter.should_send(severity):
+            logger.debug(
+                "telegram_severity_throttled",
+                severity=severity.name,
+                min_interval=severity.min_interval,
+            )
+            return False
+        level_map = {
+            AlertSeverity.EMERGENCY: "CRITICAL",
+            AlertSeverity.CRITICAL: "ERROR",
+            AlertSeverity.WARNING: "WARNING",
+            AlertSeverity.INFO: "INFO",
+        }
+        level = level_map.get(severity, "INFO")
+        result = await self.send_alert(message, level=level)
+        if result:
+            self._severity_filter.record_send(severity)
+        return result
+
+    # ---------------------------------------------------------------------------
+    # US-207: Korean infra bot templates
+    # ---------------------------------------------------------------------------
+
+    async def send_daily_report_kr(self, data: dict[str, Any]) -> bool:
+        """일일 가동 리포트 (한국어).
+
+        Expected keys in ``data``:
+            - date (str): 날짜
+            - total_pnl (float): 총 PnL (USD)
+            - trades (int): 거래 수
+            - win_rate (float): 승률 0-1
+            - active_strategies (int): 활성 전략 수
+            - exchange_status (dict[str, str]): 거래소별 상태 {id: "정상"/"장애"}
+        """
+        pnl = data.get("total_pnl")
+        pnl_str = f"${float(pnl):+,.2f}" if pnl is not None else "N/A"
+        pnl_emoji = "📈" if (pnl is not None and float(pnl) >= 0) else "📉"
+
+        wr = data.get("win_rate")
+        wr_str = f"{float(wr) * 100:.1f}%" if wr is not None else "N/A"
+
+        exchanges = data.get("exchange_status", {})
+        ex_lines = []
+        for ex_id, status in sorted(exchanges.items()):
+            icon = "🟢" if status == "정상" else "🔴"
+            ex_lines.append(f"  {icon} {ex_id}: {status}")
+
+        lines = [
+            f"📊 <b>일일 가동 리포트 — {data.get('date', 'N/A')}</b>",
+            "",
+            f"{pnl_emoji} <b>총 PnL:</b> {pnl_str}",
+            f"🔁 <b>거래 수:</b> {data.get('trades', 'N/A')}",
+            f"🎯 <b>승률:</b> {wr_str}",
+            f"⚙️ <b>활성 전략:</b> {data.get('active_strategies', 'N/A')}개",
+            "",
+            "<b>거래소 상태:</b>",
+        ]
+        lines.extend(ex_lines if ex_lines else ["  정보 없음"])
+        return await self._send("\n".join(lines))
+
+    async def send_alert_kr(self, alert_type: str, data: dict[str, Any]) -> bool:
+        """장애 경보 (한국어).
+
+        Args:
+            alert_type: "kill_switch" | "circuit_breaker" | "db_failure"
+            data: Alert-specific data.
+        """
+        if alert_type == "kill_switch":
+            lines = [
+                "🚨 <b>긴급: 킬 스위치 작동</b>",
+                "",
+                f"<b>사유:</b> {data.get('reason', '알 수 없음')}",
+                f"<b>취소 주문:</b> {data.get('cancelled_orders', 0)}건",
+                f"<b>청산 포지션:</b> {data.get('closed_positions', 0)}건",
+                f"<b>Redis 중단:</b> {'예' if data.get('redis_halt') else '아니오'}",
+            ]
+        elif alert_type == "circuit_breaker":
+            state = data.get("state", "UNKNOWN")
+            emoji = "🔴" if state == "OPEN" else ("🟡" if state == "HALF_OPEN" else "🟢")
+            lines = [
+                f"{emoji} <b>서킷 브레이커: {state}</b>",
+                "",
+                f"<b>사유:</b> {data.get('reason', '알 수 없음')}",
+            ]
+        elif alert_type == "db_failure":
+            lines = [
+                "🔴 <b>DB 장애 감지</b>",
+                "",
+                f"<b>유형:</b> {data.get('db_type', 'TimescaleDB')}",
+                f"<b>오류:</b> {data.get('error', '알 수 없음')}",
+                f"<b>영향:</b> {data.get('impact', '데이터 저장 불가')}",
+            ]
+        else:
+            lines = [
+                f"⚠️ <b>경보: {alert_type}</b>",
+                "",
+                f"<b>상세:</b> {data.get('detail', '알 수 없음')}",
+            ]
+        return await self._send("\n".join(lines))
+
+    # ---------------------------------------------------------------------------
+    # US-208: Korean trade bot templates
+    # ---------------------------------------------------------------------------
+
+    async def send_fill_kr(self, data: dict[str, Any]) -> bool:
+        """체결 알림 (한국어).
+
+        Expected keys in ``data``:
+            - strategy (str): 전략명
+            - symbol (str): 심볼
+            - buy_exchange (str): 매수 거래소
+            - sell_exchange (str): 매도 거래소
+            - pnl (float): 실현 PnL
+            - spread_pct (float): 스프레드 %
+        """
+        pnl = data.get("pnl")
+        pnl_str = f"${float(pnl):+,.4f}" if pnl is not None else "N/A"
+        pnl_emoji = "💰" if (pnl is not None and float(pnl) >= 0) else "📉"
+
+        lines = [
+            f"{pnl_emoji} <b>체결 완료</b>",
+            "",
+            f"<b>전략:</b> {data.get('strategy', 'N/A')}",
+            f"<b>심볼:</b> {data.get('symbol', 'N/A')}",
+            f"<b>매수:</b> {data.get('buy_exchange', 'N/A')}",
+            f"<b>매도:</b> {data.get('sell_exchange', 'N/A')}",
+            f"<b>스프레드:</b> {data.get('spread_pct', 'N/A')}%",
+            f"<b>PnL:</b> {pnl_str}",
+        ]
+        return await self._send("\n".join(lines))
+
+    async def send_daily_settlement_kr(self, data: dict[str, Any]) -> bool:
+        """일일 정산 리포트 (한국어).
+
+        Expected keys in ``data``:
+            - date (str): 날짜
+            - total_pnl (float): 총 PnL
+            - win_rate (float): 승률 0-1
+            - total_trades (int): 거래 수
+            - strategy_breakdown (list[dict]): 전략별 breakdown
+              [{strategy, pnl, trades, win_rate}]
+        """
+        pnl = data.get("total_pnl")
+        pnl_str = f"${float(pnl):+,.2f}" if pnl is not None else "N/A"
+        pnl_emoji = "📈" if (pnl is not None and float(pnl) >= 0) else "📉"
+
+        wr = data.get("win_rate")
+        wr_str = f"{float(wr) * 100:.1f}%" if wr is not None else "N/A"
+
+        lines = [
+            f"📋 <b>일일 정산 리포트 — {data.get('date', 'N/A')}</b>",
+            "",
+            f"{pnl_emoji} <b>총 PnL:</b> {pnl_str}",
+            f"🎯 <b>승률:</b> {wr_str}",
+            f"🔁 <b>거래 수:</b> {data.get('total_trades', 'N/A')}",
+            "",
+            "<b>전략별 실적:</b>",
+        ]
+
+        breakdown = data.get("strategy_breakdown", [])
+        if breakdown:
+            for item in breakdown:
+                s_pnl = item.get("pnl")
+                s_pnl_str = f"${float(s_pnl):+,.4f}" if s_pnl is not None else "N/A"
+                s_wr = item.get("win_rate")
+                s_wr_str = f"{float(s_wr) * 100:.1f}%" if s_wr is not None else "N/A"
+                lines.append(
+                    f"  • {item.get('strategy', '?')}: {s_pnl_str} "
+                    f"({item.get('trades', 0)}건, 승률 {s_wr_str})"
+                )
+        else:
+            lines.append("  데이터 없음")
+
         return await self._send("\n".join(lines))
 
     # ---------------------------------------------------------------------------

@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-17 (Phase S10 완료 — latency_arb 병합, stat_arb cross-asset, AdaptiveThreshold 복합지표, futures stale guard) | 최신 커밋: 5cf28e2
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (211개 User Stories, 191 pass / 20 pending — 9개 US는 과거 삭제/합병으로 prd.json에서 제거됨)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** ✅ → TF QF 재실행(단계 3.5) → **Phase S11** (UI/UX) → TF SF(순차 OFF→ON) → Phase S12 → TF Final → Live
+> 마지막 업데이트: 2026-03-17 (Phase S11 완료 — MissionControlStrip, Overview 재설계, HealthScore 카드, 텔레그램 한국어, 9개 API 엔드포인트) | 최신 커밋: 44629f3
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (211개 User Stories, 201 pass / 10 pending — 9개 US는 과거 삭제/합병으로 prd.json에서 제거됨)
+> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** ✅ → TF QF 재실행(단계 3.5) → **Phase S11** ✅ → TF SF(순차 OFF→ON) → **Phase S12** → TF Final → Live
 
 ---
 
@@ -27,14 +27,14 @@
 ## 2. 현재 상태
 
 ```
-Phase:        Phase S10 Strategy Architecture Hardening ✅ (2026-03-17)
-테스트:       4,602 passed, 0 failed, 12 skipped
+Phase:        Phase S11 Operations UX Core ✅ (2026-03-17)
+테스트:       4,647 passed, 0 failed, 12 skipped
 커버리지:     86%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    5cf28e2
-다음 작업:    Phase S11 (US-203~212, UI/UX, 10 US) → TF QF 재실행(단계 3.5) → TF SF → Phase S12 → TF Final → Live
-완료된 US:    191/211 (S10 완료 2026-03-17 Shadow PnL +$4.99 WR 93.3% 3423 trades crash 0, S11 0/10 + S12 0/8 + F 0/2 pending, prd.json 191 pass / 20 pending)
+최신 커밋:    44629f3
+다음 작업:    TF QF 재실행(단계 3.5) → TF SF(순차 OFF→ON) → Phase S12 (US-213~220) → TF Final → Live
+완료된 US:    201/211 (S11 완료 2026-03-17, prd.json 201 pass / 10 pending, S12 0/8 + F 0/2 pending)
 TF QF:        ✅ PASS (2026-03-16) — CRITICAL 0, HIGH 0 (단계 3.5 조립 검증 추가 예정)
               1차(2026-03-13): FAIL → 회귀 S1~S7
               2차(2026-03-15): 조건부 PASS → S8 후 재실행
@@ -402,7 +402,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 211개 User Stories, 191개 완료, 20개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 211개 User Stories, 201개 완료, 10개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -579,21 +579,21 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-202: 7개 전략 전체 Shadow 10min 재검증 — PnL +$4.99, WR 93.3%, 3423 trades, overlap=0, crash=0
 - [x] US-193: §9 RESOLVED 이슈 → SSOT_COMPLETE.md 이관
 
-#### Phase S11: Operations UX Core — US-203~212 (대기, S10 + TF QF 후 진행)
+#### Phase S11: Operations UX Core — US-203~212 ✅ 완료 (2026-03-17)
 
 > **목표**: 사장님이 대시보드 열자마자 3초 안에 상황 파악 가능하게
 > **진입 조건**: Phase S10 완료 + TF QF PASS
 
-- [ ] US-203: MissionControlStrip — 40px 상시 상태바 (전 페이지 표시: EQUITY, TODAY PnL, WIN%, ACTIVE, MODE, KILL SWITCH)
-- [ ] US-204: Overview 페이지 재설계 — 3초 규칙 (총자산/PnL/시스템상태 → 전략 기여도 → PnL 곡선)
-- [ ] US-205: Strategies 페이지 — Health Score 카드 (0-100, WR 40pts + Fill 30pts + Signal 15pts + Error 15pts)
-- [ ] US-206: System/Operations 페이지 — 2-click Kill Switch (3초 카운트다운) + Docker/DB/Redis 상태 + 거래소 레이턴시
-- [ ] US-207: 텔레그램 한국어 템플릿 (인프라봇) — 가동 리포트, 장애 경보 양식
-- [ ] US-208: 텔레그램 한국어 템플릿 (거래봇) — 체결 알림, 일일 정산 리포트 양식
-- [ ] US-209: 텔레그램 심각도 필터링 — EMERGENCY=즉시, CRITICAL=1분/건, WARNING=5분/건, INFO=30분 배치
-- [ ] US-210: WebSocket payload 확장 — state_update에 total_equity, win_rate, active_strategy_count 추가
-- [ ] US-211: 9개 신규 API 엔드포인트 — portfolio/positions, daily-returns, system/logs, db-metrics, redis-metrics, alerts/acknowledge, alerts/resolve, settings/test-alert, exchanges/reconnect
-- [ ] US-212: 대시보드 백엔드 연동 검증 — 모든 페이지 실데이터 확인, 콘솔 에러 0건, 모바일 375px/768px
+- [x] US-203: MissionControlStrip — 40px 상시 상태바 (전 페이지 표시: EQUITY, TODAY PnL, WIN%, ACTIVE, MODE, KILL SWITCH)
+- [x] US-204: Overview 페이지 재설계 — 3초 규칙 (총자산/PnL/시스템상태 → 전략 기여도 → PnL 곡선)
+- [x] US-205: Strategies 페이지 — Health Score 카드 (0-100, WR 40pts + Fill 30pts + Signal 15pts + Error 15pts)
+- [x] US-206: System/Operations 페이지 — 2-click Kill Switch (3초 카운트다운) + Docker/DB/Redis 상태 + 거래소 레이턴시
+- [x] US-207: 텔레그램 한국어 템플릿 (인프라봇) — 가동 리포트, 장애 경보 양식
+- [x] US-208: 텔레그램 한국어 템플릿 (거래봇) — 체결 알림, 일일 정산 리포트 양식
+- [x] US-209: 텔레그램 심각도 필터링 — EMERGENCY=즉시, CRITICAL=1분/건, WARNING=5분/건, INFO=30분 배치
+- [x] US-210: WebSocket payload 확장 — state_update에 total_equity, win_rate, active_strategy_count 추가
+- [x] US-211: 9개 신규 API 엔드포인트 — portfolio/positions, daily-returns, system/logs, db-metrics, redis-metrics, alerts/acknowledge, alerts/resolve, settings/test-alert, exchanges/reconnect
+- [x] US-212: 대시보드 백엔드 연동 검증 — 모든 페이지 실데이터 확인, 콘솔 에러 0건, 모바일 375px/768px
 
 ---
 

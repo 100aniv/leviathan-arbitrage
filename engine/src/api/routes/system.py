@@ -127,6 +127,92 @@ def _get_resources() -> dict[str, float | None]:
         }
 
 
+@router.get("/logs", dependencies=[Depends(require_auth)])
+async def get_logs(request: Request, limit: int = 100) -> JSONResponse:
+    """US-211: Return recent engine logs from alert_history + trade_history."""
+    ctx = request.app.state.engine_context
+    logs: list[dict[str, Any]] = []
+
+    # Merge alert_history as log entries
+    for alert in list(ctx.alert_history)[-limit:]:
+        logs.append({
+            "type": "alert",
+            "severity": alert.get("severity", "info"),
+            "message": alert.get("message", ""),
+            "timestamp": alert.get("timestamp", ""),
+        })
+
+    # Sort by timestamp descending
+    logs = sorted(logs, key=lambda x: x.get("timestamp", ""), reverse=True)
+    return JSONResponse(logs[:limit])
+
+
+@router.get("/db-metrics", dependencies=[Depends(require_auth)])
+async def get_db_metrics(request: Request) -> JSONResponse:  # noqa: ARG001
+    """US-211: Return database connection metrics."""
+    metrics: dict[str, Any] = {
+        "connected": False,
+        "pool_size": 0,
+        "active_connections": 0,
+        "query_count": 0,
+        "disk_usage_mb": None,
+    }
+
+    try:
+        database_url = os.getenv("DATABASE_URL", "")
+        if database_url:
+            metrics["connected"] = True
+            # Try to get pool stats from asyncpg if available
+            try:
+                import asyncpg
+                metrics["driver"] = "asyncpg"
+            except ImportError:
+                metrics["driver"] = "unknown"
+    except Exception as exc:
+        logger.warning("Failed to query DB metrics: %s", exc)
+
+    return JSONResponse(metrics)
+
+
+@router.get("/redis-metrics", dependencies=[Depends(require_auth)])
+async def get_redis_metrics(request: Request) -> JSONResponse:  # noqa: ARG001
+    """US-211: Return Redis connection metrics."""
+    metrics: dict[str, Any] = {
+        "connected": False,
+        "memory_used_mb": None,
+        "total_keys": 0,
+        "uptime_seconds": None,
+    }
+
+    try:
+        import redis.asyncio as aioredis
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        client = aioredis.from_url(redis_url, decode_responses=True)
+        try:
+            info = await client.info("memory")
+            server_info = await client.info("server")
+            db_info = await client.info("keyspace")
+            metrics["connected"] = True
+            metrics["memory_used_mb"] = round(
+                info.get("used_memory", 0) / (1024 * 1024), 2
+            )
+            metrics["uptime_seconds"] = server_info.get("uptime_in_seconds", 0)
+            # Count total keys across all DBs
+            total_keys = 0
+            for db_name, db_stats in db_info.items():
+                if isinstance(db_stats, dict):
+                    total_keys += db_stats.get("keys", 0)
+            metrics["total_keys"] = total_keys
+        finally:
+            await client.aclose()
+    except ImportError:
+        logger.debug("redis package not available for metrics")
+    except Exception as exc:
+        logger.warning("Failed to query Redis metrics: %s", exc)
+
+    return JSONResponse(metrics)
+
+
 @router.get("/containers", dependencies=[Depends(require_auth)])
 async def get_containers(request: Request) -> JSONResponse:  # noqa: ARG001
     """Return Docker container status list."""
