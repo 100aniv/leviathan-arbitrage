@@ -599,6 +599,45 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 **SSOT 정비 (1건)**
 - [ ] US-193 (S10-16): §9 RESOLVED 이슈 → SSOT_COMPLETE.md 이관
 
+#### Phase S11: Operations UX Core — US-203~212 (대기, S10 + TF QF 후 진행)
+
+> **목표**: 사장님이 대시보드 열자마자 3초 안에 상황 파악 가능하게
+> **진입 조건**: Phase S10 완료 + TF QF PASS
+
+**CRITICAL (2건)**
+- [ ] US-203: MissionControlStrip — 40px 상시 상태바 (전 페이지 표시: EQUITY, TODAY PnL, WIN%, ACTIVE, MODE, KILL SWITCH)
+- [ ] US-206: System/Operations 페이지 — 2-click Kill Switch (3초 카운트다운) + Docker/DB/Redis 상태 + 거래소 레이턴시
+
+**HIGH (5건)**
+- [ ] US-204: Overview 페이지 재설계 — 3초 규칙 (총자산/PnL/시스템상태 → 전략 기여도 → PnL 곡선)
+- [ ] US-205: Strategies 페이지 — Health Score 카드 (0-100, WR 40pts + Fill 30pts + Signal 15pts + Error 15pts)
+- [ ] US-207: 텔레그램 한국어 템플릿 (인프라봇) — 가동 리포트, 장애 경보 양식
+- [ ] US-208: 텔레그램 한국어 템플릿 (거래봇) — 체결 알림, 일일 정산 리포트 양식
+- [ ] US-209: 텔레그램 심각도 필터링 — EMERGENCY=즉시, CRITICAL=1분/건, WARNING=5분/건, INFO=30분 배치
+
+**MEDIUM (2건)**
+- [ ] US-210: WebSocket payload 확장 — state_update에 total_equity, win_rate, active_strategy_count 추가
+- [ ] US-211: 9개 신규 API 엔드포인트 — portfolio/positions, daily-returns, system/logs, db-metrics, redis-metrics, alerts/acknowledge, alerts/resolve, settings/test-alert, exchanges/reconnect
+
+**검증 (1건)**
+- [ ] US-212: 대시보드 백엔드 연동 검증 — 모든 페이지 실데이터 확인, 콘솔 에러 0건, 모바일 375px/768px
+
+---
+
+#### Phase S12: Extended UX + Analytics — US-213~220 (대기, S11 + TF SF 후 진행, Live 전 필수 아님)
+
+> **목표**: 확장 UX + 고급 분석 + 알림 고도화
+> **진입 조건**: Phase S11 완료
+
+- [ ] US-213: SmartTelegramAlerter — Redis 중복제거 + 배치 (알림 피로 근본 해결)
+- [ ] US-214: Analytics 페이지 — Sharpe 순위, 시간대별 히트맵, 신호 품질 분석
+- [ ] US-215: Alerts 페이지 — 인시던트 lifecycle (acknowledge/resolve), 심각도 필터
+- [ ] US-216: Portfolio Drawdown 차트 + Exposure Heatmap (전략×거래소 매트릭스)
+- [ ] US-217: Settings Danger Zone — Emergency Stop, Reset Defaults (적색 경계 분리)
+- [ ] US-218: 사이드바 재구성 — MONITOR/ANALYZE/MANAGE 3그룹
+- [ ] US-219: Telegram Bot 커맨드 — /pnl, /strategies, /risk, /pause, /resume, /alerts
+- [ ] US-220: 주간 자동 리포트 — 일요일 23:59 KST 자동 발송
+
 ---
 
 ### TF Quarter-Final (QF): Development Verification — ✅ PASS
