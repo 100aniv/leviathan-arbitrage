@@ -4,7 +4,7 @@
   "created": "2026-03-08",
   "updated": "2026-03-15",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 171,
+  "total_stories": 220,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -35,7 +35,11 @@
     "S4": "Dashboard Completion (TF Semi-Final 발견)",
     "S5": "Data Pipeline & Auto-Tuner (TF Semi-Final 발견)",
     "S6": "Documentation Sync (TF Semi-Final 발견)",
-    "S7": "Pre-Live Hardening (TF SF 발견)"
+    "S7": "Pre-Live Hardening (TF SF 발견)",
+    "S9": "Strategy Activation (TF QF FAIL 회귀)",
+    "S10": "Strategy Architecture Hardening (전략 아키텍처 하드닝)",
+    "S11": "Operations UX Core (운영 UX 핵심)",
+    "S12": "Extended UX + Analytics (확장 UX + 분석)"
   },
   "gap_dependency_order": "GAP9 -> GAP10 -> (GAP5,GAP6,GAP7 parallel) -> GAP3 -> GAP1,GAP2 -> GAP4",
   "stories": [
@@ -3129,6 +3133,461 @@
         "US-185"
       ],
       "source": "← 사장님 지적: 전체 8개 전략 활성화 + 검증 필수"
+    },
+    {
+      "id": "US-187",
+      "title": "_CROSS_EXCHANGE_CONSUMERS 제거 + 신호 흐름 검증",
+      "phase": "S10",
+      "priority": 1,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/manager.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "TF SF Stage 2 FAIL: 전략 신호 중복 라우팅"
+    },
+    {
+      "id": "US-188",
+      "title": "stat_arb cross-asset pair 재설계 (BTC-ETH/ETH-SOL/BTC-BNB)",
+      "phase": "S10",
+      "priority": 1,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/statistical_arb.py",
+        "engine/src/core/real_signal_producer.py",
+        "engine/config/trading.json"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "TF SF Stage 2 FAIL: stat_arb = cross_exchange 동일 영역"
+    },
+    {
+      "id": "US-189",
+      "title": "cross_exchange min_spread_bps 5→10 복원",
+      "phase": "S10",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "engine/.env",
+        "engine/src/strategies/cross_exchange.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "cross_exchange 93.8% WR but -$9.35 PnL"
+    },
+    {
+      "id": "US-190",
+      "title": "ScheduledTuner 작동 확인 + 수동 트리거",
+      "phase": "S10",
+      "priority": 3,
+      "passes": false,
+      "files": [
+        "engine/src/tuning/scheduled_tuner.py",
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "Auto-tuner 로그 미관찰"
+    },
+    {
+      "id": "US-191",
+      "title": "ML/Tuning 컴포넌트 작동 로그",
+      "phase": "S10",
+      "priority": 3,
+      "passes": false,
+      "files": [
+        "engine/src/tuning/adaptive_threshold.py",
+        "engine/src/tuning/regime_detector.py",
+        "engine/src/ml/onnx_runtime.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "AdaptiveThreshold/RegimeDetector/ONNX 작동 미확인"
+    },
+    {
+      "id": "US-192",
+      "title": "ExposureTracker Redis 연결 확인",
+      "phase": "S10",
+      "priority": 3,
+      "passes": false,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/risk/exposure_tracker.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "Redis 키 미존재 확인 필요"
+    },
+    {
+      "id": "US-193",
+      "title": "SSOT §9 RESOLVED 이슈 → SSOT_COMPLETE.md 이관",
+      "phase": "S10",
+      "priority": 4,
+      "passes": false,
+      "files": [
+        "SSOT.md",
+        "SSOT_COMPLETE.md"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "§9 RESOLVED 항목 정리"
+    },
+    {
+      "id": "US-194",
+      "title": "latency_arb → cross_exchange 병합 (전략 8→7개)",
+      "phase": "S10",
+      "priority": 1,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/cross_exchange.py",
+        "engine/src/strategies/latency_arb.py",
+        "engine/src/strategies/manager.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "latency_arb = cross_exchange + latency gate (동일 영역)"
+    },
+    {
+      "id": "US-195",
+      "title": "전략 간 포지션 충돌 방지",
+      "phase": "S10",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "engine/src/execution/trade_consumer.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "2개 전략 동일 symbol 동시 거래 방지"
+    },
+    {
+      "id": "US-196",
+      "title": "전략별 자본 할당 (capital_allocation_pct)",
+      "phase": "S10",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "engine/config/trading.json",
+        "engine/src/risk/guardian.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "per-strategy capital limit 부재"
+    },
+    {
+      "id": "US-197",
+      "title": "stat_arb ScheduledTuner EXCLUDED 제거",
+      "phase": "S10",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "engine/src/tuning/scheduled_tuner.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "EXCLUDED에 statistical_arb 영구 제외됨"
+    },
+    {
+      "id": "US-198",
+      "title": "Korean exchange 필터 보강",
+      "phase": "S10",
+      "priority": 3,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/cross_exchange.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "latency_boost Korean exchange stale data"
+    },
+    {
+      "id": "US-199",
+      "title": "전략 overlap 감지 메트릭 (Prometheus)",
+      "phase": "S10",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "engine/src/execution/trade_consumer.py",
+        "engine/src/infra/metrics.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "overlap=0 측정 불가 해소"
+    },
+    {
+      "id": "US-200",
+      "title": "오토튜너 백테스트 리플레이 A/B 인프라",
+      "phase": "S10",
+      "priority": 4,
+      "passes": false,
+      "files": [
+        "engine/src/tuning/ab_replay.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "튜너 효과 오프라인 검증"
+    },
+    {
+      "id": "US-201",
+      "title": "AdaptiveThreshold 복합 지표 전환 (Expected Edge + Profit Factor)",
+      "phase": "S10",
+      "priority": 1,
+      "passes": false,
+      "files": [
+        "engine/src/tuning/adaptive_threshold.py",
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "WR 93.8%인데 손실 → WR은 잘못된 지표"
+    },
+    {
+      "id": "US-202",
+      "title": "7개 전략 전체 Shadow 2H 재검증",
+      "phase": "S10",
+      "priority": 5,
+      "passes": false,
+      "files": [
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "S10 통합 검증"
+    },
+    {
+      "id": "US-203",
+      "title": "MissionControlStrip 상시 상태바",
+      "phase": "S11",
+      "priority": 1,
+      "passes": false,
+      "files": [
+        "dashboard/src/components/MissionControlStrip.tsx"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "3초 규칙 — 전 페이지 상태 표시"
+    },
+    {
+      "id": "US-204",
+      "title": "Overview 페이지 재설계",
+      "phase": "S11",
+      "priority": 1,
+      "passes": false,
+      "files": [
+        "dashboard/src/app/page.tsx"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "정보 계층 재구성"
+    },
+    {
+      "id": "US-205",
+      "title": "Strategies 페이지 Health Score 카드",
+      "phase": "S11",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "dashboard/src/app/strategies/page.tsx"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "전략별 0-100 건강 점수"
+    },
+    {
+      "id": "US-206",
+      "title": "System/Operations 페이지 Kill Switch + 인프라",
+      "phase": "S11",
+      "priority": 1,
+      "passes": false,
+      "files": [
+        "dashboard/src/app/system/page.tsx"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "2-click Kill Switch + Docker/DB/Redis 상태"
+    },
+    {
+      "id": "US-207",
+      "title": "텔레그램 한국어 템플릿 (인프라봇)",
+      "phase": "S11",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "engine/src/infra/telegram.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "가동 리포트, 장애 경보 한국어"
+    },
+    {
+      "id": "US-208",
+      "title": "텔레그램 한국어 템플릿 (거래봇)",
+      "phase": "S11",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "engine/src/infra/telegram.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "체결 알림, 일일 정산 한국어"
+    },
+    {
+      "id": "US-209",
+      "title": "텔레그램 심각도 필터링",
+      "phase": "S11",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "engine/src/infra/telegram.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "알림 피로 방지"
+    },
+    {
+      "id": "US-210",
+      "title": "WebSocket payload 확장",
+      "phase": "S11",
+      "priority": 3,
+      "passes": false,
+      "files": [
+        "engine/src/api/websocket.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "total_equity, win_rate, active_strategy_count"
+    },
+    {
+      "id": "US-211",
+      "title": "9개 신규 API 엔드포인트",
+      "phase": "S11",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "engine/src/api/server.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "portfolio/positions, system/logs, alerts/acknowledge 등"
+    },
+    {
+      "id": "US-212",
+      "title": "대시보드 백엔드 연동 검증",
+      "phase": "S11",
+      "priority": 5,
+      "passes": false,
+      "files": [
+        "dashboard/src/app/"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "모든 페이지 실데이터 + 콘솔 에러 0건"
+    },
+    {
+      "id": "US-213",
+      "title": "SmartTelegramAlerter (Redis 중복제거 + 배치)",
+      "phase": "S12",
+      "priority": 2,
+      "passes": false,
+      "files": [
+        "engine/src/infra/telegram_smart.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "알림 피로 근본 해결"
+    },
+    {
+      "id": "US-214",
+      "title": "Analytics 페이지",
+      "phase": "S12",
+      "priority": 3,
+      "passes": false,
+      "files": [
+        "dashboard/src/app/analytics/page.tsx"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "Sharpe 순위, 시간대별 히트맵"
+    },
+    {
+      "id": "US-215",
+      "title": "Alerts 페이지 인시던트 lifecycle",
+      "phase": "S12",
+      "priority": 3,
+      "passes": false,
+      "files": [
+        "dashboard/src/app/alerts/page.tsx"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "acknowledge/resolve"
+    },
+    {
+      "id": "US-216",
+      "title": "Portfolio Drawdown 차트 + Exposure Heatmap",
+      "phase": "S12",
+      "priority": 3,
+      "passes": false,
+      "files": [
+        "dashboard/src/app/portfolio/page.tsx"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "리스크 시각화"
+    },
+    {
+      "id": "US-217",
+      "title": "Settings Danger Zone",
+      "phase": "S12",
+      "priority": 4,
+      "passes": false,
+      "files": [
+        "dashboard/src/app/settings/page.tsx"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "Emergency Stop, Reset Defaults"
+    },
+    {
+      "id": "US-218",
+      "title": "사이드바 재구성 (3그룹)",
+      "phase": "S12",
+      "priority": 4,
+      "passes": false,
+      "files": [
+        "dashboard/src/components/Sidebar.tsx"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "MONITOR/ANALYZE/MANAGE"
+    },
+    {
+      "id": "US-219",
+      "title": "Telegram Bot 커맨드",
+      "phase": "S12",
+      "priority": 3,
+      "passes": false,
+      "files": [
+        "engine/src/infra/telegram_bot.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "/pnl, /strategies, /risk, /pause, /resume"
+    },
+    {
+      "id": "US-220",
+      "title": "주간 자동 리포트",
+      "phase": "S12",
+      "priority": 4,
+      "passes": false,
+      "files": [
+        "engine/src/infra/telegram.py"
+      ],
+      "acceptanceCriteria": [],
+      "dependencies": [],
+      "source": "일요일 23:59 KST"
     }
   ]
 }

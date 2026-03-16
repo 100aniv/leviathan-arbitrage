@@ -259,11 +259,13 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → 회귀 S1~S7 ✅ → TF QF ✅ → TF SF (중단) → **Phase S8** ✅ → TF QF 재실행 → TF SF → TF Final → Live
-- **Tests**: 4,587 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (171개 US, 169 pass / 2 fail)
+- **Phase 순서**: A~M✅ → S1~S9 ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** (진행 예정, 16 US) → TF QF 재실행(단계 3.5 추가) → Phase S11(UI/UX, 10 US) → TF SF(순차 OFF→ON) → Phase S12 → TF Final → Live
+- **Tests**: 4,588 passed, 0 failed, 12 skipped
+- **PRD**: `.omc/prd.json` (220개 US, 175 pass / 45 pending)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: TF QF 재실행 → TF SF → TF Final → Live
+- **다음 작업**: Phase S10 (US-187~202, 전략 아키텍처 하드닝) → TF QF 재실행 → S11 → TF SF → TF Final → Live
+- **Phase S10 핵심**: latency_arb→cross_exchange 병합(8→7전략), stat_arb cross-asset 재설계, AdaptiveThreshold 복합지표 전환
+- **Phase S10 플랜**: `.claude/plans/goofy-napping-feather.md`
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%
 - **GAP 분석**: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합 분석)
 

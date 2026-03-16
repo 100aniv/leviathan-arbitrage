@@ -579,6 +579,15 @@ SSOT.md §7 구조:
 - 타 분야 협업 필요 시 클론 전문가 스폰
 - Karina 합동 점검: 실전적 질의응답
 
+[단계 3.5] 조립 검증 — 통합 검증 (Assembly Verification)
+> "부품이 아니라, 조립된 완성품이 제대로 동작하는가?"
+- verify_assembly.py 자동화: main.py 10단계 초기화 체인 서브시스템 non-None 확인
+- Signal Flow E2E: 7개 전략 각각 on_signal() 호출 횟수 > 0 (5분 대기)
+- Config Flag Audit: ENABLE_INLINE_TUNER=true, SHADOW_DISABLED_STRATEGIES=[], ScheduledTuner.EXCLUDED 확인
+- Dead Wiring Detection: 구현되었으나 미연결 코드 0건 (main.py 코드 경로 추적)
+- PASS 기준: 4개 sub-check 전부 PASS
+- FAIL 시: 미연결 기능 → 회귀 Phase 생성
+
 [단계 4] 최종 확인 + 회귀 (The Feedback Loop)
 - Karina → Nayeon 보고
 - Chaeyoung/Tzuyu QA 감사단 압박 면접
@@ -612,12 +621,26 @@ SSOT.md §7 구조:
 - 손실 전략 식별 → disabled_strategies에 추가 여부 판단
 - 전략 간 상관관계 분석 (CorrelationMonitor 데이터 활용)
 
-[단계 2] Progressive Shadow (24H)
-- Stage 1:  1H  → 기본 동작 (crash=0, 신호 흐름, 거래소 10/10)
-- Stage 2:  2H  → 승률/PnL 추세 (WR>60%, PnL>0, 전략별 분리 리포트)
-- Stage 3:  6H  → 전략별 메트릭 (각 전략 WR>50%, 마찰력 오차<20%)
-- Stage 4: 12H  → 리소스 안정성 (메모리 증가<100MB, CPU<80%, WS 재연결)
-- Stage 5: 24H  → LiveGate 6-check + 일일 성과 (최종)
+[단계 1-C] 전략 상호작용 검증 (Strategy Interaction) ← 신규
+- 7개 전략 동시 10min Shadow 실행
+- 합산 PnL vs 개별 PnL 합계 비교
+  · 합산 > 개별합 80% → PASS (약간의 간섭 허용)
+  · 합산 < 개별합 50% → FAIL (심각한 전략 간섭)
+- Strategy overlap 메트릭 = 0 확인 (Prometheus counter)
+- FAIL 시: 전략 간 충돌 원인 분석 → 회귀 Phase
+
+[단계 2] Progressive Shadow (24H+) — 순차 OFF→ON 오토튜너 비교
+- Stage 1:  1H  (튜너 OFF) → crash=0, 신호 흐름, 거래소 10/10
+- Stage 2:  2H  (튜너 OFF) → WR>60%, PnL>0, 전략별 분리 리포트
+- Stage 3:  2H  (튜너 ON)  → Stage 2 대비 비교 리포트 (오토튜너 효과 검증)
+  · 튜너 효과 판정:
+    PROVEN:  튜너 ON PnL > 튜너 OFF PnL + 10% → 튜너 유지
+    NEUTRAL: 차이 < 10% → 추가 조사
+    HARMFUL: 튜너 ON PnL < 튜너 OFF PnL → 튜너 비활성화 or 튜닝
+    BUG:     튜너 ON에서 crash/error → 즉시 수정
+- Stage 4:  6H  (최적 설정) → 각 전략 WR>50%, 마찰력 오차<20%
+- Stage 5: 12H  → 메모리 증가<100MB, CPU<80%, WS 재연결
+- Stage 6: 24H  → LiveGate 6-check + 일일 성과 (최종)
   1. Sharpe ≥ 2.0
   2. MDD < 5%
   3. 총 신호 ≥ 100개
@@ -698,6 +721,9 @@ PASS 기준:
   □ DR-4: Redis 장애 → 상태 복구 → Kill Switch 유지
   □ DR-5: 네트워크 단절 → WS 재연결 → 데이터 갭 처리
   □ DR-6: 코드 롤백 → git revert → 포지션 청산 → 안전 상태
+  □ DR-7: 전략 카니발리제이션 → overlap 감지 → 해당 전략 자동 비활성화
+  □ DR-8: 폭주 전략 (단일 전략 연속 손실) → per-strategy circuit breaker 발동
+  □ DR-9: 오토튜너 잘못된 파라미터 적용 → strategy_params.json 즉시 롤백 + 튜너 비활성화
 
 [단계 3] Sandbox 실거래 테스트
 - Momo 주도
@@ -714,13 +740,14 @@ PASS 기준:
   □ DynamicSizer 파라미터 (Kelly fraction, min/max)
   □ Auto-discovery 필터 (min_volume_usd, min_exchanges)
 
-[단계 5] Canary Deployment (1% 자본, 7일)
+[단계 5] Canary Deployment (1% 자본, 7일) — 오토튜너 최종 검증 포함
 - Sana 리콘실리에이션, Dahyun 수익성 판단
   □ Alpha Phase: $70/exchange × 10 = $700
+  □ 튜너 OFF 3일 → 튜너 ON 4일 → 순차 A/B 비교 (최종 실거래 검증)
   □ 일일 3-way 대조: 엔진 P&L vs 거래소 잔고 vs DB
-  □ 슬리피지 실측: Shadow vs 실제 체결가 비교
+  □ 슬리피지/수수료 실측 vs 예측 비교 (FillAnalyzer 데이터)
   □ 수수료/네트워크 비용 실측
-  □ PASS: P&L>0, 리콘 오차<1%, 슬리피지 오차<50%
+  □ PASS: P&L>0, 리콘 오차<1%, 슬리피지 오차<50%, 튜너 효과 판정 완료
 
 [단계 6] Live Kick-Off
 - Nayeon(TF 리더) 최종 서명
@@ -731,7 +758,7 @@ PASS 기준:
 
 PASS 기준:
 - ORR: 운영 매뉴얼 + IRP + 에스컬레이션 완비
-- DR: 6개 시나리오 전부 PASS
+- DR: 9개 시나리오 전부 PASS (DR-1~6 인프라 + DR-7~9 전략)
 - Sandbox: Binance Testnet 주문 흐름 정상
 - 자본 한도: 사장님 승인 완료
 - Canary 7일: P&L>0, 리콘 오차<1%

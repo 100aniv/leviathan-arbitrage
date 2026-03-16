@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-16 (Phase S9 Strategy Activation 완료 — 4개 전략 활성화, 4588 tests) | 최신 커밋: 63f31fc
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (177개 User Stories, 175 pass / 2 fail)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S8** ✅ → TF QF FAIL → **Phase S9** ✅ → **TF QF 재재실행** → TF SF → TF Final → Live
+> 마지막 업데이트: 2026-03-16 (Phase S10 계획 수립 — 전략 영역 분리 + stat_arb 재설계 + Auto-Tuner) | 최신 커밋: 63f31fc
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (184개 User Stories, 175 pass / 9 pending)
+> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL(Stage 2) → **Phase S10** 🔧 → TF QF 재실행 → TF SF 재시작 → TF Final → Live
 
 ---
 
@@ -27,30 +27,29 @@
 ## 2. 현재 상태
 
 ```
-Phase:        Phase S9 Strategy Activation ✅ 완료 (2026-03-16)
+Phase:        Phase S10 Strategy Architecture Hardening 🔧 (2026-03-16)
 테스트:       4,588 passed, 0 failed, 12 skipped
 커버리지:     86%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    63f31fc
-다음 작업:    TF QF 재재실행 → TF SF → TF Final → Live
-완료된 US:    175/177 (Phase S9 6/6 완료, prd.json 175 pass / 2 fail)
-TF QF:        ✅ PASS (2026-03-16) — CRITICAL 0, HIGH 0
+다음 작업:    Phase S10 (US-187~202, 16 US) → TF QF 재실행 → Phase S11 (UI/UX) → TF SF → Phase S12 → TF Final → Live
+완료된 US:    175/220 (Phase S10 0/16 진행 중, S11 0/10 + S12 0/9 pending, prd.json 175 pass / 9 pending)
+TF QF:        ✅ PASS (2026-03-16) — CRITICAL 0, HIGH 0 (단계 3.5 조립 검증 추가 예정)
               1차(2026-03-13): FAIL → 회귀 S1~S7
               2차(2026-03-15): 조건부 PASS → S8 후 재실행
               3차(2026-03-16): FAIL — 8/8 전략 중 4개 비활성화 → Phase S9 회귀
               4차(2026-03-16): **PASS** — S9에서 4개 전략 evaluator 구현 완료
-              7/7 전략 등록, 6/7 시그널 생산, 10/10 거래소, crash=0
-TF SF:        ** TF QF PASS → [단계 1-A]부터 시작**
+TF SF:        ❌ Stage 2 FAIL (2H Shadow PnL -$78.82) → Phase S10 회귀
+              Stage 1: 1H PnL +$18.18 PASS
+              Stage 2: 2H PnL -$78.82 FAIL (stat_arb -$127, 전략 영역 겹침, Auto-tuner 미작동)
+              S10+S11 완료 후 TF QF 재실행 → TF SF Stage 1부터 재시작
 Phase S7:     ALL PASS (2026-03-15) — US-157~168 12개 US 전부 완료
-              Shadow 10min: 2,230 trades, 93.3% WR, +$0.464, DD=$0.222, crash=0
 Phase S8:     완료 (2026-03-15) — US-169~180 12개 US, CRITICAL 2 + HIGH 3 수정
-              Shadow 35min: PnL +$1.85, WR 92.2%, crash=0
-              미연결 기능 12개 main.py 초기화 체인 연결 완료
 Phase S9:     완료 (2026-03-16) — US-181~186 6개 US, 8개 전략 전체 활성화
-              TF QF FAIL 회귀: 4개 전략 evaluator 미구현 → 구현 완료
-              TRADING_ACTIVE_EXCHANGES 8→10개, InventoryRebalancer CONNECTED
-              /health 보안 수정, strategy_validation unverified 분류 개선
+Phase S10:    🔧 진행 중 — US-187~202 16개 US, 전략 아키텍처 하드닝 (latency_arb 병합, stat_arb cross-asset, AdaptiveThreshold PnL전환)
+              회귀 사유: TF SF Stage 2 FAIL (stat_arb -$127, 전략 신호 겹침, Auto-tuner 미작동)
+              근본 원인 4가지: ① 전략 영역 겹침 (_CROSS_EXCHANGE_CONSUMERS) ② stat_arb = cross_exchange 동일 영역 ③ Auto-tuner/ML 미작동 ④ AdaptiveThreshold WR→PnL 전환 필요
 인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ 7/8 HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
@@ -403,7 +402,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 171개 User Stories, 169개 완료, 2개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 220개 User Stories, 175개 완료, 45개 미완)
 
 > **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -566,6 +565,40 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] SSOT.md/CLAUDE.md 테스트 수 4,587→4,589 동기화
 - [x] spot_futures evaluator Korean exchange guard 추가 (upbit, bithumb, coinone 제외)
 
+#### Phase S10: Strategy Architecture Hardening — US-187~202 🔧 진행 중 (2026-03-16)
+
+> **회귀 사유**: TF SF Stage 2 (2H Shadow) PnL -$78.82 FAIL
+> **근본 원인**: ① 전략 영역 겹침 (_CROSS_EXCHANGE_CONSUMERS) ② stat_arb = cross_exchange 동일 영역 ③ Auto-tuner/ML 미작동 ④ AdaptiveThreshold WR→PnL 전환 필요
+> **회귀 후 경로**: S10 완료 → TF QF 재실행(단계 3.5 조립 검증 추가) → Phase S11(UI/UX) → TF SF 재시작
+
+**CRITICAL (4건)**
+- [ ] US-187 (S10-1): `_CROSS_EXCHANGE_CONSUMERS` 제거 + 신호 흐름 검증 — manager.py frozenset 제거, stat_arb/latency_arb RealDataSignalProducer 신호 수신 확인
+- [ ] US-188 (S10-2): stat_arb cross-asset pair 재설계 (2-3일) — BTC-ETH/ETH-SOL/BTC-BNB 고정 3쌍, Signal.metadata["symbol2"], _is_cointegrated fail-closed 수정
+- [ ] US-194 (S10-3): latency_arb → cross_exchange 병합 — LatencyArbStrategy 삭제, latency_boost 모드 통합, 전략 8→7개
+- [ ] US-201 (S10-4): AdaptiveThreshold WR→PnL 기반 전환 — rolling_pnl_1h/24h 기반 조정, WR은 보조 지표
+
+**HIGH (5건)**
+- [ ] US-189 (S10-5): cross_exchange min_spread_bps 5→10 복원 — latency_boost 모드일 때 5bps 허용
+- [ ] US-195 (S10-6): 전략 간 포지션 충돌 방지 — (symbol, exchange_pair) 10초 윈도우 중복 체크, asyncio.Lock
+- [ ] US-196 (S10-7): 전략별 자본 할당 — trading.json capital_allocation_pct, RiskGuardian check #11
+- [ ] US-197 (S10-8): stat_arb ScheduledTuner EXCLUDED 제거 — US-188 완료 후 적용
+- [ ] US-199 (S10-9): 전략 overlap 감지 메트릭 — Prometheus counter, 10초 윈도우 감지
+
+**MEDIUM (4건)**
+- [ ] US-190 (S10-10): ScheduledTuner 작동 확인 — optuna/apscheduler import, 수동 트리거 --run-once
+- [ ] US-198 (S10-11): Korean exchange 필터 보강 — latency_boost + stat_arb cross-asset Korean 제외
+- [ ] US-191 (S10-12): ML/Tuning 컴포넌트 작동 로그 — AdaptiveThreshold PnL 로그, RegimeDetector 레짐 로그, ONNX 카운터
+- [ ] US-192 (S10-13): ExposureTracker Redis 연결 확인
+
+**LOW (1건)**
+- [ ] US-200 (S10-14): 오토튜너 백테스트 리플레이 A/B 인프라 — event-level 데이터 저장, deterministic replay
+
+**검증 (1건)**
+- [ ] US-202 (S10-15): 7개 전략 전체 Shadow 2H 재검증 — 총합 PnL>$0, 개별 PnL>=-$5, overlap=0, crash=0
+
+**SSOT 정비 (1건)**
+- [ ] US-193 (S10-16): §9 RESOLVED 이슈 → SSOT_COMPLETE.md 이관
+
 ---
 
 ### TF Quarter-Final (QF): Development Verification — ✅ PASS
@@ -598,6 +631,13 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] Jisoo(보안): JWT 인증, API 키 노출, CSP 헤더, IP whitelist, Redis commands, .gitignore
 - [x] Karina 합동 점검: 실전적 질의응답
 
+**[단계 3.5] 조립 검증 — 통합 검증 (Assembly Verification)** ← 신규
+> "부품이 아니라, 조립된 완성품이 제대로 동작하는가?"
+- [ ] Init Chain Audit: verify_assembly.py — main.py 서브시스템 non-None 확인
+- [ ] Signal Flow E2E: 7개 전략 각각 on_signal() 호출 > 0
+- [ ] Config Flag Audit: 모든 feature flag 활성화 상태 확인
+- [ ] Dead Wiring Detection: 구현되었으나 미연결 코드 0건
+
 **[단계 4] 최종 확인 + 회귀 (The Feedback Loop)**
 - [x] Karina → Nayeon 보고
 - [x] Chaeyoung/Tzuyu QA 감사단 압박 면접
@@ -617,13 +657,13 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > 회귀 수정: S1~S6 (33/35 US PASS, 2개 Phase F 대기)
 > 재검증 보고서: `docs/checklists/tf-semi-final-recheck_20260315.md`
 
-### TF Semi-Final (SF): System Validation — **중단 (Phase S8 완료 + QF 재실행 후 재개)**
+### TF Semi-Final (SF): System Validation — ❌ Stage 2 FAIL → Phase S10 회귀
 
 > **핵심 질문**: "24시간 동안 실제로 돈을 벌 수 있는가?"
 > **진입 가드**: TF QF PASS
 > **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → SF 재검증 (QF 스킵, 구조적 결함 시 QF부터)
 > **PASS 기준**: 24H 5-Stage ALL PASS + 전략별 WR>50% + E2E 10/10 (단계 2 병렬) + LiveGate 6-check
-> **중단 사유**: 심층 조사 결과 미연결 기능 12개 발견. S8 해소 후 QF 재실행 → SF [단계 1-A]부터 재시작
+> **현재**: Stage 2 FAIL → Phase S10 회귀. S10 완료 후 TF QF 재실행 → TF SF Stage 1부터 재시작
 
 #### 검증 이력
 
@@ -635,6 +675,15 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **[단계 2] Stage 1 PASS (8h28m)**
 > Progressive Shadow Stage 1: 8h28m, 502 trades, 91.8% WR, crash=0
 > **후속**: Phase S7 (Pre-Live Hardening) 완료 → 3-Round 체계 강화로 [단계 1-A]부터 재검증
+>
+> **[단계 2] Stage 1 재시작 PASS (2026-03-16, 1H)**
+> Progressive Shadow Stage 1: 1H, PnL +$18.18, PASS
+>
+> **[단계 2] Stage 2 FAIL (2026-03-16, 2H)**
+> Progressive Shadow Stage 2: 2H, PnL -$78.82, **FAIL**
+> 근본 원인: stat_arb -$127 (cross_exchange 영역 중복), 전략 신호 겹침, Auto-tuner 미작동
+> stat_arb 제외 시 +$48 → stat_arb가 유일한 손실원
+> **후속**: Phase S10 생성 (전략 영역 분리 + stat_arb cross-asset 재설계 + Auto-Tuner 확인)
 
 **[단계 1-A] 경량 재확인 (Delta Check)** ✅ ALL PASS (2026-03-15, 재검증 완료)
 - [x] QF 이후 변경분 CRITICAL/HIGH 신규 0건 (S7 12 US + 3-Round 문서 변경분, HIGH 2건 발견→즉시 수정)
@@ -646,12 +695,18 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] 손실 전략 식별 → disabled_strategies 판단
 - [ ] 전략 간 상관관계 분석
 
-**[단계 2] Progressive Shadow (24H)**
-- [ ] Stage 1:  1H → crash=0, 신호 흐름, 거래소 10/10
-- [ ] Stage 2:  2H → WR>60%, PnL>0, 전략별 분리 리포트
-- [ ] Stage 3:  6H → 각 전략 WR>50%, 마찰력 오차<20%
-- [ ] Stage 4: 12H → 메모리<100MB증가, CPU<80%, WS 재연결
-- [ ] Stage 5: 24H → LiveGate 6-check + Sharpe>2.0, MDD<5%, 일일 PnL 양수 (최종)
+**[단계 1-C] 전략 상호작용 검증 (Strategy Interaction)** ← 신규
+- [ ] 7개 전략 동시 10min Shadow → 합산 PnL vs 개별 PnL 합계 비교
+- [ ] 합산 > 개별합 80% → PASS, < 50% → FAIL
+- [ ] Strategy overlap 메트릭 = 0 확인
+
+**[단계 2] Progressive Shadow (24H+) — 순차 OFF→ON 오토튜너 비교**
+- [ ] Stage 1: 1H (튜너 OFF) → crash=0, PnL 기록
+- [ ] Stage 2: 2H (튜너 OFF) → WR>60%, PnL>0, 전략별 리포트
+- [ ] Stage 3: 2H (튜너 ON) → Stage 2 대비 비교 (PROVEN/NEUTRAL/HARMFUL/BUG 판정)
+- [ ] Stage 4: 6H (최적 설정) → 각 전략 WR>50%, 마찰력 오차<20%
+- [ ] Stage 5: 12H → 메모리<100MB증가, CPU<80%, WS 재연결
+- [ ] Stage 6: 24H → LiveGate 6-check + Sharpe>2.0, MDD<5%, 일일 PnL 양수
 
 **[단계 3-A] E2E 사용자 시나리오 (UAT)** ← 단계 2 Stage 2+ 통과 후 병렬 수행
 - [ ] 로그인 → JWT 쿠키 → 리다이렉트
@@ -688,6 +743,9 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] DR-4: Redis 장애 → 상태 복구
 - [ ] DR-5: 네트워크 단절 → WS 재연결
 - [ ] DR-6: 코드 롤백 → 안전 상태 복원
+- [ ] DR-7: 전략 카니발리제이션 → 자동 감지 + 비활성화
+- [ ] DR-8: 폭주 전략 → per-strategy circuit breaker 발동
+- [ ] DR-9: 오토튜너 잘못된 파라미터 → 즉시 롤백
 
 **[단계 3] Sandbox 실거래 테스트**
 - [ ] Binance Testnet 주문 흐름 (생성→체결→취소)
@@ -697,10 +755,11 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] trading.json 운영 파라미터 확정 (사장님 승인)
 - [ ] DynamicSizer 파라미터 검증
 
-**[단계 5] Canary Deployment (1% 자본, 7일)**
+**[단계 5] Canary Deployment (1% 자본, 7일) — 오토튜너 최종 검증 포함**
 - [ ] Alpha $70/exchange × 10 = $700, 7일 실거래
+- [ ] 튜너 OFF 3일 → 튜너 ON 4일 → 순차 비교
 - [ ] 일일 3-way 리콘실리에이션
-- [ ] 슬리피지/수수료 실측 비교
+- [ ] 슬리피지/수수료 실측 vs 예측 비교
 
 **[단계 6] Live Kick-Off**
 - [ ] Nayeon(TF 리더) 최종 서명
@@ -718,7 +777,9 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 > RESOLVED 이슈는 [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md) §9로 이동 (취소선 처리)
 
-### CRITICAL — Architecture GAPs (미해결 3건 / 전체 10건) → **Phase S8에서 전부 해소 예정**
+> **S8/S9 RESOLVED 이슈**: GAP 3, 7, 8 및 HIGH 9건 모두 Phase S8에서 해소 완료. US-193 (S10-16) 완료 시 전부 SSOT_COMPLETE.md §9로 이관 예정.
+
+### CRITICAL — Architecture GAPs (미해결 3건 / 전체 10건) → **Phase S8에서 전부 해소 완료**
 
 | GAP | 설명 | 파일:라인 | 해결 Phase | 크기 | S8 US |
 |-----|------|----------|-----------|------|-------|
