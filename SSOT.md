@@ -518,23 +518,18 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > CRITICAL 2건 수정 (OKX IOC ordType, KRW KillSwitch→soft-block) + HIGH 3건 수정
 > Shadow 35min: PnL +$1.85, WR 92.2%, crash=0 | 4,587 tests passed
 
-**CRITICAL (3건)**
-- [x] US-169 (S8-1): MultiStrategySignalProducer LIVE 모드 연결 — Paper/Shadow만 동작, LIVE에서 5/8 전략 신호 0건
-- [x] US-170 (S8-2): Triangular Scanner 구현 — 전략 코드만 존재, 신호 생성 Scanner 부재 (GAP 7 해소)
-- [x] US-171 (S8-3): KRW Staleness → soft-block 활성화 — 120초 stale 시 경고만 → 거래 신호 필터링
-
-**HIGH (5건)**
-- [x] US-172 (S8-4): ONNX ML Scorer 신호 필터링 연결 — 로드만 하고 signal.py에서 호출 안 함
-- [x] US-173 (S8-5): HMM RegimeDetector 신호 파이프라인 연결 — 초기화만, predict() 미호출 → 레짐 항상 NORMAL
-- [x] US-174 (S8-6): AdaptiveThreshold 엔진 연결 — 94줄 구현 완료이나 main.py 미인스턴스화
-- [x] US-175 (S8-7): ExposureTracker 인스턴스화 + RiskGuardian 연결 — 코드 존재하나 미생성
-- [x] US-176 (S8-8): CorrelationMonitor → DynamicSizer 포지션 축소 연결 — Check #9 로그만
-
-**MEDIUM (4건)**
-- [x] US-177 (S8-9): DEX 실연결 — _build_dex_adapter() 항상 None (GAP 8 해소)
-- [x] US-178 (S8-10): IOC Limit Order 주요 거래소 구현 — Binance/Bybit/OKX native adapter
-- [x] US-179 (S8-11): ScheduledTuner 핫리로드 + 기본 활성화 — 파라미터 재시작 없이 반영
-- [x] US-180 (S8-12): InMemoryEventBus 큐 크기 제한 — maxsize 강제 + drop oldest
+- [x] US-169: MultiStrategySignalProducer LIVE 모드 연결 — Paper/Shadow만 동작, LIVE에서 5/8 전략 신호 0건
+- [x] US-170: Triangular Scanner 구현 — 전략 코드만 존재, 신호 생성 Scanner 부재 (GAP 7 해소)
+- [x] US-171: KRW Staleness → soft-block 활성화 — 120초 stale 시 경고만 → 거래 신호 필터링
+- [x] US-172: ONNX ML Scorer 신호 필터링 연결 — 로드만 하고 signal.py에서 호출 안 함
+- [x] US-173: HMM RegimeDetector 신호 파이프라인 연결 — 초기화만, predict() 미호출 → 레짐 항상 NORMAL
+- [x] US-174: AdaptiveThreshold 엔진 연결 — 94줄 구현 완료이나 main.py 미인스턴스화
+- [x] US-175: ExposureTracker 인스턴스화 + RiskGuardian 연결 — 코드 존재하나 미생성
+- [x] US-176: CorrelationMonitor → DynamicSizer 포지션 축소 연결 — Check #9 로그만
+- [x] US-177: DEX 실연결 — _build_dex_adapter() 항상 None (GAP 8 해소)
+- [x] US-178: IOC Limit Order 주요 거래소 구현 — Binance/Bybit/OKX native adapter
+- [x] US-179: ScheduledTuner 핫리로드 + 기본 활성화 — 파라미터 재시작 없이 반영
+- [x] US-180: InMemoryEventBus 큐 크기 제한 — maxsize 강제 + drop oldest
 
 **추가 설정/환경 갭 수정 (S8 내 포함)**
 - [x] TRADING_ACTIVE_EXCHANGES .env 동기화 (okx_futures, bybit_futures 추가)
@@ -546,17 +541,12 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **완료**: TF QF 3차 FAIL(8/8 전략 중 4개 비활성화) 회귀. 4개 전략 evaluator 구현 + 전체 활성화.
 > Shadow 10min: 7/7 전략 등록, 6/7 시그널 생산, 10/10 거래소, crash=0 | 4,588 tests passed
 
-**CRITICAL (4건 — TF QF FAIL 사유)**
-- [x] US-181 (S9-1): RealDataSignalProducer statistical_arb evaluator 구현 — rolling z-score(z=8.0, 200samples, 300s cooldown), Korean exchange 제외
-- [x] US-182 (S9-2): RealDataSignalProducer latency_arb evaluator 구현 — LatencyTracker.lead_lag_pairs() + StaleDetector 교차검증
-- [x] US-183 (S9-3): spot_futures/stat_arb/latency_arb disabled_strategies 해제 — trading.json `disabled_strategies: []`, Korean guard 유지
-- [x] US-184 (S9-4): futures_futures stale spread 방어 — StaleDetector + 500bps 이상치 필터
-
-**HIGH (1건)**
-- [x] US-185 (S9-5): StrategyValidation insufficient_data→unverified 분류 — ScheduledTuner cascade-disable 방지
-
-**검증 (1건)**
-- [x] US-186 (S9-6): 8개 전략 전체 Shadow 통합 검증 — 7/7 등록, 10/10 거래소, crash=0
+- [x] US-181: RealDataSignalProducer statistical_arb evaluator 구현 — rolling z-score(z=8.0, 200samples, 300s cooldown), Korean exchange 제외
+- [x] US-182: RealDataSignalProducer latency_arb evaluator 구현 — LatencyTracker.lead_lag_pairs() + StaleDetector 교차검증
+- [x] US-183: spot_futures/stat_arb/latency_arb disabled_strategies 해제 — trading.json `disabled_strategies: []`, Korean guard 유지
+- [x] US-184: futures_futures stale spread 방어 — StaleDetector + 500bps 이상치 필터
+- [x] US-185: StrategyValidation insufficient_data→unverified 분류 — ScheduledTuner cascade-disable 방지
+- [x] US-186: 8개 전략 전체 Shadow 통합 검증 — 7/7 등록, 10/10 거래소, crash=0
 
 **TF QF 중 추가 수정**
 - [x] TRADING_ACTIVE_EXCHANGES 8→10개 (bybit_futures, okx_futures 추가)
@@ -571,55 +561,37 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **근본 원인**: ① 전략 영역 겹침 (_CROSS_EXCHANGE_CONSUMERS) ② stat_arb = cross_exchange 동일 영역 ③ Auto-tuner/ML 미작동 ④ AdaptiveThreshold WR→PnL 전환 필요
 > **회귀 후 경로**: S10 완료 → TF QF 재실행(단계 3.5 조립 검증 추가) → Phase S11(UI/UX) → TF SF 재시작
 
-**CRITICAL (4건)**
-- [ ] US-187 (S10-1): `_CROSS_EXCHANGE_CONSUMERS` 제거 + 신호 흐름 검증 — manager.py frozenset 제거, stat_arb/latency_arb RealDataSignalProducer 신호 수신 확인
-- [ ] US-188 (S10-2): stat_arb cross-asset pair 재설계 (2-3일) — BTC-ETH/ETH-SOL/BTC-BNB 고정 3쌍, Signal.metadata["symbol2"], _is_cointegrated fail-closed 수정
-- [ ] US-194 (S10-3): latency_arb → cross_exchange 병합 — LatencyArbStrategy 삭제, latency_boost 모드 통합, 전략 8→7개
-- [ ] US-201 (S10-4): AdaptiveThreshold WR→복합 지표(Expected Edge bps + Profit Factor) 기반 전환 — expected_edge_bps + PF 기반 조정, WR은 보조 지표
-
-**HIGH (5건)**
-- [ ] US-189 (S10-5): cross_exchange min_spread_bps 5→10 복원 — latency_boost 모드일 때 5bps 허용
-- [ ] US-195 (S10-6): 전략 간 포지션 충돌 방지 — (symbol, exchange_pair) 10초 윈도우 중복 체크, asyncio.Lock
-- [ ] US-196 (S10-7): 전략별 자본 할당 — trading.json capital_allocation_pct, RiskGuardian check #11
-- [ ] US-197 (S10-8): stat_arb ScheduledTuner EXCLUDED 제거 — US-188 완료 후 적용
-- [ ] US-199 (S10-9): 전략 overlap 감지 메트릭 — Prometheus counter, 10초 윈도우 감지
-
-**MEDIUM (4건)**
-- [ ] US-190 (S10-10): ScheduledTuner 작동 확인 — optuna/apscheduler import, 수동 트리거 --run-once
-- [ ] US-198 (S10-11): Korean exchange 필터 보강 — latency_boost + stat_arb cross-asset Korean 제외
-- [ ] US-191 (S10-12): ML/Tuning 컴포넌트 작동 로그 — AdaptiveThreshold PnL 로그, RegimeDetector 레짐 로그, ONNX 카운터
-- [ ] US-192 (S10-13): ExposureTracker Redis 연결 확인
-
-**LOW (1건)**
-- [ ] US-200 (S10-14): 오토튜너 백테스트 리플레이 A/B 인프라 — event-level 데이터 저장, deterministic replay
-
-**검증 (1건)**
-- [ ] US-202 (S10-15): 7개 전략 전체 Shadow 2H 재검증 — 총합 PnL>$0, 개별 PnL>=-$5, overlap=0, crash=0
-
-**SSOT 정비 (1건)**
-- [ ] US-193 (S10-16): §9 RESOLVED 이슈 → SSOT_COMPLETE.md 이관
+- [ ] US-187: `_CROSS_EXCHANGE_CONSUMERS` 제거 + 신호 흐름 검증 — manager.py frozenset 제거, stat_arb/latency_arb RealDataSignalProducer 신호 수신 확인
+- [ ] US-188: stat_arb cross-asset pair 재설계 (2-3일) — BTC-ETH/ETH-SOL/BTC-BNB 고정 3쌍, Signal.metadata["symbol2"], _is_cointegrated fail-closed 수정
+- [ ] US-194: latency_arb → cross_exchange 병합 — LatencyArbStrategy 삭제, latency_boost 모드 통합, 전략 8→7개
+- [ ] US-201: AdaptiveThreshold WR→복합 지표(Expected Edge bps + Profit Factor) 기반 전환 — expected_edge_bps + PF 기반 조정, WR은 보조 지표
+- [ ] US-189: cross_exchange min_spread_bps 5→10 복원 — latency_boost 모드일 때 5bps 허용
+- [ ] US-195: 전략 간 포지션 충돌 방지 — (symbol, exchange_pair) 10초 윈도우 중복 체크, asyncio.Lock
+- [ ] US-196: 전략별 자본 할당 — trading.json capital_allocation_pct, RiskGuardian check #11
+- [ ] US-197: stat_arb ScheduledTuner EXCLUDED 제거 — US-188 완료 후 적용
+- [ ] US-199: 전략 overlap 감지 메트릭 — Prometheus counter, 10초 윈도우 감지
+- [ ] US-190: ScheduledTuner 작동 확인 — optuna/apscheduler import, 수동 트리거 --run-once
+- [ ] US-198: Korean exchange 필터 보강 — latency_boost + stat_arb cross-asset Korean 제외
+- [ ] US-191: ML/Tuning 컴포넌트 작동 로그 — AdaptiveThreshold PnL 로그, RegimeDetector 레짐 로그, ONNX 카운터
+- [ ] US-192: ExposureTracker Redis 연결 확인
+- [ ] US-200: 오토튜너 백테스트 리플레이 A/B 인프라 — event-level 데이터 저장, deterministic replay
+- [ ] US-202: 7개 전략 전체 Shadow 2H 재검증 — 총합 PnL>$0, 개별 PnL>=-$5, overlap=0, crash=0
+- [ ] US-193: §9 RESOLVED 이슈 → SSOT_COMPLETE.md 이관
 
 #### Phase S11: Operations UX Core — US-203~212 (대기, S10 + TF QF 후 진행)
 
 > **목표**: 사장님이 대시보드 열자마자 3초 안에 상황 파악 가능하게
 > **진입 조건**: Phase S10 완료 + TF QF PASS
 
-**CRITICAL (2건)**
 - [ ] US-203: MissionControlStrip — 40px 상시 상태바 (전 페이지 표시: EQUITY, TODAY PnL, WIN%, ACTIVE, MODE, KILL SWITCH)
-- [ ] US-206: System/Operations 페이지 — 2-click Kill Switch (3초 카운트다운) + Docker/DB/Redis 상태 + 거래소 레이턴시
-
-**HIGH (5건)**
 - [ ] US-204: Overview 페이지 재설계 — 3초 규칙 (총자산/PnL/시스템상태 → 전략 기여도 → PnL 곡선)
 - [ ] US-205: Strategies 페이지 — Health Score 카드 (0-100, WR 40pts + Fill 30pts + Signal 15pts + Error 15pts)
+- [ ] US-206: System/Operations 페이지 — 2-click Kill Switch (3초 카운트다운) + Docker/DB/Redis 상태 + 거래소 레이턴시
 - [ ] US-207: 텔레그램 한국어 템플릿 (인프라봇) — 가동 리포트, 장애 경보 양식
 - [ ] US-208: 텔레그램 한국어 템플릿 (거래봇) — 체결 알림, 일일 정산 리포트 양식
 - [ ] US-209: 텔레그램 심각도 필터링 — EMERGENCY=즉시, CRITICAL=1분/건, WARNING=5분/건, INFO=30분 배치
-
-**MEDIUM (2건)**
 - [ ] US-210: WebSocket payload 확장 — state_update에 total_equity, win_rate, active_strategy_count 추가
 - [ ] US-211: 9개 신규 API 엔드포인트 — portfolio/positions, daily-returns, system/logs, db-metrics, redis-metrics, alerts/acknowledge, alerts/resolve, settings/test-alert, exchanges/reconnect
-
-**검증 (1건)**
 - [ ] US-212: 대시보드 백엔드 연동 검증 — 모든 페이지 실데이터 확인, 콘솔 에러 0건, 모바일 375px/768px
 
 ---
