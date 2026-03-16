@@ -75,7 +75,7 @@ async def test_requires_warmup_before_generating_signals():
 @pytest.mark.asyncio
 async def test_no_trade_when_zscore_below_entry():
     """Uniform price history → zscore ≈ 0 → no trade."""
-    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False)
+    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False, enable_cointegration=False)
     strategy = StatisticalArbStrategy("stat_arb", make_calculator(), config)
     await strategy.start()
 
@@ -91,7 +91,7 @@ async def test_no_trade_when_zscore_below_entry():
 @pytest.mark.asyncio
 async def test_generates_trade_on_high_zscore():
     """Abnormally wide spread after stable history → high z-score → trade generated."""
-    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False)
+    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False, enable_cointegration=False)
     strategy = StatisticalArbStrategy("stat_arb", make_calculator(), config)
     await strategy.start()
 
@@ -109,7 +109,7 @@ async def test_generates_trade_on_high_zscore():
 
 @pytest.mark.asyncio
 async def test_trade_has_two_legs():
-    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False)
+    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False, enable_cointegration=False)
     strategy = StatisticalArbStrategy("stat_arb", make_calculator(), config)
     await strategy.start()
 
@@ -127,7 +127,7 @@ async def test_trade_has_two_legs():
 
 @pytest.mark.asyncio
 async def test_state_transitions_to_nonfat_after_trade():
-    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False)
+    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False, enable_cointegration=False)
     strategy = StatisticalArbStrategy("stat_arb", make_calculator(), config)
     await strategy.start()
 
@@ -176,7 +176,7 @@ async def test_metrics_increment_on_each_signal():
 
 @pytest.mark.asyncio
 async def test_metadata_includes_zscore_and_hedge_ratio():
-    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False)
+    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False, enable_cointegration=False)
     strategy = StatisticalArbStrategy("stat_arb", make_calculator(), config)
     await strategy.start()
 
@@ -193,7 +193,7 @@ async def test_metadata_includes_zscore_and_hedge_ratio():
 @pytest.mark.asyncio
 async def test_no_trade_when_net_profit_negative():
     """Very high friction costs → net_profit ≤ 0 → no trade."""
-    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False)
+    config = StatArbConfig(min_history=10, zscore_entry=2.0, min_zero_crossings=0, adaptive_threshold=False, enable_cointegration=False)
     calc = make_calculator(Decimal("10000"))  # absurdly high cost per leg
     strategy = StatisticalArbStrategy("stat_arb", calc, config)
     await strategy.start()

@@ -37,5 +37,14 @@
     "min_exchanges": 3
   },
   "min_volume_usd": 10000,
-  "max_single_loss_usd": 50
+  "max_single_loss_usd": 50,
+  "capital_allocation_pct": {
+    "cross_exchange": 35,
+    "futures_futures": 20,
+    "statistical_arb": 15,
+    "funding_rate": 15,
+    "spot_futures": 5,
+    "triangular": 5,
+    "cex_dex": 5
+  }
 }

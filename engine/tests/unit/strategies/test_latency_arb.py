@@ -1,4 +1,8 @@
-"""Tests for LatencyArbStrategy."""
+"""Tests for latency_boost mode in CrossExchangeStrategy (US-194 migration).
+
+Previously tested LatencyArbStrategy; now tests CrossExchangeStrategy with
+latency_boost=True which absorbed the latency-arbitrage logic.
+"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -10,7 +14,7 @@ import pytest
 from src.core.latency_tracker import LatencyTracker
 from src.core.models import OrderSide, Signal
 from src.strategies.base import CostCalculator
-from src.strategies.latency_arb import LatencyArbConfig, LatencyArbStrategy
+from src.strategies.cross_exchange import CrossExchangeConfig, CrossExchangeStrategy
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +37,7 @@ def make_signal(
     sell_exchange: str = "okx",
 ) -> Signal:
     return Signal(
-        strategy_id="latency_arb_v1",
+        strategy_id="cross_exchange_v1",
         symbol="BTC/USDT",
         buy_exchange=buy_exchange,
         sell_exchange=sell_exchange,
@@ -58,6 +62,22 @@ def make_tracker(
     return tracker
 
 
+def make_strategy(
+    tracker: LatencyTracker,
+    min_latency_advantage_ms: float = 5.0,
+    max_position_size: Decimal = Decimal("1.0"),
+    strategy_id: str = "lat_arb",
+    cost: Decimal = Decimal("1"),
+) -> CrossExchangeStrategy:
+    config = CrossExchangeConfig(
+        min_spread_bps=Decimal("0"),
+        max_position_size=max_position_size,
+        latency_boost=True,
+        min_latency_advantage_ms=min_latency_advantage_ms,
+    )
+    return CrossExchangeStrategy(strategy_id, make_calculator(cost), config=config, latency_tracker=tracker)
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -66,9 +86,7 @@ def make_tracker(
 @pytest.mark.asyncio
 async def test_generates_trade_when_latency_advantage_sufficient():
     """18ms advantage (2ms vs 20ms) > 5ms threshold → should trade."""
-    tracker = make_tracker(fast_ms=2.0, slow_ms=20.0)
-    config = LatencyArbConfig(min_latency_advantage_ms=5.0)
-    strategy = LatencyArbStrategy("lat_arb", make_calculator(), tracker, config)
+    strategy = make_strategy(make_tracker(fast_ms=2.0, slow_ms=20.0))
     await strategy.start()
 
     result = await strategy.on_signal(make_signal())
@@ -81,9 +99,7 @@ async def test_generates_trade_when_latency_advantage_sufficient():
 @pytest.mark.asyncio
 async def test_filtered_when_advantage_below_threshold():
     """2ms advantage (10ms vs 12ms) < 5ms threshold → should be filtered."""
-    tracker = make_tracker(fast_ms=10.0, slow_ms=12.0)
-    config = LatencyArbConfig(min_latency_advantage_ms=5.0)
-    strategy = LatencyArbStrategy("lat_arb", make_calculator(), tracker, config)
+    strategy = make_strategy(make_tracker(fast_ms=10.0, slow_ms=12.0))
     await strategy.start()
 
     result = await strategy.on_signal(make_signal())
@@ -96,8 +112,7 @@ async def test_filtered_when_advantage_below_threshold():
 async def test_auto_disable_when_no_latency_data():
     """If tracker has no data for the signal's exchanges → filtered."""
     tracker = LatencyTracker(window_size=5)  # empty
-    config = LatencyArbConfig(min_latency_advantage_ms=5.0)
-    strategy = LatencyArbStrategy("lat_arb", make_calculator(), tracker, config)
+    strategy = make_strategy(tracker)
     await strategy.start()
 
     result = await strategy.on_signal(make_signal())
@@ -108,8 +123,7 @@ async def test_auto_disable_when_no_latency_data():
 
 @pytest.mark.asyncio
 async def test_inactive_strategy_returns_none():
-    tracker = make_tracker()
-    strategy = LatencyArbStrategy("lat_arb", make_calculator(), tracker)
+    strategy = make_strategy(make_tracker())
     # Not started — is_active == False
     result = await strategy.on_signal(make_signal())
     assert result is None
@@ -119,8 +133,8 @@ async def test_inactive_strategy_returns_none():
 async def test_no_trade_when_costs_exceed_profit():
     """High friction costs eat all profit → return None."""
     tracker = make_tracker(fast_ms=1.0, slow_ms=50.0)
-    calc = make_calculator(Decimal("100"))  # 100 USDT per leg
-    strategy = LatencyArbStrategy("lat_arb", calc, tracker)
+    strategy = make_strategy(tracker, cost=Decimal("100"))
+
     await strategy.start()
 
     # Gross profit = (50100 - 50000) * 0.1 = 10 USDT; total cost = 200 USDT
@@ -132,9 +146,7 @@ async def test_no_trade_when_costs_exceed_profit():
 
 @pytest.mark.asyncio
 async def test_size_capped_by_max_position_size():
-    tracker = make_tracker()
-    config = LatencyArbConfig(max_position_size=Decimal("0.2"), min_latency_advantage_ms=5.0)
-    strategy = LatencyArbStrategy("lat_arb", make_calculator(), tracker, config)
+    strategy = make_strategy(make_tracker(), max_position_size=Decimal("0.2"))
     await strategy.start()
 
     result = await strategy.on_signal(make_signal(volume=Decimal("1.0")))
@@ -145,8 +157,7 @@ async def test_size_capped_by_max_position_size():
 
 @pytest.mark.asyncio
 async def test_trade_has_buy_and_sell_legs():
-    tracker = make_tracker()
-    strategy = LatencyArbStrategy("lat_arb", make_calculator(), tracker)
+    strategy = make_strategy(make_tracker())
     await strategy.start()
 
     result = await strategy.on_signal(make_signal())
@@ -160,8 +171,7 @@ async def test_trade_has_buy_and_sell_legs():
 
 @pytest.mark.asyncio
 async def test_legs_assigned_to_correct_exchanges():
-    tracker = make_tracker(fast="binance", slow="okx")
-    strategy = LatencyArbStrategy("lat_arb", make_calculator(), tracker)
+    strategy = make_strategy(make_tracker(fast="binance", slow="okx"))
     await strategy.start()
 
     result = await strategy.on_signal(make_signal(buy_exchange="binance", sell_exchange="okx"))
@@ -174,22 +184,22 @@ async def test_legs_assigned_to_correct_exchanges():
 
 
 @pytest.mark.asyncio
-async def test_metadata_includes_latency_advantage():
-    tracker = make_tracker(fast_ms=2.0, slow_ms=20.0)
-    strategy = LatencyArbStrategy("lat_arb", make_calculator(), tracker)
+async def test_metadata_includes_latency_advantage_and_mode():
+    """latency_boost mode tags metadata with mode=latency_boost and latency_advantage_ms."""
+    strategy = make_strategy(make_tracker(fast_ms=2.0, slow_ms=20.0))
     await strategy.start()
 
     result = await strategy.on_signal(make_signal())
 
     assert result is not None
+    assert result.metadata.get("mode") == "latency_boost"
     assert "latency_advantage_ms" in result.metadata
     assert float(result.metadata["latency_advantage_ms"]) == pytest.approx(18.0, rel=1e-3)
 
 
 @pytest.mark.asyncio
 async def test_metrics_track_signals_and_requests():
-    tracker = make_tracker()
-    strategy = LatencyArbStrategy("lat_arb", make_calculator(), tracker)
+    strategy = make_strategy(make_tracker())
     await strategy.start()
 
     await strategy.on_signal(make_signal())

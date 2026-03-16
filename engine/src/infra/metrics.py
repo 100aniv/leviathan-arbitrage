@@ -72,6 +72,12 @@ RISK_REJECTIONS_TOTAL = Counter(
     ["check_number", "reason"],
 )
 
+STRATEGY_OVERLAP_TOTAL = Counter(
+    "leviathan_strategy_overlap_total",
+    "Total strategy overlap collisions blocked (same symbol+exchange pair within 10s window)",
+    ["symbol", "strategy"],
+)
+
 # ---------------------------------------------------------------------------
 # Gauges — current point-in-time values
 # ---------------------------------------------------------------------------

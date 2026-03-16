@@ -151,6 +151,13 @@ class ONNXSignalScorer:
         alpha = 0.1
         self._latency_ema_ms = alpha * elapsed_ms + (1 - alpha) * self._latency_ema_ms
 
+        # US-191: periodic INFO log every 100 calls
+        if self._call_count % 100 == 0:
+            logger.info(
+                "onnx_scorer: %d predictions, avg_latency=%.2fms, last_score=%.4f",
+                self._call_count, self._latency_ema_ms, score,
+            )
+
         return score
 
     def predict_batch(self, features: np.ndarray) -> np.ndarray:

@@ -73,6 +73,8 @@ class PortfolioState:
     # (exchange_id, base_asset) -> net quantity (long=positive, short=negative)
     # Populated from ExposureTracker before calling check(). Used for Amendment 7.
     net_exposures: dict[tuple[str, str], Decimal] = field(default_factory=dict)
+    # US-196: strategy_base -> total capital currently used by that strategy
+    strategy_capital_used: dict[str, Decimal] = field(default_factory=dict)
 
 
 class RiskGuardian:
@@ -96,6 +98,7 @@ class RiskGuardian:
         max_net_exposure_per_asset: Decimal = Decimal("0"),
         max_concurrent_positions: int = 20,
         dynamic_sizer: Any | None = None,  # US-176: DynamicSizer for correlation scale-down
+        capital_allocation_pct: dict[str, float] | None = None,  # US-196: per-strategy capital limits
     ) -> None:
         import os as _os
         self._cb = circuit_breaker
@@ -115,6 +118,21 @@ class RiskGuardian:
         except (ValueError, TypeError):
             _mcp = max_concurrent_positions
         self._max_concurrent_positions: int = max(1, min(_mcp, 1000))
+        # US-196: per-strategy capital allocation limits
+        self._capital_allocation_pct: dict[str, float] = capital_allocation_pct or {}
+        if self._capital_allocation_pct:
+            total_alloc = sum(self._capital_allocation_pct.values())
+            if total_alloc > 100.0:
+                raise ValueError(
+                    f"Capital allocation sum exceeds 100%: {total_alloc:.1f}%"
+                )
+            if total_alloc < 80.0:
+                logger.warning(
+                    "capital_allocation_low",
+                    total_pct=total_alloc,
+                    msg=f"Capital allocation sum is {total_alloc:.1f}% (< 80%), "
+                        f"{100.0 - total_alloc:.1f}% will remain idle",
+                )
         # US-118: optional correlation monitor — set externally after construction
         self.correlation_monitor: CorrelationMonitor | None = None
 
@@ -321,6 +339,29 @@ class RiskGuardian:
                     f"{len(portfolio.position_sizes)} >= {self._max_concurrent_positions}"
                 ),
             )
+
+        # CHECK #11: Per-strategy capital allocation (US-196)
+        if self._capital_allocation_pct:
+            # Extract base strategy name (e.g., "cross_exchange_v1" -> "cross_exchange")
+            strategy_base = proposal.strategy_id.split("_v")[0] if "_v" in proposal.strategy_id else proposal.strategy_id
+            alloc_pct = self._capital_allocation_pct.get(strategy_base)
+            if alloc_pct is not None:
+                max_strategy_capital = portfolio.total_capital * Decimal(str(alloc_pct)) / Decimal("100")
+                # US-196 fix: use strategy_capital_used (keyed by strategy_base)
+                strategy_used = portfolio.strategy_capital_used.get(strategy_base, Decimal("0"))
+                if strategy_used + proposal.position_value > max_strategy_capital:
+                    RISK_REJECTIONS_TOTAL.labels(
+                        check_number="11", reason="capital_allocation_exceeded"
+                    ).inc()
+                    return RiskCheckResult(
+                        approved=False,
+                        rejected_at_check=11,
+                        reason=(
+                            f"Strategy capital allocation exceeded: "
+                            f"{strategy_base} used {strategy_used:.2f} + {proposal.position_value:.2f} > "
+                            f"{max_strategy_capital:.2f} ({alloc_pct}% of capital)"
+                        ),
+                    )
 
         logger.debug(
             "risk_check_approved",

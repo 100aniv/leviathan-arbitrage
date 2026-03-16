@@ -180,6 +180,16 @@ class SignalGenerator:
         if buy_book is None or sell_book is None:
             return None
 
+        # Empty-book guard — book object exists but L2 data not yet received
+        # (common during WS warmup or after delta updates empty a side).
+        # Silently skip; CEXOrderbookSlippage.predict() would raise ValueError otherwise.
+        if buy_book.best_ask() is None or sell_book.best_bid() is None:
+            logger.debug(
+                "empty_book_skipped symbol=%s buy_ex=%s sell_ex=%s",
+                symbol, buy_exchange, sell_exchange,
+            )
+            return None
+
         # Staleness gate — reject if either orderbook hasn't updated recently
         now_mono = time.monotonic()
         max_age = self._config.max_book_age_seconds
@@ -237,7 +247,7 @@ class SignalGenerator:
                 transfer_coin=transfer_coin,
             )
         except Exception as exc:
-            logger.warning("Friction calculation failed for %s: %s", symbol, exc)
+            logger.debug("Friction calculation failed for %s: %s", symbol, exc)
             return None
 
         notional = buy_price * trade_size

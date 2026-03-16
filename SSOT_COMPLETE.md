@@ -264,3 +264,22 @@
 | Bithumb 증분 Orderbook | 누적 orderbook + REST re-sync + stale 5초 감지 (Phase I US-073) |
 | Shadow 손실 전략 미비활성화 | SHADOW_DISABLED_STRATEGIES .env 설정 — stat_arb/spot_futures/latency_arb 비활성 (Phase S5 US-156) |
 | 전략 6개 비활성 | Phase J-EXT Wave 1~4에서 전략 연결 완료 |
+
+### RESOLVED 이슈 (S8/S9 해소 — US-193에서 이관)
+
+| 이슈 | 해소 Phase |
+|------|-----------|
+| ~~GAP 3: MultiStrategy LIVE 미연결~~ | S8 US-169 |
+| ~~GAP 7: Triangular Scanner 부재~~ | S8 US-170 |
+| ~~GAP 8: DEX Adapter Stub~~ | S8 US-177 |
+| ~~ONNX ML Scorer 미연결~~ | S8 US-172 |
+| ~~HMM RegimeDetector 미연결~~ | S8 US-173 |
+| ~~AdaptiveThreshold 미연결~~ | S8 US-174 |
+| ~~ExposureTracker 미인스턴스화~~ | S8 US-175 |
+| ~~CorrelationMonitor 로그만~~ | S8 US-176 |
+| ~~Docker pre-flight 체크~~ | S8 설정/환경 갭 |
+| ~~IOC limit order 미구현~~ | S8 US-178 |
+| ~~마찰 vs Gross Spread~~ | S8 US-174 |
+| ~~Coinone Rate Limit~~ | 자동 재연결 구현 |
+| ~~빈 Orderbook 경고~~ | crash 없음, 무시 |
+| ~~cex_dex 미구현~~ | S8 US-177 |

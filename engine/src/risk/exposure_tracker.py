@@ -29,16 +29,22 @@ class ExposureTracker:
     Computes and checks net exposure across all strategies for a given
     (exchange, base_asset) pair.
 
-    All state lives in Redis so multiple processes share a consistent view.
+    When redis_client is provided, state lives in Redis so multiple processes
+    share a consistent view. When redis_client is None, falls back to an
+    in-memory dict (single-process only, no persistence).
     """
 
-    def __init__(self, redis_client: Any) -> None:
+    def __init__(self, redis_client: Any = None) -> None:
         self._redis = redis_client
+        self._memory: dict[str, str] = {}  # fallback when Redis unavailable
 
     async def get_net_exposure(self, exchange_id: str, base_asset: str) -> Decimal:
-        """Read current net exposure from Redis. Returns 0 if no data."""
+        """Read current net exposure. Returns 0 if no data."""
         key = EXPOSURE_KEY.format(exchange=exchange_id, base_asset=base_asset)
-        val = await self._redis.get(key)
+        if self._redis is not None:
+            val = await self._redis.get(key)
+        else:
+            val = self._memory.get(key)
         if val is None:
             return Decimal("0")
         return Decimal(val.decode() if isinstance(val, bytes) else str(val))
@@ -50,7 +56,7 @@ class ExposureTracker:
         delta: Decimal,
     ) -> Decimal:
         """
-        Add delta to current net exposure and persist to Redis.
+        Add delta to current net exposure and persist.
         Returns new net exposure value.
         delta > 0 for long positions added, delta < 0 for short positions.
         """
@@ -58,7 +64,10 @@ class ExposureTracker:
         new_val = current + delta
 
         key = EXPOSURE_KEY.format(exchange=exchange_id, base_asset=base_asset)
-        await self._redis.set(key, str(new_val))
+        if self._redis is not None:
+            await self._redis.set(key, str(new_val))
+        else:
+            self._memory[key] = str(new_val)
 
         logger.debug(
             "exposure_updated",

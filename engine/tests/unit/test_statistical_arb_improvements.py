@@ -86,9 +86,9 @@ async def warmup(strategy: StatisticalArbStrategy, n: int, base_price: float = 5
 
 
 def test_config_default_kalman_process_noise():
-    """Kalman process noise should be tightened to 1e-5."""
+    """Kalman process noise is 1e-4 (US-188: increased for cross-asset responsiveness)."""
     cfg = StatArbConfig()
-    assert cfg.kalman_process_noise == pytest.approx(1e-5)
+    assert cfg.kalman_process_noise == pytest.approx(1e-4)
 
 
 def test_config_default_kalman_observation_noise():
@@ -103,7 +103,7 @@ def test_config_new_fields_have_sensible_defaults():
     assert cfg.vol_lookback == 20
     assert cfg.min_zero_crossings == 3
     assert cfg.zero_crossing_lookback == 60
-    assert cfg.max_holding_bars == 20
+    assert cfg.max_holding_bars == 60
 
 
 # ---------------------------------------------------------------------------
@@ -264,9 +264,9 @@ async def test_max_holding_bars_forces_exit():
         min_zero_crossings=0,   # disable crossing filter
         adaptive_threshold=False,
         zscore_entry=2.0,
-        zscore_exit=0.5,
+        zscore_exit=-100.0,  # never exit by zscore; only force-timeout fires
         max_holding_bars=3,
-        cointegration_pvalue=1.0,  # always cointegrated
+        enable_cointegration=False,  # skip cointegration gate for this unit test
     )
     strategy = make_strategy(cfg)
     await strategy.start()

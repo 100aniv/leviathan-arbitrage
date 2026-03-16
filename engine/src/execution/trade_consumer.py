@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from decimal import Decimal
 from typing import Any, Callable, Optional, Protocol
@@ -118,6 +119,7 @@ class TradeRequestConsumer:
         self._min_edge = min_edge
         self._task: asyncio.Task[None] | None = None
         self._running = False
+        self._recent_trades: dict[tuple, float] = {}
 
         # Counters for observability
         self.processed_count: int = 0
@@ -205,6 +207,33 @@ class TradeRequestConsumer:
             return
 
         self.processed_count += 1
+
+        # Position collision check: block duplicate (symbol, exchange_pair) within 10s window
+        if trade_request.legs:
+            trade_key = (
+                frozenset(leg.symbol for leg in trade_request.legs),
+                frozenset(leg.exchange_id for leg in trade_request.legs),
+            )
+            now = time.monotonic()
+            self._recent_trades = {
+                k: v for k, v in self._recent_trades.items() if now - v < 10.0
+            }
+            if trade_key in self._recent_trades:
+                from src.infra.metrics import STRATEGY_OVERLAP_TOTAL
+
+                STRATEGY_OVERLAP_TOTAL.labels(
+                    symbol=",".join(sorted(trade_key[0])),
+                    strategy=trade_request.strategy_id,
+                ).inc()
+                logger.warning(
+                    "Position collision blocked: symbol=%s exchanges=%s strategy=%s seconds_since_last=%.2f",
+                    trade_key[0],
+                    trade_key[1],
+                    trade_request.strategy_id,
+                    now - self._recent_trades[trade_key],
+                )
+                return
+            self._recent_trades[trade_key] = now
 
         # Check kill switch before each trade
         if is_halted():

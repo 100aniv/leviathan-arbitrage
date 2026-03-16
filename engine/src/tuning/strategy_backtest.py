@@ -17,12 +17,10 @@ import numpy as np
 
 from src.core.models import OrderSide, Signal
 from src.strategies.base import CostCalculator, TradeRequest
-from src.core.latency_tracker import ExchangeLatencyInfo, LatencyTracker
 from src.strategies.cross_exchange import CrossExchangeConfig, CrossExchangeStrategy
 from src.strategies.cex_dex import CexDexConfig, CexDexStrategy
 from src.strategies.funding_rate import FundingRateConfig, FundingRateStrategy
 from src.strategies.futures_futures import FuturesFuturesConfig, FuturesFuturesStrategy
-from src.strategies.latency_arb import LatencyArbConfig, LatencyArbStrategy
 from src.strategies.spot_futures import SpotFuturesConfig, SpotFuturesStrategy
 from src.strategies.statistical_arb import StatArbConfig, StatisticalArbStrategy
 from src.strategies.triangular import TriangularConfig, TriangularStrategy
@@ -64,7 +62,6 @@ STRATEGY_TYPES = [
     "statistical_arb",
     "cex_dex",
     "futures_futures",
-    "latency_arb",
 ]
 
 
@@ -389,44 +386,6 @@ def _make_futures_futures_signals(
     return signals
 
 
-def _make_latency_arb_signals(
-    closes: list[float],
-    params: StrategyParams,
-    rng: random.Random,
-) -> list[Signal]:
-    """Latency-driven price discrepancy signals between fast (binance) and slow (bybit) exchange.
-
-    25% injection rate with 5-15bps spread range. Other candles produce sub-threshold noise.
-    """
-    signals = []
-    spread_scale = params.min_spread_bps / 10_000.0
-    for price in closes:
-        if rng.random() < 0.25:
-            # 30-50bps: above 2×taker_fee (20bps) so net_profit > 0
-            spread = rng.uniform(0.003, 0.005)
-        else:
-            spread = abs(rng.gauss(0, spread_scale))
-
-        buy_price = Decimal(str(price))
-        sell_price = Decimal(str(price * (1 + spread)))
-        spread_pct = (sell_price - buy_price) / max(buy_price, Decimal("1e-10"))
-
-        signals.append(
-            Signal(
-                strategy_id="backtest_latency_arb",
-                symbol="BTC/USDT",
-                buy_exchange="binance",
-                sell_exchange="bybit",
-                buy_price=buy_price,
-                sell_price=sell_price,
-                spread_pct=spread_pct,
-                confidence=0.88,
-                volume=Decimal(str(min(params.max_position_size / price, 0.01))),
-            )
-        )
-    return signals
-
-
 # ---------------------------------------------------------------------------
 # Mock DEX adapter for CEX-DEX backtesting (no network calls)
 # ---------------------------------------------------------------------------
@@ -458,28 +417,6 @@ class _MockDEXAdapter:
 
     async def get_pool_reserves(self) -> tuple[Decimal, Decimal]:
         return Decimal("1000.0"), Decimal("50_000_000.0")
-
-
-# ---------------------------------------------------------------------------
-# Mock LatencyTracker for latency_arb backtesting (no real network data)
-# ---------------------------------------------------------------------------
-
-
-class _MockLatencyTracker:
-    """Returns fixed EMA latencies: binance=10ms (fast), bybit=50ms (slow).
-
-    advantage = slow_ema - fast_ema = 40ms >> default min_latency_advantage_ms=5ms,
-    so signals pass the latency gate and strategy logic runs normally.
-    """
-
-    def get_latency_info(self, exchange_id: str) -> ExchangeLatencyInfo:
-        if exchange_id == "binance":
-            return ExchangeLatencyInfo(
-                exchange_id="binance", ema_ms=10.0, window_avg_ms=10.0, sample_count=50
-            )
-        return ExchangeLatencyInfo(
-            exchange_id=exchange_id, ema_ms=50.0, window_avg_ms=50.0, sample_count=50
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -561,13 +498,6 @@ def _build_strategy(
         )
         return FuturesFuturesStrategy("bt_futures_futures", cost_calc, cfg), None
 
-    if strategy_type == "latency_arb":
-        cfg = LatencyArbConfig(
-            min_latency_advantage_ms=5.0,
-            max_position_size=Decimal(str(min(params.max_position_size / 50_000.0, 0.1))),
-        )
-        return LatencyArbStrategy("bt_latency_arb", cost_calc, _MockLatencyTracker(), cfg), None
-
     raise ValueError(f"Unknown strategy type: {strategy_type}")
 
 
@@ -583,7 +513,6 @@ _SIGNAL_GENERATORS = {
     "statistical_arb": _make_statistical_arb_signals,
     "cex_dex": _make_cex_dex_signals,
     "futures_futures": _make_futures_futures_signals,
-    "latency_arb": _make_latency_arb_signals,
 }
 
 

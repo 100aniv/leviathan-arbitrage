@@ -21,6 +21,7 @@ class FuturesFuturesConfig(BaseModel):
     max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
     max_leverage: int = Field(default=5, ge=1, le=20)
     margin_safety_pct: Decimal = Field(default=Decimal("0.20"), ge=Decimal("0"))
+    max_notional_usd: Decimal | None = Field(default=None)  # S10: optional per-trade notional cap
 
 
 class FuturesFuturesStrategy(BaseStrategy):
@@ -58,6 +59,15 @@ class FuturesFuturesStrategy(BaseStrategy):
             return None
 
         size = min(signal.volume, self.config.max_position_size)
+
+        # S10: Optional per-trade notional cap
+        if self.config.max_notional_usd is not None:
+            notional = signal.buy_price * size
+            if notional > self.config.max_notional_usd:
+                size = self.config.max_notional_usd / signal.buy_price
+                if size <= Decimal("0"):
+                    self._metrics.signals_filtered += 1
+                    return None
 
         # Check margin safety: required margin must not exceed available * (1 - safety_pct)
         margin_available = Decimal(str(signal.metadata.get("margin_available", "0")))

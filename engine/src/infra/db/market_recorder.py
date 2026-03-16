@@ -258,6 +258,11 @@ class MarketRecorder:
                 # Never crash the engine — just log and keep looping.
                 log.exception("market_recorder.flush_loop.error")
 
+    # Seconds to wait for a pool connection before giving up on this flush cycle.
+    # Without a timeout, a dead pool causes acquire() to hang forever, which
+    # stacks up unbounded overflow-flush tasks and eventually crashes the process.
+    ACQUIRE_TIMEOUT_S: float = float(os.getenv("MARKET_FLUSH_ACQUIRE_TIMEOUT_S", "5.0"))
+
     async def _flush(self) -> None:
         """Drain both queues into TimescaleDB using executemany.
 
@@ -271,7 +276,7 @@ class MarketRecorder:
             return
 
         try:
-            async with self._pool.acquire() as conn:
+            async with self._pool.acquire(timeout=self.ACQUIRE_TIMEOUT_S) as conn:
                 async with conn.transaction():
                     if ob_rows:
                         await conn.executemany(_INSERT_ORDERBOOK, ob_rows)
@@ -285,6 +290,13 @@ class MarketRecorder:
                             "market_recorder.flushed_executions",
                             count=len(ex_rows),
                         )
+        except asyncio.TimeoutError:
+            log.warning(
+                "market_recorder.flush.acquire_timeout",
+                ob_rows_dropped=len(ob_rows),
+                ex_rows_dropped=len(ex_rows),
+                timeout_s=self.ACQUIRE_TIMEOUT_S,
+            )
         except asyncpg.PostgresError as exc:
             log.error(
                 "market_recorder.flush.postgres_error",

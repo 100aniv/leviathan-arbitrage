@@ -793,14 +793,14 @@ class Engine:
         from src.strategies.triangular import TriangularConfig, TriangularStrategy
         from src.strategies.funding_rate import FundingRateConfig, FundingRateStrategy
         from src.strategies.statistical_arb import StatisticalArbStrategy
-        from src.strategies.latency_arb import LatencyArbConfig, LatencyArbStrategy
+        # latency_arb merged into cross_exchange (US-194) — no separate import needed
 
         # Use a simple stub if CostCalculator didn't initialize
         cost_calc = self._cost_calculator
         if cost_calc is None:
             cost_calc = _StubCostCalculator()
 
-        # Shared latency tracker for LatencyArb strategy
+        # Shared latency tracker for latency_boost mode in CrossExchangeStrategy (US-194)
         self._latency_tracker = LatencyTracker()
 
         # Load tuned parameters (READY/MONITOR strategies only)
@@ -837,20 +837,14 @@ class Engine:
             max_position_usdt=Decimal(str(tri_p.get("max_position_size_usdt", 1000))),
         ) if tri_p.get("status") in ("READY", "MONITOR") else None
 
-        la_p = tuned.get("latency_arb", {})
-        la_config = LatencyArbConfig(
-            min_latency_advantage_ms=float(la_p.get("entry_threshold", 0.0005)) * 10000,
-            max_position_size=Decimal(str(la_p.get("max_position_size_usdt", 5000))) / _BTC_REFERENCE_PRICE,
-        ) if la_p.get("status") in ("READY", "MONITOR") else None
-
         strategies = [
-            CrossExchangeStrategy("cross_exchange_v1", cost_calc, config=ce_config),
+            CrossExchangeStrategy("cross_exchange_v1", cost_calc, config=ce_config,
+                                  latency_tracker=self._latency_tracker),
             SpotFuturesStrategy("spot_futures_v1", cost_calc, config=sf_config),
             FuturesFuturesStrategy("futures_futures_v1", cost_calc, config=ff_config),
             TriangularStrategy("triangular_v1", cost_calc, config=tri_config),
             FundingRateStrategy("funding_rate_v1", cost_calc, config=fr_config),
             StatisticalArbStrategy("statistical_arb_v1", cost_calc),
-            LatencyArbStrategy("latency_arb_v1", cost_calc, self._latency_tracker, config=la_config),
         ]
 
         # CexDex requires a DEXAdapter — register only if configured
@@ -879,7 +873,7 @@ class Engine:
             self._strategy_manager.register(strategy)
 
         tuned_count = sum(1 for s in ["spot_futures", "funding_rate", "cross_exchange",
-                                       "futures_futures", "triangular", "latency_arb"] if tuned.get(s, {}).get("status") in ("READY", "MONITOR"))
+                                       "futures_futures", "triangular"] if tuned.get(s, {}).get("status") in ("READY", "MONITOR"))
         logger.info("Registered %d strategies (%d with tuned params)", len(strategies), tuned_count)
 
     def _build_dex_adapter(self):
@@ -954,7 +948,8 @@ class Engine:
                 self._exposure_tracker = ExposureTracker(self._redis_client)
                 logger.info("ExposureTracker initialized (Redis-backed)")
             else:
-                logger.info("ExposureTracker skipped (no Redis — in-memory position_sizes used)")
+                self._exposure_tracker = ExposureTracker(None)
+                logger.warning("ExposureTracker: Redis unavailable, using in-memory fallback")
         except Exception as exc:
             logger.warning("ExposureTracker init failed (non-fatal): %s", exc)
 
@@ -1841,7 +1836,28 @@ class Engine:
                     if total_trades > 0:
                         win_rate = wins / total_trades
 
-                new_edge_bps = self._adaptive_threshold.adjust(win_rate, total_trades)
+                # US-201: compute expected_edge_bps and profit_factor from trade history
+                expected_edge_bps: float | None = None
+                profit_factor: float | None = None
+                if self.context.trade_history:
+                    trades = self.context.trade_history
+                    winning_pnl = [t.get("pnl", 0.0) for t in trades if t.get("pnl", 0.0) > 0]
+                    losing_pnl = [t.get("pnl", 0.0) for t in trades if t.get("pnl", 0.0) < 0]
+                    n = len(trades)
+                    if n > 0:
+                        wr = len(winning_pnl) / n
+                        avg_win = sum(winning_pnl) / len(winning_pnl) if winning_pnl else 0.0
+                        avg_loss = abs(sum(losing_pnl) / len(losing_pnl)) if losing_pnl else 0.0
+                        expected_value_usd = (wr * avg_win) - ((1 - wr) * avg_loss)
+                        # Normalize to bps: approximate average notional from avg trade size
+                        avg_notional = (avg_win + avg_loss) / 2.0 if (avg_win + avg_loss) > 0 else 1.0
+                        expected_edge_bps = (expected_value_usd / avg_notional) * 10000 if avg_notional > 0 else 0.0
+                        if losing_pnl:
+                            profit_factor = sum(winning_pnl) / abs(sum(losing_pnl)) if winning_pnl else 0.0
+
+                new_edge_bps = self._adaptive_threshold.adjust(
+                    win_rate, total_trades, expected_edge_bps, profit_factor
+                )
 
                 # Update SignalConfig.min_edge at runtime
                 if self._signal_generator is not None and hasattr(self._signal_generator, "_config"):

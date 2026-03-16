@@ -33,6 +33,7 @@ from src.core.models import Signal
 from src.core.multi_signal import MultiStrategySignalProducer
 from src.core.order_book import OrderBook
 from src.core.triangular_scanner import TriangularScanner
+from src.strategies.statistical_arb import _KalmanHedgeRatio
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,13 @@ logger = logging.getLogger(__name__)
 _Books = dict[str, dict[str, OrderBook]]
 # exchange_id → symbol → funding_rate
 _Rates = dict[str, dict[str, float]]
+
+# Cross-asset pairs evaluated on the SAME exchange (US-188)
+CROSS_ASSET_PAIRS: list[tuple[str, str]] = [
+    ("BTC/USDT", "ETH/USDT"),
+    ("ETH/USDT", "SOL/USDT"),
+    ("BTC/USDT", "SOL/USDT"),
+]
 
 
 class RealDataSignalProducer:
@@ -74,16 +82,27 @@ class RealDataSignalProducer:
         self._futures_exchanges: set[str] = futures_exchanges or {"binance_futures", "okx_futures", "bybit_futures"}
         self._latency_tracker = latency_tracker
         self._stale_detector = stale_detector
-        # US-181: Rolling spread history for statistical arb z-score computation
-        # Key: (symbol, exchange_a, exchange_b) → deque of log-price spreads
+        # US-188: Rolling spread history for cross-asset stat arb z-score computation
+        # Key: (symbolA, symbolB, exchange) → deque of log-price spreads
         self._spread_history: dict[tuple[str, str, str], deque[float]] = defaultdict(
             lambda: deque(maxlen=200)
         )
+        # Per-pair Kalman filters for dynamic hedge ratio estimation
+        self._stat_arb_kalman: dict[tuple[str, str, str], _KalmanHedgeRatio] = {}
         self._stat_arb_cooldown: dict[tuple[str, str, str], float] = {}
-        self._stat_arb_z_threshold = float(os.environ.get("STAT_ARB_Z_THRESHOLD", "8.0"))
+        self._stat_arb_z_threshold = float(os.environ.get("STAT_ARB_Z_THRESHOLD", "2.5"))
         self._stat_arb_cooldown_s = float(os.environ.get("STAT_ARB_COOLDOWN_S", "300"))
-        self._stat_arb_min_history = int(os.environ.get("STAT_ARB_MIN_HISTORY", "200"))
+        self._stat_arb_min_history = int(os.environ.get("STAT_ARB_MIN_HISTORY", "120"))
         self._stat_arb_korean = {"upbit", "bithumb", "coinone"}  # skip stale data
+        # S10: Warmup guard — skip signals for first 5 seconds after startup
+        # Disabled in test mode to avoid breaking integration tests
+        self._first_update_mono: float = 0.0
+        _env = os.environ.get("ENGINE_ENV", "dev")
+        self._warmup_seconds: float = 5.0 if _env not in ("test",) else 0.0
+        # S10 fix: per-exchange last-update timestamps for reconnect stale guard
+        self._exchange_last_update: dict[str, float] = {}
+        _stale_threshold = os.environ.get("EXCHANGE_STALE_THRESHOLD_S", "3.0")
+        self._exchange_stale_threshold: float = float(_stale_threshold) if _env != "test" else 9999.0
 
     # ------------------------------------------------------------------
     # Public interface
@@ -100,8 +119,19 @@ class RealDataSignalProducer:
         """Evaluate all relevant strategies on a new orderbook update.
 
         Returns a (possibly empty) list of Signal objects produced.
+        S10: Skips signals during first 5 seconds (orderbook cold-start warmup).
         """
         signals: list[Signal] = []
+
+        # S10: Warmup guard — skip all signals for first 5 seconds
+        now_mono = time.monotonic()
+        if self._first_update_mono == 0.0:
+            self._first_update_mono = now_mono
+        if (now_mono - self._first_update_mono) < self._warmup_seconds:
+            return signals
+
+        # S10 fix: track per-exchange last update time for reconnect stale guard
+        self._exchange_last_update[exchange_id] = now_mono
 
         # Triangular arb (single exchange)
         signals.extend(
@@ -272,17 +302,36 @@ class RealDataSignalProducer:
                 if any(v is None for v in [bid_a, ask_b, bid_b, ask_a]):
                     continue
 
-                # US-184: stale data cross-validation
-                if self._stale_detector is not None:
-                    other_books = {k: v for k, v in fut_books.items() if k != ex_a}
-                    if not self._stale_detector.check_cross_exchange(ex_a, symbol, book_a, {symbol: other_books}):
+                # S10 fix: skip if either exchange recently reconnected (stale data guard)
+                # Only applied once both exchanges have been seen (avoids blocking cold-start)
+                now = time.monotonic()
+                last_a = self._exchange_last_update.get(ex_a)
+                last_b = self._exchange_last_update.get(ex_b)
+                if last_a is not None and last_b is not None:
+                    if (now - last_a) > self._exchange_stale_threshold or (now - last_b) > self._exchange_stale_threshold:
                         continue
+
+                # US-184 + S10: stale data cross-validation (BOTH exchanges)
+                if self._stale_detector is not None:
+                    other_books_a = {k: v for k, v in fut_books.items() if k != ex_a}
+                    if not self._stale_detector.check_cross_exchange(ex_a, symbol, book_a, {symbol: other_books_a}):
+                        continue
+                    other_books_b = {k: v for k, v in fut_books.items() if k != ex_b}
+                    if not self._stale_detector.check_cross_exchange(ex_b, symbol, book_b, {symbol: other_books_b}):
+                        continue
+
+                # S10: Orderbook freshness guard — skip if book updated > 5s ago
+                now_mono = time.monotonic()
+                age_a = now_mono - book_a.last_update_time if book_a.last_update_time > 0 else 999.0
+                age_b = now_mono - book_b.last_update_time if book_b.last_update_time > 0 else 999.0
+                if age_a > 5.0 or age_b > 5.0:
+                    continue
 
                 # ex_a bid > ex_b ask → buy on ex_b, sell on ex_a
                 if float(bid_a) > float(ask_b):
-                    # US-184: 500bps outlier filter
+                    # US-184 + S10: 500→100bps outlier filter (tighter post-reconnect guard)
                     spread_bps = (float(bid_a) - float(ask_b)) / float(ask_b) * 10000
-                    if spread_bps > 500:
+                    if spread_bps > 100:
                         continue
                     signal = await self._producer.produce_futures_futures_signal(
                         symbol=symbol,
@@ -300,9 +349,9 @@ class RealDataSignalProducer:
 
                 # Reverse: ex_b bid > ex_a ask
                 if float(bid_b) > float(ask_a):
-                    # US-184: 500bps outlier filter
+                    # US-184 + S10: 500→100bps outlier filter
                     spread_bps = (float(bid_b) - float(ask_a)) / float(ask_a) * 10000
-                    if spread_bps > 500:
+                    if spread_bps > 100:
                         continue
                     signal = await self._producer.produce_futures_futures_signal(
                         symbol=symbol,
@@ -326,52 +375,62 @@ class RealDataSignalProducer:
         symbol: str,
         all_books: _Books,
     ) -> list[Signal]:
-        """Evaluate statistical arbitrage via rolling z-score on log-price spread (US-181).
+        """Evaluate cross-asset statistical arbitrage on the SAME exchange (US-188).
 
-        Accumulates spread history per (symbol, ex_a, ex_b) pair. Only emits a
-        signal when the z-score exceeds threshold AND min_history samples exist
-        AND the per-pair cooldown has elapsed.
+        For each configured pair (symbolA, symbolB), checks if both symbols have
+        live orderbooks on exchange_id, then computes Kalman-filtered log-spread:
+            spread = log(midA) - beta * log(midB)
+
+        Emits a signal when z-score exceeds threshold AND min_history samples exist
+        AND the per-pair cooldown has elapsed. Korean exchanges are excluded.
         """
         signals: list[Signal] = []
-        sym_books = all_books.get(symbol, {})
-        my_book = sym_books.get(exchange_id)
-        if not my_book:
-            return signals
-        my_bid = my_book.best_bid()
-        my_ask = my_book.best_ask()
-        if my_bid is None or my_ask is None:
-            return signals
-        my_mid = (float(my_bid) + float(my_ask)) / 2
-        if my_mid <= 0:
-            return signals
 
-        # Skip Korean exchanges (stale orderbook data → unreliable z-score)
+        # Korean exchanges have stale orderbook data — skip entirely
         if exchange_id in self._stat_arb_korean:
             return signals
 
         now = time.monotonic()
-        for other_ex, other_book in sym_books.items():
-            if other_ex == exchange_id:
-                continue
-            if other_ex in self._stat_arb_korean:
-                continue
-            other_bid = other_book.best_bid()
-            other_ask = other_book.best_ask()
-            if other_bid is None or other_ask is None:
-                continue
-            other_mid = (float(other_bid) + float(other_ask)) / 2
-            if other_mid <= 0:
+
+        for sym_a, sym_b in CROSS_ASSET_PAIRS:
+            # Only evaluate when the incoming update is for one of the pair's symbols
+            if symbol not in (sym_a, sym_b):
                 continue
 
-            # Canonical pair key (sorted to avoid duplicates)
-            pair_key = (symbol, *sorted([exchange_id, other_ex]))
+            # Look up both books on the SAME exchange
+            book_a = all_books.get(sym_a, {}).get(exchange_id)
+            book_b = all_books.get(sym_b, {}).get(exchange_id)
+            if book_a is None or book_b is None:
+                continue
 
-            # Accumulate log-price spread
-            log_spread = math.log(my_mid / other_mid)
+            bid_a, ask_a = book_a.best_bid(), book_a.best_ask()
+            bid_b, ask_b = book_b.best_bid(), book_b.best_ask()
+            if None in (bid_a, ask_a, bid_b, ask_b):
+                continue
+
+            mid_a = (float(bid_a) + float(ask_a)) / 2
+            mid_b = (float(bid_b) + float(ask_b)) / 2
+            if mid_a <= 0 or mid_b <= 0:
+                continue
+
+            pair_key = (sym_a, sym_b, exchange_id)
+
+            # Get or create Kalman filter for this pair
+            if pair_key not in self._stat_arb_kalman:
+                self._stat_arb_kalman[pair_key] = _KalmanHedgeRatio(
+                    process_noise=1e-4,
+                    observation_noise=5e-3,
+                )
+            kalman = self._stat_arb_kalman[pair_key]
+
+            log_a = math.log(mid_a)
+            log_b = math.log(mid_b)
+            beta = kalman.update(log_b, log_a)
+            spread = log_a - beta * log_b
+
             history = self._spread_history[pair_key]
-            history.append(log_spread)
+            history.append(spread)
 
-            # Need minimum history for meaningful z-score
             if len(history) < self._stat_arb_min_history:
                 continue
 
@@ -379,9 +438,8 @@ class RealDataSignalProducer:
             mean_spread = sum(history) / len(history)
             variance = sum((s - mean_spread) ** 2 for s in history) / len(history)
             std_spread = math.sqrt(variance) if variance > 0 else 1e-10
-            z_score = (log_spread - mean_spread) / std_spread
+            z_score = (spread - mean_spread) / std_spread
 
-            # Only emit when |z| exceeds threshold
             if abs(z_score) < self._stat_arb_z_threshold:
                 continue
 
@@ -390,30 +448,33 @@ class RealDataSignalProducer:
             if now - last_emit < self._stat_arb_cooldown_s:
                 continue
 
-            # z > 0 means my_mid is overpriced vs other → sell mine, buy other
+            # z > 0: symA overpriced vs symB → sell symA (sell_price=midA), buy symB (buy_price=midB)
+            # z < 0: symA underpriced vs symB → buy symA (buy_price=midA), sell symB (sell_price=midB)
             if z_score > 0:
-                buy_ex, sell_ex = other_ex, exchange_id
-                buy_price = Decimal(str(other_mid))
-                sell_price = Decimal(str(my_mid))
+                buy_price = Decimal(str(mid_b))
+                sell_price = Decimal(str(mid_a))
             else:
-                buy_ex, sell_ex = exchange_id, other_ex
-                buy_price = Decimal(str(my_mid))
-                sell_price = Decimal(str(other_mid))
+                buy_price = Decimal(str(mid_a))
+                sell_price = Decimal(str(mid_b))
 
             sig = await self._producer.produce_statistical_arb_signal(
-                symbol=symbol,
-                buy_exchange=buy_ex,
-                sell_exchange=sell_ex,
+                symbol=sym_a,
+                buy_exchange=exchange_id,
+                sell_exchange=exchange_id,
                 buy_price=buy_price,
                 sell_price=sell_price,
                 z_score=abs(z_score),
+                symbol2=sym_b,
             )
             if sig is not None:
                 self._stat_arb_cooldown[pair_key] = now
                 logger.info(
                     "real_signal_producer.statistical_arb_signal",
-                    extra={"symbol": symbol, "buy_ex": buy_ex, "sell_ex": sell_ex,
-                           "z_score": f"{z_score:.2f}", "history_len": len(history)},
+                    extra={
+                        "sym_a": sym_a, "sym_b": sym_b, "exchange": exchange_id,
+                        "z_score": f"{z_score:.2f}", "beta": f"{beta:.4f}",
+                        "history_len": len(history),
+                    },
                 )
                 signals.append(sig)
         return signals

@@ -234,3 +234,98 @@ class TestFuturesFuturesDirection:
         )
         mock_multi.produce_futures_futures_signal.assert_not_called()
         assert result == []
+
+
+# ---------------------------------------------------------------------------
+# US-188: Cross-asset statistical arbitrage tests
+# ---------------------------------------------------------------------------
+
+
+def _make_stat_arb_producer(return_signal: Signal | None = None):
+    """Producer with produce_statistical_arb_signal mocked."""
+    mock_multi, producer = _make_producer(return_signal)
+    mock_multi.produce_statistical_arb_signal = AsyncMock(return_value=return_signal)
+    return mock_multi, producer
+
+
+class TestCrossAssetStatArb:
+    @pytest.mark.asyncio
+    async def test_cross_asset_signal_generation(self):
+        """BTC/USDT–ETH/USDT on same exchange emits signal after sufficient history."""
+        sig = _mock_signal("statistical_arb_zscore")
+        mock_multi, producer = _make_stat_arb_producer(return_signal=sig)
+
+        # Set low threshold and short history to trigger signal quickly
+        producer._stat_arb_z_threshold = 0.0
+        producer._stat_arb_min_history = 1
+
+        btc_book = _make_book("BTC/USDT", "binance", "50000", "50010")
+        eth_book = _make_book("ETH/USDT", "binance", "3000", "3005")
+        all_books = {
+            "BTC/USDT": {"binance": btc_book},
+            "ETH/USDT": {"binance": eth_book},
+        }
+
+        result = await producer.on_orderbook_update(
+            exchange_id="binance",
+            symbol="BTC/USDT",
+            book=btc_book,
+            all_books=all_books,
+            futures_books={},
+        )
+
+        mock_multi.produce_statistical_arb_signal.assert_called()
+        call_kwargs = mock_multi.produce_statistical_arb_signal.call_args.kwargs
+        assert call_kwargs["symbol"] == "BTC/USDT"
+        assert call_kwargs["symbol2"] == "ETH/USDT"
+        assert call_kwargs["buy_exchange"] == "binance"
+        assert call_kwargs["sell_exchange"] == "binance"
+
+    @pytest.mark.asyncio
+    async def test_korean_exchange_excluded(self):
+        """Korean exchanges (upbit, bithumb, coinone) are never evaluated for stat arb."""
+        mock_multi, producer = _make_stat_arb_producer(return_signal=_mock_signal())
+        producer._stat_arb_z_threshold = 0.0
+        producer._stat_arb_min_history = 1
+
+        btc_book = _make_book("BTC/USDT", "upbit", "50000", "50010")
+        eth_book = _make_book("ETH/USDT", "upbit", "3000", "3005")
+        all_books = {
+            "BTC/USDT": {"upbit": btc_book},
+            "ETH/USDT": {"upbit": eth_book},
+        }
+
+        await producer.on_orderbook_update(
+            exchange_id="upbit",
+            symbol="BTC/USDT",
+            book=btc_book,
+            all_books=all_books,
+            futures_books={},
+        )
+
+        mock_multi.produce_statistical_arb_signal.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_fail_closed_cointegration(self):
+        """_is_cointegrated_for_pair returns False when statsmodels raises ValueError."""
+        from src.strategies.statistical_arb import StatArbConfig, StatisticalArbStrategy
+
+        config = StatArbConfig(
+            min_history=10,
+            enable_cointegration=True,
+            cointegration_pvalue=0.05,
+        )
+        strategy = StatisticalArbStrategy("s", MagicMock(), config)
+        # Build a _PairState with constant (non-cointegrated) prices
+        from collections import deque
+        from src.strategies.statistical_arb import _PairState, _KalmanHedgeRatio, StatArbState
+        ps = _PairState(
+            kalman=_KalmanHedgeRatio(),
+            prices_a=deque([1.0] * 15, maxlen=100),  # constant → ValueError in coint
+            prices_b=deque([2.0] * 15, maxlen=100),  # constant
+            spreads=deque([0.0] * 15, maxlen=100),
+            state=StatArbState.FLAT,
+        )
+        result = strategy._is_cointegrated_for_pair(ps)
+        # Constant arrays cause ValueError → fail-closed → False
+        assert result is False

@@ -198,12 +198,6 @@ class StrategyManager:
         if not matched:
             logger.debug("No active strategy matched signal %s", signal.strategy_id)
 
-    # Strategies that also consume cross-exchange price signals for derived analysis
-    _CROSS_EXCHANGE_CONSUMERS: frozenset[str] = frozenset({
-        "statistical_arb",  # accumulates spread history → z-score entry
-        "latency_arb",      # compares update timing across exchanges
-    })
-
     def _should_route(self, strategy: BaseStrategy, signal: Signal) -> bool:
         """Return True if this strategy should handle the signal."""
         # Broadcast: empty or wildcard strategy_id routes to ALL active strategies
@@ -219,10 +213,6 @@ class StrategyManager:
         if strategy_type:
             # "cross_exchange_spot" in "cross_exchange_spot_v1" OR vice versa
             if strategy_type in signal.strategy_id or signal.strategy_id in strategy_type:
-                return True
-
-            # Derived strategies that consume cross-exchange signals
-            if "cross_exchange" in signal.strategy_id and strategy_type in self._CROSS_EXCHANGE_CONSUMERS:
                 return True
 
         return False

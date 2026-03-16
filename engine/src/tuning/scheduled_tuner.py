@@ -44,7 +44,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Strategies permanently excluded regardless of activation file
-EXCLUDED = {"cex_dex", "statistical_arb"}
+EXCLUDED = {"cex_dex"}
 
 
 class ScheduledTuner:
@@ -349,11 +349,16 @@ if __name__ == "__main__":
         raise SystemExit("apscheduler is required: pip install apscheduler")
 
     n_trials = int(os.environ.get("TUNER_N_TRIALS", "100"))
-    tuner = ScheduledTuner(n_trials=n_trials)
-    tuner.start_scheduler()
 
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        logger.info("Auto-tuner shutting down")
+    async def _run() -> None:
+        tuner = ScheduledTuner(n_trials=n_trials)
+        tuner.start_scheduler()
+        try:
+            while True:
+                await asyncio.sleep(3600)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            logger.info("Auto-tuner shutting down")
+        finally:
+            tuner.stop()
+
+    asyncio.run(_run())

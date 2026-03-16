@@ -18,13 +18,12 @@ from src.tuning.strategy_backtest import STRATEGY_TYPES
 
 
 class TestScheduledTunerInit:
-    def test_default_strategies_excludes_cex_dex_and_statistical_arb(self):
-        # Mock activation loader to isolate from filesystem state
+    def test_default_strategies_excludes_cex_dex_only(self):
+        """US-197: statistical_arb removed from EXCLUDED, only cex_dex remains."""
         with patch.object(ScheduledTuner, '_load_activation', return_value=None):
             tuner = ScheduledTuner()
         assert "cex_dex" not in tuner.strategies
-        assert "statistical_arb" not in tuner.strategies
-        # All remaining STRATEGY_TYPES should be present
+        assert "statistical_arb" in tuner.strategies  # US-197: no longer excluded
         from src.tuning.scheduled_tuner import EXCLUDED
         expected = [s for s in STRATEGY_TYPES if s not in EXCLUDED]
         assert tuner.strategies == expected
@@ -203,19 +202,19 @@ class TestStartScheduler:
 
 
 class TestUS068StrategyTypes:
-    def test_latency_arb_in_strategy_types(self):
-        """STRATEGY_TYPES includes 'latency_arb' after US-068."""
-        assert "latency_arb" in STRATEGY_TYPES
+    def test_latency_arb_not_in_strategy_types(self):
+        """US-194: latency_arb merged into cross_exchange, removed from STRATEGY_TYPES."""
+        assert "latency_arb" not in STRATEGY_TYPES
 
     def test_cex_dex_always_excluded(self):
         """Module-level EXCLUDED set contains 'cex_dex'."""
         assert hasattr(st_mod, "EXCLUDED"), "scheduled_tuner must define EXCLUDED set"
         assert "cex_dex" in st_mod.EXCLUDED
 
-    def test_stat_arb_excluded(self):
-        """Module-level EXCLUDED set contains 'statistical_arb'."""
+    def test_stat_arb_not_excluded(self):
+        """US-197: statistical_arb removed from EXCLUDED (cross-asset redesign)."""
         assert hasattr(st_mod, "EXCLUDED"), "scheduled_tuner must define EXCLUDED set"
-        assert "statistical_arb" in st_mod.EXCLUDED
+        assert "statistical_arb" not in st_mod.EXCLUDED
 
 
 # ---------------------------------------------------------------------------

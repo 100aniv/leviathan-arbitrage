@@ -458,6 +458,9 @@ class ShadowMode:
         self._stats = ShadowStats(start_time=time.monotonic())
         self._balance_tracker = VirtualBalanceTracker()
         self._rate_limiter = ShadowRateLimiter()
+        # S10 fix: warmup guard for SignalGenerator path (disabled in test mode)
+        _env = os.environ.get("ENGINE_ENV", "dev")
+        self._signal_warmup_seconds: float = 5.0 if _env != "test" else 0.0
 
         # Background tasks
         self._daily_task: asyncio.Task[None] | None = None
@@ -840,6 +843,10 @@ class ShadowMode:
                         SPREAD_BPS.labels(exchange_pair=exchange_id).observe(spread_bps)
             except Exception:
                 pass
+
+            # S10 fix: warmup guard — skip signal generation for first N seconds after start
+            if (time.monotonic() - self._stats.start_time) < self._signal_warmup_seconds:
+                return
 
             # Feed to SignalGenerator
             t0 = time.monotonic()

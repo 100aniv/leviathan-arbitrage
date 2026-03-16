@@ -175,3 +175,30 @@ class TestGetPortfolioExposure:
             exchanges=["binance"], assets=["BTC"]
         )
         assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# Initialization: Redis-backed vs in-memory fallback
+# ---------------------------------------------------------------------------
+
+
+class TestInitialization:
+    async def test_redis_backed_init(self, fake_redis):
+        """ExposureTracker initializes with Redis client and uses it."""
+        tracker = ExposureTracker(redis_client=fake_redis)
+        assert tracker._redis is fake_redis
+        assert tracker._memory == {}
+
+    async def test_inmemory_fallback(self):
+        """ExposureTracker with redis_client=None falls back to in-memory dict."""
+        tracker = ExposureTracker(redis_client=None)
+        assert tracker._redis is None
+        result = await tracker.update_exposure("binance", "BTC", Decimal("1.0"))
+        assert result == Decimal("1.0")
+        assert await tracker.get_net_exposure("binance", "BTC") == Decimal("1.0")
+
+    async def test_get_net_exposure_basic(self, tracker):
+        """get_net_exposure returns 0 by default and correct value after update."""
+        assert await tracker.get_net_exposure("binance", "ETH") == Decimal("0")
+        await tracker.update_exposure("binance", "ETH", Decimal("3.0"))
+        assert await tracker.get_net_exposure("binance", "ETH") == Decimal("3.0")

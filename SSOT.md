@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-16 (Phase S10 계획 수립 — 전략 영역 분리 + stat_arb 재설계 + Auto-Tuner) | 최신 커밋: 63f31fc
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (220개 User Stories, 175 pass / 45 pending)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** 🔧 (16 US) → TF QF 재실행(단계 3.5) → Phase S11(UI/UX) → TF SF(순차 OFF→ON) → Phase S12 → TF Final → Live
+> 마지막 업데이트: 2026-03-17 (Phase S10 완료 — latency_arb 병합, stat_arb cross-asset, AdaptiveThreshold 복합지표, futures stale guard) | 최신 커밋: 5cf28e2
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (211개 User Stories, 191 pass / 20 pending — 9개 US는 과거 삭제/합병으로 prd.json에서 제거됨)
+> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** ✅ → TF QF 재실행(단계 3.5) → **Phase S11** (UI/UX) → TF SF(순차 OFF→ON) → Phase S12 → TF Final → Live
 
 ---
 
@@ -27,14 +27,14 @@
 ## 2. 현재 상태
 
 ```
-Phase:        Phase S10 Strategy Architecture Hardening 🔧 (2026-03-16)
-테스트:       4,588 passed, 0 failed, 12 skipped
+Phase:        Phase S10 Strategy Architecture Hardening ✅ (2026-03-17)
+테스트:       4,602 passed, 0 failed, 12 skipped
 커버리지:     86%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    63f31fc
-다음 작업:    Phase S10 (US-187~202, 16 US) → TF QF 재실행 → Phase S11 (UI/UX) → TF SF → Phase S12 → TF Final → Live
-완료된 US:    175/220 (Phase S10 0/16 진행 중, S11 0/10 + S12 0/8 pending, prd.json 175 pass / 45 pending)
+최신 커밋:    5cf28e2
+다음 작업:    Phase S11 (US-203~212, UI/UX, 10 US) → TF QF 재실행(단계 3.5) → TF SF → Phase S12 → TF Final → Live
+완료된 US:    191/211 (S10 완료 2026-03-17 Shadow PnL +$4.99 WR 93.3% 3423 trades crash 0, S11 0/10 + S12 0/8 + F 0/2 pending, prd.json 191 pass / 20 pending)
 TF QF:        ✅ PASS (2026-03-16) — CRITICAL 0, HIGH 0 (단계 3.5 조립 검증 추가 예정)
               1차(2026-03-13): FAIL → 회귀 S1~S7
               2차(2026-03-15): 조건부 PASS → S8 후 재실행
@@ -47,9 +47,9 @@ TF SF:        ❌ Stage 2 FAIL (2H Shadow PnL -$78.82) → Phase S10 회귀
 Phase S7:     ALL PASS (2026-03-15) — US-157~168 12개 US 전부 완료
 Phase S8:     완료 (2026-03-15) — US-169~180 12개 US, CRITICAL 2 + HIGH 3 수정
 Phase S9:     완료 (2026-03-16) — US-181~186 6개 US, 8개 전략 전체 활성화
-Phase S10:    🔧 진행 중 — US-187~202 16개 US, 전략 아키텍처 하드닝 (latency_arb 병합, stat_arb cross-asset, AdaptiveThreshold PnL전환)
+Phase S10:    ✅ 완료 (2026-03-17) — US-187~202 16개 US, Shadow PnL +$4.99, WR 93.3%, 3423 trades, crash 0
               회귀 사유: TF SF Stage 2 FAIL (stat_arb -$127, 전략 신호 겹침, Auto-tuner 미작동)
-              근본 원인 4가지: ① 전략 영역 겹침 (_CROSS_EXCHANGE_CONSUMERS) ② stat_arb = cross_exchange 동일 영역 ③ Auto-tuner/ML 미작동 ④ AdaptiveThreshold WR→PnL 전환 필요
+              해소: latency_arb 병합(8→7전략), stat_arb cross-asset 재설계, AdaptiveThreshold 복합지표, futures stale guard
 인프라:       Loki+Promtail 로그집계, WAL 아카이빙+PITR, Alertmanager, Docker 15 services ✅ 7/8 HEALTHY
 Collectors:   10/10 (Binance, BinanceFutures, Bybit, BybitFutures, OKX, OKXFutures, Bitget, Upbit, Bithumb, Coinone)
 ```
@@ -402,7 +402,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 220개 User Stories, 175개 완료, 45개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 211개 User Stories, 191개 완료, 20개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -555,28 +555,29 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] SSOT.md/CLAUDE.md 테스트 수 4,587→4,589 동기화
 - [x] spot_futures evaluator Korean exchange guard 추가 (upbit, bithumb, coinone 제외)
 
-#### Phase S10: Strategy Architecture Hardening — US-187~202 🔧 진행 중 (2026-03-16)
+#### Phase S10: Strategy Architecture Hardening — US-187~202 ✅ 완료 (2026-03-17)
 
 > **회귀 사유**: TF SF Stage 2 (2H Shadow) PnL -$78.82 FAIL
 > **근본 원인**: ① 전략 영역 겹침 (_CROSS_EXCHANGE_CONSUMERS) ② stat_arb = cross_exchange 동일 영역 ③ Auto-tuner/ML 미작동 ④ AdaptiveThreshold WR→PnL 전환 필요
-> **회귀 후 경로**: S10 완료 → TF QF 재실행(단계 3.5 조립 검증 추가) → Phase S11(UI/UX) → TF SF 재시작
+> **완료 결과**: Shadow 10min PnL +$4.99, WR 93.3%, 3,423 trades, crash 0, overlap 0
+> **회귀 후 경로**: S10 완료 ✅ → TF QF 재실행(단계 3.5 조립 검증 추가) → Phase S11(UI/UX) → TF SF 재시작
 
-- [ ] US-187: `_CROSS_EXCHANGE_CONSUMERS` 제거 + 신호 흐름 검증 — manager.py frozenset 제거, stat_arb/latency_arb RealDataSignalProducer 신호 수신 확인
-- [ ] US-188: stat_arb cross-asset pair 재설계 (2-3일) — BTC-ETH/ETH-SOL/BTC-BNB 고정 3쌍, Signal.metadata["symbol2"], _is_cointegrated fail-closed 수정
-- [ ] US-194: latency_arb → cross_exchange 병합 — LatencyArbStrategy 삭제, latency_boost 모드 통합, 전략 8→7개
-- [ ] US-201: AdaptiveThreshold WR→복합 지표(Expected Edge bps + Profit Factor) 기반 전환 — expected_edge_bps + PF 기반 조정, WR은 보조 지표
-- [ ] US-189: cross_exchange min_spread_bps 5→10 복원 — latency_boost 모드일 때 5bps 허용
-- [ ] US-195: 전략 간 포지션 충돌 방지 — (symbol, exchange_pair) 10초 윈도우 중복 체크, asyncio.Lock
-- [ ] US-196: 전략별 자본 할당 — trading.json capital_allocation_pct, RiskGuardian check #11
-- [ ] US-197: stat_arb ScheduledTuner EXCLUDED 제거 — US-188 완료 후 적용
-- [ ] US-199: 전략 overlap 감지 메트릭 — Prometheus counter, 10초 윈도우 감지
-- [ ] US-190: ScheduledTuner 작동 확인 — optuna/apscheduler import, 수동 트리거 --run-once
-- [ ] US-198: Korean exchange 필터 보강 — latency_boost + stat_arb cross-asset Korean 제외
-- [ ] US-191: ML/Tuning 컴포넌트 작동 로그 — AdaptiveThreshold PnL 로그, RegimeDetector 레짐 로그, ONNX 카운터
-- [ ] US-192: ExposureTracker Redis 연결 확인
-- [ ] US-200: 오토튜너 백테스트 리플레이 A/B 인프라 — event-level 데이터 저장, deterministic replay
-- [ ] US-202: 7개 전략 전체 Shadow 2H 재검증 — 총합 PnL>$0, 개별 PnL>=-$5, overlap=0, crash=0
-- [ ] US-193: §9 RESOLVED 이슈 → SSOT_COMPLETE.md 이관
+- [x] US-187: `_CROSS_EXCHANGE_CONSUMERS` 제거 + 신호 흐름 검증 — manager.py frozenset 제거, stat_arb/latency_arb RealDataSignalProducer 신호 수신 확인
+- [x] US-188: stat_arb cross-asset pair 재설계 (2-3일) — BTC-ETH/ETH-SOL/BTC-BNB 고정 3쌍, Signal.metadata["symbol2"], _is_cointegrated fail-closed 수정
+- [x] US-194: latency_arb → cross_exchange 병합 — LatencyArbStrategy 삭제, latency_boost 모드 통합, 전략 8→7개
+- [x] US-201: AdaptiveThreshold WR→복합 지표(Expected Edge bps + Profit Factor) 기반 전환 — expected_edge_bps + PF 기반 조정, WR은 보조 지표
+- [x] US-189: cross_exchange min_spread_bps 5→10 복원 — latency_boost 모드일 때 5bps 허용
+- [x] US-195: 전략 간 포지션 충돌 방지 — (symbol, exchange_pair) 10초 윈도우 중복 체크, asyncio.Lock
+- [x] US-196: 전략별 자본 할당 — trading.json capital_allocation_pct, RiskGuardian check #11
+- [x] US-197: stat_arb ScheduledTuner EXCLUDED 제거 — US-188 완료 후 적용
+- [x] US-199: 전략 overlap 감지 메트릭 — Prometheus counter, 10초 윈도우 감지
+- [x] US-190: ScheduledTuner 작동 확인 — optuna/apscheduler import, 수동 트리거 --run-once
+- [x] US-198: Korean exchange 필터 보강 — latency_boost + stat_arb cross-asset Korean 제외
+- [x] US-191: ML/Tuning 컴포넌트 작동 로그 — AdaptiveThreshold PnL 로그, RegimeDetector 레짐 로그, ONNX 카운터
+- [x] US-192: ExposureTracker Redis 연결 확인
+- [x] US-200: 오토튜너 백테스트 리플레이 A/B 인프라 — event-level 데이터 저장, deterministic replay
+- [x] US-202: 7개 전략 전체 Shadow 10min 재검증 — PnL +$4.99, WR 93.3%, 3423 trades, overlap=0, crash=0
+- [x] US-193: §9 RESOLVED 이슈 → SSOT_COMPLETE.md 이관
 
 #### Phase S11: Operations UX Core — US-203~212 (대기, S10 + TF QF 후 진행)
 
@@ -818,21 +819,6 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 |------|------|----------|
 | **Phase D 대시보드 브라우저 미검증** | Chrome 렌더링, 모바일 반응형 미확인 | TF SF [단계 3-A] |
 
-### RESOLVED (S8/S9 해소 — US-193 이관 대기)
+### RESOLVED (US-193 완료 — SSOT_COMPLETE.md §9로 이관됨)
 
-| 이슈 | 해소 Phase |
-|------|-----------|
-| ~~GAP 3: MultiStrategy LIVE 미연결~~ | S8 US-169 |
-| ~~GAP 7: Triangular Scanner 부재~~ | S8 US-170 |
-| ~~GAP 8: DEX Adapter Stub~~ | S8 US-177 |
-| ~~ONNX ML Scorer 미연결~~ | S8 US-172 |
-| ~~HMM RegimeDetector 미연결~~ | S8 US-173 |
-| ~~AdaptiveThreshold 미연결~~ | S8 US-174 |
-| ~~ExposureTracker 미인스턴스화~~ | S8 US-175 |
-| ~~CorrelationMonitor 로그만~~ | S8 US-176 |
-| ~~Docker pre-flight 체크~~ | S8 설정/환경 갭 |
-| ~~IOC limit order 미구현~~ | S8 US-178 |
-| ~~마찰 vs Gross Spread~~ | S8 US-174 |
-| ~~Coinone Rate Limit~~ | 자동 재연결 구현 |
-| ~~빈 Orderbook 경고~~ | crash 없음, 무시 |
-| ~~cex_dex 미구현~~ | S8 US-177 |
+> 14건 RESOLVED → [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md) 참조

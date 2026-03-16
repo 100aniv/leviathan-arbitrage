@@ -359,6 +359,53 @@ class TestFlush:
         await recorder._flush()
         await recorder.stop()
 
+    async def test_flush_logs_warning_on_acquire_timeout_without_raising(self):
+        """pool.acquire() timing out must not crash the engine (root-cause fix)."""
+        recorder, pool = _make_recorder()
+        await recorder.start()
+
+        # Simulate pool.acquire() timing out (dead DB connection pool)
+        acquire_cm = AsyncMock()
+        acquire_cm.__aenter__ = AsyncMock(side_effect=asyncio.TimeoutError())
+        acquire_cm.__aexit__ = AsyncMock(return_value=False)
+        pool.acquire = MagicMock(return_value=acquire_cm)
+
+        recorder.record_orderbook(
+            exchange="binance",
+            symbol="BTC/USDT",
+            bids=[],
+            asks=[],
+            best_bid=Decimal("50000"),
+            best_ask=Decimal("50001"),
+        )
+
+        # Must not raise — timeout is handled gracefully
+        await recorder._flush()
+        await recorder.stop()
+
+    async def test_flush_survives_repeated_acquire_timeouts(self):
+        """Multiple consecutive timeout failures must not crash the flush loop."""
+        recorder, pool = _make_recorder()
+        await recorder.start()
+
+        acquire_cm = AsyncMock()
+        acquire_cm.__aenter__ = AsyncMock(side_effect=asyncio.TimeoutError())
+        acquire_cm.__aexit__ = AsyncMock(return_value=False)
+        pool.acquire = MagicMock(return_value=acquire_cm)
+
+        for _ in range(5):
+            recorder.record_orderbook(
+                exchange="binance",
+                symbol="BTC/USDT",
+                bids=[],
+                asks=[],
+                best_bid=Decimal("50000"),
+                best_ask=Decimal("50001"),
+            )
+            await recorder._flush()  # each call must survive
+
+        await recorder.stop()
+
 
 # ---------------------------------------------------------------------------
 # Buffer overflow triggers flush

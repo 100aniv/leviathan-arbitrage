@@ -462,8 +462,8 @@ async def test_route_signal_handles_strategy_exception():
 
 
 @pytest.mark.asyncio
-async def test_cross_exchange_signal_routes_to_statistical_arb():
-    """cross_exchange signals should also route to statistical_arb (derived strategy)."""
+async def test_cross_exchange_signal_does_not_route_to_statistical_arb():
+    """US-187: cross_exchange signals should NOT route to statistical_arb (strategy isolation)."""
     bus = make_event_bus()
     manager = StrategyManager(bus)
 
@@ -475,12 +475,12 @@ async def test_cross_exchange_signal_routes_to_statistical_arb():
     signal = _make_signal(strategy_id="cross_exchange_spot")
     await manager.route_signal(signal)
 
-    strategy.on_signal.assert_awaited_once()
+    strategy.on_signal.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_cross_exchange_signal_routes_to_latency_arb():
-    """cross_exchange signals should also route to latency_arb (derived strategy)."""
+async def test_cross_exchange_signal_does_not_route_to_latency_arb():
+    """US-187: cross_exchange signals should NOT route to latency_arb (strategy isolation)."""
     bus = make_event_bus()
     manager = StrategyManager(bus)
 
@@ -494,7 +494,7 @@ async def test_cross_exchange_signal_routes_to_latency_arb():
     signal = _make_signal(strategy_id="cross_exchange_spot")
     await manager.route_signal(signal)
 
-    strategy.on_signal.assert_awaited_once()
+    strategy.on_signal.assert_not_awaited()
 
 
 @pytest.mark.asyncio

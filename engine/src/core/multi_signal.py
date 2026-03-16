@@ -260,18 +260,30 @@ class MultiStrategySignalProducer:
         buy_price: Decimal,
         sell_price: Decimal,
         z_score: float,
+        symbol2: Optional[str] = None,
     ) -> Optional[Signal]:
-        """Generate statistical arbitrage signal based on z-score deviation."""
+        """Generate statistical arbitrage signal based on z-score deviation.
+
+        For cross-asset pairs (US-188), symbol2 holds the second asset symbol and
+        buy_exchange == sell_exchange (same exchange, different symbols).
+        """
         if buy_price <= 0 or sell_price <= 0:
             return None
 
         spread = sell_price - buy_price
         spread_pct = spread / buy_price if buy_price > 0 else Decimal("0")
 
-        key = f"sa:{symbol}:{buy_exchange}:{sell_exchange}"
+        key = f"sa:{symbol}:{buy_exchange}:{sell_exchange}:{symbol2 or ''}"
         if self._is_duplicate(key, cooldown=30.0):
             return None
         self._mark_emitted(key)
+
+        metadata: dict = {
+            "z_score": str(z_score),
+            "spread_pct": str(spread_pct),
+        }
+        if symbol2 is not None:
+            metadata["symbol2"] = symbol2
 
         signal = Signal(
             strategy_id="statistical_arb_zscore",
@@ -284,10 +296,7 @@ class MultiStrategySignalProducer:
             confidence=min(1.0, abs(z_score) / 4.0),
             volume=self._volume_from_price(buy_price),
             timestamp=datetime.now(timezone.utc),
-            metadata={
-                "z_score": str(z_score),
-                "spread_pct": str(spread_pct),
-            },
+            metadata=metadata,
         )
         await self._publish(signal)
         return signal

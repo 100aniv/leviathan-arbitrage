@@ -544,8 +544,9 @@ class TestStrategyBacktestEngineRun:
         result = engine.run(DEFAULT_PARAMS, OHLCV_200)
         assert result.num_trades > 0
 
-    def test_strategy_types_constant_has_eight_entries(self):
-        assert len(STRATEGY_TYPES) == 8
+    def test_strategy_types_constant_has_seven_entries(self):
+        """US-194: latency_arb merged into cross_exchange, 8→7 strategies."""
+        assert len(STRATEGY_TYPES) == 7
 
     def test_sharpe_ratio_is_float(self):
         engine = StrategyBacktestEngine("funding_rate", seed=42)
