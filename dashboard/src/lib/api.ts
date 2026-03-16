@@ -125,6 +125,12 @@ export const getTrades = (params?: {
 export const getAlerts = () =>
   request<Alert[]>("/api/v1/alerts");
 
+export const acknowledgeAlert = (id: string) =>
+  request<{ id: string; status: string }>(`/api/v1/alerts/${id}/acknowledge`, { method: "POST" });
+
+export const resolveAlert = (id: string) =>
+  request<{ id: string; status: string }>(`/api/v1/alerts/${id}/resolve`, { method: "POST" });
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
 export const getSettings = () =>

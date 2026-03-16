@@ -160,6 +160,7 @@ export interface Alert {
   severity: "critical" | "warning" | "info";
   message: string;
   timestamp: string;
+  status?: "open" | "acknowledged" | "resolved";
   metadata?: Record<string, unknown>;
 }
 

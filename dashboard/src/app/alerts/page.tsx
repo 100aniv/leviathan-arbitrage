@@ -1,38 +1,32 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { getAlerts } from "@/lib/api";
+import { getAlerts, acknowledgeAlert, resolveAlert } from "@/lib/api";
 import type { Alert } from "@/types";
+
+type Severity = Alert["severity"] | "ALL";
+type AlertStatus = "open" | "acknowledged" | "resolved";
 
 const SEVERITY_STYLES: Record<
   Alert["severity"],
   { bg: string; border: string; color: string; label: string }
 > = {
-  critical: {
-    bg: "rgba(255,77,77,0.1)",
-    border: "rgba(255,77,77,0.25)",
-    color: "#ff4d4d",
-    label: "CRITICAL",
-  },
-  warning: {
-    bg: "rgba(245,158,11,0.1)",
-    border: "rgba(245,158,11,0.25)",
-    color: "#f59e0b",
-    label: "WARNING",
-  },
-  info: {
-    bg: "rgba(59,130,246,0.1)",
-    border: "rgba(59,130,246,0.25)",
-    color: "#3b82f6",
-    label: "INFO",
-  },
+  critical: { bg: "rgba(255,77,77,0.1)",    border: "rgba(255,77,77,0.25)",    color: "#ff4d4d", label: "CRITICAL" },
+  warning:  { bg: "rgba(245,158,11,0.1)",   border: "rgba(245,158,11,0.25)",   color: "#f59e0b", label: "WARNING"  },
+  info:     { bg: "rgba(59,130,246,0.1)",   border: "rgba(59,130,246,0.25)",   color: "#3b82f6", label: "INFO"     },
+};
+
+const STATUS_STYLES: Record<AlertStatus, { color: string; label: string }> = {
+  open:         { color: "#ff4d4d", label: "OPEN"   },
+  acknowledged: { color: "#f59e0b", label: "ACK"    },
+  resolved:     { color: "#00ff88", label: "CLOSED" },
 };
 
 function SeverityBadge({ severity }: { severity: Alert["severity"] }) {
   const s = SEVERITY_STYLES[severity];
   return (
     <span
-      className="px-1.5 py-0.5 rounded text-[10px] font-mono"
+      className="px-1.5 py-0.5 rounded text-[10px] font-mono whitespace-nowrap"
       style={{ backgroundColor: s.bg, border: `1px solid ${s.border}`, color: s.color }}
     >
       {s.label}
@@ -40,10 +34,21 @@ function SeverityBadge({ severity }: { severity: Alert["severity"] }) {
   );
 }
 
+function StatusBadge({ status }: { status?: AlertStatus }) {
+  const s = STATUS_STYLES[status ?? "open"];
+  return (
+    <span className="text-[10px] font-mono tabular-nums" style={{ color: s.color }}>
+      {s.label}
+    </span>
+  );
+}
+
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [alerts, setAlerts]           = useState<Alert[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+  const [filter, setFilter]           = useState<Severity>("ALL");
+  const [actioning, setActioning]     = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   // Initial fetch + polling fallback
@@ -59,7 +64,6 @@ export default function AlertsPage() {
         setLoading(false);
       }
     };
-
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 10_000);
     return () => clearInterval(interval);
@@ -67,67 +71,82 @@ export default function AlertsPage() {
 
   // WebSocket for real-time alert pushes
   useEffect(() => {
-    const engineUrl =
-      process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8000";
-    const wsBase = engineUrl.replace(/^http/, "ws") + "/ws/feed";
-    const token = typeof localStorage !== "undefined" ? localStorage.getItem("leviathan_token") : null;
-    const wsUrl = token ? `${wsBase}?token=${token}` : wsBase;
+    const engineUrl = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8000";
+    const wsBase    = engineUrl.replace(/^http/, "ws") + "/ws/feed";
+    const token     = typeof localStorage !== "undefined" ? localStorage.getItem("leviathan_token") : null;
+    const wsUrl     = token ? `${wsBase}?token=${token}` : wsBase;
 
     let ws: WebSocket;
-    try {
-      ws = new WebSocket(wsUrl);
-    } catch {
-      return;
-    }
+    try { ws = new WebSocket(wsUrl); } catch { return; }
     wsRef.current = ws;
 
     ws.onmessage = (event: MessageEvent) => {
       try {
-        const msg = JSON.parse(event.data as string) as {
-          type: string;
-          data?: Alert;
-        };
+        const msg = JSON.parse(event.data as string) as { type: string; data?: Alert };
         if (msg.type === "alert" && msg.data) {
           setAlerts((prev) => [msg.data as Alert, ...prev].slice(0, 200));
         }
-      } catch {
-        // ignore malformed frames
-      }
+      } catch { /* ignore malformed frames */ }
     };
 
-    return () => {
-      ws.close();
-      wsRef.current = null;
-    };
+    return () => { ws.close(); wsRef.current = null; };
   }, []);
 
+  async function handleAcknowledge(id: string) {
+    setActioning(id);
+    try {
+      await acknowledgeAlert(id);
+      setAlerts((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: "acknowledged" as const } : a))
+      );
+    } catch { /* engine may be offline */ }
+    finally { setActioning(null); }
+  }
+
+  async function handleResolve(id: string) {
+    setActioning(id);
+    try {
+      await resolveAlert(id);
+      setAlerts((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: "resolved" as const } : a))
+      );
+    } catch { /* engine may be offline */ }
+    finally { setActioning(null); }
+  }
+
+  const filtered = filter === "ALL" ? alerts : alerts.filter((a) => a.severity === filter);
   const criticalCount = alerts.filter((a) => a.severity === "critical").length;
-  const warningCount = alerts.filter((a) => a.severity === "warning").length;
+  const warningCount  = alerts.filter((a) => a.severity === "warning").length;
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-mono font-semibold text-terminal-text">Alert History</h2>
           <p className="text-xs font-mono text-terminal-subtle mt-0.5">
             System alerts · real-time WS + 10s polling
           </p>
         </div>
-        {alerts.length > 0 && (
-          <div className="flex items-center gap-3">
-            {criticalCount > 0 && (
-              <span className="text-xs font-mono" style={{ color: "#ff4d4d" }}>
-                {criticalCount} critical
-              </span>
-            )}
-            {warningCount > 0 && (
-              <span className="text-xs font-mono" style={{ color: "#f59e0b" }}>
-                {warningCount} warnings
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {criticalCount > 0 && (
+            <span className="text-xs font-mono" style={{ color: "#ff4d4d" }}>{criticalCount} critical</span>
+          )}
+          {warningCount > 0 && (
+            <span className="text-xs font-mono" style={{ color: "#f59e0b" }}>{warningCount} warnings</span>
+          )}
+          {/* Severity filter dropdown */}
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as Severity)}
+            className="bg-terminal-muted border border-terminal-border text-xs font-mono text-terminal-text px-2 py-1 focus:outline-none focus:border-accent"
+          >
+            <option value="ALL">ALL</option>
+            <option value="critical">CRITICAL</option>
+            <option value="warning">WARNING</option>
+            <option value="info">INFO</option>
+          </select>
+        </div>
       </div>
 
       {/* Summary badges */}
@@ -136,15 +155,9 @@ export default function AlertsPage() {
           const s = SEVERITY_STYLES[sev];
           const count = alerts.filter((a) => a.severity === sev).length;
           return (
-            <div
-              key={sev}
-              className="bg-terminal-surface border border-terminal-border rounded-lg p-4"
-            >
+            <div key={sev} className="bg-terminal-surface border border-terminal-border rounded-lg p-4">
               <p className="text-terminal-subtle text-xs font-mono">{s.label}</p>
-              <p
-                className="text-2xl font-mono font-semibold tabular-nums mt-1"
-                style={{ color: s.color }}
-              >
+              <p className="text-2xl font-mono font-semibold tabular-nums mt-1" style={{ color: s.color }}>
                 {count}
               </p>
             </div>
@@ -155,48 +168,75 @@ export default function AlertsPage() {
       {/* Table card */}
       <div className="bg-terminal-surface border border-terminal-border rounded-lg overflow-hidden">
         {loading && alerts.length === 0 ? (
-          <div className="p-8 text-center text-terminal-subtle text-xs font-mono">
-            Loading alerts...
-          </div>
+          <div className="p-8 text-center text-terminal-subtle text-xs font-mono">Loading alerts...</div>
         ) : error ? (
-          <div className="p-8 text-center font-mono text-xs" style={{ color: "#ff4d4d" }}>
-            {error}
-          </div>
-        ) : alerts.length === 0 ? (
+          <div className="p-8 text-center font-mono text-xs" style={{ color: "#ff4d4d" }}>{error}</div>
+        ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-terminal-subtle text-xs font-mono">
-            No alerts — system nominal
+            {alerts.length === 0 ? "No alerts — system nominal" : "No alerts match selected filter"}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs font-mono">
               <thead>
                 <tr className="border-b border-terminal-border text-terminal-subtle">
-                  <th className="text-left px-4 py-2">Timestamp</th>
+                  <th className="text-left px-4 py-2 whitespace-nowrap">Timestamp</th>
                   <th className="text-left px-4 py-2">Severity</th>
                   <th className="text-left px-4 py-2">Type</th>
                   <th className="text-left px-4 py-2">Message</th>
+                  <th className="text-left px-4 py-2">Status</th>
+                  <th className="text-left px-4 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {alerts.map((alert, i) => (
-                  <tr
-                    key={alert.id}
-                    className={`border-b border-terminal-border/50 hover:bg-terminal-muted/30 transition-colors ${
-                      i % 2 === 0 ? "" : "bg-terminal-bg/30"
-                    }`}
-                  >
-                    <td className="px-4 py-2 text-terminal-subtle tabular-nums whitespace-nowrap">
-                      {new Date(alert.timestamp).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-2">
-                      <SeverityBadge severity={alert.severity} />
-                    </td>
-                    <td className="px-4 py-2 text-terminal-text">{alert.type}</td>
-                    <td className="px-4 py-2 text-terminal-subtle max-w-md truncate">
-                      {alert.message}
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((alert, i) => {
+                  const isActioning = actioning === alert.id;
+                  const status = alert.status ?? "open";
+                  return (
+                    <tr
+                      key={alert.id}
+                      className={`border-b border-terminal-border/50 transition-colors ${
+                        i % 2 === 0 ? "" : "bg-terminal-bg/30"
+                      } ${status === "resolved" ? "opacity-50" : ""}`}
+                    >
+                      <td className="px-4 py-2 text-terminal-subtle tabular-nums whitespace-nowrap">
+                        {new Date(alert.timestamp).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2">
+                        <SeverityBadge severity={alert.severity} />
+                      </td>
+                      <td className="px-4 py-2 text-terminal-text">{alert.type}</td>
+                      <td className="px-4 py-2 text-terminal-subtle max-w-xs truncate">
+                        {alert.message}
+                      </td>
+                      <td className="px-4 py-2">
+                        <StatusBadge status={status} />
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          {status === "open" && (
+                            <button
+                              onClick={() => handleAcknowledge(alert.id)}
+                              disabled={isActioning}
+                              className="px-2 py-0.5 text-[10px] font-mono border border-warn/40 text-warn hover:bg-warn/10 disabled:opacity-40 transition-colors"
+                            >
+                              {isActioning ? "…" : "ACK"}
+                            </button>
+                          )}
+                          {status !== "resolved" && (
+                            <button
+                              onClick={() => handleResolve(alert.id)}
+                              disabled={isActioning}
+                              className="px-2 py-0.5 text-[10px] font-mono border border-profit/30 text-profit hover:bg-profit/10 disabled:opacity-40 transition-colors"
+                            >
+                              {isActioning ? "…" : "RESOLVE"}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

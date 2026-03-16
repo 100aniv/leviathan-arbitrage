@@ -751,6 +751,128 @@ def get_telegram_alerter() -> TelegramAlerter:
     )
 
 
+# ---------------------------------------------------------------------------
+# US-220: Weekly auto-report scheduler
+# ---------------------------------------------------------------------------
+
+
+def _format_weekly_report(data: dict[str, Any]) -> str:
+    """Format weekly report data into Korean HTML message.
+
+    Expected keys in ``data`` (all optional):
+        - week_start (str): 주간 시작일
+        - week_end (str): 주간 종료일
+        - total_pnl (float): 주간 총 PnL (USD)
+        - win_rate (float): 승률 0-1
+        - total_trades (int): 거래 수
+        - sharpe_ratio (float): 7일 Sharpe ratio
+        - strategy_breakdown (list[dict]): 전략별 실적
+            [{strategy, pnl, trades, win_rate}]
+    """
+    pnl = data.get("total_pnl")
+    pnl_str = f"${float(pnl):+,.2f}" if pnl is not None else "N/A"
+    pnl_emoji = "📈" if (pnl is not None and float(pnl) >= 0) else "📉"
+
+    wr = data.get("win_rate")
+    wr_str = f"{float(wr) * 100:.1f}%" if wr is not None else "N/A"
+
+    sharpe = data.get("sharpe_ratio")
+    sharpe_str = f"{float(sharpe):.2f}" if sharpe is not None else "N/A"
+
+    lines = [
+        f"📊 <b>주간 리포트 — {data.get('week_start', '?')} ~ {data.get('week_end', '?')}</b>",
+        "",
+        f"{pnl_emoji} <b>총 PnL:</b> {pnl_str}",
+        f"🎯 <b>승률:</b> {wr_str}",
+        f"🔁 <b>거래 수:</b> {data.get('total_trades', 'N/A')}",
+        f"📐 <b>Sharpe (7일):</b> {sharpe_str}",
+        "",
+        "<b>전략별 실적:</b>",
+    ]
+
+    breakdown = data.get("strategy_breakdown", [])
+    if breakdown:
+        for item in breakdown:
+            s_pnl = item.get("pnl")
+            s_pnl_str = f"${float(s_pnl):+,.4f}" if s_pnl is not None else "N/A"
+            s_wr = item.get("win_rate")
+            s_wr_str = f"{float(s_wr) * 100:.1f}%" if s_wr is not None else "N/A"
+            lines.append(
+                f"  • {item.get('strategy', '?')}: {s_pnl_str} "
+                f"({item.get('trades', 0)}건, 승률 {s_wr_str})"
+            )
+    else:
+        lines.append("  데이터 없음")
+
+    return "\n".join(lines)
+
+
+async def send_weekly_report(alerter: TelegramAlerter, data: dict[str, Any]) -> bool:
+    """Send a formatted weekly report via the given alerter.
+
+    Args:
+        alerter: TelegramAlerter instance.
+        data: Weekly report data dict.
+
+    Returns:
+        True if sent successfully.
+    """
+    text = _format_weekly_report(data)
+    return await alerter._send(text)
+
+
+def start_weekly_report_scheduler(
+    alerter: TelegramAlerter,
+    data_fn: Any | None = None,
+) -> Any | None:
+    """Start APScheduler CronTrigger for weekly report (일요일 23:59 KST).
+
+    Args:
+        alerter: TelegramAlerter to use for sending.
+        data_fn: Async callable returning dict of weekly stats.
+                 If None, sends a placeholder report.
+
+    Returns:
+        AsyncIOScheduler instance, or None if APScheduler unavailable.
+    """
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+    except ImportError:
+        logger.warning("weekly_report_apscheduler_not_available")
+        return None
+
+    scheduler = AsyncIOScheduler()
+
+    async def _weekly_job() -> None:
+        try:
+            if data_fn is not None:
+                data = await data_fn()
+            else:
+                import datetime
+                today = datetime.date.today()
+                week_start = today - datetime.timedelta(days=6)
+                data = {
+                    "week_start": week_start.isoformat(),
+                    "week_end": today.isoformat(),
+                }
+            await send_weekly_report(alerter, data)
+        except Exception:
+            logger.error("weekly_report_job_failed", exc_info=True)
+
+    # 일요일 23:59 KST (= UTC 14:59)
+    trigger = CronTrigger(
+        day_of_week="sun",
+        hour=14,
+        minute=59,
+        timezone="UTC",
+    )
+    scheduler.add_job(_weekly_job, trigger, id="weekly_telegram_report")
+    scheduler.start()
+    logger.info("weekly_report_scheduler_started", schedule="Sun 23:59 KST")
+    return scheduler
+
+
 def get_workflow_alerter() -> WorkflowTelegramAlerter:
     """Create a WorkflowTelegramAlerter from environment variables.
 

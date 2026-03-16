@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-17 (Phase S11 완료 — MissionControlStrip, Overview 재설계, HealthScore 카드, 텔레그램 한국어, 9개 API 엔드포인트) | 최신 커밋: 44629f3
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (211개 User Stories, 201 pass / 10 pending — 9개 US는 과거 삭제/합병으로 prd.json에서 제거됨)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** ✅ → TF QF 재실행(단계 3.5) → **Phase S11** ✅ → TF SF(순차 OFF→ON) → **Phase S12** → TF Final → Live
+> 마지막 업데이트: 2026-03-17 (Phase S12 완료 — SmartTelegramAlerter, Analytics/Alerts/Portfolio/Settings 페이지, 사이드바 재구성, Telegram Bot 커맨드, 주간 리포트) | 최신 커밋: 1ce693e
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (211개 User Stories, 209 pass / 2 pending — 9개 US는 과거 삭제/합병으로 prd.json에서 제거됨)
+> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** ✅ → TF QF 재실행(단계 3.5) → **Phase S11** ✅ → TF SF(순차 OFF→ON) → **Phase S12** ✅ → TF Final → Live
 
 ---
 
@@ -27,14 +27,14 @@
 ## 2. 현재 상태
 
 ```
-Phase:        Phase S11 Operations UX Core ✅ (2026-03-17)
-테스트:       4,647 passed, 0 failed, 12 skipped
+Phase:        Phase S12 Extended UX + Analytics ✅ (2026-03-17)
+테스트:       4,695 passed, 0 failed, 12 skipped
 커버리지:     86%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    44629f3
-다음 작업:    TF QF 재실행(단계 3.5) → TF SF(순차 OFF→ON) → Phase S12 (US-213~220) → TF Final → Live
-완료된 US:    201/211 (S11 완료 2026-03-17, prd.json 201 pass / 10 pending, S12 0/8 + F 0/2 pending)
+최신 커밋:    1ce693e
+다음 작업:    TF QF 재실행(단계 3.5) → TF SF → TF Final → Live
+완료된 US:    209/211 (S12 완료 2026-03-17, prd.json 209 pass / 2 pending — Phase F US-055, US-056만 남음)
 TF QF:        ✅ PASS (2026-03-16) — CRITICAL 0, HIGH 0 (단계 3.5 조립 검증 추가 예정)
               1차(2026-03-13): FAIL → 회귀 S1~S7
               2차(2026-03-15): 조건부 PASS → S8 후 재실행
@@ -402,7 +402,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 211개 User Stories, 201개 완료, 10개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 211개 User Stories, 209개 완료, 2개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -597,19 +597,19 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-#### Phase S12: Extended UX + Analytics — US-213~220 (대기, S11 + TF SF 후 진행, Live 전 필수 아님)
+#### Phase S12: Extended UX + Analytics — US-213~220 ✅ 완료 (2026-03-17)
 
 > **목표**: 확장 UX + 고급 분석 + 알림 고도화
 > **진입 조건**: Phase S11 완료
 
-- [ ] US-213: SmartTelegramAlerter — Redis 중복제거 + 배치 (알림 피로 근본 해결)
-- [ ] US-214: Analytics 페이지 — Sharpe 순위, 시간대별 히트맵, 신호 품질 분석
-- [ ] US-215: Alerts 페이지 — 인시던트 lifecycle (acknowledge/resolve), 심각도 필터
-- [ ] US-216: Portfolio Drawdown 차트 + Exposure Heatmap (전략×거래소 매트릭스)
-- [ ] US-217: Settings Danger Zone — Emergency Stop, Reset Defaults (적색 경계 분리)
-- [ ] US-218: 사이드바 재구성 — MONITOR/ANALYZE/MANAGE 3그룹
-- [ ] US-219: Telegram Bot 커맨드 — /pnl, /strategies, /risk, /pause, /resume, /alerts
-- [ ] US-220: 주간 자동 리포트 — 일요일 23:59 KST 자동 발송
+- [x] US-213: SmartTelegramAlerter — Redis 중복제거 + 배치 (알림 피로 근본 해결)
+- [x] US-214: Analytics 페이지 — Sharpe 순위, 시간대별 히트맵, 신호 품질 분석
+- [x] US-215: Alerts 페이지 — 인시던트 lifecycle (acknowledge/resolve), 심각도 필터
+- [x] US-216: Portfolio Drawdown 차트 + Exposure Heatmap (전략×거래소 매트릭스)
+- [x] US-217: Settings Danger Zone — Emergency Stop, Reset Defaults (적색 경계 분리)
+- [x] US-218: 사이드바 재구성 — MONITOR/ANALYZE/MANAGE 3그룹
+- [x] US-219: Telegram Bot 커맨드 — /pnl, /strategies, /risk, /pause, /resume, /alerts
+- [x] US-220: 주간 자동 리포트 — 일요일 23:59 KST 자동 발송
 
 ---
 

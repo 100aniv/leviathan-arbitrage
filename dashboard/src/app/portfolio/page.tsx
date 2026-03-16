@@ -1,8 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+  XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
+  AreaChart, Area,
+} from 'recharts';
 import { EquityCurve } from '@/components/EquityCurve';
-import { getPortfolioMetrics, getPortfolioSummary, getEquityCurve } from '@/lib/api';
+import { getPortfolioMetrics, getPortfolioSummary, getEquityCurve, getPositions } from '@/lib/api';
+import type { Position } from '@/types';
 
 interface PortfolioMetrics {
   sharpe_ratio:      number | null;
@@ -25,27 +30,201 @@ interface PortfolioSummary {
   exchange_balances:  ExchangeBalance[];
 }
 
+interface CurvePoint {
+  date: string;
+  equity: number;
+  btc_benchmark: number | null;
+}
+
+interface DrawdownPoint {
+  date: string;
+  drawdown: number;
+}
+
 const PIE_COLORS = [
   '#22c55e', '#3b82f6', '#eab308', '#ef4444',
   '#a855f7', '#06b6d4', '#f97316', '#ec4899',
 ];
 
+// ─── Drawdown Chart ───────────────────────────────────────────────────────────
+
+function DrawdownChart({ data }: { data: DrawdownPoint[] }) {
+  if (data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-28 text-xs font-mono text-terminal-subtle">
+        에쿼티 커브 데이터 없음 — Shadow/Live 운영 후 표시됩니다
+      </div>
+    );
+  }
+
+  const minDD = Math.min(...data.map((d) => d.drawdown));
+
+  return (
+    <ResponsiveContainer width="100%" height={120}>
+      <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+        <defs>
+          <linearGradient id="ddGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%"  stopColor="#ff4d4d" stopOpacity={0.4} />
+            <stop offset="95%" stopColor="#ff4d4d" stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <XAxis
+          dataKey="date"
+          tick={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#666' }}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={(v: string) => v.slice(5)}
+          interval="preserveStartEnd"
+        />
+        <YAxis
+          tick={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#666' }}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={(v: number) => `${v.toFixed(1)}%`}
+          width={40}
+          domain={[minDD * 1.1, 0]}
+        />
+        <Tooltip
+          contentStyle={{
+            background: '#1a1a1a',
+            border: '1px solid #333',
+            borderRadius: 0,
+            fontSize: 11,
+            fontFamily: 'JetBrains Mono, monospace',
+          }}
+          formatter={(v: number | undefined) => [v != null ? `${v.toFixed(3)}%` : '—', 'Drawdown']}
+        />
+        <ReferenceLine y={0} stroke="#333" strokeDasharray="3 3" />
+        <Area
+          type="monotone"
+          dataKey="drawdown"
+          stroke="#ff4d4d"
+          strokeWidth={1.5}
+          fill="url(#ddGradient)"
+          dot={false}
+          activeDot={{ r: 3, fill: '#ff4d4d' }}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ─── Exposure Heatmap ─────────────────────────────────────────────────────────
+
+function exposureColor(pct: number): string {
+  if (pct <= 0) return 'rgba(80,80,80,0.15)';
+  const alpha = Math.min(pct / 30, 1) * 0.75 + 0.08;
+  return `rgba(59,130,246,${alpha})`;
+}
+
+interface ExposureHeatmapProps {
+  positions: Position[];
+}
+
+function ExposureHeatmap({ positions }: ExposureHeatmapProps) {
+  if (positions.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-24 text-xs font-mono text-terminal-subtle">
+        활성 포지션 없음
+      </div>
+    );
+  }
+
+  const strategies = Array.from(new Set(positions.map((p) => p.strategy_id)));
+  const exchanges  = Array.from(new Set(positions.map((p) => p.exchange_id)));
+
+  // Compute USD exposure per (strategy, exchange)
+  const matrix: Record<string, Record<string, number>> = {};
+  let totalExposure = 0;
+  for (const pos of positions) {
+    const usd = Math.abs((pos.quantity ?? 0) * (pos.mark_price ?? pos.entry_price ?? 1));
+    if (!matrix[pos.strategy_id]) matrix[pos.strategy_id] = {};
+    matrix[pos.strategy_id][pos.exchange_id] = (matrix[pos.strategy_id][pos.exchange_id] ?? 0) + usd;
+    totalExposure += usd;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[400px]">
+        {/* Exchange header */}
+        <div className="flex ml-28 mb-1">
+          {exchanges.map((ex) => (
+            <div key={ex} className="flex-1 text-center text-[9px] font-mono text-terminal-subtle truncate px-0.5">
+              {ex.replace('_', ' ')}
+            </div>
+          ))}
+        </div>
+        {/* Rows */}
+        {strategies.map((strat) => (
+          <div key={strat} className="flex items-center mb-0.5">
+            <div className="w-28 text-right pr-2 text-[9px] font-mono text-terminal-subtle truncate shrink-0">
+              {strat.replace(/_/g, ' ')}
+            </div>
+            {exchanges.map((ex) => {
+              const usd = matrix[strat]?.[ex] ?? 0;
+              const pct = totalExposure > 0 ? (usd / totalExposure) * 100 : 0;
+              return (
+                <div
+                  key={ex}
+                  className="flex-1 h-6 mx-px flex items-center justify-center"
+                  style={{ backgroundColor: exposureColor(pct) }}
+                  title={`${strat} × ${ex}: $${usd.toFixed(0)} (${pct.toFixed(1)}%)`}
+                >
+                  {pct > 5 && (
+                    <span className="text-[8px] font-mono text-terminal-text tabular-nums">
+                      {pct.toFixed(0)}%
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        {/* Legend */}
+        <div className="flex items-center gap-2 mt-2 ml-28">
+          <div className="w-16 h-2.5" style={{ background: 'linear-gradient(to right, rgba(80,80,80,0.15), rgba(59,130,246,0.83))' }} />
+          <span className="text-[9px] font-mono text-terminal-subtle">0% → 30%+ exposure</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function PortfolioPage() {
-  const [metrics, setMetrics] = useState<PortfolioMetrics | null>(null);
-  const [summary, setSummary] = useState<PortfolioSummary | null>(null);
-  const [curve,   setCurve]   = useState<{ date: string; equity: number; btc_benchmark: number | null }[]>([]);
+  const [metrics,   setMetrics]   = useState<PortfolioMetrics | null>(null);
+  const [summary,   setSummary]   = useState<PortfolioSummary | null>(null);
+  const [curve,     setCurve]     = useState<CurvePoint[]>([]);
+  const [drawdown,  setDrawdown]  = useState<DrawdownPoint[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
 
   useEffect(() => {
     async function load() {
       try {
-        const [metricsData, summaryData, curveData] = await Promise.all([
+        const [metricsData, summaryData, curveData, positionsData] = await Promise.all([
           getPortfolioMetrics().catch(() => null),
           getPortfolioSummary().catch(() => null),
           getEquityCurve().catch(() => null),
+          getPositions().catch(() => null),
         ]);
         if (metricsData) setMetrics(metricsData as PortfolioMetrics);
         if (summaryData) setSummary(summaryData);
-        if (curveData) setCurve(curveData.curve ?? []);
+        if (positionsData) setPositions(positionsData);
+
+        if (curveData?.curve && curveData.curve.length > 0) {
+          const pts = curveData.curve;
+          setCurve(pts);
+
+          // Compute drawdown series from equity curve
+          let peak = pts[0].equity;
+          const dd: DrawdownPoint[] = pts.map((p) => {
+            if (p.equity > peak) peak = p.equity;
+            const dd_pct = peak > 0 ? ((p.equity - peak) / peak) * 100 : 0;
+            return { date: p.date, drawdown: dd_pct };
+          });
+          setDrawdown(dd);
+        }
       } catch { /* ignore — engine may be offline */ }
     }
     load();
@@ -63,10 +242,10 @@ export default function PortfolioPage() {
       {/* Risk Metric Cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {[
-          { label: 'Sharpe Ratio',  value: metrics?.sharpe_ratio?.toFixed(2)                         ?? '—' },
-          { label: 'Max Drawdown',  value: metrics ? `${metrics.max_drawdown_pct.toFixed(2)}%`        : '—' },
-          { label: 'Calmar Ratio',  value: metrics?.calmar_ratio?.toFixed(2)                          ?? '—' },
-          { label: 'Win Rate',      value: metrics ? `${(metrics.win_rate * 100).toFixed(1)}%`        : '—' },
+          { label: 'Sharpe Ratio', value: metrics?.sharpe_ratio?.toFixed(2) ?? '—' },
+          { label: 'Max Drawdown', value: metrics ? `${metrics.max_drawdown_pct.toFixed(2)}%` : '—' },
+          { label: 'Calmar Ratio', value: metrics?.calmar_ratio?.toFixed(2) ?? '—' },
+          { label: 'Win Rate',     value: metrics ? `${(metrics.win_rate * 100).toFixed(1)}%` : '—' },
         ].map(({ label, value }) => (
           <div key={label} className="bg-terminal-surface border border-terminal-border p-3">
             <div className="text-[10px] font-mono text-terminal-subtle uppercase tracking-wider">{label}</div>
@@ -108,6 +287,30 @@ export default function PortfolioPage() {
             Shadow/Live 운영 이후 누적 데이터가 표시됩니다
           </span>
         </div>
+      </div>
+
+      {/* Drawdown Chart */}
+      <div className="bg-terminal-surface border border-terminal-border p-4">
+        <div className="mb-3">
+          <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">Drawdown</span>
+          {metrics && (
+            <span className="ml-2 text-[10px] font-mono text-terminal-subtle">
+              최대 <span style={{ color: '#ff4d4d' }}>{metrics.max_drawdown_pct.toFixed(2)}%</span>
+            </span>
+          )}
+        </div>
+        <DrawdownChart data={drawdown} />
+      </div>
+
+      {/* Strategy × Exchange Exposure Heatmap */}
+      <div className="bg-terminal-surface border border-terminal-border p-4">
+        <div className="mb-3">
+          <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">
+            Exposure 히트맵
+          </span>
+          <span className="ml-2 text-[10px] font-mono text-terminal-subtle">전략 × 거래소</span>
+        </div>
+        <ExposureHeatmap positions={positions} />
       </div>
     </div>
   );

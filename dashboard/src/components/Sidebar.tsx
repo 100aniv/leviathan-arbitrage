@@ -3,50 +3,92 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Zap, ShieldAlert, Server, Activity, History, Bell, Settings, BarChart3, TrendingUp, Globe, PieChart, Wallet, Menu, X } from "lucide-react";
+import {
+  LayoutDashboard, Zap, ShieldAlert, Server, Activity,
+  History, Bell, Settings, BarChart3, TrendingUp, Globe,
+  PieChart, Wallet, Menu, X,
+} from "lucide-react";
 import clsx from "clsx";
 
-const NAV_ITEMS = [
-  { href: "/",           label: "Overview",   icon: LayoutDashboard },
-  { href: "/strategies", label: "Strategies", icon: Zap },
-  { href: "/risk",       label: "Risk",       icon: ShieldAlert },
-  { href: "/system",     label: "System",     icon: Server },
-  { href: "/trades",     label: "Trades",     icon: History },
-  { href: "/alerts",     label: "Alerts",     icon: Bell },
-  { href: "/analytics",   label: "Analytics",   icon: BarChart3 },
-  { href: "/attribution", label: "Attribution", icon: PieChart },
-  { href: "/portfolio",   label: "Portfolio",   icon: Wallet },
-  { href: "/funding",     label: "Funding",     icon: TrendingUp },
-  { href: "/exchanges",  label: "Exchanges",  icon: Globe },
-  { href: "/settings",   label: "Settings",   icon: Settings },
+// ─── Navigation Groups ────────────────────────────────────────────────────────
+
+const NAV_GROUPS = [
+  {
+    label: "MONITOR",
+    items: [
+      { href: "/",          label: "Overview",  icon: LayoutDashboard },
+      { href: "/portfolio", label: "Portfolio", icon: Wallet },
+    ],
+  },
+  {
+    label: "ANALYZE",
+    items: [
+      { href: "/strategies",  label: "Strategies",  icon: Zap        },
+      { href: "/analytics",   label: "Analytics",   icon: BarChart3  },
+      { href: "/alerts",      label: "Alerts",      icon: Bell       },
+      { href: "/trades",      label: "Trades",      icon: History    },
+      { href: "/attribution", label: "Attribution", icon: PieChart   },
+      { href: "/funding",     label: "Funding",     icon: TrendingUp },
+      { href: "/exchanges",   label: "Exchanges",   icon: Globe      },
+    ],
+  },
+  {
+    label: "MANAGE",
+    items: [
+      { href: "/settings", label: "Settings", icon: Settings   },
+      { href: "/system",   label: "System",   icon: Server     },
+      { href: "/risk",     label: "Risk",     icon: ShieldAlert },
+    ],
+  },
 ];
 
-function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+// ─── NavLinks Component ───────────────────────────────────────────────────────
+
+function NavLinks({
+  pathname,
+  onNavigate,
+}: {
+  pathname: string;
+  onNavigate?: () => void;
+}) {
   return (
-    <nav className="flex flex-col gap-1 p-2 flex-1" aria-label="Main navigation">
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href;
-        return (
-          <Link
-            key={href}
-            href={href}
-            onClick={onNavigate}
-            className={clsx(
-              "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-mono transition-colors",
-              active
-                ? "bg-accent/10 text-accent border border-accent/20"
-                : "text-terminal-subtle hover:text-terminal-text hover:bg-terminal-muted/50"
-            )}
-            aria-current={active ? "page" : undefined}
-          >
-            <Icon className="w-4 h-4 shrink-0" aria-hidden />
-            {label}
-          </Link>
-        );
-      })}
+    <nav className="flex flex-col gap-0.5 p-2 flex-1 overflow-y-auto" aria-label="Main navigation">
+      {NAV_GROUPS.map((group) => (
+        <div key={group.label} className="mb-2">
+          {/* Group header */}
+          <div className="px-3 py-1.5 mb-0.5">
+            <span className="text-[9px] font-mono font-semibold text-terminal-subtle/60 uppercase tracking-[0.25em]">
+              {group.label}
+            </span>
+          </div>
+          {/* Group items */}
+          {group.items.map(({ href, label, icon: Icon }) => {
+            const active = pathname === href;
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={onNavigate}
+                className={clsx(
+                  "flex items-center gap-3 px-3 py-1.5 rounded-md text-sm font-mono transition-colors",
+                  active
+                    ? "bg-accent/10 text-accent border border-accent/20"
+                    : "text-terminal-subtle hover:text-terminal-text hover:bg-terminal-muted/50"
+                )}
+                aria-current={active ? "page" : undefined}
+              >
+                <Icon className="w-4 h-4 shrink-0" aria-hidden />
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
     </nav>
   );
 }
+
+// ─── Sidebar Component ────────────────────────────────────────────────────────
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -56,7 +98,7 @@ export function Sidebar() {
     <>
       {/* Desktop sidebar — md and above */}
       <aside className="hidden md:flex flex-col w-56 min-h-screen bg-terminal-surface border-r border-terminal-border shrink-0">
-        <div className="flex items-center gap-2 px-4 py-4 border-b border-terminal-border">
+        <div className="flex items-center gap-2 px-4 py-4 border-b border-terminal-border shrink-0">
           <Activity className="w-5 h-5 text-profit" />
           <div>
             <p className="text-sm font-mono font-semibold text-terminal-text leading-none">LEVIATHAN</p>
@@ -64,7 +106,7 @@ export function Sidebar() {
           </div>
         </div>
         <NavLinks pathname={pathname} />
-        <div className="px-4 py-3 border-t border-terminal-border">
+        <div className="px-4 py-3 border-t border-terminal-border shrink-0">
           <p className="text-[10px] font-mono text-terminal-subtle">v2.0 · WAR ROOM</p>
         </div>
       </aside>
@@ -97,7 +139,7 @@ export function Sidebar() {
             aria-hidden
           />
           <aside className="md:hidden fixed top-0 left-0 z-50 flex flex-col w-64 h-full bg-terminal-surface border-r border-terminal-border">
-            <div className="flex items-center justify-between px-4 py-4 border-b border-terminal-border">
+            <div className="flex items-center justify-between px-4 py-4 border-b border-terminal-border shrink-0">
               <div className="flex items-center gap-2">
                 <Activity className="w-5 h-5 text-profit" />
                 <div>
@@ -114,7 +156,7 @@ export function Sidebar() {
               </button>
             </div>
             <NavLinks pathname={pathname} onNavigate={() => setOpen(false)} />
-            <div className="px-4 py-3 border-t border-terminal-border">
+            <div className="px-4 py-3 border-t border-terminal-border shrink-0">
               <p className="text-[10px] font-mono text-terminal-subtle">v2.0 · WAR ROOM</p>
             </div>
           </aside>

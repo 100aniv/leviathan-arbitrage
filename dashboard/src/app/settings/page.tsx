@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSettings, updateSettings, toggleStrategy, logout } from "@/lib/api";
+import { getSettings, updateSettings, toggleStrategy, logout, killEngine } from "@/lib/api";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type { SettingsResponse } from "@/types";
 
 function InfoTip({ text }: { text: string }) {
@@ -29,23 +30,24 @@ function InfoTip({ text }: { text: string }) {
 }
 
 const ALL_EXCHANGES = [
-  "binance",
-  "binance_futures",
-  "bybit",
-  "okx",
-  "bitget",
-  "upbit",
-  "bithumb",
-  "coinone",
+  "binance", "binance_futures", "bybit", "okx",
+  "bitget", "upbit", "bithumb", "coinone",
 ];
 
 type FeedbackState = { type: "success" | "error"; message: string } | null;
 
+type Dialog =
+  | { kind: "emergency-stop" }
+  | { kind: "reset-defaults" }
+  | null;
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
-  const [minEdge, setMinEdge] = useState<number>(5);
+  const [minEdge, setMinEdge]   = useState<number>(5);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [dialog, setDialog]     = useState<Dialog>(null);
+  const [dangerLoading, setDangerLoading] = useState(false);
 
   useEffect(() => {
     getSettings()
@@ -98,7 +100,7 @@ export default function SettingsPage() {
   async function handleExchangeToggle(exchange: string) {
     if (!settings) return;
     const current = settings.active_exchanges;
-    const next = current.includes(exchange)
+    const next    = current.includes(exchange)
       ? current.filter((e) => e !== exchange)
       : [...current, exchange];
     try {
@@ -107,6 +109,34 @@ export default function SettingsPage() {
       showFeedback("success", "Exchanges updated.");
     } catch {
       showFeedback("error", "Failed to update exchanges.");
+    }
+  }
+
+  async function handleEmergencyStop() {
+    setDialog(null);
+    setDangerLoading(true);
+    try {
+      await killEngine("Dashboard emergency stop");
+      showFeedback("success", "Emergency stop activated. Engine halted.");
+    } catch {
+      showFeedback("error", "Kill switch API error — check engine directly.");
+    } finally {
+      setDangerLoading(false);
+    }
+  }
+
+  async function handleResetDefaults() {
+    setDialog(null);
+    setDangerLoading(true);
+    try {
+      const updated = await updateSettings({ min_edge_bps: 5, active_exchanges: ALL_EXCHANGES });
+      setSettings((prev) => prev ? { ...prev, ...updated } : prev);
+      setMinEdge(updated.min_edge_bps);
+      showFeedback("success", "Settings reset to defaults.");
+    } catch {
+      showFeedback("error", "Failed to reset settings.");
+    } finally {
+      setDangerLoading(false);
     }
   }
 
@@ -243,6 +273,72 @@ export default function SettingsPage() {
           로그아웃
         </button>
       </section>
+
+      {/* ── Danger Zone ─────────────────────────────────────────────────────── */}
+      <section className="border-2 border-loss/50 rounded-lg p-5 space-y-4 bg-loss/5">
+        <div>
+          <h3 className="text-sm font-mono font-semibold text-loss uppercase tracking-[0.15em]">
+            ⚠ Danger Zone
+          </h3>
+          <p className="text-[10px] font-mono text-terminal-subtle mt-1">
+            복구 불가 작업입니다. 신중하게 실행하세요.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Emergency Stop */}
+          <div className="flex-1 bg-terminal-surface border border-loss/30 rounded p-4 space-y-2">
+            <p className="text-xs font-mono font-semibold text-terminal-text">Emergency Stop</p>
+            <p className="text-[10px] font-mono text-terminal-subtle">
+              Kill Switch를 즉시 활성화합니다. 모든 거래가 즉시 중단됩니다.
+            </p>
+            <button
+              onClick={() => setDialog({ kind: "emergency-stop" })}
+              disabled={dangerLoading}
+              className="mt-1 px-4 py-2 text-xs font-mono rounded border border-loss/60 text-loss hover:bg-loss/15 disabled:opacity-40 transition-colors"
+            >
+              {dangerLoading ? "처리 중…" : "Emergency Stop"}
+            </button>
+          </div>
+
+          {/* Reset Defaults */}
+          <div className="flex-1 bg-terminal-surface border border-warn/30 rounded p-4 space-y-2">
+            <p className="text-xs font-mono font-semibold text-terminal-text">Reset Defaults</p>
+            <p className="text-[10px] font-mono text-terminal-subtle">
+              모든 설정을 기본값으로 초기화합니다 (MIN_EDGE=5bps, 전체 거래소).
+            </p>
+            <button
+              onClick={() => setDialog({ kind: "reset-defaults" })}
+              disabled={dangerLoading}
+              className="mt-1 px-4 py-2 text-xs font-mono rounded border border-warn/50 text-warn hover:bg-warn/10 disabled:opacity-40 transition-colors"
+            >
+              {dangerLoading ? "처리 중…" : "Reset Defaults"}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Confirm Dialogs */}
+      <ConfirmDialog
+        isOpen={dialog?.kind === "emergency-stop"}
+        title="Emergency Stop"
+        message="Kill Switch를 즉시 활성화합니다. 엔진의 모든 거래 실행이 즉시 중단됩니다. 재시작하려면 엔진을 수동으로 재부팅해야 합니다."
+        confirmLabel="지금 중단"
+        cancelLabel="취소"
+        danger="critical"
+        onConfirm={handleEmergencyStop}
+        onCancel={() => setDialog(null)}
+      />
+      <ConfirmDialog
+        isOpen={dialog?.kind === "reset-defaults"}
+        title="Reset Defaults"
+        message="모든 설정을 공장 기본값으로 초기화합니다. MIN_EDGE_BPS=5, 전체 거래소 활성화. 커스터마이즈된 설정이 모두 삭제됩니다."
+        confirmLabel="초기화"
+        cancelLabel="취소"
+        danger="warning"
+        onConfirm={handleResetDefaults}
+        onCancel={() => setDialog(null)}
+      />
     </div>
   );
 }

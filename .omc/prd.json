@@ -3472,9 +3472,18 @@
       "phase": "S11",
       "priority": 1,
       "passes": true,
-      "files": ["dashboard/src/components/MissionControlStrip.tsx"],
-      "acceptanceCriteria": ["40px 고정 상태바 전 페이지 표시", "EQUITY/PnL/WIN%/ACTIVE/MODE/KILL SWITCH 표시", "WebSocket 실시간 갱신", "모바일 반응형"],
-      "dependencies": ["US-210"],
+      "files": [
+        "dashboard/src/components/MissionControlStrip.tsx"
+      ],
+      "acceptanceCriteria": [
+        "40px 고정 상태바 전 페이지 표시",
+        "EQUITY/PnL/WIN%/ACTIVE/MODE/KILL SWITCH 표시",
+        "WebSocket 실시간 갱신",
+        "모바일 반응형"
+      ],
+      "dependencies": [
+        "US-210"
+      ],
       "source": "3초 규칙 — 전 페이지 상태 표시"
     },
     {
@@ -3483,8 +3492,14 @@
       "phase": "S11",
       "priority": 1,
       "passes": true,
-      "files": ["dashboard/src/app/page.tsx"],
-      "acceptanceCriteria": ["3초 규칙 정보 계층", "기존 컴포넌트 재배치", "npm run build 성공"],
+      "files": [
+        "dashboard/src/app/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "3초 규칙 정보 계층",
+        "기존 컴포넌트 재배치",
+        "npm run build 성공"
+      ],
       "dependencies": [],
       "source": "정보 계층 재구성"
     },
@@ -3494,9 +3509,17 @@
       "phase": "S11",
       "priority": 2,
       "passes": true,
-      "files": ["dashboard/src/app/strategies/page.tsx"],
-      "acceptanceCriteria": ["전략별 0-100 Health Score 카드", "7개 전략 각각 카드 표시", "활성/비활성 상태"],
-      "dependencies": ["US-211"],
+      "files": [
+        "dashboard/src/app/strategies/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "전략별 0-100 Health Score 카드",
+        "7개 전략 각각 카드 표시",
+        "활성/비활성 상태"
+      ],
+      "dependencies": [
+        "US-211"
+      ],
       "source": "전략별 0-100 건강 점수"
     },
     {
@@ -3505,9 +3528,17 @@
       "phase": "S11",
       "priority": 1,
       "passes": true,
-      "files": ["dashboard/src/app/system/page.tsx"],
-      "acceptanceCriteria": ["2-click Kill Switch (3초 카운트다운)", "Docker/DB/Redis 상태 표시", "거래소 레이턴시"],
-      "dependencies": ["US-211"],
+      "files": [
+        "dashboard/src/app/system/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "2-click Kill Switch (3초 카운트다운)",
+        "Docker/DB/Redis 상태 표시",
+        "거래소 레이턴시"
+      ],
+      "dependencies": [
+        "US-211"
+      ],
       "source": "2-click Kill Switch + Docker/DB/Redis 상태"
     },
     {
@@ -3516,8 +3547,14 @@
       "phase": "S11",
       "priority": 2,
       "passes": true,
-      "files": ["engine/src/infra/telegram.py"],
-      "acceptanceCriteria": ["가동 리포트 한국어 양식", "장애 경보 한국어 양식", "단위테스트 통과"],
+      "files": [
+        "engine/src/infra/telegram.py"
+      ],
+      "acceptanceCriteria": [
+        "가동 리포트 한국어 양식",
+        "장애 경보 한국어 양식",
+        "단위테스트 통과"
+      ],
       "dependencies": [],
       "source": "가동 리포트, 장애 경보 한국어"
     },
@@ -3527,8 +3564,14 @@
       "phase": "S11",
       "priority": 2,
       "passes": true,
-      "files": ["engine/src/infra/telegram.py"],
-      "acceptanceCriteria": ["체결 알림 한국어 양식", "일일 정산 리포트 한국어 양식", "단위테스트 통과"],
+      "files": [
+        "engine/src/infra/telegram.py"
+      ],
+      "acceptanceCriteria": [
+        "체결 알림 한국어 양식",
+        "일일 정산 리포트 한국어 양식",
+        "단위테스트 통과"
+      ],
       "dependencies": [],
       "source": "체결 알림, 일일 정산 한국어"
     },
@@ -3538,8 +3581,14 @@
       "phase": "S11",
       "priority": 2,
       "passes": true,
-      "files": ["engine/src/infra/telegram.py"],
-      "acceptanceCriteria": ["EMERGENCY=즉시 CRITICAL=1분 WARNING=5분 INFO=30분배치", "심각도별 rate limiting", "단위테스트 통과"],
+      "files": [
+        "engine/src/infra/telegram.py"
+      ],
+      "acceptanceCriteria": [
+        "EMERGENCY=즉시 CRITICAL=1분 WARNING=5분 INFO=30분배치",
+        "심각도별 rate limiting",
+        "단위테스트 통과"
+      ],
       "dependencies": [],
       "source": "알림 피로 방지"
     },
@@ -3549,8 +3598,14 @@
       "phase": "S11",
       "priority": 3,
       "passes": true,
-      "files": ["engine/src/api/websocket.py"],
-      "acceptanceCriteria": ["state_update에 total_equity/win_rate/active_strategy_count 추가", "하위호환", "단위테스트 통과"],
+      "files": [
+        "engine/src/api/websocket.py"
+      ],
+      "acceptanceCriteria": [
+        "state_update에 total_equity/win_rate/active_strategy_count 추가",
+        "하위호환",
+        "단위테스트 통과"
+      ],
       "dependencies": [],
       "source": "total_equity, win_rate, active_strategy_count"
     },
@@ -3560,8 +3615,14 @@
       "phase": "S11",
       "priority": 2,
       "passes": true,
-      "files": ["engine/src/api/server.py"],
-      "acceptanceCriteria": ["9개 엔드포인트 구현 (positions, daily-returns, logs, db-metrics, redis-metrics, alerts/ack, alerts/resolve, test-alert, exchanges/reconnect)", "JWT 인증", "단위테스트"],
+      "files": [
+        "engine/src/api/server.py"
+      ],
+      "acceptanceCriteria": [
+        "9개 엔드포인트 구현 (positions, daily-returns, logs, db-metrics, redis-metrics, alerts/ack, alerts/resolve, test-alert, exchanges/reconnect)",
+        "JWT 인증",
+        "단위테스트"
+      ],
       "dependencies": [],
       "source": "portfolio/positions, system/logs, alerts/acknowledge 등"
     },
@@ -3571,9 +3632,23 @@
       "phase": "S11",
       "priority": 5,
       "passes": true,
-      "files": ["dashboard/src/app/"],
-      "acceptanceCriteria": ["모든 페이지 실데이터 표시", "콘솔 에러 0건", "npm run build 성공", "모바일 375px/768px"],
-      "dependencies": ["US-203","US-204","US-205","US-206","US-210","US-211"],
+      "files": [
+        "dashboard/src/app/"
+      ],
+      "acceptanceCriteria": [
+        "모든 페이지 실데이터 표시",
+        "콘솔 에러 0건",
+        "npm run build 성공",
+        "모바일 375px/768px"
+      ],
+      "dependencies": [
+        "US-203",
+        "US-204",
+        "US-205",
+        "US-206",
+        "US-210",
+        "US-211"
+      ],
       "source": "모든 페이지 실데이터 + 콘솔 에러 0건"
     },
     {
@@ -3581,11 +3656,16 @@
       "title": "SmartTelegramAlerter (Redis 중복제거 + 배치)",
       "phase": "S12",
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/infra/telegram_smart.py"
       ],
-      "acceptanceCriteria": [],
+      "acceptanceCriteria": [
+        "Redis SET 기반 중복 알림 제거 (TTL 5분)",
+        "배치 전송: INFO 30분 모아서 1건",
+        "SeverityFilter 통합",
+        "단위테스트"
+      ],
       "dependencies": [],
       "source": "알림 피로 근본 해결"
     },
@@ -3594,11 +3674,15 @@
       "title": "Analytics 페이지",
       "phase": "S12",
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/app/analytics/page.tsx"
       ],
-      "acceptanceCriteria": [],
+      "acceptanceCriteria": [
+        "전략별 Sharpe 순위 차트",
+        "시간대별 PnL 히트맵",
+        "npm run build 성공"
+      ],
       "dependencies": [],
       "source": "Sharpe 순위, 시간대별 히트맵"
     },
@@ -3607,11 +3691,15 @@
       "title": "Alerts 페이지 인시던트 lifecycle",
       "phase": "S12",
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/app/alerts/page.tsx"
       ],
-      "acceptanceCriteria": [],
+      "acceptanceCriteria": [
+        "인시던트 목록 표시",
+        "acknowledge/resolve 버튼",
+        "심각도 필터"
+      ],
       "dependencies": [],
       "source": "acknowledge/resolve"
     },
@@ -3620,11 +3708,14 @@
       "title": "Portfolio Drawdown 차트 + Exposure Heatmap",
       "phase": "S12",
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/app/portfolio/page.tsx"
       ],
-      "acceptanceCriteria": [],
+      "acceptanceCriteria": [
+        "Drawdown 시계열 차트",
+        "전략x거래소 Exposure 히트맵"
+      ],
       "dependencies": [],
       "source": "리스크 시각화"
     },
@@ -3633,11 +3724,15 @@
       "title": "Settings Danger Zone",
       "phase": "S12",
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/app/settings/page.tsx"
       ],
-      "acceptanceCriteria": [],
+      "acceptanceCriteria": [
+        "적색 Danger Zone 섹션",
+        "Emergency Stop + Reset Defaults 버튼",
+        "확인 다이얼로그"
+      ],
       "dependencies": [],
       "source": "Emergency Stop, Reset Defaults"
     },
@@ -3646,11 +3741,15 @@
       "title": "사이드바 재구성 (3그룹)",
       "phase": "S12",
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "files": [
         "dashboard/src/components/Sidebar.tsx"
       ],
-      "acceptanceCriteria": [],
+      "acceptanceCriteria": [
+        "MONITOR/ANALYZE/MANAGE 3그룹",
+        "그룹 헤더 라벨",
+        "현재 페이지 하이라이트"
+      ],
       "dependencies": [],
       "source": "MONITOR/ANALYZE/MANAGE"
     },
@@ -3659,11 +3758,14 @@
       "title": "Telegram Bot 커맨드",
       "phase": "S12",
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/infra/telegram_bot.py"
       ],
-      "acceptanceCriteria": [],
+      "acceptanceCriteria": [
+        "/pnl /strategies /risk /pause /resume /alerts 명령 구현",
+        "단위테스트"
+      ],
       "dependencies": [],
       "source": "/pnl, /strategies, /risk, /pause, /resume"
     },
@@ -3672,11 +3774,15 @@
       "title": "주간 자동 리포트",
       "phase": "S12",
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/infra/telegram.py"
       ],
-      "acceptanceCriteria": [],
+      "acceptanceCriteria": [
+        "일요일 23:59 KST 자동 발송",
+        "주간 PnL/WR/Sharpe 요약",
+        "APScheduler 스케줄"
+      ],
       "dependencies": [],
       "source": "일요일 23:59 KST"
     }
