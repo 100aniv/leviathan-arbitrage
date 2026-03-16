@@ -23,7 +23,7 @@ Stage A (Entry Gate → 기획 → QUANT GATE → checkpoint)
 ## 1. 소스
 
 - `SSOT.md` — 유일한 설계 문서. 작업 전 반드시 읽기.
-- `.omc/prd.json` — 146 US 목록. `passes:false`인 첫 번째 US부터 시작.
+- `.omc/prd.json` — 220 US 목록. `passes:false`인 첫 번째 US부터 시작.
 - 팀 구조, 기술 스택, 커스텀 에이전트, 자주 틀리는 패턴 → **CLAUDE.md 참조** (여기서 중복 기술하지 않음)
 
 ## 2. 실행 모드
@@ -682,7 +682,7 @@ SSOT.md §7 구조:
 - Alertmanager 규칙 → 라우팅 → 수신 확인
 
 PASS 기준:
-- 24H Shadow 5-Stage 전부 PASS
+- 24H+ Shadow 6-Stage 전부 PASS
 - 활성 전략 각각 WR>50%, Sharpe>1.0 (통합 Sharpe>2.0)
 - E2E 시나리오 10개 전부 PASS
 - 알림: Kill Switch → Telegram < 5초
