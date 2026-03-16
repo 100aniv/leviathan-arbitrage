@@ -777,29 +777,51 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 > RESOLVED 이슈는 [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md) §9로 이동 (취소선 처리)
 
-> **RESOLVED 정리**: GAP 3/7/8 + HIGH 9건 + LOW 2건 = S8/S9에서 해소 완료 → US-193 완료 시 SSOT_COMPLETE.md §9로 이관.
-> 아래는 **현재 미해결 이슈만** 표시.
+> **RESOLVED 항목**: S8/S9에서 해소된 GAP 3/7/8 + HIGH 9건 + LOW 2건 → US-193 완료 시 SSOT_COMPLETE.md §9로 이관 예정.
 
-### RESOLVED (S8/S9에서 해소 — US-193 완료 시 SSOT_COMPLETE.md 이관)
+### CRITICAL (3건 — Phase S10에서 해소 예정)
 
-<details>
-<summary>RESOLVED 항목 보기 (접기)</summary>
+| 이슈 | 설명 | 해결 US |
+|------|------|---------|
+| **전략 영역 겹침** | `_CROSS_EXCHANGE_CONSUMERS`가 stat_arb+latency_arb에 cross_exchange 신호 라우팅 → 중복 거래 | US-187, US-194 |
+| **stat_arb 구조적 결함** | 교차거래소 동일심볼 mean-reversion = cross_exchange 동일 영역, WFE=-1.03 | US-188 |
+| **AdaptiveThreshold WR 기반 피드백 루프** | WR 93.8%인데 손실 → WR>90%에서 edge 하향 = 손실 악화 | US-201 |
 
-**CRITICAL GAP 3건**: ~~GAP 3 (MultiStrategy LIVE)~~, ~~GAP 7 (Triangular Scanner)~~, ~~GAP 8 (DEX Adapter)~~ → S8 US-169/170/177
-**HIGH 9건**: ~~ONNX~~, ~~HMM~~, ~~AdaptiveThreshold~~, ~~ExposureTracker~~, ~~CorrelationMonitor~~, ~~Docker pre-flight~~, ~~IOC~~, ~~마찰 vs Spread~~ → S8 US-172~178
-**LOW 2건**: ~~Coinone Rate Limit~~ (자동 재연결), ~~빈 Orderbook~~ (crash 없음)
+### HIGH (3건)
 
-</details>
+| 이슈 | 설명 | 해결 US |
+|------|------|---------|
+| **Auto-tuner 미작동** | ScheduledTuner 로그 미관찰, AdaptiveThreshold/RegimeDetector/ONNX 호출 미확인 | US-190, US-191 |
+| **전략 간 포지션 충돌** | 2개 전략이 동일 symbol 동시 거래 가능, 방지 메커니즘 없음 | US-195 |
+| **전략별 자본 할당 없음** | 7개 전략이 독립적으로 자본 사용, per-strategy 한도 없음 | US-196 |
 
-### 현재 미해결 이슈 (Phase S10에서 해소 예정)
+### MEDIUM (1건)
 
-| # | 심각도 | 이슈 | 설명 | 해결 US |
-|---|--------|------|------|---------|
-| 1 | **CRITICAL** | 전략 영역 겹침 | _CROSS_EXCHANGE_CONSUMERS가 stat_arb+latency_arb에 cross_exchange 신호 라우팅 → 중복 거래 | US-187, US-194 |
-| 2 | **CRITICAL** | stat_arb 구조적 결함 | 교차거래소 동일심볼 mean-reversion = cross_exchange 동일 영역, WFE=-1.03 | US-188 |
-| 3 | **CRITICAL** | AdaptiveThreshold WR 기반 | WR 93.8%인데 손실 → WR>90%에서 edge 하향 = 손실 악화 피드백 루프 | US-201 |
-| 4 | **HIGH** | Auto-tuner 미작동 | ScheduledTuner 로그 미관찰, AdaptiveThreshold/RegimeDetector/ONNX 호출 미확인 | US-190, US-191 |
-| 5 | **HIGH** | 전략 간 포지션 충돌 | 2개 전략이 동일 symbol 동시 거래 가능, 방지 메커니즘 없음 | US-195 |
-| 6 | **HIGH** | 전략별 자본 할당 없음 | 7개 전략이 독립적으로 자본 사용, per-strategy 한도 없음 | US-196 |
-| 7 | **MEDIUM** | cross_exchange MIN_EDGE 과소 | 5bps → 실제 round-trip 비용 32-65bps, 슬리피지 1건이 17건 이익 소멸 | US-189 |
-| 8 | **LOW** | Phase D 대시보드 브라우저 미검증 | Chrome 렌더링, 모바일 반응형 미확인 | TF SF [단계 3-A] |
+| 이슈 | 설명 | 해결 US |
+|------|------|---------|
+| **cross_exchange MIN_EDGE 과소** | 5bps → 실제 round-trip 비용 32-65bps, 슬리피지 1건이 17건 이익 소멸 | US-189 |
+
+### LOW (1건)
+
+| 이슈 | 설명 | 해결 시점 |
+|------|------|----------|
+| **Phase D 대시보드 브라우저 미검증** | Chrome 렌더링, 모바일 반응형 미확인 | TF SF [단계 3-A] |
+
+### RESOLVED (S8/S9 해소 — US-193 이관 대기)
+
+| 이슈 | 해소 Phase |
+|------|-----------|
+| ~~GAP 3: MultiStrategy LIVE 미연결~~ | S8 US-169 |
+| ~~GAP 7: Triangular Scanner 부재~~ | S8 US-170 |
+| ~~GAP 8: DEX Adapter Stub~~ | S8 US-177 |
+| ~~ONNX ML Scorer 미연결~~ | S8 US-172 |
+| ~~HMM RegimeDetector 미연결~~ | S8 US-173 |
+| ~~AdaptiveThreshold 미연결~~ | S8 US-174 |
+| ~~ExposureTracker 미인스턴스화~~ | S8 US-175 |
+| ~~CorrelationMonitor 로그만~~ | S8 US-176 |
+| ~~Docker pre-flight 체크~~ | S8 설정/환경 갭 |
+| ~~IOC limit order 미구현~~ | S8 US-178 |
+| ~~마찰 vs Gross Spread~~ | S8 US-174 |
+| ~~Coinone Rate Limit~~ | 자동 재연결 구현 |
+| ~~빈 Orderbook 경고~~ | crash 없음, 무시 |
+| ~~cex_dex 미구현~~ | S8 US-177 |
