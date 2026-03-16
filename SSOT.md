@@ -2,8 +2,8 @@
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-16 (Phase S10 계획 수립 — 전략 영역 분리 + stat_arb 재설계 + Auto-Tuner) | 최신 커밋: 63f31fc
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (184개 User Stories, 175 pass / 9 pending)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL(Stage 2) → **Phase S10** 🔧 → TF QF 재실행 → TF SF 재시작 → TF Final → Live
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (220개 User Stories, 175 pass / 45 pending)
+> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** 🔧 (16 US) → TF QF 재실행(단계 3.5) → Phase S11(UI/UX) → TF SF(순차 OFF→ON) → Phase S12 → TF Final → Live
 
 ---
 
@@ -34,7 +34,7 @@ Phase:        Phase S10 Strategy Architecture Hardening 🔧 (2026-03-16)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
 최신 커밋:    63f31fc
 다음 작업:    Phase S10 (US-187~202, 16 US) → TF QF 재실행 → Phase S11 (UI/UX) → TF SF → Phase S12 → TF Final → Live
-완료된 US:    175/220 (Phase S10 0/16 진행 중, S11 0/10 + S12 0/9 pending, prd.json 175 pass / 9 pending)
+완료된 US:    175/220 (Phase S10 0/16 진행 중, S11 0/10 + S12 0/8 pending, prd.json 175 pass / 45 pending)
 TF QF:        ✅ PASS (2026-03-16) — CRITICAL 0, HIGH 0 (단계 3.5 조립 검증 추가 예정)
               1차(2026-03-13): FAIL → 회귀 S1~S7
               2차(2026-03-15): 조건부 PASS → S8 후 재실행
@@ -404,7 +404,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ## 7. 남은 작업 (`.omc/prd.json` 220개 User Stories, 175개 완료, 45개 미완)
 
-> **실행 방식**: 5-Stage Sequential — Stage A(기획/Entry Gate) → Stage B(개발/TeamCreate) → Stage C(검증/코드리뷰) → Stage D(Shadow 테스트) → Stage E(정합성/Exit Gate)
+> **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
 
 > **Phase A~M 완료 상세 → [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)** (토큰 최적화로 아카이브 분리)
@@ -575,7 +575,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] US-187 (S10-1): `_CROSS_EXCHANGE_CONSUMERS` 제거 + 신호 흐름 검증 — manager.py frozenset 제거, stat_arb/latency_arb RealDataSignalProducer 신호 수신 확인
 - [ ] US-188 (S10-2): stat_arb cross-asset pair 재설계 (2-3일) — BTC-ETH/ETH-SOL/BTC-BNB 고정 3쌍, Signal.metadata["symbol2"], _is_cointegrated fail-closed 수정
 - [ ] US-194 (S10-3): latency_arb → cross_exchange 병합 — LatencyArbStrategy 삭제, latency_boost 모드 통합, 전략 8→7개
-- [ ] US-201 (S10-4): AdaptiveThreshold WR→PnL 기반 전환 — rolling_pnl_1h/24h 기반 조정, WR은 보조 지표
+- [ ] US-201 (S10-4): AdaptiveThreshold WR→복합 지표(Expected Edge bps + Profit Factor) 기반 전환 — expected_edge_bps + PF 기반 조정, WR은 보조 지표
 
 **HIGH (5건)**
 - [ ] US-189 (S10-5): cross_exchange min_spread_bps 5→10 복원 — latency_boost 모드일 때 5bps 허용
@@ -662,7 +662,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **핵심 질문**: "24시간 동안 실제로 돈을 벌 수 있는가?"
 > **진입 가드**: TF QF PASS
 > **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → SF 재검증 (QF 스킵, 구조적 결함 시 QF부터)
-> **PASS 기준**: 24H 5-Stage ALL PASS + 전략별 WR>50% + E2E 10/10 (단계 2 병렬) + LiveGate 6-check
+> **PASS 기준**: 24H+ 6-Stage ALL PASS + 전략별 WR>50% + E2E 10/10 (단계 2 병렬) + LiveGate 6-check + 오토튜너 효과 판정
 > **현재**: Stage 2 FAIL → Phase S10 회귀. S10 완료 후 TF QF 재실행 → TF SF Stage 1부터 재시작
 
 #### 검증 이력
@@ -729,7 +729,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 > **핵심 질문**: "문제가 생기면 대응할 수 있는가? 실제 돈을 안전하게 운용할 준비가 되었는가?"
 > **진입 가드**: TF SF 전 단계 PASS + 24H Shadow ALL PASS
-> **PASS 기준**: ORR 완비 + DR 6/6 PASS + Canary 7일 P&L>0
+> **PASS 기준**: ORR 완비 + DR 9/9 PASS (DR-1~6 인프라 + DR-7~9 전략) + Canary 7일 P&L>0 + 튜너 효과 판정 완료
 
 **[단계 1] Operations Readiness Review (ORR)**
 - [ ] 일일 점검 체크리스트 작성
@@ -777,34 +777,29 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 > RESOLVED 이슈는 [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md) §9로 이동 (취소선 처리)
 
-> **S8/S9 RESOLVED 이슈**: GAP 3, 7, 8 및 HIGH 9건 모두 Phase S8에서 해소 완료. US-193 (S10-16) 완료 시 전부 SSOT_COMPLETE.md §9로 이관 예정.
+> **RESOLVED 정리**: GAP 3/7/8 + HIGH 9건 + LOW 2건 = S8/S9에서 해소 완료 → US-193 완료 시 SSOT_COMPLETE.md §9로 이관.
+> 아래는 **현재 미해결 이슈만** 표시.
 
-### CRITICAL — Architecture GAPs (미해결 3건 / 전체 10건) → **Phase S8에서 전부 해소 완료**
+### RESOLVED (S8/S9에서 해소 — US-193 완료 시 SSOT_COMPLETE.md 이관)
 
-| GAP | 설명 | 파일:라인 | 해결 Phase | 크기 | S8 US |
-|-----|------|----------|-----------|------|-------|
-| **3** | MultiStrategySignalProducer Paper/Shadow에서만 동작 (LIVE 5/8 전략 신호 0건) | `main.py:842-873` | **S8** | L | US-169 |
-| **7** | Triangular Scanner 부재 (전략 코드만, 신호 생성 없음) | `triangular.py:63-68` | **S8** | M | US-170 |
-| **8** | DEX Adapter: _build_dex_adapter() 항상 None (Uniswap V3 코드 존재하나 미연결) | `cex_dex.py:30-68` | **S8** | XL | US-177 |
+<details>
+<summary>RESOLVED 항목 보기 (접기)</summary>
 
-### HIGH (9건 — 기존 4건 + 심층 조사 5건 추가)
+**CRITICAL GAP 3건**: ~~GAP 3 (MultiStrategy LIVE)~~, ~~GAP 7 (Triangular Scanner)~~, ~~GAP 8 (DEX Adapter)~~ → S8 US-169/170/177
+**HIGH 9건**: ~~ONNX~~, ~~HMM~~, ~~AdaptiveThreshold~~, ~~ExposureTracker~~, ~~CorrelationMonitor~~, ~~Docker pre-flight~~, ~~IOC~~, ~~마찰 vs Spread~~ → S8 US-172~178
+**LOW 2건**: ~~Coinone Rate Limit~~ (자동 재연결), ~~빈 Orderbook~~ (crash 없음)
 
-| 이슈 | 설명 | 해결 Phase | S8 US |
-|------|------|-----------|-------|
-| **ONNX ML Scorer 미연결** | ONNXSignalScorer 로드만 하고 signal.py에서 호출 안 함 → ML 모델 완전 무시 | **S8** | US-172 |
-| **HMM RegimeDetector 미연결** | 초기화만, predict() 미호출 → 레짐 항상 NORMAL, min_edge 동적 조절 불가 | **S8** | US-173 |
-| **AdaptiveThreshold 미연결** | 94줄 완전 구현이나 main.py에서 인스턴스화/호출 안 함 → MIN_EDGE 영원히 정적 | **S8** | US-174 |
-| **ExposureTracker 미인스턴스화** | 코드 존재하나 main.py에서 생성 안 됨 → 순노출도 추적 불가 | **S8** | US-175 |
-| **CorrelationMonitor 로그만** | Check #9가 로그만 → DynamicSizer 포지션 축소 실제 미연결 | **S8** | US-176 |
-| **Phase D 대시보드 브라우저 미검증** | Chrome 렌더링, API 연동, WebSocket, 모바일 반응형 미확인 | TF SF [단계 3-A] | — |
-| **Shadow 실행 시 Docker 미실행 위험** | TimescaleDB/Redis 미저장 → 메트릭 유실 | **S8** | 엔진 시작 시 Docker pre-flight 체크 추가 (S8 설정/환경 갭 항목) |
-| **AtomicOrderExecutor: place_ioc_limit() 미구현** | Native Adapter IOC 미지원 → fallback 동작만 | **S8** | US-178 |
-| **마찰 vs Gross Spread** | 대부분 알트 spread 2-25bps, friction ~20bps | **S8** | US-174 (AdaptiveThreshold로 동적 조절) |
+</details>
 
-### LOW (3건)
+### 현재 미해결 이슈 (Phase S10에서 해소 예정)
 
-| 이슈 | 설명 | 상태 | S8 반영 |
-|------|------|------|---------|
-| Coinone Rate Limit | 30min PING keepalive 유지 실패 가능 | ✅ 자동 재연결 구현됨 | 해결 완료 |
-| 빈 Orderbook 경고 | 타이밍 레이스 (collector 전 신호 평가) | ✅ crash 없음, 신호 무시 | 해결 완료 |
-| ~~cex_dex 미구현~~ | ~~_build_dex_adapter() 항상 None~~ | **S8 US-177에서 해소 예정** | US-177 |
+| # | 심각도 | 이슈 | 설명 | 해결 US |
+|---|--------|------|------|---------|
+| 1 | **CRITICAL** | 전략 영역 겹침 | _CROSS_EXCHANGE_CONSUMERS가 stat_arb+latency_arb에 cross_exchange 신호 라우팅 → 중복 거래 | US-187, US-194 |
+| 2 | **CRITICAL** | stat_arb 구조적 결함 | 교차거래소 동일심볼 mean-reversion = cross_exchange 동일 영역, WFE=-1.03 | US-188 |
+| 3 | **CRITICAL** | AdaptiveThreshold WR 기반 | WR 93.8%인데 손실 → WR>90%에서 edge 하향 = 손실 악화 피드백 루프 | US-201 |
+| 4 | **HIGH** | Auto-tuner 미작동 | ScheduledTuner 로그 미관찰, AdaptiveThreshold/RegimeDetector/ONNX 호출 미확인 | US-190, US-191 |
+| 5 | **HIGH** | 전략 간 포지션 충돌 | 2개 전략이 동일 symbol 동시 거래 가능, 방지 메커니즘 없음 | US-195 |
+| 6 | **HIGH** | 전략별 자본 할당 없음 | 7개 전략이 독립적으로 자본 사용, per-strategy 한도 없음 | US-196 |
+| 7 | **MEDIUM** | cross_exchange MIN_EDGE 과소 | 5bps → 실제 round-trip 비용 32-65bps, 슬리피지 1건이 17건 이익 소멸 | US-189 |
+| 8 | **LOW** | Phase D 대시보드 브라우저 미검증 | Chrome 렌더링, 모바일 반응형 미확인 | TF SF [단계 3-A] |
