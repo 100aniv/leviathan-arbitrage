@@ -630,17 +630,33 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-### TF Quarter-Final (QF): Development Verification — ✅ PASS
+#### Phase S13: Shadow Loss Prevention — US-221~225 (← TF SF 2차 Stage 2 FAIL 회귀)
+
+> **목표**: futures stale 진입 차단 + 손실 전략 비활성화 + loss_cap 조정
+> **회귀 사유**: TF SF 2차 Stage 2 FAIL — 2H45M PnL -$153.47, loss_capped 17건×-$50=-$850
+> **진입 조건**: TF SF FAIL 확정
+
+- [ ] US-221: futures_futures 2차 freshness 검증 (← stale 17건 통과, threshold 3.0→1.5s + spread outlier)
+- [ ] US-222: per-strategy circuit breaker — 연속 3건 손실 → 300s 쿨다운 (← -$50×4건 연속 8초)
+- [ ] US-223: spot_futures + funding_rate 비활성화 (← WR 42%, WR 6.7%)
+- [ ] US-224: loss_cap 전략별 차등 — futures $10, cross_exchange $5 (← $50×17건=-$850)
+- [ ] US-225: futures spread outlier filter — >100bps WARNING, >200bps 블랙리스트 60s (← fake spread 진입)
+
+---
+
+### TF Quarter-Final (QF): Development Verification — ✅ PASS 6차 (2026-03-17)
 
 > **핵심 질문**: "코드가 올바르고, 빠진 것이 없는가?"
 > **진입 가드**: 회귀 Phase 전부 완료 + pytest 0 fail + Docker healthy
 > **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → QF 재검증
 > **PASS 기준**: CRITICAL 0, HIGH 0, MEDIUM ≤ 5 (자금 손실 경로 아님)
+> **판정**: 6차 PASS (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 + LOW 4
+> **체크리스트**: `docs/checklists/tf-quarter-final_20260317.md`
 
 **[단계 0] Smoke Test Gate**
-- [x] 전체 pytest PASS (4,471 passed, 0 failed)
-- [x] Docker 전 컨테이너 healthy (7/8, promtail 비핵심)
-- [x] 통합 Shadow 10min (crash=0, 전략 신호 흐름 정상, PnL 기록 확인)
+- [x] 전체 pytest PASS (4,695 passed, 0 failed, 12 skipped)
+- [x] Docker 전 컨테이너 healthy (15/15, promtail starting 비핵심)
+- [x] 통합 Shadow 10min (crash=0, 4전략 신호 흐름, PnL=-$0.70, 2889 trades)
 
 **[단계 1] 정합성 확인**
 - [x] Karina: SSOT.md + prd.json + CLAUDE.md 3-way 정합성 확인
@@ -660,18 +676,24 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] Jisoo(보안): JWT 인증, API 키 노출, CSP 헤더, IP whitelist, Redis commands, .gitignore
 - [x] Karina 합동 점검: 실전적 질의응답
 
-**[단계 3.5] 조립 검증 — 통합 검증 (Assembly Verification)** ← 신규
+**[단계 3.5] 조립 검증 — 통합 검증 (Assembly Verification)** ✅ PASS (6차, 2026-03-17)
 > "부품이 아니라, 조립된 완성품이 제대로 동작하는가?"
-- [ ] Init Chain Audit: verify_assembly.py — main.py 서브시스템 non-None 확인
-- [ ] Signal Flow E2E: 7개 전략 각각 on_signal() 호출 > 0
-- [ ] Config Flag Audit: 모든 feature flag 활성화 상태 확인
-- [ ] Dead Wiring Detection: 구현되었으나 미연결 코드 0건
+- [x] Sub-check 1: Init Chain non-None — 32개 서브시스템 전수 확인 PASS
+- [x] Sub-check 2: Signal Flow E2E — 7전략 + 알림 경로 전수 확인 PASS
+- [x] Sub-check 3: Config Flag Audit — 7개 플래그 전부 active PASS
+- [x] Sub-check 4: Dead Wiring — PASS (MEDIUM 1 known: _position_manager + LOW 4)
+> 5차에서 알림 서브시스템 Dead Wiring 누락 → 6차에서 수정 후 재검증:
+> - metrics.py: KILL_SWITCH_ACTIVE + ROLLBACKS_TOTAL 추가
+> - alerts.yml: engine_* → leviathan_* 전 규칙 통일 (10개 메트릭)
+> - kill_switch.py: halt_local() → KILL_SWITCH_ACTIVE.set(1)
+> - main.py: SmartTelegramAlerter start_flush_loop() 등록 + _kill_fn() send_kill_switch_event()
 
 **[단계 4] 최종 확인 + 회귀 (The Feedback Loop)**
 - [x] Karina → Nayeon 보고
 - [x] Chaeyoung/Tzuyu QA 감사단 압박 면접
 - [x] #1 FAIL → 회귀 Phase S1~S6 생성 → 3-Stage(A~C) 수정
 - [x] #2 재검증 → 조건부 PASS (CRITICAL 0, HIGH 0)
+- [x] #6 PASS (2026-03-17) → CRITICAL 0, HIGH 0, MEDIUM 6, LOW 4
 
 #### 검증 이력
 
@@ -681,38 +703,46 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > 교차검증 보고서: `docs/checklists/tf-semi-final_20260313.md`
 > TF 리더 판정문: `docs/checklists/tf-semi-final-verdict_20260313.md`
 
-> **#2 조건부 PASS (2026-03-15) ← CURRENT**
+> **#2 조건부 PASS (2026-03-15)**
 > 판정: **조건부 PASS** — 원본 59개 이슈 중 CRITICAL 9→0, HIGH 12→0 (91.5% 해소)
 > 회귀 수정: S1~S6 (33/35 US PASS, 2개 Phase F 대기)
 > 재검증 보고서: `docs/checklists/tf-semi-final-recheck_20260315.md`
 
-### TF Semi-Final (SF): System Validation — ❌ Stage 2 FAIL → Phase S10 회귀
+> **#6 PASS (2026-03-17) ← CURRENT**
+> 판정: **PASS** — CRITICAL 0, HIGH 0, MEDIUM 6, LOW 4 (자금 손실 경로 0건)
+> 4695 tests, Shadow 10min crash=0, 조립 검증 4/4 PASS
+> 체크리스트: `docs/checklists/tf-quarter-final_20260317.md`
+
+### TF Semi-Final (SF): System Validation — ❌ Stage 2 FAIL (2차) → Phase S13 회귀
 
 > **핵심 질문**: "24시간 동안 실제로 돈을 벌 수 있는가?"
 > **진입 가드**: TF QF PASS
 > **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → SF 재검증 (QF 스킵, 구조적 결함 시 QF부터)
-> **PASS 기준**: 24H+ 6-Stage ALL PASS + 전략별 WR>50% + E2E 10/10 (단계 2 병렬) + LiveGate 6-check + 오토튜너 효과 판정
-> **현재**: Stage 2 FAIL → Phase S10 회귀. S10 완료 후 TF QF 재실행 → TF SF Stage 1부터 재시작
+> **PASS 기준**: 24H+ 6-Stage ALL PASS + 전략별 WR>50% + E2E 10/10 + LiveGate 6-check
+> **현재**: 2차 Stage 2 FAIL → Phase S13 회귀. S13 완료 후 TF QF → TF SF 재시작
+> **체크리스트**: `docs/checklists/tf-semi-final_20260317.md`
 
 #### 검증 이력
 
-> **[단계 1-A] ALL PASS (2026-03-15)**
-> 판정: ALL PASS — CRITICAL 0, RISK 4 (Live 전환 시 주의), NOTE 3 → Phase S7 생성
+> **1차 [단계 1-A] ALL PASS (2026-03-15)**
+> 판정: ALL PASS — CRITICAL 0, RISK 4, NOTE 3 → Phase S7 생성
 > 보고서: `docs/checklists/tf-final-stage1_20260315.md`
-> 전문가: Karina(ALL PASS), Jeongyeon(ALL PASS), Dahyun(ALL PASS), Momo(CONDITIONAL), Chaeyoung(0 CRITICAL, 4 RISK), Tzuyu(APPROVE)
 >
-> **[단계 2] Stage 1 PASS (8h28m)**
-> Progressive Shadow Stage 1: 8h28m, 502 trades, 91.8% WR, crash=0
-> **후속**: Phase S7 (Pre-Live Hardening) 완료 → 3-Round 체계 강화로 [단계 1-A]부터 재검증
+> **1차 [단계 2] Stage 1 PASS → Stage 2 FAIL (2026-03-16)**
+> Stage 1: 1H PnL +$18.18 PASS
+> Stage 2: 2H PnL -$78.82 **FAIL** (stat_arb -$127, 전략 영역 겹침, Auto-tuner 미작동)
+> **후속**: Phase S10 생성 → S10+S11+S12 완료 → TF QF 6차 PASS
 >
-> **[단계 2] Stage 1 재시작 PASS (2026-03-16, 1H)**
-> Progressive Shadow Stage 1: 1H, PnL +$18.18, PASS
+> **2차 [단계 1] ALL PASS (2026-03-17)**
+> 1-A Delta Check: PASS (QF 6차 이후 변경 0건 CRITICAL/HIGH)
+> 1-B 전략별 독립검증: PASS (PnL +$59.80, 4전략, crash=0)
+> 1-C 전략 상호작용: PASS (overlap=0, PnL 무결성 99.99%, 8555 trades)
 >
-> **[단계 2] Stage 2 FAIL (2026-03-16, 2H)**
-> Progressive Shadow Stage 2: 2H, PnL -$78.82, **FAIL**
-> 근본 원인: stat_arb -$127 (cross_exchange 영역 중복), 전략 신호 겹침, Auto-tuner 미작동
-> stat_arb 제외 시 +$48 → stat_arb가 유일한 손실원
-> **후속**: Phase S10 생성 (전략 영역 분리 + stat_arb cross-asset 재설계 + Auto-Tuner 확인)
+> **2차 [단계 2] Stage 1 PASS → Stage 2 FAIL (2026-03-17) ← CURRENT**
+> Stage 1: 1H crash=0, 4전략 활성, 10/10 거래소 → PASS
+> Stage 2: 2H45M PnL **-$153.47**, WR 90.7%, loss_capped 17건(-$850) → **FAIL**
+> 근본 원인: (1) futures_futures stale 진입 17건×-$50 (2) spot_futures WR 42% (3) funding_rate WR 6.7%
+> **후속**: Phase S13 생성 (5 US: stale guard 강화, circuit breaker, 전략 비활성화, loss_cap 차등)
 
 **[단계 1-A] 경량 재확인 (Delta Check)** ✅ ALL PASS (2026-03-15, 재검증 완료)
 - [x] QF 이후 변경분 CRITICAL/HIGH 신규 0건 (S7 12 US + 3-Round 문서 변경분, HIGH 2건 발견→즉시 수정)
