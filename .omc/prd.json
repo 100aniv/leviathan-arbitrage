@@ -2,9 +2,9 @@
   "project": "LEVIATHAN Arbitrage Engine",
   "version": "2.0",
   "created": "2026-03-08",
-  "updated": "2026-03-15",
+  "updated": "2026-03-17",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 220,
+  "total_stories": 216,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -39,7 +39,8 @@
     "S9": "Strategy Activation (TF QF FAIL 회귀)",
     "S10": "Strategy Architecture Hardening (전략 아키텍처 하드닝)",
     "S11": "Operations UX Core (운영 UX 핵심)",
-    "S12": "Extended UX + Analytics (확장 UX + 분석)"
+    "S12": "Extended UX + Analytics (확장 UX + 분석)",
+    "S13": "Shadow Loss Prevention (TF SF 2차 FAIL 회귀)"
   },
   "gap_dependency_order": "GAP9 -> GAP10 -> (GAP5,GAP6,GAP7 parallel) -> GAP3 -> GAP1,GAP2 -> GAP4",
   "stories": [

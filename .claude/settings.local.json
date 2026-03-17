@@ -14,7 +14,8 @@
       "Bash(git commit -m \"temp: SSOT migration Round 1 - State JSON foundation\n\n- Created 4 State JSON files (.omc/state/)\n  - leviathan-active-phase.json (current phase state)\n  - leviathan-current-stage.json (A/B/C tracking)\n  - leviathan-tf-status.json (QF/SF/Final status)\n  - team-roster.json (7 teams + TF TWICE)\n- Initialized notepad Priority Context\n- Added 3 project-memory directives\n\nRollback point: Round 1 complete\nNext: Round 2 (SSOT.md content separation)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\")",
       "Bash(git add SSOT.md SSOT_COMPLETE.md)",
       "Bash(git commit -m \"temp: SSOT migration Round 2 - 완료 Phase 아카이브\n\n- SSOT.md 871→586줄 (33% 감소, 285줄 제거)\n- SSOT_COMPLETE.md 285→557줄 (Phase S1-S12 추가)\n- §2 현재 상태: State JSON 포인터로 교체\n- Phase S1-S12 상세 → SSOT_COMPLETE.md 이동\n- Shadow GAP 이력 → SSOT_COMPLETE.md 이동\n\n검증: 수학 공식(§4) 무결성, Phase S13 유지\n\nRollback point: Round 2 complete\nNext: Round 3 (누락 탐지)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\")",
-      "Bash(md5)"
+      "Bash(md5)",
+      "Bash(python3 -c \"\nimport json\nwith open(''/Users/100aniv/Development/arbitrage_OMC/.omc/prd.json'') as f:\n    data = json.load(f)\n\nstories = data.get(''stories'', data.get(''user_stories'', []))\nif isinstance(stories, list):\n    total = len(stories)\n    passed = sum(1 for s in stories if s.get(''passes'') == True)\n    pending = sum(1 for s in stories if s.get(''passes'') == False)\n    print(f''Actual count: {total} total, {passed} passed, {pending} pending'')\nelse:\n    print(''Stories format unexpected'')\n\")"
     ],
     "deny": [],
     "ask": []
