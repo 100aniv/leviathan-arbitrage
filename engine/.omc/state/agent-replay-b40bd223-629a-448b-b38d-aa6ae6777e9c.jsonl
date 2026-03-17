@@ -1,0 +1,6 @@
+{"t":0,"agent":"a4e2d65","agent_type":"debugger","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a82ed8d","agent_type":"debugger","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"ae73836","agent_type":"build-fixer","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a82ed8d","agent_type":"debugger","event":"agent_stop","success":true,"duration_ms":209220}
+{"t":0,"agent":"a4e2d65","agent_type":"debugger","event":"agent_stop","success":true,"duration_ms":232750}
+{"t":0,"agent":"ae73836","agent_type":"build-fixer","event":"agent_stop","success":true,"duration_ms":677236}

@@ -1,0 +1,4 @@
+{"t":0,"agent":"aa98339","agent_type":"architect","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"aa98339","agent_type":"architect","event":"agent_stop","success":true,"duration_ms":268953}
+{"t":0,"agent":"a590597","agent_type":"ssot-keeper","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a590597","agent_type":"ssot-keeper","event":"agent_stop","success":true,"duration_ms":238848}

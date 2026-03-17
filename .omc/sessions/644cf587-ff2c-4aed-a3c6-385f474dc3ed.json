@@ -1,0 +1,10 @@
+{
+  "session_id": "644cf587-ff2c-4aed-a3c6-385f474dc3ed",
+  "ended_at": "2026-03-15T10:25:39.318Z",
+  "reason": "clear",
+  "agents_spawned": 5,
+  "agents_completed": 5,
+  "modes_used": [
+    "ultrawork"
+  ]
+}

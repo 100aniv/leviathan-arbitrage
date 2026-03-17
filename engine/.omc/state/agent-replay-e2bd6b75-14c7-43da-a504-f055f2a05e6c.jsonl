@@ -1,0 +1,7 @@
+{"t":0,"agent":"ac17808","agent_type":"deep-executor","event":"agent_stop","success":true}
+{"t":0,"agent":"afd1055","agent_type":"qa-tester","event":"agent_stop","success":true}
+{"t":0,"agent":"abbf6fb","agent_type":"designer","event":"agent_stop","success":true}
+{"t":0,"agent":"ab9e642","agent_type":"security-reviewer","event":"agent_stop","success":true}
+{"t":0,"agent":"a6b1290","agent_type":"quant-validator","event":"agent_stop","success":true}
+{"t":0,"agent":"a849770","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"a2b1067","agent_type":"scientist","event":"agent_stop","success":true}

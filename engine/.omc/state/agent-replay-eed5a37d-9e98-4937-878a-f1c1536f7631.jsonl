@@ -1,0 +1,15 @@
+{"t":0,"agent":"a575267","agent_type":"shadow-tester","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"ac5a27d","agent_type":"qa-tester","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a5377de","agent_type":"scientist","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a5377de","agent_type":"scientist","event":"agent_stop","success":true,"duration_ms":225206}
+{"t":0,"agent":"ac5a27d","agent_type":"qa-tester","event":"agent_stop","success":true,"duration_ms":271907}
+{"t":0,"agent":"a575267","agent_type":"shadow-tester","event":"agent_stop","success":true,"duration_ms":1051234}
+{"t":0,"agent":"a838eea","agent_type":"architect","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a58491a","agent_type":"verifier","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a838eea","agent_type":"architect","event":"agent_stop","success":true,"duration_ms":213891}
+{"t":0,"agent":"a58491a","agent_type":"verifier","event":"agent_stop","success":true,"duration_ms":939303}
+{"t":0,"agent":"ade717c","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"a5e042c","agent_type":"ssot-keeper","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a7657a2","agent_type":"git-master","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a7657a2","agent_type":"git-master","event":"agent_stop","success":true,"duration_ms":142940}
+{"t":0,"agent":"a5e042c","agent_type":"ssot-keeper","event":"agent_stop","success":true,"duration_ms":307782}

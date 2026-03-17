@@ -1,0 +1,214 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1773538229725,
+  "projectRoot": "/Users/100aniv/Development/arbitrage_OMC",
+  "techStack": {
+    "languages": [
+      {
+        "name": "C/C++",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Makefile"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "make build",
+    "testCommand": "make test",
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "scripts"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "dashboard": {
+      "path": "dashboard",
+      "purpose": null,
+      "fileCount": 15,
+      "lastAccessed": 1773538229559,
+      "keyFiles": [
+        "README.md",
+        "jest.config.ts",
+        "jest.setup.ts",
+        "next-env.d.ts",
+        "next.config.js"
+      ]
+    },
+    "docker": {
+      "path": "docker",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1773538229566,
+      "keyFiles": [
+        "dashboard.Dockerfile",
+        "engine.Dockerfile",
+        "init.sql"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 6,
+      "lastAccessed": 1773538229626,
+      "keyFiles": [
+        "QUANT_MANIFESTO.md",
+        "config_reference_ko.md",
+        "quick_start_ko.md",
+        "strategies_ko.md",
+        "user_guide_ko.md"
+      ]
+    },
+    "engine": {
+      "path": "engine",
+      "purpose": null,
+      "fileCount": 10,
+      "lastAccessed": 1773538229663,
+      "keyFiles": [
+        "=4.1",
+        "alembic.ini",
+        "coverage.xml",
+        "pyproject.toml",
+        "run_cross_validation.py"
+      ]
+    },
+    "infra": {
+      "path": "infra",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1773538229664,
+      "keyFiles": []
+    },
+    "reports": {
+      "path": "reports",
+      "purpose": null,
+      "fileCount": 8,
+      "lastAccessed": 1773538229667,
+      "keyFiles": [
+        "cross_validation_results.json",
+        "tune_cex_dex_final.json",
+        "tune_cross_exchange_final.json",
+        "tune_funding_rate_final.json",
+        "tune_futures_futures_final.json"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 1,
+      "lastAccessed": 1773538229671,
+      "keyFiles": [
+        "backup_db.sh"
+      ]
+    },
+    "engine/config": {
+      "path": "engine/config",
+      "purpose": "Configuration files",
+      "fileCount": 3,
+      "lastAccessed": 1773538229679,
+      "keyFiles": [
+        "shadow_mode.json",
+        "strategy_params.json",
+        "testnet.env.example"
+      ]
+    },
+    "engine/docs": {
+      "path": "engine/docs",
+      "purpose": "Documentation",
+      "fileCount": 2,
+      "lastAccessed": 1773538229694,
+      "keyFiles": [
+        "COMPLIANCE_REPORT.md",
+        "native_adapter_api_contract.md"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "engine/src/main.py",
+      "accessCount": 6,
+      "lastAccessed": 1773538366191,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/core/signal.py",
+      "accessCount": 2,
+      "lastAccessed": 1773538303556,
+      "type": "directory"
+    },
+    {
+      "path": "engine/src",
+      "accessCount": 2,
+      "lastAccessed": 1773538332896,
+      "type": "directory"
+    },
+    {
+      "path": "engine/src/core/config.py",
+      "accessCount": 1,
+      "lastAccessed": 1773538243051,
+      "type": "file"
+    },
+    {
+      "path": "dashboard/src/app/login/page.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1773538292753,
+      "type": "file"
+    },
+    {
+      "path": "dashboard/src/middleware.ts",
+      "accessCount": 1,
+      "lastAccessed": 1773538293025,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/api/auth.py",
+      "accessCount": 1,
+      "lastAccessed": 1773538310950,
+      "type": "file"
+    },
+    {
+      "path": "dashboard/.env.local",
+      "accessCount": 1,
+      "lastAccessed": 1773538312445,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/infra/redis/event_bus.py",
+      "accessCount": 1,
+      "lastAccessed": 1773538317488,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/modes/shadow.py",
+      "accessCount": 1,
+      "lastAccessed": 1773538344902,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/infra/redis/memory_bus.py",
+      "accessCount": 1,
+      "lastAccessed": 1773538360199,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

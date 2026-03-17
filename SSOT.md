@@ -16,7 +16,7 @@
 | 엔진 | Python 3.12+ (AsyncIO) + Rust (PyO3 hot-path) |
 | 대시보드 | Next.js 14 (App Router) + JWT 인증 + 실시간 WS 피드 |
 | 거래소 | 10개 네이티브 WebSocket 어댑터 (7 spot + Binance/OKX/Bybit Futures, ccxt 미사용) |
-| 전략 | 8개 (7개 기본 + CexDex 조건부) |
+| 전략 | 7개 (6개 기본 + CexDex 조건부, latency_arb는 US-194에서 cross_exchange로 병합) |
 | 인프라 | Docker Compose 15 서비스, TimescaleDB + Redis + Prometheus + Grafana + Loki + Alertmanager + WAL백업 |
 | 실행 모드 | Backtest → Paper → Shadow → Live |
 
@@ -100,7 +100,7 @@ Engine.run()
   ├── _init_infrastructure()   # EventBus (Redis/InMemory), DB, Telegram
   ├── _init_exchanges()        # Paper/Native 어댑터
   ├── _init_signal_pipeline()  # PriceHub → CostCalculator → SignalGenerator
-  ├── _init_strategies()       # 8개 전략 등록
+  ├── _init_strategies()       # 7개 전략 등록 (latency_arb 병합됨, US-194)
   ├── _init_risk()             # Guardian, CircuitBreaker, KillSwitch
   ├── _init_execution()        # AtomicExecutor, TradeRequestConsumer
   ├── _start_background_tasks()# Health, Reconcile, Heartbeat, Shadow, LiveGate
@@ -155,7 +155,7 @@ Engine.run()
 | 4 | triangular | `strategies/triangular.py` | 대기(CONDITIONAL) | ~~GAP 7,4~~ RESOLVED, 실시장 cycle 희소 | 2-10% |
 | 5 | funding_rate | `strategies/funding_rate.py` | **검증됨** | 4거래소×8심볼 수집 성공, diff<threshold 시 정상 필터 | 15-30% |
 | 6 | statistical_arb | `strategies/statistical_arb.py` | **검증됨** | ~~GAP 3~~ RESOLVED, 2 trades 실행, WFE 음수 주의 | 11-16% |
-| 7 | latency_arb | `strategies/latency_arb.py` | **활성** | cross_exchange 신호 라우팅 추가, 82 trades in 10min | 20-100%+ |
+| 7 | latency_arb | `strategies/latency_arb.py` | **병합됨(US-194)** | cross_exchange.latency_boost 모드로 통합, deprecated shim 유지 | (cross_exchange 포함) |
 | 8 | cex_dex | `strategies/cex_dex.py` | 조건부 | GAP 8 (DEX stub, TF) | 10-50% |
 
 > **GAP 의존성 순서**: GAP9→10→(5,6,7 병렬)→3→(1,2)→4 — 상세: §9 참조
@@ -336,7 +336,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 211개 User Stories, 209개 완료, 2개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 216개 User Stories, 209개 완료, 7개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)

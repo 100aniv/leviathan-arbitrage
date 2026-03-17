@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"npx tsc --noEmit 2>&1\",\"timeout\":60000}",
+  "error": "Exit code 2\nsrc/app/system/page.tsx(245,12): error TS2552: Cannot find name 'MOCK_CONTAINERS'. Did you mean 'containers'?\nsrc/app/system/page.tsx(245,32): error TS7006: Parameter 'container' implicitly has an 'any' type.\nsrc/components/GlobalHeatmap.tsx(106,64): error TS2304: Cannot find name 'genMockGrid'.\nsrc/components/GlobalHeatmap.tsx(111,13): error TS2304: Cannot find name 'genMockGrid'.\nsrc/components/GlobalHeatmap.tsx(118,15): error TS2304: Cannot find name 'genMockGrid'.\nsrc/components/...",
+  "timestamp": "2026-03-14T10:28:33.570Z",
+  "retry_count": 1
+}
