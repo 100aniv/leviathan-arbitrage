@@ -263,8 +263,10 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **Tests**: 4,695 passed, 0 failed, 12 skipped
 - **PRD**: `.omc/prd.json` (211개 US, 209 pass / 2 pending)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: TF SF → TF Final → Live
-- **TF QF 5차**: ✅ PASS (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 (단계 3.5 조립 검증 포함, 4/4 sub-check PASS)
+- **다음 작업**: Phase S13 (5 US) → TF QF → TF SF → TF Final → Live
+- **TF QF 6차**: ✅ PASS (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 + LOW 4 (단계 3.5 알림 Dead Wiring 수정 포함)
+- **TF SF 2차**: ❌ FAIL (2026-03-17) — 2H45M PnL -$153.47, loss_capped 17건(-$850), futures stale 진입
+- **Phase S13**: 5 US (US-221~225) — futures stale guard 강화, per-strategy circuit breaker, spot/funding 비활성화, loss_cap 차등
 - **Phase S12 핵심**: ✅ 완료 (2026-03-17) — SmartTelegramAlerter, Analytics/Alerts/Portfolio/Settings 페이지, 사이드바 3그룹, Telegram Bot 커맨드, 주간 리포트
 - **Phase S10 핵심**: ✅ 완료 — latency_arb 병합(8→7전략), stat_arb cross-asset, AdaptiveThreshold 복합지표, futures stale guard
 - **Phase S10 플랜**: `.claude/plans/goofy-napping-feather.md`

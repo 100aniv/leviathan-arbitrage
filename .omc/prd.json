@@ -3785,6 +3785,101 @@
       ],
       "dependencies": [],
       "source": "일요일 23:59 KST"
+    },
+    {
+      "id": "US-221",
+      "title": "futures_futures 2차 freshness 검증 (← TF SF Stage 2 FAIL: stale 17건 통과)",
+      "phase": "S13",
+      "priority": 221,
+      "passes": false,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/strategies/futures_futures.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "futures_futures 진입 직전 양쪽 orderbook age < 1.5s 재확인 (현재 3.0s → 1.5s)",
+        "spread > 200bps인 경우 stale 의심 → 진입 차단 (outlier filter)",
+        "stale_threshold env var FUTURES_STALE_THRESHOLD_S 추가 (기본 1.5s)",
+        "테스트: stale orderbook으로 fake spread 생성 시 진입 차단 확인"
+      ]
+    },
+    {
+      "id": "US-222",
+      "title": "per-strategy circuit breaker — 연속 손실 자동 쿨다운 (← TF SF: -$50 x 4건 연속)",
+      "phase": "S13",
+      "priority": 222,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/manager.py",
+        "engine/src/risk/guardian.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "StrategyManager에 per-strategy loss counter 추가",
+        "연속 N건(기본 3) 손실 시 해당 전략 300s 쿨다운",
+        "쿨다운 중 해당 전략 신호 무시 (다른 전략은 정상 동작)",
+        "쿨다운 해제 후 counter 리셋",
+        "Prometheus 메트릭: leviathan_strategy_cooldown_total counter",
+        "테스트: 연속 3건 손실 → 쿨다운 진입 + 300s 후 해제 확인"
+      ]
+    },
+    {
+      "id": "US-223",
+      "title": "spot_futures + funding_rate 비활성화 (← TF SF: WR 42%, WR 6.7%)",
+      "phase": "S13",
+      "priority": 223,
+      "passes": false,
+      "files": [
+        "engine/.env",
+        "engine/config/trading.json"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "SHADOW_DISABLED_STRATEGIES=spot_futures_v1,funding_rate_v1 설정",
+        "trading.json disabled_strategies에 동기화",
+        "Shadow 실행 시 해당 전략 신호 무시 확인",
+        "나머지 전략(cross_exchange, futures_futures, statistical_arb) 정상 동작"
+      ]
+    },
+    {
+      "id": "US-224",
+      "title": "loss_cap 동적 조정 — $50 → 전략별 차등 (← TF SF: -$850 집중 손실)",
+      "phase": "S13",
+      "priority": 224,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/config/trading.json"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "SHADOW_MAX_LOSS_PER_TRADE_USD를 전략별 차등 설정 가능하게 변경",
+        "futures_futures: max_loss $10 (기존 $50에서 하향)",
+        "cross_exchange: max_loss $5 (소액 전략)",
+        "trading.json에 per-strategy max_loss 설정 추가",
+        "테스트: 전략별 다른 cap 적용 확인"
+      ]
+    },
+    {
+      "id": "US-225",
+      "title": "futures spread outlier filter 강화 (← TF SF: fake spread 진입)",
+      "phase": "S13",
+      "priority": 225,
+      "passes": false,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/core/signal.py"
+      ],
+      "dependencies": [
+        "US-221"
+      ],
+      "acceptanceCriteria": [
+        "futures_futures spread > 100bps 시 WARNING 로그 + 진입 보류",
+        "spread > 200bps 시 stale 확정 → 양쪽 거래소 블랙리스트 60s",
+        "정상 spread 범위 (5-50bps) 통계 기반 동적 임계값 옵션",
+        "테스트: 200bps fake spread → 블랙리스트 + 60s 후 해제"
+      ]
     }
   ]
 }

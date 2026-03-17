@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-17 (Phase S12 완료 — SmartTelegramAlerter, Analytics/Alerts/Portfolio/Settings 페이지, 사이드바 재구성, Telegram Bot 커맨드, 주간 리포트) | 최신 커밋: 3f896e8
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (211개 User Stories, 209 pass / 2 pending — 9개 US는 과거 삭제/합병으로 prd.json에서 제거됨)
-> **실행 순서**: A~M ✅ → 회귀 **S1~S9** ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** ✅ → **Phase S11** ✅ → **Phase S12** ✅ → TF QF 5차 ✅ → TF SF → TF Final → Live
+> 마지막 업데이트: 2026-03-17 (TF SF Stage 2 FAIL → Phase S13 회귀 생성) | 최신 커밋: aba84b6
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (216개 User Stories, 209 pass / 7 pending)
+> **실행 순서**: A~M ✅ → **S1~S9** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13** → TF QF → TF SF → TF Final → Live
 
 ---
 
@@ -32,9 +32,13 @@ Phase:        Phase S12 Extended UX + Analytics ✅ (2026-03-17)
 커버리지:     86%
 컴플라이언스: 100% (23/23 PASS)
 현재 모드:    DATA_MODE=shadow, EXECUTION_MODE=paper
-최신 커밋:    3f896e8
-다음 작업:    TF SF → TF Final → Live
-완료된 US:    209/211 (S12 완료 2026-03-17, prd.json 209 pass / 2 pending — Phase F US-055, US-056만 남음)
+최신 커밋:    aba84b6
+다음 작업:    Phase S13 (5 US) → TF QF → TF SF → TF Final → Live
+완료된 US:    209/216 (prd.json 209 pass / 7 pending — Phase F US-055,056 + Phase S13 US-221~225)
+TF SF 2차:   ❌ Stage 2 FAIL (2H45M PnL -$153.47) → Phase S13 회귀
+              Stage 1: 1H crash=0, 4전략, 10/10 → PASS
+              Stage 2: 2H45M PnL -$153.47, WR 90.7%, loss_capped 17건(-$850) → FAIL
+              근본원인: (1) futures stale 진입 17건×-$50 (2) spot_futures WR 42% (3) funding_rate WR 6.7%
 TF QF:        ✅ PASS 6차 (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 + LOW 4
               6차(2026-03-17): **PASS** — 단계 3.5 재수행: 알림 Dead Wiring Critical 2+High 3 수정 후 재검증 통과
                 단계 3.5 조립 검증 (4/4 sub-check PASS):
