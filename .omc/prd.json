@@ -4,7 +4,7 @@
   "created": "2026-03-08",
   "updated": "2026-03-17",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 216,
+  "total_stories": 228,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -3880,6 +3880,279 @@
         "spread > 200bps 시 stale 확정 → 양쪽 거래소 블랙리스트 60s",
         "정상 spread 범위 (5-50bps) 통계 기반 동적 임계값 옵션",
         "테스트: 200bps fake spread → 블랙리스트 + 60s 후 해제"
+      ]
+    },
+    {
+      "id": "US-226",
+      "title": "CRITICAL 버그 5개 즉시 수정 — funding_rate 하드코딩, estimate_cost 슬리피지, AdaptiveThreshold 지연, RegimeDetector 미연결, Auto-tuner 검증",
+      "phase": "S13",
+      "priority": 226,
+      "passes": false,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/friction/cost_calculator.py",
+        "engine/src/main.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "real_signal_producer.py:263 funding_rate=0.0 하드코딩 제거 → _latest_funding_rates 캐시에서 실제 레이트 조회",
+        "cost_calculator.py estimate_cost()에 ESTIMATE_COST_SLIPPAGE_BPS(기본 5) 슬리피지 근사 추가",
+        "main.py _adaptive_threshold_loop() 첫 실행 즉시(기존 1시간 지연 제거)",
+        "RealSignalProducer에 regime_detector 파라미터 추가 + main.py에서 전달",
+        "Shadow 시작 시 ScheduledTuner 상태 로그 출력 + 핫-리로드 콜백 성공/실패 로깅",
+        "테스트: 각 버그 수정별 단위 테스트 (15개)"
+      ]
+    },
+    {
+      "id": "US-227",
+      "title": "4계층 Stale 감지 시스템 — 타임스탬프 분리 + 하트비트 EMA + 시퀀스 갭 + 스프레드 정상성",
+      "phase": "S13",
+      "priority": 227,
+      "passes": false,
+      "files": [
+        "engine/src/core/stale_detector.py",
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/core/order_book.py",
+        "engine/src/collectors/binance_futures_collector.py",
+        "engine/src/collectors/bybit_futures_collector.py",
+        "engine/src/collectors/okx_futures_collector.py"
+      ],
+      "dependencies": [
+        "US-221"
+      ],
+      "acceptanceCriteria": [
+        "Layer 1: FUTURES_STALE_THRESHOLD_S=1.5 + SPOT_STALE_THRESHOLD_S=3.0 분리",
+        "Layer 2: 거래소별 업데이트 빈도 EMA 추적, 5×EMA 초과 시 stale 판정 (하트비트 vs 조용한 시장 구분)",
+        "Layer 3: OrderBook에 sequence_number 추가, Binance pu/Bybit u/OKX 시퀀스 파싱 (없으면 패스스루)",
+        "Layer 4: 스프레드 > 200bps 또는 60분 중앙값 5배 초과 시 오더북 손상 판정",
+        "check_all_layers() → StalenessResult 반환 (계층별 pass/fail)",
+        "Prometheus STALE_LAYER_REJECTED{layer} 카운터",
+        "테스트: Layer별 5-7개 + 통합 + 엣지케이스 (25개)"
+      ]
+    },
+    {
+      "id": "US-228",
+      "title": "전략별 서킷브레이커 상태머신 — ACTIVE/THROTTLED/HALTED/SUSPENDED + 복합 점수",
+      "phase": "S13",
+      "priority": 228,
+      "passes": false,
+      "files": [
+        "engine/src/risk/per_strategy_cb.py",
+        "engine/src/risk/guardian.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "PerStrategyCBState: ACTIVE→THROTTLED(score>0.5)→HALTED(score>0.7)→SUSPENDED(1시간 3회 HALTED)",
+        "복합 점수: 0.4×DD + 0.3×손실률 + 0.2×스프레드이상 + 0.1×체결률",
+        "최소 20거래 후 평가 시작 (콜드 스타트 보호)",
+        "RiskGuardian CHECK #12 추가 (글로벌 CB > 전략별 CB 계층)",
+        "글로벌 연동: halted_count >= active_count 시 글로벌 OPEN + 2개 독립 거래소 이상 감지 조건",
+        "테스트: 상태 전환, 격리 독립성, 복합 점수 계산 (30개)"
+      ]
+    },
+    {
+      "id": "US-229",
+      "title": "spot_futures/funding_rate 시그널 레벨 사전 필터 강화 + cex_dex 비활성화",
+      "phase": "S13",
+      "priority": 229,
+      "passes": false,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/strategies/spot_futures.py",
+        "engine/src/strategies/funding_rate.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [
+        "US-223",
+        "US-226"
+      ],
+      "acceptanceCriteria": [
+        "real_signal_producer _evaluate_spot_futures: basis_bps < 20 시 시그널 미발행 + 타임스탬프 차이 < 300ms",
+        "real_signal_producer _evaluate_funding_rate_arb: diff_bps < 35 시 시그널 미발행",
+        "SHADOW_DISABLED_STRATEGIES 기본값: spot_futures_basis,funding_rate_arb,cex_dex_hybrid",
+        "spot_futures min_basis_bps: 15→25, funding_rate min_funding_diff_bps: 30→50",
+        "테스트: 사전 필터 동작 + 비활성화 + 파라미터 강화 (20개)"
+      ]
+    },
+    {
+      "id": "US-230",
+      "title": "스프레드 이상치 필터 — 적응형 롤링 중앙값 + 타임스탬프 교차검증 300ms",
+      "phase": "S13",
+      "priority": 230,
+      "passes": false,
+      "files": [
+        "engine/src/core/stale_detector.py",
+        "engine/src/core/real_signal_producer.py"
+      ],
+      "dependencies": [
+        "US-225",
+        "US-227"
+      ],
+      "acceptanceCriteria": [
+        "(심볼, 거래소쌍)별 롤링 중앙값 스프레드 추적 (deque 200)",
+        "현재 스프레드 > 3× 중앙값 → 거부",
+        "|book_a.last_update_time - book_b.last_update_time| < 300ms 교차검증",
+        "Prometheus SPREAD_OUTLIER_REJECTED 카운터",
+        "테스트: 이상치 감지, 타임스탬프 차이 필터 (15개)"
+      ]
+    },
+    {
+      "id": "US-231",
+      "title": "stat_arb z-score 하드스톱 3.5 + Kalman stale 가드 + 레짐 게이트",
+      "phase": "S13",
+      "priority": 231,
+      "passes": false,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/strategies/statistical_arb.py"
+      ],
+      "dependencies": [
+        "US-226"
+      ],
+      "acceptanceCriteria": [
+        "STAT_ARB_Z_HARDSTOP=3.5 env: |z| > 3.5 시 시그널 미발행 + 쿨다운 2배",
+        "Kalman stale 가드: stale 데이터로 Kalman 업데이트 건너뜀 (β 오염 방지)",
+        "레짐 게이트: stat_arb CALM/NORMAL만, VOLATILE/CRISIS 차단 (HMM↔Threshold 매핑)",
+        "진입 임계값 2.5 유지 (Optuna 그리드 서치에서 최적값 결정 전까지)",
+        "테스트: 하드스톱, Kalman 가드, 레짐 게이트 (15개)"
+      ]
+    },
+    {
+      "id": "US-232",
+      "title": "전략 간 충돌 방지 — PositionRegistry 심볼 레벨 락 + 우선순위 계층",
+      "phase": "S13",
+      "priority": 232,
+      "passes": false,
+      "files": [
+        "engine/src/risk/position_registry.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "PositionRegistry: (exchange, symbol) 심볼 레벨 락, TTL 60초 자동 해제",
+        "우선순위: cross_exchange > futures_futures > statistical_arb > triangular > 나머지",
+        "기존 trade_consumer.py _recent_trades(10초 중복 방지)와 공존",
+        "Shadow 모드에서 try_lock() → 실패 시 스킵 + STRATEGY_OVERLAP_PREVENTED 카운터",
+        "테스트: 락 획득, 우선순위 선점, TTL 만료, asyncio 안전 (12개)"
+      ]
+    },
+    {
+      "id": "US-233",
+      "title": "futures_futures 전용 강화 — min_spread 15bps + 호가 깊이 + 노셔널 캡",
+      "phase": "S13",
+      "priority": 233,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/futures_futures.py",
+        "engine/src/core/real_signal_producer.py"
+      ],
+      "dependencies": [
+        "US-221"
+      ],
+      "acceptanceCriteria": [
+        "min_spread_bps: 8→15 (왕복 수수료 10bps + 슬리피지 3bps + 버퍼 2bps)",
+        "max_spread_bps: 80 추가 (이상치 상한)",
+        "min_book_depth_usd: 1000 추가 (비유동성 = stale)",
+        "max_notional_usd: None→200 (거래당 노출 제한)",
+        "호가 깊이 체크: book.best_bid_size × price < 1000 시 스킵",
+        "Prometheus FUTURES_FUTURES_SIGNAL_REJECTED{reason} 카운터",
+        "테스트: 스프레드 범위, 호가 깊이, 노셔널 캡 (12개)"
+      ]
+    },
+    {
+      "id": "US-234",
+      "title": "AdaptiveThreshold + RegimeDetector Shadow 통합 + Auto-tuner 미니 튜너",
+      "phase": "S14",
+      "priority": 234,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/main.py",
+        "engine/src/tuning/scheduled_tuner.py"
+      ],
+      "dependencies": [
+        "US-226"
+      ],
+      "acceptanceCriteria": [
+        "shadow.py에 regime_detector + adaptive_threshold 파라미터 추가",
+        "Shadow PnL 60초 주기 regime_detector.detect() 호출",
+        "Shadow WR 300초 주기 adaptive_threshold.adjust() 호출",
+        "CRISIS 레짐 시 min_edge 즉시 2배 상향 (log-only 모드로 시작)",
+        "Shadow 전용 미니 튜너: 2시간 데이터 후 Optuna n_trials=20 (별도 프로세스)",
+        "Shadow 전용 콜백 _shadow_params_hot_reload() 분리 (live 파라미터 오염 방지)",
+        "테스트: Shadow 통합 + 콜백 격리 (12개)"
+      ]
+    },
+    {
+      "id": "US-235",
+      "title": "cross_exchange 미세 조정 — max_spread 100bps + min_book_depth 500",
+      "phase": "S13",
+      "priority": 235,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/cross_exchange.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "max_spread_bps: 100 추가 (이상치 상한)",
+        "min_book_depth_usd: 500 추가 (얇은 호가 거부)",
+        "테스트: 상한 스프레드 거부, 호가 깊이 체크 (5개)"
+      ]
+    },
+    {
+      "id": "US-236",
+      "title": "엔진 Dead Wiring 전수 수정 — stat_arb Dead Code, _position_manager None, Redis 오타, PortfolioState 미연결",
+      "phase": "S13",
+      "priority": 236,
+      "passes": false,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/strategies/manager.py",
+        "engine/src/execution/reconciler.py",
+        "engine/src/risk/guardian.py"
+      ],
+      "dependencies": [
+        "US-226"
+      ],
+      "acceptanceCriteria": [
+        "stat_arb on_orderbook_update() 호출 경로 연결 (S10 cross-asset 아키텍처 활성화)",
+        "_position_manager 초기화 완료 → 포지션 API 실제 데이터 반환",
+        "SmartTelegramAlerter Redis 오타 수정 (_redis → _redis_client, main.py:491)",
+        "_http_client 공유 인스턴스 생성 (Engine.__init__에 httpx.AsyncClient)",
+        "RiskGuardian PortfolioState에 volatility_1min/24h, net_exposures, strategy_capital_used 전달",
+        "Shadow PowerLaw 이중 슬리피지 확인 + CLAUDE.md 규칙 준수",
+        "테스트: 각 Dead Wiring 수정별 단위 테스트 (20개)"
+      ]
+    },
+    {
+      "id": "US-237",
+      "title": "대시보드 정합성 + 로그인 수정 — CORS/CSP, Alert API 경로, ParameterSlider, JWT 검증",
+      "phase": "S13",
+      "priority": 237,
+      "passes": false,
+      "files": [
+        "docker-compose.yml",
+        "dashboard/next.config.js",
+        "dashboard/src/lib/api.ts",
+        "dashboard/src/middleware.ts",
+        "engine/src/api/routes/alerts.py",
+        "engine/src/api/routes/health.py"
+      ],
+      "dependencies": [
+        "US-236"
+      ],
+      "acceptanceCriteria": [
+        "Docker 환경 로그인 동작: docker-compose.yml NEXT_PUBLIC_ENGINE_URL 수정 (localhost → engine:8000)",
+        "CSP connect-src에 실제 접속 IP/도메인 추가 (next.config.js)",
+        "root .env CORS_ORIGINS를 engine/.env와 동기화 (https 포함)",
+        "Alert API 경로 통일: /alerts/{id}/acknowledge (path param)",
+        "ParameterSlider 엔드포인트 구현 또는 컴포넌트 제거",
+        "HealthResponse에 engine_running + kill_switch_active 필드 추가",
+        "middleware.ts JWT 서명 검증 추가 (현재 토큰 존재만 체크)",
+        "per-strategy CB 상태 API 노출 → 대시보드 표시",
+        "테스트: 로그인 플로우 + API 정합성 (10개)"
       ]
     }
   ]

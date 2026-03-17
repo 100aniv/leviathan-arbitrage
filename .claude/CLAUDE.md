@@ -264,14 +264,16 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S9 ✅ → TF QF ✅ → TF SF FAIL → **Phase S10** ✅ → **Phase S11** ✅ → **Phase S12** ✅ → TF QF 5차 ✅ → TF SF → TF Final → Live
+- **Phase 순서**: A~M✅ → S1~S12 ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13** (14 US) → **Phase S14** (1 US) → TF QF → TF SF → TF Final → Live
 - **Tests**: 4,695 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (211개 US, 209 pass / 2 pending)
+- **PRD**: `.omc/prd.json` (228개 US, 209 pass / 19 pending)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: Phase S13 (5 US) → TF QF → TF SF → TF Final → Live
+- **다음 작업**: Phase S13 (16 US: US-221~233, US-235~237) + Phase S14 (1 US: US-234) → TF QF → TF SF → TF Final → Live
 - **TF QF 6차**: ✅ PASS (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 + LOW 4 (단계 3.5 알림 Dead Wiring 수정 포함)
 - **TF SF 2차**: ❌ FAIL (2026-03-17) — 2H45M PnL -$153.47, loss_capped 17건(-$850), futures stale 진입
-- **Phase S13**: 5 US (US-221~225) — futures stale guard 강화, per-strategy circuit breaker, spot/funding 비활성화, loss_cap 차등
+- **Phase S13**: 16 US (US-221~233, US-235~237) — 기관급 전략 완전체: CRITICAL 버그 5개 수정, 4계층 Stale 감지, 전략별 CB, loss_cap 차등, 레짐 게이트, PositionRegistry, Dead Wiring 수정, 대시보드 로그인
+- **Phase S14**: 1 US (US-234) — Auto-tuner Shadow 통합 + Optuna 미니 튜너
+- **Phase S13~S14 플랜**: `.claude/plans/snuggly-chasing-spark.md` (15 Part, 5라운드 검증, 9명 전문가 리뷰)
 - **Phase S12 핵심**: ✅ 완료 (2026-03-17) — SmartTelegramAlerter, Analytics/Alerts/Portfolio/Settings 페이지, 사이드바 3그룹, Telegram Bot 커맨드, 주간 리포트
 - **Phase S10 핵심**: ✅ 완료 — latency_arb 병합(8→7전략), stat_arb cross-asset, AdaptiveThreshold 복합지표, futures stale guard
 - **Phase S10 플랜**: `.claude/plans/goofy-napping-feather.md`

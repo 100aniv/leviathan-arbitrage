@@ -2,8 +2,8 @@
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-17 (TF SF Stage 2 FAIL → Phase S13 회귀 생성) | 최신 커밋: aba84b6
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (216개 User Stories, 209 pass / 7 pending)
-> **실행 순서**: A~M ✅ → **S1~S9** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13** → TF QF → TF SF → TF Final → Live
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (228개 User Stories, 209 pass / 19 pending)
+> **실행 순서**: A~M ✅ → **S1~S9** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13** (14 US) → **Phase S14** (1 US) → TF QF → TF SF → TF Final → Live
 
 ---
 
@@ -35,7 +35,7 @@
 **Tests**: 4,695 passed / 0 failed / 12 skipped
 **Coverage**: 86%
 **TF Status**: QF 6차 PASS, SF 2차 FAIL → S13 회귀
-**Next**: Phase S13 (US-221~225) → TF QF → TF SF → TF Final → Live
+**Next**: Phase S13 (US-221~233, US-235~237, 16개) + Phase S14 (US-234, 1개) → TF QF → TF SF → TF Final → Live
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 
@@ -343,7 +343,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 216개 User Stories, 209개 완료, 7개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 228개 User Stories, 209개 완료, 19개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -352,17 +352,37 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 > Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 
-#### Phase S13: Shadow Loss Prevention — US-221~225 (← TF SF 2차 Stage 2 FAIL 회귀)
+#### Phase S13: 기관급 전략 완전체 — US-221~233, US-235 (← TF SF 2차 FAIL + 6명 전문가 리뷰)
 
-> **목표**: futures stale 진입 차단 + 손실 전략 비활성화 + loss_cap 조정
+> **목표**: 기관급 전략 완전체 구현. CRITICAL 버그 5개 수정 + 4계층 Stale 감지 + 전략별 CB + Auto-tuner 연동
 > **회귀 사유**: TF SF 2차 Stage 2 FAIL — 2H45M PnL -$153.47, loss_capped 17건×-$50=-$850
+> **전문가 리뷰**: Karina(아키텍트), Yeji(퀀트), Winter(비판), Wonyoung(테스트), Jisoo(보안), 디버거 + 외부 리서치 3팀
+> **플랜**: `.claude/plans/snuggly-chasing-spark.md` (15 Part, 5라운드 검증)
 > **진입 조건**: TF SF FAIL 확정
 
 - [ ] US-221: futures_futures 2차 freshness 검증 (← stale 17건 통과, threshold 3.0→1.5s + spread outlier)
-- [ ] US-222: per-strategy circuit breaker — 연속 3건 손실 → 300s 쿨다운 (← -$50×4건 연속 8초)
+- [ ] US-222: per-strategy circuit breaker — 연속 손실 자동 쿨다운 (← -$50×4건 연속 8초)
 - [ ] US-223: spot_futures + funding_rate 비활성화 (← WR 42%, WR 6.7%)
-- [ ] US-224: loss_cap 전략별 차등 — futures $10, cross_exchange $5 (← $50×17건=-$850)
+- [ ] US-224: loss_cap 전략별 차등 — futures $3, cross_exchange $7 (← $50×17건=-$850, $70 자본 기준 재설계)
 - [ ] US-225: futures spread outlier filter — >100bps WARNING, >200bps 블랙리스트 60s (← fake spread 진입)
+- [ ] US-226: CRITICAL 버그 5개 수정 — funding_rate=0.0 하드코딩, estimate_cost 슬리피지, AdaptiveThreshold 지연, RegimeDetector 미연결, Auto-tuner 검증
+- [ ] US-227: 4계층 Stale 감지 — 타임스탬프 분리 + 하트비트 EMA + 시퀀스 갭 + 스프레드 정상성
+- [ ] US-228: 전략별 서킷브레이커 상태머신 — ACTIVE/THROTTLED/HALTED/SUSPENDED + 복합 점수 + FIA 2024
+- [ ] US-229: spot_futures/funding_rate 시그널 레벨 사전 필터 강화 + cex_dex 명시적 비활성화
+- [ ] US-230: 스프레드 이상치 필터 — 적응형 롤링 중앙값 + 타임스탬프 교차검증 300ms
+- [ ] US-231: stat_arb z-score 하드스톱 3.5 + Kalman stale 가드 + 레짐 게이트 (학계 합의 Park 2026)
+- [ ] US-232: 전략 간 충돌 방지 — PositionRegistry 심볼 레벨 락 + 우선순위 계층
+- [ ] US-233: futures_futures 전용 강화 — min_spread 15bps + 호가 깊이 + 노셔널 캡
+- [ ] US-235: cross_exchange 미세 조정 — max_spread 100bps + min_book_depth 500
+- [ ] US-236: 엔진 Dead Wiring 전수 수정 — stat_arb Dead Code 연결, _position_manager 초기화, Redis 오타, PortfolioState 미연결
+- [ ] US-237: 대시보드 정합성 + 로그인 수정 — CORS/CSP, Alert API 경로, ParameterSlider, JWT 검증
+
+#### Phase S14: Auto-tuner 완전 연동 — US-234
+
+> **목표**: AdaptiveThreshold + RegimeDetector Shadow 통합 + Optuna 미니 튜너
+> **진입 조건**: Phase S13 완료
+
+- [ ] US-234: AdaptiveThreshold + RegimeDetector Shadow 통합 + Auto-tuner 미니 튜너
 
 ---
 
@@ -560,21 +580,21 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 > **RESOLVED 항목**: S8/S9에서 해소된 GAP 3/7/8 + HIGH 9건 + LOW 2건 → US-193 완료 시 SSOT_COMPLETE.md §9로 이관 예정.
 
-### CRITICAL (3건 — Phase S10에서 해소 예정)
+### CRITICAL (3건 — Phase S13에서 해소)
 
 | 이슈 | 설명 | 해결 US |
 |------|------|---------|
-| **전략 영역 겹침** | `_CROSS_EXCHANGE_CONSUMERS`가 stat_arb+latency_arb에 cross_exchange 신호 라우팅 → 중복 거래 | US-187, US-194 |
-| **stat_arb 구조적 결함** | 교차거래소 동일심볼 mean-reversion = cross_exchange 동일 영역, WFE=-1.03 | US-188 |
-| **AdaptiveThreshold WR 기반 피드백 루프** | WR 93.8%인데 손실 → WR>90%에서 edge 하향 = 손실 악화 | US-201 |
+| **전략 영역 겹침** | `_CROSS_EXCHANGE_CONSUMERS`가 stat_arb+latency_arb에 cross_exchange 신호 라우팅 → 중복 거래 | US-187, US-194 → **US-232** (PositionRegistry 심볼 레벨 락) |
+| **stat_arb 구조적 결함** | 교차거래소 동일심볼 mean-reversion = cross_exchange 동일 영역, WFE=-1.03 | US-188 → **US-231** (z-score 하드스톱 3.5 + 레짐 게이트) |
+| **AdaptiveThreshold WR 기반 피드백 루프** | WR 93.8%인데 손실 → WR>90%에서 edge 하향 = 손실 악화 | US-201 → **US-226** (첫 실행 지연 수정) + **US-234** (Shadow 통합) |
 
-### HIGH (3건)
+### HIGH (3건 — Phase S13에서 해소)
 
 | 이슈 | 설명 | 해결 US |
 |------|------|---------|
-| **Auto-tuner 미작동** | ScheduledTuner 로그 미관찰, AdaptiveThreshold/RegimeDetector/ONNX 호출 미확인 | US-190, US-191 |
-| **전략 간 포지션 충돌** | 2개 전략이 동일 symbol 동시 거래 가능, 방지 메커니즘 없음 | US-195 |
-| **전략별 자본 할당 없음** | 7개 전략이 독립적으로 자본 사용, per-strategy 한도 없음 | US-196 |
+| **Auto-tuner 미작동** | ScheduledTuner 로그 미관찰, AdaptiveThreshold/RegimeDetector/ONNX 호출 미확인 | US-190, US-191 → **US-226** (로깅 강화) + **US-234** (Shadow 미니 튜너) |
+| **전략 간 포지션 충돌** | 2개 전략이 동일 symbol 동시 거래 가능, 방지 메커니즘 없음 | US-195 → **US-232** (PositionRegistry) |
+| **전략별 자본 할당 없음** | 7개 전략이 독립적으로 자본 사용, per-strategy 한도 없음 | US-196 → **US-224** (loss_cap 차등) + **US-228** (전략별 CB) |
 
 ### MEDIUM (1건)
 
