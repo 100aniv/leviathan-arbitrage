@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "leviathan-prd-user-story-v1",
+  "title": "PRD User Story",
+  "description": "JSON Schema for validating individual user stories in prd.json",
+  "type": "object",
+  "required": ["id", "title", "phase", "priority", "passes"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^US-[0-9]{3,}$",
+      "description": "사용자 스토리 식별자, 예: US-001, US-1000"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short description of the user story"
+    },
+    "phase": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Phase this story belongs to, e.g. A, B-1, S13"
+    },
+    "priority": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+        },
+        {
+          "type": "integer",
+          "minimum": 1
+        }
+      ],
+      "description": "Story priority: string enum or legacy integer rank"
+    },
+    "passes": {
+      "type": "boolean",
+      "description": "Whether this user story passes acceptance criteria"
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of acceptance criteria strings"
+    }
+  },
+  "additionalProperties": true
+}

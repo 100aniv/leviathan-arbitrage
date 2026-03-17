@@ -54,6 +54,9 @@ dev = [
     "fakeredis[json]>=2.21",
     "ruff>=0.3",
 ]
+workflow = [
+    "jsonschema>=4.21",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

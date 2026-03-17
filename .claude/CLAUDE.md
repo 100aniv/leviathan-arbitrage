@@ -239,6 +239,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **슬리피지**: CEXOrderbookSlippage만 활성 (PowerLaw k=0.0 비활성)
 - **설정**: `engine/.env` (엔진용) + 루트 `.env` (Docker용) — **두 파일 반드시 동기화**
 - **워크플로우 알림**: `WORKFLOW_TELEGRAM_BOT_TOKEN` + `WORKFLOW_TELEGRAM_CHAT_ID` (기존 `TELEGRAM_BOT_TOKEN` 거래 알림과 분리)
+- **워크플로우 자동화**: 순수 Python (sqlite3 + jsonschema + TypedDict) — `engine/src/workflow/`
+  - 체크포인트: `.omc/state/checkpoints.db` (SQLite, 워크플로우 전용 — TimescaleDB 거래 데이터와 분리)
+  - 일관성 검사: `cd engine && python -m src.workflow.cli check_all`
+  - 체크포인트 저장: `cd engine && python -m src.workflow.cli checkpoint save`
+  - 체크포인트 복원: `cd engine && python -m src.workflow.cli checkpoint restore`
 
 ## 자주 틀리는 패턴 (반드시 숙지)
 

@@ -92,6 +92,13 @@ EXECUTION_MODE=live     → Live    (실 거래, LiveGate 통과 후)
 | 5 | Circuit Breaker | CLOSED |
 | 6 | 거래소 Health | >= 95% |
 
+### 워크플로우 자동화 레이어 (하이브리드 구조)
+- **레이어 구분**: 기존 SSOT.md + leviathan.md + OMC는 그대로 유지, 순수 Python 보조 레이어 추가
+- **체크포인팅**: `engine/src/workflow/checkpoint_engine.py` — Stage 전환 시 자동 스냅샷 (SQLite)
+- **일관성 검사**: `engine/src/workflow/consistency.py` — SSOT↔PRD↔State 3-Way 자동 검증
+- **CLI**: `python -m src.workflow.cli` — check_all, checkpoint save/restore/history
+- **DB 분리**: TimescaleDB(Docker)=거래데이터, SQLite(로컬)=워크플로우 체크포인트
+
 ### 3.2 엔진 구조
 
 ```

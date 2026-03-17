@@ -42,6 +42,13 @@ ralph 루프 안에서 **Phase(로드맵) 단위**로 **3-Stage Sequential** 수
 
 ### Stage A — 기획 (Plan)
 
+### 자동 일관성 검사 (워크플로우 자동화 레이어)
+- 실행: `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) check_all`
+- 결과가 OK → Karina에게 "자동 검사 PASS" 컨텍스트 주입
+- 결과가 DRIFT → Karina에게 드리프트 상세 전달, 수동 확인 요청
+- 결과가 ERROR → 에러 내용 전달, Entry Gate 진행 전 수정 필요
+- **참고**: 이 검사는 보조 역할. Karina의 최종 판단을 대체하지 않음.
+
 **[Entry Gate → 기획] — 2-Step Sub-agent (4명):**
 
 > ⚠️ **run_in_background 절대 금지**. 모든 Agent는 **foreground**(기본값)로 실행.
@@ -233,6 +240,10 @@ fix loop 최대 3회. 3회 초과 시 Stage A 재기획 (에스컬레이션 L2)
 > **3-Stage 핵심 이점**: Shadow 실패 → Stage B 내부에서 fix + re-test = 0 stage 전환.
 > (기존 5-Stage: Shadow 실패(D) → B복귀 → pytest(B) → 리뷰(C) → Shadow(D) = 3 stage 전환)
 
+### 자동 체크포인트 저장
+- 실행: `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) checkpoint save --trigger "stage_B_complete"`
+- Shadow 결과 메트릭(PnL, WR, crash count)이 체크포인트에 포함됨
+
 **B→C 전환 (동일 메시지 병렬 필수):** pytest PASS + Shadow PASS (PnL > 0, crash = 0, 10min+) 확인 즉시 → 아래 2개를 **반드시 동일 메시지에서 병렬 호출**:
 1. `state_write(next_stage:"C")`
 2. Stage C 리뷰 에이전트 2개 스폰 (jennie + jisoo)
@@ -317,6 +328,11 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 > 결과 수신 즉시 다음 블록 tool call 발행. 상태 요약/보고 금지.
 
 - **git commit만 하고 push 안 하는 것 = 미완료**. `git push origin main` 필수.
+
+### 자동 일관성 재검증 + 체크포인트
+- 실행: `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) check_all`
+- 모든 검사 OK 확인 후 git push 진행
+- 실행: `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) checkpoint save --trigger "phase_complete"`
 
 #### C-Step 4: 텔레그램 알림 + 사장님 승인 대기
 
