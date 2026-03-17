@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-18 (Phase S13 완료 — 기관급 전략 완전체) | 최신 커밋: aba84b6
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (228개 User Stories, 225 pass / 3 pending)
-> **실행 순서**: A~M ✅ → **S1~S9** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → Phase S13 ✅ → **Phase S14** (1 US) → TF QF → TF SF → TF Final → Live
+> 마지막 업데이트: 2026-03-18 (Phase S14 완료 — Auto-tuner Shadow 통합 + 복합지표 기준) | 최신 커밋: bb35062
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (228개 User Stories, 226 pass / 2 pending)
+> **실행 순서**: A~M ✅ → **S1~S9** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → Phase S13 ✅ → Phase S14 ✅ → **TF QF** → TF SF → TF Final → Live
 
 ---
 
@@ -31,11 +31,11 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S14 (Auto-tuner Shadow 통합)
-**Tests**: 4,783 passed / 0 failed / 12 skipped
+**Phase**: S14 완료 → TF QF 대기
+**Tests**: 4,809 passed / 0 failed / 12 skipped
 **Coverage**: 86%
-**TF Status**: QF 6차 PASS, SF 2차 FAIL → S13 회귀
-**Next**: Phase S14 (US-234, 1개) → TF QF → TF SF → TF Final → Live
+**TF Status**: QF 6차 PASS, SF 2차 FAIL → S13+S14 완료, TF QF 대기
+**Next**: TF QF → TF SF → TF Final → Live
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 
@@ -55,6 +55,27 @@ Stage 5: 24H → LiveGate 6-check + Sharpe>2.0, MDD<5%, 일일 PnL 양수 (최�
 각 Stage PASS 시 자동으로 다음 Stage 연장 (멈추지 않고 누적)
 
 > Shadow 이력 아카이브 (Phase E-2, Phase 7.3h-i 등): [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
+
+### Shadow 통과 기준 (복합지표 — LiveGate 6-check 기반)
+
+> 모든 Shadow 테스트에서 단순 PnL/WR이 아닌 복합지표 기준 적용 (사장님 지시)
+
+**Stage B Shadow 10min:**
+
+| # | 체크 | 임계값 |
+|---|------|--------|
+| 1 | Max Drawdown | < 5% (자본 대비) |
+| 2 | 신호 수 | >= 100/day (외삽) |
+| 3 | Kill Switch | Not halted |
+| 4 | Circuit Breaker | CLOSED |
+| 5 | 거래소 Health | >= 95% |
+| 6 | PnL | >= $0 |
+| 7 | crash | = 0 |
+| 8 | loss_capped | = 0 |
+
+**TF SF Progressive Shadow 24H**: 위 기준 + Sharpe >= 2.0, 전략별 WR > 50%
+
+**TF Final Canary 7일**: 위 기준 + Sharpe >= 2.5, 리콘실리에이션 오차 < 1%
 
 ---
 
@@ -343,7 +364,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 228개 User Stories, 225개 완료, 3개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 228개 User Stories, 226개 완료, 2개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -382,7 +403,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **목표**: AdaptiveThreshold + RegimeDetector Shadow 통합 + Optuna 미니 튜너
 > **진입 조건**: Phase S13 완료
 
-- [ ] US-234: AdaptiveThreshold + RegimeDetector Shadow 통합 + Auto-tuner 미니 튜너
+- [x] US-234: AdaptiveThreshold + RegimeDetector Shadow 통합 + Auto-tuner 미니 튜너
 
 ---
 

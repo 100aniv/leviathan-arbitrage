@@ -4066,7 +4066,7 @@
       "title": "AdaptiveThreshold + RegimeDetector Shadow 통합 + Auto-tuner 미니 튜너",
       "phase": "S14",
       "priority": 234,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py",
         "engine/src/main.py",

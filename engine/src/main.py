@@ -1996,6 +1996,7 @@ class Engine:
             strategy_manager=self._strategy_manager,
             kill_switch=_shadow_kill_switch,
             regime_detector=self._regime_detector,
+            adaptive_threshold=self._adaptive_threshold,
         )
 
         # Set all registered strategies to shadow mode and start them
@@ -2089,6 +2090,7 @@ class Engine:
             funding_rate_collector=funding_rate_collector,
             strategy_manager=self._strategy_manager,
             regime_detector=self._regime_detector,
+            adaptive_threshold=self._adaptive_threshold,
         )
 
         if self._strategy_manager is not None:
@@ -2161,6 +2163,7 @@ class Engine:
             funding_rate_collector=funding_rate_collector,
             strategy_manager=self._strategy_manager,
             regime_detector=self._regime_detector,
+            adaptive_threshold=self._adaptive_threshold,
         )
 
         # Set all registered strategies to shadow mode

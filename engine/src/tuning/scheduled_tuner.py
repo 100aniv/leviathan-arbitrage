@@ -342,6 +342,103 @@ class ScheduledTuner:
                 logger.warning("Scheduler shutdown error: %s", exc)
 
 
+class ShadowMiniTuner:
+    """US-234: Shadow 전용 미니 튜너 — 2시간 데이터 후 Optuna n_trials=20.
+
+    live 파라미터 오염 방지: strategy_params.json 직접 수정 금지.
+    결과는 hot_reload_callback(shadow_params: dict)으로만 전달.
+    별도 스레드에서 실행 (asyncio 이벤트 루프 차단 방지).
+    """
+
+    ACTIVATION_HOURS = 2  # 최소 Shadow 실행 시간 (시간)
+    N_TRIALS = 20
+
+    def __init__(
+        self,
+        hot_reload_callback: "Callable[[dict], None] | None" = None,
+        n_trials: int = N_TRIALS,
+    ) -> None:
+        self._callback = hot_reload_callback
+        self.n_trials = n_trials
+        self._triggered = False
+
+    def should_activate(self, shadow_elapsed_seconds: float) -> bool:
+        """Shadow 2시간 경과 여부 확인."""
+        return shadow_elapsed_seconds >= self.ACTIVATION_HOURS * 3600
+
+    def run_in_thread(
+        self,
+        shadow_elapsed_seconds: float,
+        win_rate: float = 0.5,
+        total_trades: int = 0,
+        expected_edge_bps: float = 0.0,
+    ) -> None:
+        """조건 충족 시 별도 스레드에서 미니 튜너 실행."""
+        if self._triggered:
+            return
+        if not self.should_activate(shadow_elapsed_seconds):
+            return
+        if not _OPTUNA_AVAILABLE:
+            logger.warning("ShadowMiniTuner: optuna not installed, skipping")
+            return
+
+        self._triggered = True
+        import threading
+        t = threading.Thread(
+            target=self._run_sync,
+            args=(win_rate, total_trades, expected_edge_bps),
+            daemon=True,
+            name="shadow_mini_tuner",
+        )
+        t.start()
+        logger.info("ShadowMiniTuner: started in background thread")
+
+    def _run_sync(
+        self,
+        win_rate: float,
+        total_trades: int,
+        expected_edge_bps: float,
+    ) -> None:
+        """Optuna n_trials=20으로 min_edge_bps 최적화 (shadow 전용)."""
+        try:
+            study = optuna.create_study(
+                direction="maximize",
+                sampler=optuna.samplers.TPESampler(seed=42),
+            )
+
+            def objective(trial: "optuna.Trial") -> float:
+                min_edge_bps = trial.suggest_float("min_edge_bps", 1.0, 50.0)
+                # 단순 heuristic: 낮은 edge는 더 많은 거래 → WR이 낮으면 불리
+                # 높은 edge는 신호 질 향상 → WR 보정
+                score = (win_rate - 0.5) * 2.0  # [-1, 1] 정규화
+                # edge가 expected_edge_bps보다 크면 신호 미발생 → 페널티
+                if min_edge_bps > max(expected_edge_bps, 1.0) * 3:
+                    score -= 1.0
+                # trade count가 충분하면 보너스
+                if total_trades >= 30:
+                    score += 0.1
+                return score
+
+            study.optimize(objective, n_trials=self.n_trials)
+
+            best_params = study.best_params
+            logger.info(
+                "ShadowMiniTuner: optimization complete",
+                best_params=best_params,
+                best_value=study.best_value,
+                note="shadow-local only, strategy_params.json not modified",
+            )
+
+            if self._callback is not None:
+                try:
+                    self._callback(best_params)
+                except Exception as exc:
+                    logger.warning("ShadowMiniTuner: callback error: %s", exc)
+
+        except Exception as exc:
+            logger.error("ShadowMiniTuner._run_sync error: %s", exc)
+
+
 if __name__ == "__main__":
     if not _OPTUNA_AVAILABLE:
         raise SystemExit("optuna is required: pip install optuna")

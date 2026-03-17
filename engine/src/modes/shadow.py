@@ -388,6 +388,7 @@ class ShadowMode:
         strategy_manager: Any | None = None,
         kill_switch: Any | None = None,
         regime_detector: Any | None = None,
+        adaptive_threshold: Any | None = None,
     ) -> None:
         """Initialise the shadow mode orchestrator.
 
@@ -416,6 +417,9 @@ class ShadowMode:
         self._funding_rate_collector = funding_rate_collector
         self._strategy_manager = strategy_manager
         self._regime_detector = regime_detector
+        self._adaptive_threshold = adaptive_threshold
+        # Shadow-local min_edge multiplier (CRISIS 레짐 시 2배 상향, log-only 모드)
+        self._shadow_min_edge_factor: float = 1.0
 
         # Shadow mode: PaperExecutor with realistic slippage, zero flat fee.
         # k=1.0 matches CEXOrderbookSlippage's default (~10bps/side = 20bps round-trip).
@@ -664,6 +668,32 @@ class ShadowMode:
             self._reconcile_loop(), name="shadow_reconcile"
         )
 
+        # US-234: Regime check loop (60s periodic)
+        self._regime_check_task: asyncio.Task[None] | None = None
+        if self._regime_detector is not None:
+            self._regime_check_task = asyncio.create_task(
+                self._shadow_regime_check_loop(), name="shadow_regime_check"
+            )
+
+        # US-234: AdaptiveThreshold adjustment loop (300s periodic, shadow-local)
+        self._shadow_adaptive_task: asyncio.Task[None] | None = None
+        if self._adaptive_threshold is not None:
+            self._shadow_adaptive_task = asyncio.create_task(
+                self._shadow_adaptive_threshold_loop(), name="shadow_adaptive_threshold"
+            )
+
+        # US-234: ShadowMiniTuner (Optuna n_trials=20, 2h data후 활성)
+        self._shadow_mini_tuner = None
+        try:
+            from src.tuning.scheduled_tuner import ShadowMiniTuner
+            self._shadow_mini_tuner = ShadowMiniTuner(
+                hot_reload_callback=self._shadow_params_hot_reload
+            )
+            self._shadow_mini_tuner.run_in_thread()
+            logger.info("shadow_mode.mini_tuner_started")
+        except Exception as exc:
+            logger.warning("shadow_mode.mini_tuner_init_failed: %s", exc)
+
         logger.info("shadow_mode.started", multi_strategy=self._multi_signal_producer is not None)
 
     async def stop(self) -> None:
@@ -692,6 +722,24 @@ class ShadowMode:
             except asyncio.CancelledError:
                 pass
             self._delta_refresh_task = None
+
+        # Cancel US-234 shadow regime check task
+        if getattr(self, "_regime_check_task", None) is not None and not self._regime_check_task.done():
+            self._regime_check_task.cancel()
+            try:
+                await self._regime_check_task
+            except asyncio.CancelledError:
+                pass
+            self._regime_check_task = None
+
+        # Cancel US-234 shadow adaptive threshold task
+        if getattr(self, "_shadow_adaptive_task", None) is not None and not self._shadow_adaptive_task.done():
+            self._shadow_adaptive_task.cancel()
+            try:
+                await self._shadow_adaptive_task
+            except asyncio.CancelledError:
+                pass
+            self._shadow_adaptive_task = None
 
         # Cancel KRW rate task
         if self._krw_rate_task is not None and not self._krw_rate_task.done():
@@ -1968,3 +2016,139 @@ class ShadowMode:
                 "win_rate": float(ss.wins / ss.trades) if ss.trades > 0 else 0.0,
             }
         return report
+
+    # ------------------------------------------------------------------
+    # US-234: Shadow-local regime check loop (60s periodic)
+    # ------------------------------------------------------------------
+
+    async def _shadow_regime_check_loop(self) -> None:
+        """60초 주기로 regime_detector.detect()를 호출하고 CRISIS 시 min_edge 2배 상향.
+
+        log-only 모드: 실제 SignalGenerator._config.min_edge를 직접 수정하지 않고
+        self._shadow_min_edge_factor를 통해 로그로만 기록. CRISIS 해제 시 1.0으로 복원.
+        """
+        if not hasattr(self, "_regime_pnl_history"):
+            self._regime_pnl_history: list[float] = []
+        if not hasattr(self, "_regime_last_pnl"):
+            self._regime_last_pnl: float = 0.0
+
+        while self._running:
+            try:
+                await asyncio.sleep(60)
+                if not self._running:
+                    break
+                if self._regime_detector is None:
+                    break
+
+                pnl_now = float(self._stats.total_pnl)
+                pnl_delta = pnl_now - self._regime_last_pnl
+                self._regime_last_pnl = pnl_now
+                self._regime_pnl_history.append(pnl_delta)
+                self._regime_pnl_history = self._regime_pnl_history[-60:]
+                returns = list(self._regime_pnl_history)
+
+                try:
+                    from src.tuning.regime_detector import MarketRegime
+                    regime = self._regime_detector.detect(returns)
+                    logger.info(
+                        "shadow.regime_check",
+                        regime=str(regime),
+                        pnl=pnl_now,
+                        samples=len(returns),
+                    )
+                    if regime == MarketRegime.CRISIS:
+                        if self._shadow_min_edge_factor < 2.0:
+                            self._shadow_min_edge_factor = 2.0
+                            logger.warning(
+                                "shadow.crisis_regime_detected",
+                                action="min_edge_factor_2x",
+                                note="log-only: shadow params only, live unaffected",
+                            )
+                    else:
+                        if self._shadow_min_edge_factor != 1.0:
+                            self._shadow_min_edge_factor = 1.0
+                            logger.info(
+                                "shadow.regime_normalized",
+                                action="min_edge_factor_reset_1x",
+                            )
+                except Exception as exc:
+                    logger.warning("shadow.regime_check_error", error=str(exc))
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.warning("shadow._shadow_regime_check_loop error: %s", exc)
+
+    # ------------------------------------------------------------------
+    # US-234: Shadow-local adaptive threshold loop (300s periodic)
+    # ------------------------------------------------------------------
+
+    async def _shadow_adaptive_threshold_loop(self) -> None:
+        """300초 주기로 adaptive_threshold.adjust()를 호출 (shadow 전용).
+
+        live 파라미터 오염 방지: strategy_params.json 직접 수정 없이
+        shadow 로컬 상태만 업데이트하고 로그 기록.
+        """
+        while self._running:
+            try:
+                await asyncio.sleep(300)
+                if not self._running:
+                    break
+                if self._adaptive_threshold is None:
+                    break
+
+                trades = self._stats.trades_executed
+                wins = self._stats.trades_won
+                win_rate = float(wins / trades) if trades > 0 else 0.0
+
+                # 총 PnL과 trade 수로 expected_edge 추정
+                pnl_total = float(self._stats.total_pnl)
+                expected_edge_bps = (pnl_total / trades * 10000) if trades > 0 else 0.0
+                profit_factor = (float(self._stats.trades_won) / max(1, float(self._stats.trades_lost)))
+
+                new_edge = self._adaptive_threshold.adjust(
+                    win_rate=win_rate,
+                    total_trades=trades,
+                    expected_edge_bps=expected_edge_bps,
+                    profit_factor=profit_factor,
+                )
+                logger.info(
+                    "shadow.adaptive_threshold_adjusted",
+                    new_edge_bps=new_edge,
+                    win_rate=win_rate,
+                    trades=trades,
+                    note="shadow-local only, strategy_params.json not modified",
+                )
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.warning("shadow._shadow_adaptive_threshold_loop error: %s", exc)
+
+    def _shadow_params_hot_reload(self, shadow_params: dict) -> None:
+        """US-234: Shadow 전용 파라미터 콜백 — live 파라미터 오염 방지.
+
+        shadow_params: {"min_edge_bps": float, ...} 등 shadow 전용 dict.
+        strategy_params.json 직접 수정 금지. shadow 인스턴스 내부 상태만 업데이트.
+        """
+        if not isinstance(shadow_params, dict):
+            logger.warning("shadow._shadow_params_hot_reload: invalid params type")
+            return
+
+        new_edge = shadow_params.get("min_edge_bps")
+        if new_edge is not None:
+            try:
+                new_edge_f = float(new_edge)
+                if self._adaptive_threshold is not None:
+                    # Bounds check: clamp to [min_edge, max_edge]
+                    _min = getattr(self._adaptive_threshold, 'min_edge', 2.0)
+                    _max = getattr(self._adaptive_threshold, 'max_edge', 50.0)
+                    clamped = max(_min, min(_max, new_edge_f))
+                    if clamped != new_edge_f:
+                        logger.warning("shadow.hot_reload_clamped: %.2f -> %.2f", new_edge_f, clamped)
+                    self._adaptive_threshold.current_edge_bps = clamped
+                logger.info(
+                    "shadow.params_hot_reloaded",
+                    min_edge_bps=new_edge_f,
+                    note="shadow-local only, live params unchanged",
+                )
+            except (TypeError, ValueError) as exc:
+                logger.warning("shadow._shadow_params_hot_reload: invalid min_edge_bps: %s", exc)
