@@ -387,6 +387,7 @@ class ShadowMode:
         funding_rate_collector: Any | None = None,
         strategy_manager: Any | None = None,
         kill_switch: Any | None = None,
+        regime_detector: Any | None = None,
     ) -> None:
         """Initialise the shadow mode orchestrator.
 
@@ -414,6 +415,7 @@ class ShadowMode:
         self._multi_signal_producer = multi_signal_producer
         self._funding_rate_collector = funding_rate_collector
         self._strategy_manager = strategy_manager
+        self._regime_detector = regime_detector
 
         # Shadow mode: PaperExecutor with realistic slippage, zero flat fee.
         # k=1.0 matches CEXOrderbookSlippage's default (~10bps/side = 20bps round-trip).
@@ -521,6 +523,7 @@ class ShadowMode:
                 futures_exchanges=self._futures_exchanges,
                 latency_tracker=self._latency_tracker,
                 stale_detector=self._stale_detector,
+                regime_detector=self._regime_detector,
             )
 
         # US-066/US-156: Strategy blacklist — comma-separated strategy IDs to disable
@@ -539,12 +542,31 @@ class ShadowMode:
             self._disabled_strategies = _disabled_base
 
         if self._disabled_strategies:
-            logger.info(f"Shadow disabled strategies: {sorted(self._disabled_strategies)}")
+            logger.warning(
+                "shadow_mode.strategies_disabled",
+                disabled=sorted(self._disabled_strategies),
+            )
 
-        # US-066: Per-trade loss cap (hard ceiling on single-trade loss)
+        # US-066/US-224: Per-trade loss cap (hard ceiling on single-trade loss)
+        # US-224: per-strategy caps via STRATEGY_LOSS_CAP_JSON or SHADOW_MAX_LOSS_PER_TRADE_USD
         self._max_loss_per_trade_usd: Decimal = Decimal(
-            os.getenv("SHADOW_MAX_LOSS_PER_TRADE_USD", "50")
+            os.getenv("SHADOW_MAX_LOSS_PER_TRADE_USD", "10")
         )
+        _loss_cap_json = os.getenv("STRATEGY_LOSS_CAP_JSON", "")
+        _default_caps: dict[str, float] = {
+            "futures_futures": 1.0,
+            "cross_exchange": 5.0,
+            "statistical_arb": 5.0,
+        }
+        try:
+            import json as _json
+            _user_caps: dict[str, float] = _json.loads(_loss_cap_json) if _loss_cap_json else {}
+        except Exception:
+            _user_caps = {}
+        _merged = {**_default_caps, **_user_caps}
+        self._strategy_loss_caps: dict[str, Decimal] = {
+            k: Decimal(str(v)) for k, v in _merged.items()
+        }
 
         # US-164: Temporary strategy disable map — strategy_id -> re-enable timestamp
         # Default 0 (disabled); set SHADOW_SINGLE_LOSS_DISABLE_SECONDS=600 in prod
@@ -1101,6 +1123,11 @@ class ShadowMode:
     # Shadow trade execution
     # -----------------------------------------------------------------------
 
+    def _get_loss_cap(self, strategy_id: str) -> Decimal:
+        """US-224: Return per-strategy loss cap, falling back to global default."""
+        base = strategy_id.split("_v")[0] if "_v" in strategy_id else strategy_id
+        return self._strategy_loss_caps.get(base, self._max_loss_per_trade_usd)
+
     async def _execute_shadow_trade(self, signal: Signal) -> None:
         """Paper-execute a signal: buy + sell orders with power-law slippage.
 
@@ -1253,8 +1280,9 @@ class ShadowMode:
         )
         net_pnl_float = float(net_pnl)
 
-        # Per-trade loss cap (US-066): hard ceiling to prevent fat-tail losses
-        max_loss = self._max_loss_per_trade_usd
+        # Per-trade loss cap (US-066/US-224): per-strategy hard ceiling
+        _sid_cap = signal.strategy_id or self.STRATEGY_ID
+        max_loss = self._get_loss_cap(_sid_cap)
         if net_pnl < -max_loss:
             capped_pnl = -max_loss
             logger.warning(
@@ -1526,8 +1554,8 @@ class ShadowMode:
 
         net_pnl_float = float(net_pnl)
 
-        # Per-trade loss cap (US-066): same hard ceiling as _execute_shadow_trade
-        max_loss = self._max_loss_per_trade_usd
+        # Per-trade loss cap (US-066/US-224): per-strategy hard ceiling
+        max_loss = self._get_loss_cap(sid)
         if net_pnl < -max_loss:
             capped_pnl = -max_loss
             logger.warning(

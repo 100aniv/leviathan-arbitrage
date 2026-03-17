@@ -6,13 +6,21 @@ Entry: buy cheap on exchange A, sell expensive on exchange B simultaneously.
 
 latency_boost mode (US-194): when enabled, additionally requires a measurable
 latency advantage (slow_exchange_ema > fast_exchange_ema) before trading.
+
+US-235 fine-tuning:
+  - max_spread_bps: rejects anomalously wide spreads (likely stale data)
+  - min_book_depth_usd: rejects signals where available liquidity is too thin
 """
 from __future__ import annotations
 
+import logging
+import os
 from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 from src.core.models import OrderSide, OrderType, Signal, Trade
 from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeRequest
@@ -26,6 +34,10 @@ class CrossExchangeConfig(BaseModel):
     rebalance_threshold: Decimal = Field(default=Decimal("0.05"), ge=Decimal("0"))
     latency_boost: bool = Field(default=False)
     min_latency_advantage_ms: float = Field(default=5.0, ge=0.0)
+    # US-235: anomaly guard — reject spreads wider than this (likely stale orderbook)
+    max_spread_bps: Decimal = Field(default=Decimal("100"), ge=Decimal("0"))
+    # US-235: minimum available liquidity in USD (volume * price proxy)
+    min_book_depth_usd: Decimal = Field(default=Decimal("500"), ge=Decimal("0"))
 
 
 class CrossExchangeStrategy(BaseStrategy):
@@ -50,7 +62,16 @@ class CrossExchangeStrategy(BaseStrategy):
         latency_tracker=None,
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
-        self.config = config or CrossExchangeConfig()
+        if config is None:
+            config = CrossExchangeConfig(
+                max_spread_bps=Decimal(
+                    os.environ.get("CROSS_EXCHANGE_MAX_SPREAD_BPS", "100")
+                ),
+                min_book_depth_usd=Decimal(
+                    os.environ.get("CROSS_EXCHANGE_MIN_BOOK_DEPTH_USD", "500")
+                ),
+            )
+        self.config = config
         self._latency_tracker = latency_tracker
 
     def _latency_advantage_ms(self, fast_exchange: str, slow_exchange: str) -> float:
@@ -83,6 +104,32 @@ class CrossExchangeStrategy(BaseStrategy):
         if signal.spread_pct < min_spread:
             self._metrics.signals_filtered += 1
             return None
+
+        # US-235: Reject anomalously wide spreads (likely stale/bad orderbook data)
+        if self.config.max_spread_bps > Decimal("0"):
+            max_spread = self.config.max_spread_bps / Decimal("10000")
+            if signal.spread_pct > max_spread:
+                self._metrics.signals_filtered += 1
+                logger.warning(
+                    "cross_exchange.spread_too_wide symbol=%s spread_pct=%.6f max_spread_bps=%s",
+                    signal.symbol,
+                    float(signal.spread_pct),
+                    self.config.max_spread_bps,
+                )
+                return None
+
+        # US-235: Reject signals where available liquidity (volume * price) is too thin
+        if self.config.min_book_depth_usd > Decimal("0"):
+            book_depth_usd = signal.volume * signal.buy_price
+            if book_depth_usd < self.config.min_book_depth_usd:
+                self._metrics.signals_filtered += 1
+                logger.warning(
+                    "cross_exchange.book_depth_insufficient symbol=%s depth_usd=%.2f min=%.2f",
+                    signal.symbol,
+                    float(book_depth_usd),
+                    float(self.config.min_book_depth_usd),
+                )
+                return None
 
         # Latency-boost gate
         if self.config.latency_boost:

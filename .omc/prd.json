@@ -3792,7 +3792,7 @@
       "title": "futures_futures 2차 freshness 검증 (← TF SF Stage 2 FAIL: stale 17건 통과)",
       "phase": "S13",
       "priority": 221,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/real_signal_producer.py",
         "engine/src/strategies/futures_futures.py"
@@ -3810,7 +3810,7 @@
       "title": "per-strategy circuit breaker — 연속 손실 자동 쿨다운 (← TF SF: -$50 x 4건 연속)",
       "phase": "S13",
       "priority": 222,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/manager.py",
         "engine/src/risk/guardian.py"
@@ -3830,7 +3830,7 @@
       "title": "spot_futures + funding_rate 비활성화 (← TF SF: WR 42%, WR 6.7%)",
       "phase": "S13",
       "priority": 223,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/.env",
         "engine/config/trading.json"
@@ -3848,7 +3848,7 @@
       "title": "loss_cap 동적 조정 — $50 → 전략별 차등 (← TF SF: -$850 집중 손실)",
       "phase": "S13",
       "priority": 224,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py",
         "engine/config/trading.json"
@@ -3867,7 +3867,7 @@
       "title": "futures spread outlier filter 강화 (← TF SF: fake spread 진입)",
       "phase": "S13",
       "priority": 225,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/real_signal_producer.py",
         "engine/src/core/signal.py"
@@ -3887,7 +3887,7 @@
       "title": "CRITICAL 버그 5개 즉시 수정 — funding_rate 하드코딩, estimate_cost 슬리피지, AdaptiveThreshold 지연, RegimeDetector 미연결, Auto-tuner 검증",
       "phase": "S13",
       "priority": 226,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/real_signal_producer.py",
         "engine/src/friction/cost_calculator.py",
@@ -3909,7 +3909,7 @@
       "title": "4계층 Stale 감지 시스템 — 타임스탬프 분리 + 하트비트 EMA + 시퀀스 갭 + 스프레드 정상성",
       "phase": "S13",
       "priority": 227,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/stale_detector.py",
         "engine/src/core/real_signal_producer.py",
@@ -3936,7 +3936,7 @@
       "title": "전략별 서킷브레이커 상태머신 — ACTIVE/THROTTLED/HALTED/SUSPENDED + 복합 점수",
       "phase": "S13",
       "priority": 228,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/risk/per_strategy_cb.py",
         "engine/src/risk/guardian.py",
@@ -3957,7 +3957,7 @@
       "title": "spot_futures/funding_rate 시그널 레벨 사전 필터 강화 + cex_dex 비활성화",
       "phase": "S13",
       "priority": 229,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/real_signal_producer.py",
         "engine/src/strategies/spot_futures.py",
@@ -3981,7 +3981,7 @@
       "title": "스프레드 이상치 필터 — 적응형 롤링 중앙값 + 타임스탬프 교차검증 300ms",
       "phase": "S13",
       "priority": 230,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/stale_detector.py",
         "engine/src/core/real_signal_producer.py"
@@ -4003,7 +4003,7 @@
       "title": "stat_arb z-score 하드스톱 3.5 + Kalman stale 가드 + 레짐 게이트",
       "phase": "S13",
       "priority": 231,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/real_signal_producer.py",
         "engine/src/strategies/statistical_arb.py"
@@ -4024,7 +4024,7 @@
       "title": "전략 간 충돌 방지 — PositionRegistry 심볼 레벨 락 + 우선순위 계층",
       "phase": "S13",
       "priority": 232,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/risk/position_registry.py",
         "engine/src/modes/shadow.py"
@@ -4043,7 +4043,7 @@
       "title": "futures_futures 전용 강화 — min_spread 15bps + 호가 깊이 + 노셔널 캡",
       "phase": "S13",
       "priority": 233,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/futures_futures.py",
         "engine/src/core/real_signal_producer.py"
@@ -4090,7 +4090,7 @@
       "title": "cross_exchange 미세 조정 — max_spread 100bps + min_book_depth 500",
       "phase": "S13",
       "priority": 235,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/cross_exchange.py"
       ],
@@ -4106,7 +4106,7 @@
       "title": "엔진 Dead Wiring 전수 수정 — stat_arb Dead Code, _position_manager None, Redis 오타, PortfolioState 미연결",
       "phase": "S13",
       "priority": 236,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/main.py",
         "engine/src/strategies/manager.py",
@@ -4131,7 +4131,7 @@
       "title": "대시보드 정합성 + 로그인 수정 — CORS/CSP, Alert API 경로, ParameterSlider, JWT 검증",
       "phase": "S13",
       "priority": 237,
-      "passes": false,
+      "passes": true,
       "files": [
         "docker-compose.yml",
         "dashboard/next.config.js",

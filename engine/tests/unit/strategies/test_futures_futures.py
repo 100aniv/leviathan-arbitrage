@@ -57,8 +57,10 @@ async def test_spread_below_threshold_returns_none():
 @pytest.mark.asyncio
 async def test_profitable_signal_generates_two_legs():
     # gross = (50100-50000)*0.5 = 50; cost = 1*2 = 2; net = 48
+    # max_notional_usd=None to disable cap so full size=0.5 is used
     strategy = FuturesFuturesStrategy(
-        "ff_cross", make_calculator(Decimal("1")), FuturesFuturesConfig(min_spread_bps=Decimal("8"))
+        "ff_cross", make_calculator(Decimal("1")),
+        FuturesFuturesConfig(min_spread_bps=Decimal("8"), max_notional_usd=None),
     )
     await strategy.start()
     signal = make_signal(spread_pct=Decimal("0.002"))
@@ -72,7 +74,8 @@ async def test_profitable_signal_generates_two_legs():
 @pytest.mark.asyncio
 async def test_legs_have_correct_exchanges_and_sides():
     strategy = FuturesFuturesStrategy(
-        "ff_cross", make_calculator(), FuturesFuturesConfig(min_spread_bps=Decimal("8"))
+        "ff_cross", make_calculator(),
+        FuturesFuturesConfig(min_spread_bps=Decimal("8"), max_notional_usd=None),
     )
     await strategy.start()
     signal = make_signal()
@@ -87,7 +90,7 @@ async def test_legs_have_correct_exchanges_and_sides():
 
 @pytest.mark.asyncio
 async def test_legs_contain_leverage_metadata():
-    config = FuturesFuturesConfig(min_spread_bps=Decimal("8"), max_leverage=3)
+    config = FuturesFuturesConfig(min_spread_bps=Decimal("8"), max_leverage=3, max_notional_usd=None)
     strategy = FuturesFuturesStrategy("ff_cross", make_calculator(), config)
     await strategy.start()
     signal = make_signal()
@@ -122,6 +125,7 @@ async def test_margin_check_passes_with_sufficient_margin():
         min_spread_bps=Decimal("8"),
         max_leverage=5,
         margin_safety_pct=Decimal("0.20"),
+        max_notional_usd=None,  # disable cap so volume=0.1 is used as-is
     )
     strategy = FuturesFuturesStrategy("ff_cross", make_calculator(Decimal("1")), config)
     await strategy.start()

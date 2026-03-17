@@ -120,6 +120,8 @@ class RiskGuardian:
         self._max_concurrent_positions: int = max(1, min(_mcp, 1000))
         # US-196: per-strategy capital allocation limits
         self._capital_allocation_pct: dict[str, float] = capital_allocation_pct or {}
+        # US-222/228: per-strategy circuit breaker (optional, set externally)
+        self.per_strategy_cb: Any | None = None
         if self._capital_allocation_pct:
             total_alloc = sum(self._capital_allocation_pct.values())
             if total_alloc > 100.0:
@@ -362,6 +364,30 @@ class RiskGuardian:
                             f"{max_strategy_capital:.2f} ({alloc_pct}% of capital)"
                         ),
                     )
+
+        # CHECK #12: Per-strategy circuit breaker (US-222/228)
+        if self.per_strategy_cb is not None:
+            # Global CB override: if halted >= active → open global circuit breaker
+            halted = self.per_strategy_cb.halted_count()
+            active = self.per_strategy_cb.active_count()
+            if active > 0 and halted >= active:
+                self._cb.record_failure()
+                logger.warning(
+                    "risk_check_12_global_cb_triggered",
+                    halted=halted,
+                    active=active,
+                )
+
+            if not self.per_strategy_cb.is_allowed(proposal.strategy_id):
+                cb_state = self.per_strategy_cb.state(proposal.strategy_id).name
+                RISK_REJECTIONS_TOTAL.labels(
+                    check_number="12", reason="strategy_cb_halted"
+                ).inc()
+                return RiskCheckResult(
+                    approved=False,
+                    rejected_at_check=12,
+                    reason=f"Strategy CB blocked: {proposal.strategy_id} state={cb_state}",
+                )
 
         logger.debug(
             "risk_check_approved",

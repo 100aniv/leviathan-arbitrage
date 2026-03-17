@@ -19,11 +19,12 @@ cross-exchange (same symbol, two exchange) mode.
 from __future__ import annotations
 
 import math
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import StrEnum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -61,6 +62,10 @@ class StatArbConfig(BaseModel):
     max_holding_bars: int = Field(default=60, ge=1)
     # Set False to skip cointegration test (useful for low-sample / constant-price tests)
     enable_cointegration: bool = Field(default=True)
+    # US-231: z-score hardstop (force-exit if |z| exceeds this while in position)
+    zscore_hardstop: float = Field(default=3.5, ge=0.0)
+    # US-231: Kalman stale guard — skip z-score if last update was > this many seconds ago
+    kalman_stale_threshold_s: float = Field(default=60.0, ge=0.0)
     # Cross-asset pairs: (symbolA, symbolB) traded on the SAME exchange
     pairs: list[tuple[str, str]] = Field(default_factory=lambda: [
         ("BTC/USDT", "ETH/USDT"),
@@ -115,6 +120,8 @@ class _PairState:
     spreads: deque   # log spread history: log(midA) - beta*log(midB)
     state: StatArbState = field(default=StatArbState.FLAT)
     bars_in_position: int = 0
+    # US-231: monotonic time of previous Kalman update (for stale guard)
+    kalman_last_update: float = 0.0
 
 
 def _zscore(history: list[float], current: float) -> float:
@@ -156,9 +163,11 @@ class StatisticalArbStrategy(BaseStrategy):
         strategy_id: str,
         cost_calculator: CostCalculator,
         config: StatArbConfig | None = None,
+        regime_detector: Any = None,
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
         self.config = config or StatArbConfig()
+        self._regime_detector = regime_detector
         _max_len = max(self.config.min_history * 4, self.config.zero_crossing_lookback * 2)
 
         # Cross-asset pair state (new architecture)
@@ -251,6 +260,21 @@ class StatisticalArbStrategy(BaseStrategy):
 
         pair_key = (symbol_a, symbol_b)
         ps = self._pair_states[pair_key]
+
+        # US-231: Kalman stale guard — check gap BEFORE updating
+        now_mono = time.monotonic()
+        prev_update = ps.kalman_last_update
+        if prev_update > 0 and (now_mono - prev_update) > self.config.kalman_stale_threshold_s:
+            # Data gap too long — z-score would be unreliable; force flat if in position
+            if ps.state != StatArbState.FLAT:
+                ps.state = StatArbState.FLAT
+                ps.bars_in_position = 0
+                logger.warning(
+                    "stat_arb.kalman_stale: forced flat for %s/%s on %s (gap=%.1fs)",
+                    symbol_a, symbol_b, exchange, now_mono - prev_update,
+                )
+            return None
+        ps.kalman_last_update = now_mono
 
         log_a = math.log(mid_a)
         log_b = math.log(mid_b)
@@ -353,9 +377,33 @@ class StatisticalArbStrategy(BaseStrategy):
                 },
             )
 
+        # US-231: z-score hardstop — force-exit if |z| exceeds hardstop while in position
+        if (
+            ps.state != StatArbState.FLAT
+            and abs(zscore) > self.config.zscore_hardstop
+        ):
+            logger.warning(
+                "stat_arb.hardstop: |z|=%.2f > %.2f for %s/%s on %s, forcing flat",
+                abs(zscore), self.config.zscore_hardstop, symbol_a, symbol_b, exchange,
+            )
+            ps.state = StatArbState.FLAT
+            ps.bars_in_position = 0
+            self._metrics.signals_filtered += 1
+            return None
+
         if ps.state != StatArbState.FLAT:
             self._metrics.signals_filtered += 1
             return None
+
+        # US-231: Regime gate — block new entries in CRISIS regime
+        if self._regime_detector is not None:
+            try:
+                current_regime = getattr(self._regime_detector, "current_regime", None)
+                if current_regime is not None and str(current_regime) == "CRISIS":
+                    self._metrics.signals_filtered += 1
+                    return None
+            except Exception:
+                pass
 
         # Adaptive entry threshold
         effective_entry = self._adaptive_entry_threshold_for_pair(ps)

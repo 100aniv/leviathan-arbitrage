@@ -38,9 +38,13 @@ export function ParameterSlider({
       setIsSyncing(true);
       setSyncError(false);
       try {
+        const token = typeof localStorage !== 'undefined' ? localStorage.getItem('leviathan_token') : null;
         const res = await fetch(`${BASE_URL}/parameters/${parameterId}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ value: newValue }),
         });
         if (!res.ok) setSyncError(true);

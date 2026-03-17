@@ -126,10 +126,16 @@ export const getAlerts = () =>
   request<Alert[]>("/api/v1/alerts");
 
 export const acknowledgeAlert = (id: string) =>
-  request<{ id: string; status: string }>(`/api/v1/alerts/${id}/acknowledge`, { method: "POST" });
+  request<{ alert_id: string; status: string }>("/api/v1/alerts/acknowledge", {
+    method: "POST",
+    body: JSON.stringify({ alert_id: id }),
+  });
 
 export const resolveAlert = (id: string) =>
-  request<{ id: string; status: string }>(`/api/v1/alerts/${id}/resolve`, { method: "POST" });
+  request<{ alert_id: string; status: string }>("/api/v1/alerts/resolve", {
+    method: "POST",
+    body: JSON.stringify({ alert_id: id }),
+  });
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 

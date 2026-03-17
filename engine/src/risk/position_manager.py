@@ -196,6 +196,10 @@ class PositionManager:
         """Return a snapshot of all open positions."""
         return dict(self._positions)
 
+    def get_all_positions(self) -> list[PositionRecord]:
+        """Return all open positions as a flat list (US-236 dead wiring fix)."""
+        return list(self._positions.values())
+
     async def get_net_exposure(self, exchange_id: str, base_asset: str) -> Decimal:
         """Read current net exposure for (exchange, base_asset) from Redis."""
         redis_key = EXPOSURE_KEY.format(exchange=exchange_id, base_asset=base_asset)

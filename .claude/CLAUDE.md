@@ -264,11 +264,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S12 ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13** (14 US) → **Phase S14** (1 US) → TF QF → TF SF → TF Final → Live
-- **Tests**: 4,695 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (228개 US, 209 pass / 19 pending)
+- **Phase 순서**: A~M✅ → S1~S12 ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → Phase S13 ✅ → **Phase S14** (1 US) → TF QF → TF SF → TF Final → Live
+- **Tests**: 4,783 passed, 0 failed, 12 skipped
+- **PRD**: `.omc/prd.json` (228개 US, 225 pass / 3 pending)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: Phase S13 (16 US: US-221~233, US-235~237) + Phase S14 (1 US: US-234) → TF QF → TF SF → TF Final → Live
+- **다음 작업**: Phase S14 (US-234, 1개) → TF QF → TF SF → TF Final → Live
 - **TF QF 6차**: ✅ PASS (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 + LOW 4 (단계 3.5 알림 Dead Wiring 수정 포함)
 - **TF SF 2차**: ❌ FAIL (2026-03-17) — 2H45M PnL -$153.47, loss_capped 17건(-$850), futures stale 진입
 - **Phase S13**: 16 US (US-221~233, US-235~237) — 기관급 전략 완전체: CRITICAL 버그 5개 수정, 4계층 Stale 감지, 전략별 CB, loss_cap 차등, 레짐 게이트, PositionRegistry, Dead Wiring 수정, 대시보드 로그인

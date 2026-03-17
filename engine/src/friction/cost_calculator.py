@@ -118,11 +118,14 @@ class CostCalculator:
         """Estimate cost in USDT for one trade leg (Protocol bridge).
 
         Satisfies strategies/base.py CostCalculator Protocol.
-        Returns taker_fee for the given notional (price * size).
+        Returns taker_fee + network_cost for the given notional (price * size).
+        Note: slippage is excluded here — it is applied upstream by SignalGenerator
+        (CEXOrderbookSlippage pre-filter) and cannot be computed without an orderbook.
         """
         ex = exchange_id.removeprefix("paper_").removeprefix("sandbox_")
         notional = price * size
-        return self._fee_model.taker_fee(ex, notional)
+        fee = self._fee_model.taker_fee(ex, notional)
+        return fee + self._network_cost
 
     def calculate(
         self,

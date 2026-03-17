@@ -132,6 +132,8 @@ class Engine:
         self._adaptive_threshold: Any = None
         # US-175: ExposureTracker for net exposure tracking
         self._exposure_tracker: Any = None
+        # Bug 1-F: shared HTTP client for FundingRateCollector (initialized in _init_infrastructure)
+        self._http_client: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -228,6 +230,14 @@ class Engine:
                 await self._db_pool.close()
             except Exception as exc:
                 logger.warning("DB pool close error: %s", exc)
+
+        # Bug 1-F: Close shared HTTP client
+        if self._http_client is not None:
+            try:
+                await self._http_client.aclose()
+                logger.info("HTTP client closed")
+            except Exception as exc:
+                logger.warning("HTTP client close error: %s", exc)
 
         # US-165: Close Redis connection explicitly
         if self._redis_client:
@@ -398,6 +408,10 @@ class Engine:
     async def _init_infrastructure(self) -> None:
         mode = self._settings.execution_mode if self._settings else ExecutionMode.PAPER
 
+        # Bug 1-F: initialize shared HTTP client for FundingRateCollector
+        import httpx
+        self._http_client = httpx.AsyncClient(timeout=10.0)
+
         if mode == ExecutionMode.PAPER:
             from src.infra.redis.memory_bus import InMemoryEventBus
             self._event_bus = InMemoryEventBus()
@@ -488,7 +502,7 @@ class Engine:
                     from src.infra.telegram_smart import SmartTelegramAlerter
                     self._smart_telegram = SmartTelegramAlerter(
                         alerter=self._telegram,
-                        redis_client=getattr(self, "_redis", None),
+                        redis_client=getattr(self, "_redis_client", None),
                     )
                     logger.info("SmartTelegramAlerter enabled (dedup + batching)")
                 except Exception as exc:
@@ -764,9 +778,19 @@ class Engine:
     async def _init_strategies(self) -> None:
         from src.strategies.manager import StrategyManager
 
+        # US-236: PositionRegistry for symbol-level lock in strategy dispatch
+        try:
+            from src.core.position_registry import PositionRegistry
+            _position_registry = PositionRegistry()
+            logger.info("PositionRegistry initialized for StrategyManager")
+        except Exception as exc:
+            logger.warning("PositionRegistry init failed (non-fatal): %s", exc)
+            _position_registry = None
+
         self._strategy_manager = StrategyManager(
             event_bus=self._event_bus,
             consumer_name="manager-0",
+            position_registry=_position_registry,
         )
 
         # Register default strategies based on available exchanges
@@ -942,6 +966,16 @@ class Engine:
         except Exception as exc:
             logger.warning("RiskGuardian init failed: %s", exc)
 
+        # US-222/228: PerStrategyCB → Guardian integration
+        try:
+            from src.risk.per_strategy_cb import PerStrategyCB
+            self._per_strategy_cb = PerStrategyCB()
+            if self._risk_guardian is not None:
+                self._risk_guardian.per_strategy_cb = self._per_strategy_cb
+            logger.info("PerStrategyCB initialized (4-state: ACTIVE/THROTTLED/HALTED/SUSPENDED)")
+        except Exception as exc:
+            logger.warning("PerStrategyCB init failed (non-fatal): %s", exc)
+
         # US-118: CorrelationMonitor → Guardian integration
         try:
             from src.risk.correlation_monitor import CorrelationMonitor
@@ -971,6 +1005,17 @@ class Engine:
     async def _init_execution(self) -> None:
         from src.execution.executor import AtomicExecutor
         from src.execution.trade_consumer import TradeRequestConsumer
+
+        # US-236: Initialize PositionManager (in-memory tracking; dual_writer=None in shadow mode)
+        try:
+            from src.risk.position_manager import PositionManager
+            self._position_manager = PositionManager(
+                dual_writer=None,
+                redis_client=getattr(self, "_redis_client", None),
+            )
+            logger.info("PositionManager initialized (dual_writer=None, shadow mode)")
+        except Exception as exc:
+            logger.warning("PositionManager init failed (non-fatal): %s", exc)
 
         self._executor = AtomicExecutor(
             exchanges=self._exchanges,
@@ -1842,7 +1887,7 @@ class Engine:
         INTERVAL_S = float(os.environ.get("ADAPTIVE_THRESHOLD_INTERVAL_S", "3600"))
         while self.state.running:
             try:
-                await asyncio.sleep(INTERVAL_S)
+                # Bug 1-C: adjust() first so the first run is not delayed by INTERVAL_S
                 if self._adaptive_threshold is None:
                     break
 
@@ -1901,6 +1946,7 @@ class Engine:
                             await self._adaptive_threshold.save_history(conn)
                     except Exception:
                         pass
+                await asyncio.sleep(INTERVAL_S)
             except asyncio.CancelledError:
                 break
             except Exception as exc:
@@ -1949,6 +1995,7 @@ class Engine:
             funding_rate_collector=funding_rate_collector,
             strategy_manager=self._strategy_manager,
             kill_switch=_shadow_kill_switch,
+            regime_detector=self._regime_detector,
         )
 
         # Set all registered strategies to shadow mode and start them
@@ -2041,6 +2088,7 @@ class Engine:
             multi_signal_producer=multi_signal_producer,
             funding_rate_collector=funding_rate_collector,
             strategy_manager=self._strategy_manager,
+            regime_detector=self._regime_detector,
         )
 
         if self._strategy_manager is not None:
@@ -2112,6 +2160,7 @@ class Engine:
             multi_signal_producer=multi_signal_producer,
             funding_rate_collector=funding_rate_collector,
             strategy_manager=self._strategy_manager,
+            regime_detector=self._regime_detector,
         )
 
         # Set all registered strategies to shadow mode

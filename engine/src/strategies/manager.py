@@ -29,6 +29,7 @@ class StrategyManager:
     - Start/stop individual strategies without full restart
     - Subscribe to Redis Streams signals and route to appropriate strategies
     - Collect and expose aggregated metrics
+    - US-236: Optional PositionRegistry for symbol-level lock during dispatch
     """
 
     def __init__(
@@ -36,6 +37,7 @@ class StrategyManager:
         event_bus: EventBus,
         consumer_name: str = "manager-0",
         poll_interval_ms: int = 100,
+        position_registry: Any = None,
     ) -> None:
         self._event_bus = event_bus
         self._consumer_name = consumer_name
@@ -43,6 +45,8 @@ class StrategyManager:
         self._strategies: dict[str, BaseStrategy] = {}
         self._running = False
         self._task: Optional[asyncio.Task] = None  # type: ignore[type-arg]
+        # US-236: symbol-level lock to prevent cross-strategy collisions
+        self._position_registry = position_registry
 
     # ------------------------------------------------------------------
     # Registration
@@ -177,6 +181,18 @@ class StrategyManager:
             # any registered cross_exchange strategy
             if self._should_route(strategy, signal):
                 matched = True
+                # US-236: PositionRegistry symbol-level lock gate
+                _lock_acquired = False
+                if self._position_registry is not None and hasattr(signal, "symbol"):
+                    _lock_acquired = self._position_registry.try_lock(
+                        signal.symbol, strategy.strategy_id
+                    )
+                    if not _lock_acquired:
+                        logger.debug(
+                            "strategy_manager.symbol_locked symbol=%s strategy=%s",
+                            signal.symbol, strategy.strategy_id,
+                        )
+                        continue
                 try:
                     result: Optional[TradeRequest] = await strategy.on_signal(signal)
                     if result is not None:
@@ -187,6 +203,15 @@ class StrategyManager:
                             )
                         else:
                             await self._emit_trade_request(result)
+                        # Release lock after trade emission (TTL handles cleanup if missed)
+                        if _lock_acquired and self._position_registry is not None:
+                            self._position_registry.release(signal.symbol, strategy.strategy_id)
+                            _lock_acquired = False
+                    else:
+                        # Signal filtered — release lock immediately
+                        if _lock_acquired and self._position_registry is not None:
+                            self._position_registry.release(signal.symbol, strategy.strategy_id)
+                            _lock_acquired = False
                 except Exception as exc:
                     logger.error(
                         "Strategy %s raised on signal: %s",
@@ -194,6 +219,9 @@ class StrategyManager:
                         exc,
                         exc_info=True,
                     )
+                    if _lock_acquired and self._position_registry is not None:
+                        self._position_registry.release(signal.symbol, strategy.strategy_id)
+                        _lock_acquired = False
 
         if not matched:
             logger.debug("No active strategy matched signal %s", signal.strategy_id)

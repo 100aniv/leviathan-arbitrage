@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import statistics
 import time
 from collections import defaultdict, deque
 from decimal import Decimal
@@ -76,12 +77,14 @@ class RealDataSignalProducer:
         futures_exchanges: Optional[set[str]] = None,
         latency_tracker: Any = None,
         stale_detector: Any = None,
+        regime_detector: Any = None,
     ) -> None:
         self._producer = multi_signal_producer
         self._scanner = triangular_scanner
         self._futures_exchanges: set[str] = futures_exchanges or {"binance_futures", "okx_futures", "bybit_futures"}
         self._latency_tracker = latency_tracker
         self._stale_detector = stale_detector
+        self._regime_detector = regime_detector
         # US-188: Rolling spread history for cross-asset stat arb z-score computation
         # Key: (symbolA, symbolB, exchange) → deque of log-price spreads
         self._spread_history: dict[tuple[str, str, str], deque[float]] = defaultdict(
@@ -94,6 +97,16 @@ class RealDataSignalProducer:
         self._stat_arb_cooldown_s = float(os.environ.get("STAT_ARB_COOLDOWN_S", "300"))
         self._stat_arb_min_history = int(os.environ.get("STAT_ARB_MIN_HISTORY", "120"))
         self._stat_arb_korean = {"upbit", "bithumb", "coinone"}  # skip stale data
+        # Bug 1-A: cache latest funding rates so _evaluate_spot_futures can use them
+        self._latest_rates: _Rates = {}
+        # US-230: rolling spread history for outlier filter
+        # Key: (symbol, min(exA, exB), max(exA, exB)) → deque of spread_bps
+        self._rolling_spread: dict[tuple[str, str, str], deque[float]] = defaultdict(
+            lambda: deque(maxlen=200)
+        )
+        self._spread_filter_min_samples: int = 20
+        self._spread_filter_multiplier: float = 3.0
+        self._spread_ts_max_diff_s: float = 0.300  # 300ms timestamp cross-check
         # S10: Warmup guard — skip signals for first 5 seconds after startup
         # Disabled in test mode to avoid breaking integration tests
         self._first_update_mono: float = 0.0
@@ -101,7 +114,7 @@ class RealDataSignalProducer:
         self._warmup_seconds: float = 5.0 if _env not in ("test",) else 0.0
         # S10 fix: per-exchange last-update timestamps for reconnect stale guard
         self._exchange_last_update: dict[str, float] = {}
-        _stale_threshold = os.environ.get("EXCHANGE_STALE_THRESHOLD_S", "3.0")
+        _stale_threshold = os.environ.get("EXCHANGE_STALE_THRESHOLD_S", "1.5")
         self._exchange_stale_threshold: float = float(_stale_threshold) if _env != "test" else 9999.0
 
     # ------------------------------------------------------------------
@@ -175,6 +188,8 @@ class RealDataSignalProducer:
         rates : dict[exchange_id][symbol] → float
         books : dict[symbol][exchange_id] → OrderBook  (spot books for price reference)
         """
+        # Bug 1-A: cache rates so _evaluate_spot_futures can reference them
+        self._latest_rates = rates
         return await self._evaluate_funding_rate_arb(rates, books)
 
     # ------------------------------------------------------------------
@@ -251,16 +266,43 @@ class RealDataSignalProducer:
                 if any(v is None for v in [spot_ask, fut_bid, spot_bid, fut_ask]):
                     continue
 
+                # US-229: Orderbook freshness guard for spot-futures
+                _sf_age_spot = time.monotonic() - spot_book.last_update_time if getattr(spot_book, "last_update_time", 0) > 0 else 999.0
+                _sf_age_fut = time.monotonic() - fut_book.last_update_time if getattr(fut_book, "last_update_time", 0) > 0 else 999.0
+                if _sf_age_spot > 3.0 or _sf_age_fut > 3.0:
+                    continue
+
                 # If futures > spot: buy spot, sell futures
                 if float(fut_bid) > float(spot_ask):
+                    # US-229: min basis filter — skip trivially small spreads
+                    _sf_basis_bps = (float(fut_bid) - float(spot_ask)) / float(spot_ask) * 10000
+                    _sf_min_bps = float(os.environ.get("SPOT_FUTURES_MIN_BASIS_BPS", "5"))
+                    if _sf_basis_bps < _sf_min_bps:
+                        continue
+                    # US-230: rolling median spread outlier filter
+                    _sf_key = (symbol, spot_ex, fut_ex)
+                    _sf_history = self._rolling_spread[_sf_key]
+                    _sf_history.append(_sf_basis_bps)
+                    # timestamp cross-check: skip if books updated > 300ms apart
+                    _sf_ts_spot = getattr(spot_book, "last_update_time", 0)
+                    _sf_ts_fut = getattr(fut_book, "last_update_time", 0)
+                    if _sf_ts_spot > 0 and _sf_ts_fut > 0:
+                        if abs(_sf_ts_spot - _sf_ts_fut) > self._spread_ts_max_diff_s:
+                            continue
+                    if len(_sf_history) >= self._spread_filter_min_samples:
+                        _sf_median = statistics.median(_sf_history)
+                        if _sf_median > 0 and _sf_basis_bps > self._spread_filter_multiplier * _sf_median:
+                            continue
                     spot_base = spot_ex.replace("binance_futures", "binance")
+                    # Bug 1-A: use cached funding rate from latest snapshot
+                    _funding_rate = self._latest_rates.get(fut_ex, {}).get(symbol, 0.0)
                     signal = await self._producer.produce_spot_futures_signal(
                         exchange_id=spot_base,
                         spot_symbol=symbol,
                         futures_symbol=f"{symbol}:USDT",
                         spot_price=Decimal(str(spot_ask)),
                         futures_price=Decimal(str(fut_bid)),
-                        funding_rate=0.0,
+                        funding_rate=_funding_rate,
                     )
                     if signal is not None:
                         logger.info(
@@ -320,19 +362,42 @@ class RealDataSignalProducer:
                     if not self._stale_detector.check_cross_exchange(ex_b, symbol, book_b, {symbol: other_books_b}):
                         continue
 
-                # S10: Orderbook freshness guard — skip if book updated > 5s ago
+                # S10/US-221: Orderbook freshness guard — skip if book updated > 3s ago
                 now_mono = time.monotonic()
                 age_a = now_mono - book_a.last_update_time if book_a.last_update_time > 0 else 999.0
                 age_b = now_mono - book_b.last_update_time if book_b.last_update_time > 0 else 999.0
-                if age_a > 5.0 or age_b > 5.0:
+                if age_a > 3.0 or age_b > 3.0:
                     continue
 
                 # ex_a bid > ex_b ask → buy on ex_b, sell on ex_a
                 if float(bid_a) > float(ask_b):
-                    # US-184 + S10: 500→100bps outlier filter (tighter post-reconnect guard)
+                    # US-184 + S10 + US-225: spread outlier filter
                     spread_bps = (float(bid_a) - float(ask_b)) / float(ask_b) * 10000
                     if spread_bps > 100:
+                        logger.warning(
+                            "real_signal_producer.futures_spread_outlier",
+                            extra={
+                                "symbol": symbol,
+                                "buy_ex": ex_b,
+                                "sell_ex": ex_a,
+                                "spread_bps": round(spread_bps, 1),
+                            },
+                        )
+                        if spread_bps > 200 and self._stale_detector is not None:
+                            self._stale_detector.add_blacklist(ex_a, symbol, ttl_s=60.0)
+                            self._stale_detector.add_blacklist(ex_b, symbol, ttl_s=60.0)
                         continue
+                    # US-230: rolling median spread outlier filter
+                    _ff_key = (symbol, min(ex_a, ex_b), max(ex_a, ex_b))
+                    _ff_history = self._rolling_spread[_ff_key]
+                    _ff_history.append(spread_bps)
+                    if book_a.last_update_time > 0 and book_b.last_update_time > 0:
+                        if abs(book_a.last_update_time - book_b.last_update_time) > self._spread_ts_max_diff_s:
+                            continue
+                    if len(_ff_history) >= self._spread_filter_min_samples:
+                        _ff_median = statistics.median(_ff_history)
+                        if _ff_median > 0 and spread_bps > self._spread_filter_multiplier * _ff_median:
+                            continue
                     signal = await self._producer.produce_futures_futures_signal(
                         symbol=symbol,
                         buy_exchange=ex_b,
@@ -349,10 +414,33 @@ class RealDataSignalProducer:
 
                 # Reverse: ex_b bid > ex_a ask
                 if float(bid_b) > float(ask_a):
-                    # US-184 + S10: 500→100bps outlier filter
+                    # US-184 + S10 + US-225: spread outlier filter
                     spread_bps = (float(bid_b) - float(ask_a)) / float(ask_a) * 10000
                     if spread_bps > 100:
+                        logger.warning(
+                            "real_signal_producer.futures_spread_outlier",
+                            extra={
+                                "symbol": symbol,
+                                "buy_ex": ex_a,
+                                "sell_ex": ex_b,
+                                "spread_bps": round(spread_bps, 1),
+                            },
+                        )
+                        if spread_bps > 200 and self._stale_detector is not None:
+                            self._stale_detector.add_blacklist(ex_a, symbol, ttl_s=60.0)
+                            self._stale_detector.add_blacklist(ex_b, symbol, ttl_s=60.0)
                         continue
+                    # US-230: rolling median spread outlier filter
+                    _ff_key = (symbol, min(ex_a, ex_b), max(ex_a, ex_b))
+                    _ff_history = self._rolling_spread[_ff_key]
+                    _ff_history.append(spread_bps)
+                    if book_a.last_update_time > 0 and book_b.last_update_time > 0:
+                        if abs(book_a.last_update_time - book_b.last_update_time) > self._spread_ts_max_diff_s:
+                            continue
+                    if len(_ff_history) >= self._spread_filter_min_samples:
+                        _ff_median = statistics.median(_ff_history)
+                        if _ff_median > 0 and spread_bps > self._spread_filter_multiplier * _ff_median:
+                            continue
                     signal = await self._producer.produce_futures_futures_signal(
                         symbol=symbol,
                         buy_exchange=ex_a,
@@ -564,6 +652,10 @@ class RealDataSignalProducer:
 
             diff = high_rate - low_rate
             if diff <= 0:
+                continue
+            # US-229: min funding rate diff filter (default 5 bps = 0.0005)
+            _fr_min_diff = float(os.environ.get("FUNDING_MIN_DIFF_BPS", "5")) / 10000
+            if diff < _fr_min_diff:
                 continue
 
             # Reference price from any available spot book
