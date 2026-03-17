@@ -14,7 +14,7 @@ import pathlib
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from typing_extensions import TypedDict
+from typing import TypedDict
 
 # ---------------------------------------------------------------------------
 # 레포 루트 경로 해석
