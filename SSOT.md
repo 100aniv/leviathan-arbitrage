@@ -3,7 +3,7 @@
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-18 (Phase S13 확장 완료 — US-238~243 + 1H Shadow PnL +$1,674) | 최신 커밋: e35c63a
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (234개 User Stories, 232 pass / 2 pending)
-> **실행 순서**: A~M ✅ → **S1~S9** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13 ✅** → **Phase S14 ✅** → **TF QF** → TF SF → TF Final → Live
+> **실행 순서**: A~M ✅ → **S1~S12** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13 ✅** → **Phase S14 ✅** → **TF QF** → TF SF → TF Final → Live
 
 ---
 

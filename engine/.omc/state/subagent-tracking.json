@@ -405,10 +405,253 @@
       "status": "completed",
       "completed_at": "2026-03-15T16:46:40.071Z",
       "duration_ms": 1132993
+    },
+    {
+      "agent_id": "a4f4dbb978df6c8bd",
+      "agent_type": "oh-my-claudecode:test-engineer",
+      "started_at": "2026-03-17T13:29:17.744Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T13:44:35.225Z",
+      "duration_ms": 917481
+    },
+    {
+      "agent_id": "ac1c53f7e91cbec84",
+      "agent_type": "oh-my-claudecode:executor",
+      "started_at": "2026-03-17T13:45:27.842Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T13:47:32.790Z",
+      "duration_ms": 124948
+    },
+    {
+      "agent_id": "aad94a3dd2358b8e0",
+      "agent_type": "oh-my-claudecode:code-reviewer",
+      "started_at": "2026-03-17T13:48:10.350Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T13:50:32.955Z",
+      "duration_ms": 142605
+    },
+    {
+      "agent_id": "ae259523f64eb7157",
+      "agent_type": "oh-my-claudecode:architect",
+      "started_at": "2026-03-17T14:45:33.621Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T14:49:32.172Z",
+      "duration_ms": 238551
+    },
+    {
+      "agent_id": "a857db7556a47cad9",
+      "agent_type": "oh-my-claudecode:analyst",
+      "started_at": "2026-03-17T14:50:22.730Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T14:53:51.155Z",
+      "duration_ms": 208425
+    },
+    {
+      "agent_id": "ab4f4549be4e79d70",
+      "agent_type": "oh-my-claudecode:critic",
+      "started_at": "2026-03-17T14:50:39.076Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T14:53:46.012Z",
+      "duration_ms": 186936
+    },
+    {
+      "agent_id": "a63b4f1fb80c4e68b",
+      "agent_type": "oh-my-claudecode:planner",
+      "started_at": "2026-03-17T14:50:48.041Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T14:54:15.961Z",
+      "duration_ms": 207920
+    },
+    {
+      "agent_id": "a9f37d995533da03a",
+      "agent_type": "quant-validator",
+      "started_at": "2026-03-17T14:56:11.744Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T15:00:26.955Z",
+      "duration_ms": 255211
+    },
+    {
+      "agent_id": "a20c973c127924716",
+      "agent_type": "shadow-tester",
+      "started_at": "2026-03-17T16:00:38.798Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T16:23:44.863Z",
+      "duration_ms": 1386065
+    },
+    {
+      "agent_id": "aa9a18556041340ef",
+      "agent_type": "shadow-tester",
+      "started_at": "2026-03-17T16:24:59.413Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T16:41:46.136Z",
+      "duration_ms": 1006723
+    },
+    {
+      "agent_id": "a4063f85b876f9753",
+      "agent_type": "shadow-tester",
+      "started_at": "2026-03-17T16:51:25.676Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T16:52:03.164Z",
+      "duration_ms": 37488
+    },
+    {
+      "agent_id": "a4e7bbcdd8a48db1e",
+      "agent_type": "oh-my-claudecode:code-reviewer",
+      "started_at": "2026-03-17T16:53:46.092Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T16:56:59.728Z",
+      "duration_ms": 193636
+    },
+    {
+      "agent_id": "af11236afeb75ab3a",
+      "agent_type": "oh-my-claudecode:security-reviewer",
+      "started_at": "2026-03-17T16:53:52.302Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T16:56:22.674Z",
+      "duration_ms": 150372
+    },
+    {
+      "agent_id": "aa14c3928bee57d31",
+      "agent_type": "oh-my-claudecode:architect",
+      "started_at": "2026-03-17T22:35:40.846Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T22:42:56.945Z",
+      "duration_ms": 436099
+    },
+    {
+      "agent_id": "a1b136ba801fc6ea0",
+      "agent_type": "ssot-keeper",
+      "started_at": "2026-03-17T22:44:16.747Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T22:46:16.248Z",
+      "duration_ms": 119501
+    },
+    {
+      "agent_id": "ae0aa15a009e27f6e",
+      "agent_type": "oh-my-claudecode:executor",
+      "started_at": "2026-03-17T22:50:06.933Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T22:59:15.197Z",
+      "duration_ms": 548264
+    },
+    {
+      "agent_id": "a33bac79763a3f701",
+      "agent_type": "ssot-keeper",
+      "started_at": "2026-03-17T23:38:01.489Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-17T23:40:18.709Z",
+      "duration_ms": 137220
+    },
+    {
+      "agent_id": "a0c917500667da001",
+      "agent_type": "oh-my-claudecode:executor",
+      "started_at": "2026-03-18T00:15:04.006Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-18T00:17:06.530Z",
+      "duration_ms": 122524
+    },
+    {
+      "agent_id": "abf0bc4a2b00664e1",
+      "agent_type": "oh-my-claudecode:document-specialist",
+      "started_at": "2026-03-18T00:17:38.804Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-18T00:27:27.260Z",
+      "duration_ms": 588456
+    },
+    {
+      "agent_id": "a170e4bf67d62522e",
+      "agent_type": "quant-validator",
+      "started_at": "2026-03-18T00:17:57.334Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-18T00:20:43.577Z",
+      "duration_ms": 166243
+    },
+    {
+      "agent_id": "a3dea05d8745f3be6",
+      "agent_type": "oh-my-claudecode:deep-executor",
+      "started_at": "2026-03-18T00:28:00.614Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-18T00:42:20.812Z",
+      "duration_ms": 860198
+    },
+    {
+      "agent_id": "a95cb4e61dd058953",
+      "agent_type": "oh-my-claudecode:architect",
+      "started_at": "2026-03-18T00:54:44.233Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-18T00:57:40.556Z",
+      "duration_ms": 176323
+    },
+    {
+      "agent_id": "af49c7e4019cc26ff",
+      "agent_type": "quant-validator",
+      "started_at": "2026-03-18T00:54:54.690Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-18T00:57:08.578Z",
+      "duration_ms": 133888
+    },
+    {
+      "agent_id": "aff069adbd8a5f7d5",
+      "agent_type": "oh-my-claudecode:deep-executor",
+      "started_at": "2026-03-18T00:58:33.182Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-18T01:22:15.919Z",
+      "duration_ms": 1422737
+    },
+    {
+      "agent_id": "a5a4cc33d5fdf7a83",
+      "agent_type": "ssot-keeper",
+      "started_at": "2026-03-18T03:44:25.930Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-18T03:46:49.929Z",
+      "duration_ms": 143999
+    },
+    {
+      "agent_id": "a869b9fc461bb2826",
+      "agent_type": "oh-my-claudecode:architect",
+      "started_at": "2026-03-18T03:47:43.433Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-18T03:55:27.448Z",
+      "duration_ms": 464015
+    },
+    {
+      "agent_id": "a775783f7ed8ca74f",
+      "agent_type": "oh-my-claudecode:deep-executor",
+      "started_at": "2026-03-18T03:57:04.962Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-18T04:01:04.667Z",
+      "duration_ms": 239705
     }
   ],
-  "total_spawned": 46,
-  "total_completed": 42,
+  "total_spawned": 76,
+  "total_completed": 72,
   "total_failed": 0,
-  "last_updated": "2026-03-15T16:46:40.178Z"
+  "last_updated": "2026-03-18T04:01:04.777Z"
 }

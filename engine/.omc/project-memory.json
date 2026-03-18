@@ -199,21 +199,63 @@
   },
   "hotPaths": [
     {
-      "path": "src/core/real_signal_producer.py",
-      "accessCount": 23,
-      "lastAccessed": 1773688195405,
-      "type": "file"
-    },
-    {
       "path": "src/main.py",
-      "accessCount": 18,
-      "lastAccessed": 1773688584933,
+      "accessCount": 115,
+      "lastAccessed": 1773806291066,
       "type": "directory"
     },
     {
+      "path": "src/modes/shadow.py",
+      "accessCount": 103,
+      "lastAccessed": 1773806299092,
+      "type": "file"
+    },
+    {
+      "path": "src/core/real_signal_producer.py",
+      "accessCount": 86,
+      "lastAccessed": 1773799816531,
+      "type": "file"
+    },
+    {
+      "path": "src",
+      "accessCount": 65,
+      "lastAccessed": 1773806283409,
+      "type": "directory"
+    },
+    {
+      "path": "src/strategies/statistical_arb.py",
+      "accessCount": 61,
+      "lastAccessed": 1773806245973,
+      "type": "file"
+    },
+    {
+      "path": "src/risk/guardian.py",
+      "accessCount": 28,
+      "lastAccessed": 1773806285255,
+      "type": "file"
+    },
+    {
+      "path": "src/strategies/manager.py",
+      "accessCount": 22,
+      "lastAccessed": 1773806265773,
+      "type": "file"
+    },
+    {
       "path": "src/tuning/strategy_backtest.py",
-      "accessCount": 14,
-      "lastAccessed": 1773676864448,
+      "accessCount": 21,
+      "lastAccessed": 1773794609885,
+      "type": "file"
+    },
+    {
+      "path": "src/strategies/cross_exchange.py",
+      "accessCount": 21,
+      "lastAccessed": 1773806255154,
+      "type": "file"
+    },
+    {
+      "path": "src/strategies/futures_futures.py",
+      "accessCount": 19,
+      "lastAccessed": 1773806255792,
       "type": "file"
     },
     {
@@ -223,22 +265,28 @@
       "type": "file"
     },
     {
-      "path": "src/risk/guardian.py",
-      "accessCount": 13,
-      "lastAccessed": 1773688573755,
+      "path": "",
+      "accessCount": 11,
+      "lastAccessed": 1773806292430,
+      "type": "directory"
+    },
+    {
+      "path": "tests/unit/strategies/test_futures_futures.py",
+      "accessCount": 10,
+      "lastAccessed": 1773761447479,
+      "type": "directory"
+    },
+    {
+      "path": "src/tuning/scheduled_tuner.py",
+      "accessCount": 10,
+      "lastAccessed": 1773787761401,
       "type": "file"
     },
     {
-      "path": "src/modes/shadow.py",
-      "accessCount": 10,
-      "lastAccessed": 1773688235348,
-      "type": "file"
-    },
-    {
-      "path": "src/strategies/statistical_arb.py",
-      "accessCount": 10,
-      "lastAccessed": 1773688585214,
-      "type": "file"
+      "path": ".env",
+      "accessCount": 9,
+      "lastAccessed": 1773791551786,
+      "type": "directory"
     },
     {
       "path": "tests/unit/tuning/test_adaptive_threshold_integration.py",
@@ -247,34 +295,16 @@
       "type": "directory"
     },
     {
-      "path": "src/strategies/cross_exchange.py",
-      "accessCount": 8,
-      "lastAccessed": 1773688524020,
-      "type": "file"
-    },
-    {
-      "path": "src/tuning/scheduled_tuner.py",
-      "accessCount": 8,
-      "lastAccessed": 1773688542821,
-      "type": "file"
-    },
-    {
-      "path": "src",
-      "accessCount": 8,
-      "lastAccessed": 1773688557758,
-      "type": "directory"
-    },
-    {
-      "path": "src/strategies/futures_futures.py",
-      "accessCount": 8,
-      "lastAccessed": 1773688575088,
-      "type": "file"
-    },
-    {
       "path": "tests/unit/tuning/test_scheduled_tuner.py",
       "accessCount": 7,
       "lastAccessed": 1773679679757,
       "type": "directory"
+    },
+    {
+      "path": "src/core/multi_signal.py",
+      "accessCount": 7,
+      "lastAccessed": 1773795308320,
+      "type": "file"
     },
     {
       "path": "src/tuning/adaptive_threshold.py",
@@ -283,10 +313,10 @@
       "type": "file"
     },
     {
-      "path": "",
+      "path": "tests/unit/test_real_signal_producer.py",
       "accessCount": 6,
-      "lastAccessed": 1773688540100,
-      "type": "directory"
+      "lastAccessed": 1773795556462,
+      "type": "file"
     },
     {
       "path": "tests/unit/tuning/test_adaptive_threshold.py",
@@ -301,21 +331,39 @@
       "type": "file"
     },
     {
-      "path": "tests/unit/test_real_signal_producer.py",
-      "accessCount": 5,
-      "lastAccessed": 1773677511474,
-      "type": "file"
-    },
-    {
       "path": "src/infra/metrics.py",
-      "accessCount": 4,
-      "lastAccessed": 1773677930022,
+      "accessCount": 5,
+      "lastAccessed": 1773759766525,
       "type": "directory"
     },
     {
       "path": "src/ml/onnx_runtime.py",
       "accessCount": 4,
       "lastAccessed": 1773678221885,
+      "type": "directory"
+    },
+    {
+      "path": "src/tuning/regime_detector.py",
+      "accessCount": 4,
+      "lastAccessed": 1773761972012,
+      "type": "file"
+    },
+    {
+      "path": "src/api/routes/alerts.py",
+      "accessCount": 4,
+      "lastAccessed": 1773766512979,
+      "type": "directory"
+    },
+    {
+      "path": "src/strategies/base.py",
+      "accessCount": 4,
+      "lastAccessed": 1773793822961,
+      "type": "directory"
+    },
+    {
+      "path": "tests",
+      "accessCount": 4,
+      "lastAccessed": 1773794188675,
       "type": "directory"
     },
     {
@@ -331,12 +379,6 @@
       "type": "directory"
     },
     {
-      "path": "src/tuning/regime_detector.py",
-      "accessCount": 3,
-      "lastAccessed": 1773678177094,
-      "type": "file"
-    },
-    {
       "path": "config/trading.json",
       "accessCount": 3,
       "lastAccessed": 1773688191534,
@@ -349,9 +391,15 @@
       "type": "file"
     },
     {
-      "path": "src/core/multi_signal.py",
-      "accessCount": 2,
-      "lastAccessed": 1773677447674,
+      "path": "src/core/order_book.py",
+      "accessCount": 3,
+      "lastAccessed": 1773761926551,
+      "type": "directory"
+    },
+    {
+      "path": "src/strategies/latency_arb.py",
+      "accessCount": 3,
+      "lastAccessed": 1773793127432,
       "type": "file"
     },
     {
@@ -361,39 +409,21 @@
       "type": "file"
     },
     {
-      "path": "tests/unit/strategies/test_futures_futures.py",
-      "accessCount": 2,
-      "lastAccessed": 1773681267024,
-      "type": "directory"
-    },
-    {
-      "path": "tests",
-      "accessCount": 2,
-      "lastAccessed": 1773684405710,
-      "type": "directory"
-    },
-    {
-      "path": "src/strategies/latency_arb.py",
-      "accessCount": 2,
-      "lastAccessed": 1773688525476,
-      "type": "file"
-    },
-    {
-      "path": "src/strategies/manager.py",
-      "accessCount": 2,
-      "lastAccessed": 1773688526564,
-      "type": "file"
-    },
-    {
       "path": "src/infra/telegram_bot.py",
       "accessCount": 2,
       "lastAccessed": 1773690820353,
       "type": "file"
     },
     {
-      "path": "src/strategies/base.py",
-      "accessCount": 1,
-      "lastAccessed": 1773676652958,
+      "path": "src/api/routes/settings.py",
+      "accessCount": 2,
+      "lastAccessed": 1773766496680,
+      "type": "directory"
+    },
+    {
+      "path": "src/api/routes/system.py",
+      "accessCount": 2,
+      "lastAccessed": 1773766498858,
       "type": "directory"
     },
     {
@@ -421,21 +451,9 @@
       "type": "file"
     },
     {
-      "path": ".env",
-      "accessCount": 1,
-      "lastAccessed": 1773678145490,
-      "type": "directory"
-    },
-    {
       "path": "pyproject.toml",
       "accessCount": 1,
       "lastAccessed": 1773678164265,
-      "type": "directory"
-    },
-    {
-      "path": "src/core/order_book.py",
-      "accessCount": 1,
-      "lastAccessed": 1773682874506,
       "type": "directory"
     },
     {
@@ -463,27 +481,9 @@
       "type": "directory"
     },
     {
-      "path": "src/api/routes/alerts.py",
-      "accessCount": 1,
-      "lastAccessed": 1773689735247,
-      "type": "directory"
-    },
-    {
       "path": "src/api/routes/exchanges.py",
       "accessCount": 1,
       "lastAccessed": 1773689736201,
-      "type": "directory"
-    },
-    {
-      "path": "src/api/routes/settings.py",
-      "accessCount": 1,
-      "lastAccessed": 1773689736660,
-      "type": "directory"
-    },
-    {
-      "path": "src/api/routes/system.py",
-      "accessCount": 1,
-      "lastAccessed": 1773689737553,
       "type": "directory"
     },
     {

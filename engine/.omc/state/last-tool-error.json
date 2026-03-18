@@ -1,7 +1,7 @@
 {
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/100aniv/Development/arbitrage_OMC && python3 -c \\\"\\nimport json\\nwith open('.omc/prd.json', 'r') as f:\\n    data = json.load(f)\\n\\ns10_ids = [f'US-{i}' for i in range(187, 203)]\\...",
-  "error": "Exit code 1\nTraceback (most recent call last):\n  File \"<string>\", line 8, in <module>\nKeyError: 'userStories'",
-  "timestamp": "2026-03-16T19:18:17.564Z",
+  "tool_name": "Read",
+  "tool_input_preview": "{\"file_path\":\"/Users/100aniv/Development/arbitrage_OMC/engine/src/main.py\"}",
+  "error": "File content (29251 tokens) exceeds maximum allowed tokens (25000). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.",
+  "timestamp": "2026-03-18T03:57:11.448Z",
   "retry_count": 1
 }
