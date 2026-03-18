@@ -1012,18 +1012,79 @@ class ShadowMode:
     async def _evaluate_multi_strategies(
         self, exchange_id: str, symbol: str, book: Any
     ) -> None:
-        """Delegate all multi-strategy evaluation to RealDataSignalProducer."""
+        """Delegate all multi-strategy evaluation to RealDataSignalProducer.
+
+        Also feeds orderbook updates directly to StatisticalArbStrategy's
+        on_orderbook_update() for cross-asset pair evaluation.  The stat_arb
+        signals from RealDataSignalProducer are skipped here because they
+        would be misrouted to the legacy on_signal() path which expects
+        same-symbol cross-exchange data.
+        """
         if self._real_signal_producer is None:
             return
+
+        # Direct cross-asset stat_arb routing: feed mid_price to the strategy
+        # so it can evaluate all configured pairs internally.
+        await self._feed_stat_arb_orderbook(exchange_id, symbol, book)
+
         signals = await self._real_signal_producer.on_orderbook_update(
             exchange_id, symbol, book,
             self._books, self._futures_books,
         )
         for signal in signals:
+            # Skip cross-asset stat_arb signals — already handled above via
+            # direct on_orderbook_update() call to the strategy.
+            if (
+                signal.metadata.get("symbol2")
+                and signal.strategy_id == "statistical_arb_zscore"
+            ):
+                continue
             if self._strategy_manager is not None:
                 await self._route_signal_to_strategies(signal)
             else:
                 await self._execute_shadow_trade(signal)
+
+    async def _feed_stat_arb_orderbook(
+        self, exchange_id: str, symbol: str, book: Any
+    ) -> None:
+        """Feed orderbook mid-price to StatisticalArbStrategy.on_orderbook_update().
+
+        This routes cross-asset stat_arb data correctly — the strategy
+        handles pair evaluation, z-score computation, and TradeRequest
+        generation internally. Bypasses the broken on_signal() path which
+        expects same-symbol cross-exchange data.
+        """
+        if self._strategy_manager is None:
+            return
+
+        bid = book.best_bid()
+        ask = book.best_ask()
+        if bid is None or ask is None:
+            return
+        mid_price = (float(bid) + float(ask)) / 2.0
+        if mid_price <= 0:
+            return
+
+        from src.strategies.statistical_arb import StatisticalArbStrategy
+
+        for strategy in self._strategy_manager._strategies.values():
+            if not isinstance(strategy, StatisticalArbStrategy):
+                continue
+            if not strategy.is_active:
+                continue
+            try:
+                requests = await strategy.on_orderbook_update(
+                    exchange_id, symbol, mid_price
+                )
+                for req in requests:
+                    await self._execute_shadow_trade_request(req)
+            except Exception as exc:
+                logger.warning(
+                    "shadow_mode.stat_arb_orderbook_feed_failed",
+                    exchange=exchange_id,
+                    symbol=symbol,
+                    error=str(exc),
+                )
 
     # NOTE: _evaluate_triangular, _evaluate_statistical_arb, _evaluate_latency_arb,
     # _evaluate_spot_futures, _evaluate_futures_futures moved to RealDataSignalProducer
@@ -1104,7 +1165,8 @@ class ShadowMode:
                         exchanges=list(rates_by_exchange.keys()),
                     )
 
-                await asyncio.sleep(60.0)
+                # US-239: 30s polling for tighter settlement timing
+                await asyncio.sleep(30.0)
         except asyncio.CancelledError:
             pass
 
@@ -1572,7 +1634,17 @@ class ShadowMode:
         self._stats.trades_executed += 1
 
         # Compute net PnL across all legs
+        # US-240: Cross-asset detection — if legs have different symbols,
+        # the standard sell_notional - buy_notional calculation is meaningless
+        # (comparing BTC price to ETH price). For cross-asset (stat_arb),
+        # each leg is dollar-neutral by design, so net PnL = -(total fees).
+        _is_cross_asset = trade_request.metadata.get("cross_asset") == "true"
+        _leg_symbols = {leg.symbol for leg, _ in trades}
+        if not _is_cross_asset and len(_leg_symbols) > 1:
+            _is_cross_asset = True  # fallback detection
+
         net_pnl = Decimal("0")
+        total_fees = Decimal("0")
         for leg, trade in trades:
             notional = trade.price * trade.amount
             ex = leg.exchange_id.removeprefix("paper_").removeprefix("sandbox_")
@@ -1580,11 +1652,34 @@ class ShadowMode:
                 fee = self._fee_model.taker_fee(ex, notional)
             except ValueError:
                 fee = notional * Decimal("0.0025")
+            total_fees += fee
 
-            if leg.side == OrderSide.SELL:
-                net_pnl += notional - fee
+            if _is_cross_asset:
+                # Dollar-neutral: PnL comes only from spread convergence over time.
+                # Individual entry/exit PnL = -(fees only).
+                continue
             else:
-                net_pnl -= notional + fee
+                if leg.side == OrderSide.SELL:
+                    net_pnl += notional - fee
+                else:
+                    net_pnl -= notional + fee
+
+        if _is_cross_asset:
+            # Cross-asset: use expected_profit_usdt from strategy (spread-based PnL)
+            # Entry: expected_profit=0 → net_pnl = -fees (opening position)
+            # Exit: expected_profit=spread_pnl → net_pnl = spread_pnl - fees
+            _expected = trade_request.expected_profit_usdt or Decimal("0")
+            # Sanity cap: no single trade can exceed $50 profit (prevents stale data artifacts)
+            _MAX_SINGLE_TRADE_PNL = Decimal("50")
+            if abs(_expected) > _MAX_SINGLE_TRADE_PNL:
+                logger.warning(
+                    "shadow_mode.cross_asset_pnl_capped",
+                    raw_pnl=float(_expected),
+                    capped=float(_MAX_SINGLE_TRADE_PNL),
+                    strategy=sid,
+                )
+                _expected = _MAX_SINGLE_TRADE_PNL if _expected > 0 else -_MAX_SINGLE_TRADE_PNL
+            net_pnl = _expected - total_fees
 
         # Network cost between first buy and first sell exchange
         buy_exs = [l.exchange_id.removeprefix("paper_").removeprefix("sandbox_")

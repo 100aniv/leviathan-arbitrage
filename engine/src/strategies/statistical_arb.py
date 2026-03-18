@@ -19,6 +19,7 @@ cross-exchange (same symbol, two exchange) mode.
 from __future__ import annotations
 
 import math
+import os
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -66,6 +67,8 @@ class StatArbConfig(BaseModel):
     zscore_hardstop: float = Field(default=3.5, ge=0.0)
     # US-231: Kalman stale guard — skip z-score if last update was > this many seconds ago
     kalman_stale_threshold_s: float = Field(default=60.0, ge=0.0)
+    # US-240: OU half-life maximum (days) — pairs with slower mean-reversion are skipped
+    max_half_life_days: float = Field(default=15.0, ge=0.0)
     # Cross-asset pairs: (symbolA, symbolB) traded on the SAME exchange
     pairs: list[tuple[str, str]] = Field(default_factory=lambda: [
         ("BTC/USDT", "ETH/USDT"),
@@ -122,6 +125,16 @@ class _PairState:
     bars_in_position: int = 0
     # US-231: monotonic time of previous Kalman update (for stale guard)
     kalman_last_update: float = 0.0
+
+
+def _zscore_std(history: list[float]) -> float:
+    """Return std of spread history (for PnL calculation)."""
+    if len(history) < 2:
+        return 1e-10
+    n = len(history)
+    mean = sum(history) / n
+    variance = sum((x - mean) ** 2 for x in history) / n
+    return math.sqrt(variance) if variance > 0 else 1e-10
 
 
 def _zscore(history: list[float], current: float) -> float:
@@ -185,6 +198,14 @@ class StatisticalArbStrategy(BaseStrategy):
         }
         # Latest mid prices per symbol per exchange: {symbol: {exchange: mid}}
         self._all_books: dict[str, dict[str, float]] = {}
+
+        # US-240: Per-pair trade cooldown (prevent over-trading)
+        self._pair_last_trade: dict[tuple[str, str], float] = {}
+        self._trade_cooldown_s: float = float(os.environ.get("STAT_ARB_COOLDOWN_S", "300"))
+
+        # US-240: Entry spread tracking for exit PnL calculation
+        self._pair_entry_spread: dict[tuple[str, str], float] = {}
+        self._pair_entry_notional: dict[tuple[str, str], float] = {}
 
         # Legacy cross-exchange single-pair state (for on_signal backward compat)
         self._buy_prices: deque[float] = deque(maxlen=_max_len)
@@ -308,6 +329,16 @@ class StatisticalArbStrategy(BaseStrategy):
             ps.bars_in_position = 0
             self._metrics.trade_requests_generated += 1
             exit_reason = "timeout" if force_exit else "zscore"
+            # US-240: hedge-ratio adjusted exit sizes (mirror entry)
+            _exit_notional = float(self.config.max_position_size) * mid_b
+            _exit_size_a = Decimal(str(_exit_notional / mid_a)) if mid_a > 0 else self.config.max_position_size
+            # US-240: Spread-based PnL — SHORT entry profited if spread decreased
+            _pair_key_exit = (symbol_a, symbol_b)
+            _entry_spread = self._pair_entry_spread.get(_pair_key_exit, spread)
+            _entry_notional = self._pair_entry_notional.get(_pair_key_exit, _exit_notional)
+            _std = _zscore_std(list(ps.spreads))
+            _spread_pnl = (_entry_spread - spread) * _entry_notional / _std if _std > 0 else 0.0
+            self._pair_last_trade[_pair_key_exit] = time.monotonic()
             return TradeRequest(
                 strategy_id=self.strategy_id,
                 legs=[
@@ -315,7 +346,7 @@ class StatisticalArbStrategy(BaseStrategy):
                         exchange_id=exchange,
                         symbol=symbol_a,
                         side=OrderSide.BUY,
-                        size=self.config.max_position_size,
+                        size=_exit_size_a,
                         order_type=OrderType.MARKET,
                         price=Decimal(str(mid_a)),
                     ),
@@ -328,13 +359,15 @@ class StatisticalArbStrategy(BaseStrategy):
                         price=Decimal(str(mid_b)),
                     ),
                 ],
-                expected_profit_usdt=Decimal("0"),
+                expected_profit_usdt=Decimal(str(round(_spread_pnl, 6))),
                 confidence=0.5,
                 metadata={
                     "action": "exit",
                     "prev_state": "short",
+                    "cross_asset": "true",
                     "zscore": str(zscore),
                     "exit_reason": exit_reason,
+                    "spread_pnl": str(round(_spread_pnl, 4)),
                     "symbol2": symbol_b,
                 },
             )
@@ -346,6 +379,16 @@ class StatisticalArbStrategy(BaseStrategy):
             ps.bars_in_position = 0
             self._metrics.trade_requests_generated += 1
             exit_reason = "timeout" if force_exit else "zscore"
+            # US-240: hedge-ratio adjusted exit sizes
+            _exit_notional_l = float(self.config.max_position_size) * mid_b
+            _exit_size_a_l = Decimal(str(_exit_notional_l / mid_a)) if mid_a > 0 else self.config.max_position_size
+            # US-240: Spread-based PnL — LONG entry profited if spread increased
+            _pair_key_exit_l = (symbol_a, symbol_b)
+            _entry_spread_l = self._pair_entry_spread.get(_pair_key_exit_l, spread)
+            _entry_notional_l = self._pair_entry_notional.get(_pair_key_exit_l, _exit_notional_l)
+            _std_l = _zscore_std(list(ps.spreads))
+            _spread_pnl_l = (spread - _entry_spread_l) * _entry_notional_l / _std_l if _std_l > 0 else 0.0
+            self._pair_last_trade[_pair_key_exit_l] = time.monotonic()
             return TradeRequest(
                 strategy_id=self.strategy_id,
                 legs=[
@@ -353,7 +396,7 @@ class StatisticalArbStrategy(BaseStrategy):
                         exchange_id=exchange,
                         symbol=symbol_a,
                         side=OrderSide.SELL,
-                        size=self.config.max_position_size,
+                        size=_exit_size_a_l,
                         order_type=OrderType.MARKET,
                         price=Decimal(str(mid_a)),
                     ),
@@ -366,13 +409,15 @@ class StatisticalArbStrategy(BaseStrategy):
                         price=Decimal(str(mid_b)),
                     ),
                 ],
-                expected_profit_usdt=Decimal("0"),
+                expected_profit_usdt=Decimal(str(round(_spread_pnl_l, 6))),
                 confidence=0.5,
                 metadata={
                     "action": "exit",
                     "prev_state": "long",
+                    "spread_pnl": str(round(_spread_pnl_l, 4)),
                     "zscore": str(zscore),
                     "exit_reason": exit_reason,
+                    "cross_asset": "true",
                     "symbol2": symbol_b,
                 },
             )
@@ -405,6 +450,20 @@ class StatisticalArbStrategy(BaseStrategy):
             except Exception:
                 pass
 
+        # US-240: OU half-life filter — skip pairs with slow mean-reversion
+        if self.config.max_half_life_days > 0:
+            half_life = self._compute_half_life(list(ps.spreads))
+            if half_life > self.config.max_half_life_days:
+                self._metrics.signals_filtered += 1
+                return None
+
+        # US-240: Per-pair cooldown — prevent over-trading
+        pair_key = (symbol_a, symbol_b)
+        now_mono = time.monotonic()
+        last_trade_time = self._pair_last_trade.get(pair_key, 0.0)
+        if ps.state == StatArbState.FLAT and (now_mono - last_trade_time) < self._trade_cooldown_s:
+            return None
+
         # Adaptive entry threshold
         effective_entry = self._adaptive_entry_threshold_for_pair(ps)
         if abs(zscore) < effective_entry:
@@ -421,7 +480,12 @@ class StatisticalArbStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
-        size = self.config.max_position_size
+        # US-240: Hedge-ratio adjusted sizes for dollar-neutral cross-asset position.
+        # Without adjustment, BTC($90K) vs ETH($3.5K) creates 25x notional imbalance.
+        # size_a * mid_a ≈ size_b * mid_b (dollar-neutral)
+        notional_usd = float(self.config.max_position_size) * mid_b  # base notional from symbolB
+        size_a = Decimal(str(notional_usd / mid_a)) if mid_a > 0 else self.config.max_position_size
+        size_b = self.config.max_position_size
 
         # zscore > 0: symbolA overpriced vs symbolB → SHORT symbolA, LONG symbolB
         # zscore < 0: symbolA underpriced vs symbolB → LONG symbolA, SHORT symbolB
@@ -431,7 +495,7 @@ class StatisticalArbStrategy(BaseStrategy):
                     exchange_id=exchange,
                     symbol=symbol_a,
                     side=OrderSide.SELL,
-                    size=size,
+                    size=size_a,
                     order_type=OrderType.MARKET,
                     price=Decimal(str(mid_a)),
                 ),
@@ -439,7 +503,7 @@ class StatisticalArbStrategy(BaseStrategy):
                     exchange_id=exchange,
                     symbol=symbol_b,
                     side=OrderSide.BUY,
-                    size=size,
+                    size=size_b,
                     order_type=OrderType.MARKET,
                     price=Decimal(str(mid_b)),
                 ),
@@ -451,7 +515,7 @@ class StatisticalArbStrategy(BaseStrategy):
                     exchange_id=exchange,
                     symbol=symbol_a,
                     side=OrderSide.BUY,
-                    size=size,
+                    size=size_a,
                     order_type=OrderType.MARKET,
                     price=Decimal(str(mid_a)),
                 ),
@@ -459,7 +523,7 @@ class StatisticalArbStrategy(BaseStrategy):
                     exchange_id=exchange,
                     symbol=symbol_b,
                     side=OrderSide.SELL,
-                    size=size,
+                    size=size_b,
                     order_type=OrderType.MARKET,
                     price=Decimal(str(mid_b)),
                 ),
@@ -470,6 +534,12 @@ class StatisticalArbStrategy(BaseStrategy):
         self._metrics.trade_requests_generated += 1
         confidence = min(abs(zscore) / 5.0, 1.0)
 
+        # US-240: Track entry for cooldown + spread-based PnL
+        self._pair_last_trade[pair_key] = now_mono
+        self._pair_entry_spread[pair_key] = spread
+        _entry_notional = float(size_b) * mid_b
+        self._pair_entry_notional[pair_key] = _entry_notional
+
         return TradeRequest(
             strategy_id=self.strategy_id,
             legs=legs,
@@ -478,6 +548,7 @@ class StatisticalArbStrategy(BaseStrategy):
             metadata={
                 "zscore": str(zscore),
                 "hedge_ratio": str(beta),
+                "cross_asset": "true",
                 "state": str(ps.state),
                 "symbol2": symbol_b,
                 "effective_entry_threshold": str(effective_entry),
@@ -487,6 +558,29 @@ class StatisticalArbStrategy(BaseStrategy):
     # ------------------------------------------------------------------
     # Per-pair helper methods
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _compute_half_life(spreads: list[float]) -> float:
+        """Ornstein-Uhlenbeck half-life from spread autocorrelation.
+
+        Fits a linear regression: delta_spread = beta * lag_spread + noise.
+        Half-life = -ln(2) / beta.  Returns inf if not mean-reverting.
+        """
+        if len(spreads) < 22:  # need at least 20 lag pairs + 2
+            return float('inf')
+        try:
+            import numpy as np
+            spreads_arr = np.array(spreads)
+            lag_spread = spreads_arr[:-1]
+            delta_spread = np.diff(spreads_arr)
+            if len(lag_spread) < 20:
+                return float('inf')
+            beta = np.polyfit(lag_spread, delta_spread, 1)[0]
+            if beta >= 0:
+                return float('inf')
+            return -math.log(2) / beta
+        except Exception:
+            return float('inf')
 
     def _adaptive_entry_threshold_for_pair(self, ps: _PairState) -> float:
         """Return zscore_entry scaled up when current spread volatility is elevated."""

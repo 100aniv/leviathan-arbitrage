@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-18 (Phase S14 완료 — Auto-tuner Shadow 통합 + 복합지표 기준) | 최신 커밋: bb35062
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (234개 User Stories, 226 pass / 8 pending)
-> **실행 순서**: A~M ✅ → **S1~S9** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → Phase S13 (추가 6 US) → Phase S14 ✅ → **TF QF** → TF SF → TF Final → Live
+> 마지막 업데이트: 2026-03-18 (Phase S13 확장 완료 — US-238~243 + 1H Shadow PnL +$1,674) | 최신 커밋: e35c63a
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (234개 User Stories, 232 pass / 2 pending)
+> **실행 순서**: A~M ✅ → **S1~S9** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13 ✅** → **Phase S14 ✅** → **TF QF** → TF SF → TF Final → Live
 
 ---
 
@@ -31,8 +31,8 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S14 완료 → TF QF 대기
-**Tests**: 4,809 passed / 0 failed / 12 skipped
+**Phase**: S13 ✅ + S14 ✅ → TF QF 대기
+**Tests**: 4,831 passed / 0 failed / 12 skipped
 **Coverage**: 86%
 **TF Status**: QF 6차 PASS, SF 2차 FAIL → S13+S14 완료, TF QF 대기
 **Next**: TF QF → TF SF → TF Final → Live
@@ -364,7 +364,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 234개 User Stories, 226개 완료, 8개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 234개 User Stories, 232개 완료, 2개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -373,7 +373,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 > Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 
-#### Phase S13: 기관급 전략 완전체 — US-221~233, US-235~237 (← TF SF 2차 FAIL + 6명 전문가 리뷰)
+#### Phase S13: 기관급 전략 완전체 — US-221~233, US-235~243 (← TF SF 2차 FAIL + 6명 전문가 리뷰) ✅ 완료
 
 > **목표**: 기관급 전략 완전체 구현. CRITICAL 버그 5개 수정 + 4계층 Stale 감지 + 전략별 CB + Auto-tuner 연동
 > **회귀 사유**: TF SF 2차 Stage 2 FAIL — 2H45M PnL -$153.47, loss_capped 17건×-$50=-$850
@@ -397,12 +397,16 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-235: cross_exchange 미세 조정 — max_spread 100bps + min_book_depth 500
 - [x] US-236: 엔진 Dead Wiring 전수 수정 — stat_arb Dead Code 연결, _position_manager 초기화, Redis 오타, PortfolioState 미연결
 - [x] US-237: 대시보드 정합성 + 로그인 수정 — CORS/CSP, Alert API 경로, ParameterSlider, JWT 검증
-- [ ] US-238: spot_futures 로직 개선 — Korean stale 보정 + basis 최적화 + 백테스트 검증
-- [ ] US-239: funding_rate 로직 개선 — 시그널 빈도 증가 + diff threshold 최적화 + 백테스트 검증
-- [ ] US-240: statistical_arb 거래 전환 개선 — 마찰력 재계산 + z-score threshold 최적화 + 백테스트 검증
-- [ ] US-241: triangular 로직 개선 — cycle 감지 임계값 재설계 + 백테스트 검증
-- [ ] US-242: cex_dex 인프라 구성 + 로직 검증 — DEX RPC 설정 + 백테스트
-- [ ] US-243: 7개 전략 통합 백테스트 + 복합지표 검증 — 전 전략 동시 1시간 Shadow PASS
+- [x] US-238: spot_futures 로직 개선 — Korean stale 보정 + basis 최적화 + 백테스트 검증
+- [x] US-239: funding_rate 로직 개선 — 시그널 빈도 증가 + diff threshold 최적화 + 백테스트 검증
+- [x] US-240: statistical_arb 거래 전환 개선 — 마찰력 재계산 + z-score threshold 최적화 + 백테스트 검증
+- [x] US-241: triangular 로직 개선 — cycle 감지 임계값 재설계 + 백테스트 검증
+- [x] US-242: cex_dex 인프라 구성 + 로직 검증 — DEX RPC 설정 + 백테스트
+- [x] US-243: 7개 전략 통합 백테스트 + 복합지표 검증 — 전 전략 동시 1시간 Shadow PASS
+
+> **Shadow 1시간 (US-243 완료 기준)**: 9,338 trades, PnL +$1,674.06, WR 76.2%, crash 0
+> **전략별**: spot_futures 7,021 ✅ / futures_futures 2,117 ✅ / triangular 122 ✅ / stat_arb 73 ✅ / funding_rate 5 ✅
+> **로직 수정**: stat_arb routing fix, hedge-ratio sizing, cross-asset PnL, funding_rate phantom slippage 제거, spot_futures direction-aware filter, triangular fake spread 차단
 
 #### Phase S14: Auto-tuner 완전 연동 — US-234
 

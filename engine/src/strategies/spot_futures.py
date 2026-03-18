@@ -69,9 +69,18 @@ class SpotFuturesStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
-        # Skip if funding rate would erode the basis profit
+        # Skip if funding rate direction is ADVERSE to our position.
+        # Contango (basis > 0): we sell futures (short) → positive funding = good (shorts receive).
+        #   Only reject if funding is negative (longs receive, shorts pay).
+        # Backwardation (basis < 0): we buy futures (long) → negative funding = good (longs receive).
+        #   Only reject if funding is positive (shorts receive, longs pay).
         funding_rate = Decimal(str(signal.metadata.get("funding_rate", "0")))
-        if abs(funding_rate) > self.config.funding_rate_threshold:
+        if basis_bps > 0 and funding_rate < -self.config.funding_rate_threshold:
+            # Contango but negative funding → shorts pay → adverse
+            self._metrics.signals_filtered += 1
+            return None
+        if basis_bps < 0 and funding_rate > self.config.funding_rate_threshold:
+            # Backwardation but positive funding → longs pay → adverse
             self._metrics.signals_filtered += 1
             return None
 

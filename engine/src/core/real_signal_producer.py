@@ -305,9 +305,52 @@ class RealDataSignalProducer:
                         funding_rate=_funding_rate,
                     )
                     if signal is not None:
+                        if signal.metadata is None:
+                            signal.metadata = {}
+                        signal.metadata["direction"] = "contango"
                         logger.info(
                             "real_signal_producer.spot_futures_signal",
-                            extra={"symbol": symbol, "spot_ex": spot_ex, "fut_ex": fut_ex},
+                            extra={"symbol": symbol, "spot_ex": spot_ex, "fut_ex": fut_ex, "direction": "contango"},
+                        )
+                        signals.append(signal)
+
+                # US-238: Backwardation path — spot > futures → sell spot, buy futures
+                if float(spot_bid) > float(fut_ask):
+                    _sf_basis_bps_back = (float(spot_bid) - float(fut_ask)) / float(fut_ask) * 10000
+                    _sf_min_bps = float(os.environ.get("SPOT_FUTURES_MIN_BASIS_BPS", "5"))
+                    if _sf_basis_bps_back < _sf_min_bps:
+                        continue
+                    # Rolling median spread outlier filter
+                    _sf_key_back = (symbol, fut_ex, spot_ex)
+                    _sf_history_back = self._rolling_spread[_sf_key_back]
+                    _sf_history_back.append(_sf_basis_bps_back)
+                    # Timestamp cross-check
+                    _sf_ts_spot = getattr(spot_book, "last_update_time", 0)
+                    _sf_ts_fut = getattr(fut_book, "last_update_time", 0)
+                    if _sf_ts_spot > 0 and _sf_ts_fut > 0:
+                        if abs(_sf_ts_spot - _sf_ts_fut) > self._spread_ts_max_diff_s:
+                            continue
+                    if len(_sf_history_back) >= self._spread_filter_min_samples:
+                        _sf_median_back = statistics.median(_sf_history_back)
+                        if _sf_median_back > 0 and _sf_basis_bps_back > self._spread_filter_multiplier * _sf_median_back:
+                            continue
+                    spot_base = spot_ex.replace("binance_futures", "binance")
+                    _funding_rate = self._latest_rates.get(fut_ex, {}).get(symbol, 0.0)
+                    signal = await self._producer.produce_spot_futures_signal(
+                        exchange_id=spot_base,
+                        spot_symbol=symbol,
+                        futures_symbol=f"{symbol}:USDT",
+                        spot_price=Decimal(str(spot_bid)),
+                        futures_price=Decimal(str(fut_ask)),
+                        funding_rate=_funding_rate,
+                    )
+                    if signal is not None:
+                        if signal.metadata is None:
+                            signal.metadata = {}
+                        signal.metadata["direction"] = "backwardation"
+                        logger.info(
+                            "real_signal_producer.spot_futures_signal",
+                            extra={"symbol": symbol, "spot_ex": spot_ex, "fut_ex": fut_ex, "direction": "backwardation"},
                         )
                         signals.append(signal)
 
@@ -555,6 +598,10 @@ class RealDataSignalProducer:
                 symbol2=sym_b,
             )
             if sig is not None:
+                # US-240: Mark as cross-asset signal for shadow.py routing
+                if sig.metadata is None:
+                    sig.metadata = {}
+                sig.metadata["cross_asset"] = True
                 self._stat_arb_cooldown[pair_key] = now
                 logger.info(
                     "real_signal_producer.statistical_arb_signal",
@@ -562,6 +609,7 @@ class RealDataSignalProducer:
                         "sym_a": sym_a, "sym_b": sym_b, "exchange": exchange_id,
                         "z_score": f"{z_score:.2f}", "beta": f"{beta:.4f}",
                         "history_len": len(history),
+                        "cross_asset": True,
                     },
                 )
                 signals.append(sig)

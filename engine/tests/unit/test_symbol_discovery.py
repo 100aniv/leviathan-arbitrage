@@ -219,7 +219,9 @@ class TestEngineResolveSymbols:
         with patch("src.collectors.symbol_discovery.discover_common_symbols", new_callable=AsyncMock, side_effect=Exception("network")):
             await engine._resolve_symbols()
 
-            assert engine._settings.trading.symbols == ["BTC/USDT", "ETH/USDT", "XRP/USDT"]
+            syms = engine._settings.trading.symbols
+            # US-241: cross-pairs are appended after fallback symbols
+            assert syms[:3] == ["BTC/USDT", "ETH/USDT", "XRP/USDT"]
 
     @pytest.mark.asyncio
     async def test_resolve_fallback_on_empty(self):
@@ -237,4 +239,6 @@ class TestEngineResolveSymbols:
         with patch("src.collectors.symbol_discovery.discover_common_symbols", new_callable=AsyncMock, return_value=[]):
             await engine._resolve_symbols()
 
-            assert engine._settings.trading.symbols == ["BTC/USDT", "ETH/USDT", "XRP/USDT"]
+            syms = engine._settings.trading.symbols
+            # US-241: cross-pairs are appended after fallback symbols
+            assert syms[:3] == ["BTC/USDT", "ETH/USDT", "XRP/USDT"]

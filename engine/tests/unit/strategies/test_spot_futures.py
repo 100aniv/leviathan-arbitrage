@@ -122,15 +122,59 @@ async def test_cross_exchange_signal_rejected():
 
 
 @pytest.mark.asyncio
-async def test_high_funding_rate_filters_signal():
-    """Funding rate above threshold should filter the signal."""
+async def test_adverse_funding_rate_filters_signal():
+    """Adverse funding direction should filter the signal.
+
+    Contango (basis > 0): we sell futures (short). Negative funding means
+    shorts PAY, which is adverse. Should be filtered.
+    """
     config = SpotFuturesConfig(
         min_basis_bps=Decimal("10"),
         funding_rate_threshold=Decimal("0.0005"),
     )
     strategy = SpotFuturesStrategy("sf_basis", make_calculator(), config)
     await strategy.start()
-    signal = make_signal(basis_bps=Decimal("20"), funding_rate=Decimal("0.002"))  # > 0.0005
+    # Contango + negative funding = adverse (shorts pay)
+    signal = make_signal(basis_bps=Decimal("20"), funding_rate=Decimal("-0.002"))
+    result = await strategy.on_signal(signal)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_beneficial_funding_rate_allows_signal():
+    """Beneficial funding direction should NOT filter the signal.
+
+    Contango (basis > 0): we sell futures (short). Positive funding means
+    shorts RECEIVE, which is beneficial. Should be allowed.
+    """
+    config = SpotFuturesConfig(
+        min_basis_bps=Decimal("10"),
+        funding_rate_threshold=Decimal("0.0005"),
+    )
+    strategy = SpotFuturesStrategy("sf_basis", make_calculator(Decimal("0.5")), config)
+    await strategy.start()
+    # Contango + positive funding = beneficial (shorts receive)
+    signal = make_signal(basis_bps=Decimal("20"), funding_rate=Decimal("0.002"))
+    result = await strategy.on_signal(signal)
+    assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_backwardation_adverse_funding_filters():
+    """Backwardation with positive funding (longs pay) should filter."""
+    config = SpotFuturesConfig(
+        min_basis_bps=Decimal("10"),
+        funding_rate_threshold=Decimal("0.0005"),
+    )
+    strategy = SpotFuturesStrategy("sf_basis", make_calculator(), config)
+    await strategy.start()
+    # Backwardation + positive funding = adverse (longs pay)
+    signal = make_signal(
+        basis_bps=Decimal("-20"),
+        funding_rate=Decimal("0.002"),
+        buy_price=Decimal("50100"),
+        sell_price=Decimal("50000"),
+    )
     result = await strategy.on_signal(signal)
     assert result is None
 

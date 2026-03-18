@@ -4160,7 +4160,7 @@
       "title": "spot_futures 로직 개선 — Korean stale 보정 + basis 최적화 + 백테스트 검증",
       "phase": "S13",
       "priority": 238,
-      "passes": false,
+      "passes": true,
       "files": ["engine/src/strategies/spot_futures.py", "engine/src/core/real_signal_producer.py"],
       "dependencies": ["US-226", "US-227"],
       "acceptanceCriteria": [
@@ -4176,7 +4176,7 @@
       "title": "funding_rate 로직 개선 — 시그널 빈도 증가 + diff threshold 최적화 + 백테스트 검증",
       "phase": "S13",
       "priority": 239,
-      "passes": false,
+      "passes": true,
       "files": ["engine/src/strategies/funding_rate.py", "engine/src/core/real_signal_producer.py"],
       "dependencies": ["US-226"],
       "acceptanceCriteria": [
@@ -4191,7 +4191,7 @@
       "title": "statistical_arb 거래 전환 개선 — 마찰력 재계산 + z-score threshold 최적화 + 백테스트 검증",
       "phase": "S13",
       "priority": 240,
-      "passes": false,
+      "passes": true,
       "files": ["engine/src/strategies/statistical_arb.py", "engine/src/core/real_signal_producer.py"],
       "dependencies": ["US-231"],
       "acceptanceCriteria": [
@@ -4206,7 +4206,7 @@
       "title": "triangular 로직 개선 — cycle 감지 임계값 재설계 + 백테스트 검증",
       "phase": "S13",
       "priority": 241,
-      "passes": false,
+      "passes": true,
       "files": ["engine/src/strategies/triangular.py", "engine/src/core/triangular_scanner.py"],
       "dependencies": [],
       "acceptanceCriteria": [
@@ -4221,7 +4221,7 @@
       "title": "cex_dex 인프라 구성 + 로직 검증 — DEX RPC 설정 + 백테스트",
       "phase": "S13",
       "priority": 242,
-      "passes": false,
+      "passes": true,
       "files": ["engine/src/strategies/cex_dex.py", "engine/.env"],
       "dependencies": [],
       "acceptanceCriteria": [
@@ -4237,7 +4237,7 @@
       "title": "7개 전략 통합 백테스트 + 복합지표 검증 — 전 전략 동시 1시간 Shadow PASS",
       "phase": "S13",
       "priority": 243,
-      "passes": false,
+      "passes": true,
       "files": ["engine/src/modes/shadow.py", "engine/src/tuning/strategy_backtest.py"],
       "dependencies": ["US-238", "US-239", "US-240", "US-241", "US-242"],
       "acceptanceCriteria": [

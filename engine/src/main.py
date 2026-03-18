@@ -401,6 +401,22 @@ class Engine:
                 "Symbol auto-discovery failed (using fallback): %s", exc
             )
 
+        # US-241: Append triangular cross-pairs for cross-pair arbitrage
+        cross_pairs_env = os.environ.get(
+            "TRIANGULAR_CROSS_PAIRS", "ETH/BTC,SOL/BTC,SOL/ETH"
+        )
+        if cross_pairs_env and self._settings:
+            cross_pairs = [p.strip() for p in cross_pairs_env.split(",") if p.strip()]
+            existing = set(self._settings.trading.symbols)
+            added = []
+            for cp in cross_pairs:
+                if cp not in existing:
+                    self._settings.trading.symbols.append(cp)
+                    existing.add(cp)
+                    added.append(cp)
+            if added:
+                logger.info("US-241: Added %d triangular cross-pairs: %s", len(added), added)
+
     # ------------------------------------------------------------------
     # Step 2: Infrastructure (EventBus)
     # ------------------------------------------------------------------
@@ -912,10 +928,23 @@ class Engine:
         logger.info("Registered %d strategies (%d with tuned params)", len(strategies), tuned_count)
 
     def _build_dex_adapter(self):
-        """Build DEX adapter if DEX configuration is available. Returns None if not configured."""
+        """Build DEX adapter if DEX configuration is available. Returns None if not configured.
+
+        US-242: When DEX_RPC_URL is unset but SHADOW_MOCK_DEX=true, returns a
+        MockDEXAdapter that derives prices from CEX mid-prices.
+        """
         import os
         dex_rpc = os.getenv("DEX_RPC_URL", "")
         if not dex_rpc:
+            # US-242: Check for mock DEX adapter in shadow mode
+            if os.getenv("SHADOW_MOCK_DEX", "").lower() == "true":
+                try:
+                    from src.dex.mock_adapter import MockDEXAdapter
+                    adapter = MockDEXAdapter()
+                    logger.info("MockDEXAdapter initialized (SHADOW_MOCK_DEX=true)")
+                    return adapter
+                except Exception as exc:
+                    logger.warning("MockDEXAdapter init failed: %s", exc)
             return None
         pool = os.getenv("DEX_POOL_ADDRESS", "")
         if not pool:

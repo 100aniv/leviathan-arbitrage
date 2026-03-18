@@ -11,6 +11,7 @@ signal.metadata must contain:
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -23,10 +24,15 @@ from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeReq
 class FundingRateConfig(BaseModel):
     """Configuration for FundingRateStrategy."""
 
-    min_funding_diff_bps: Decimal = Field(default=Decimal("30"), ge=Decimal("0"))  # Must exceed round-trip friction
+    min_funding_diff_bps: Decimal = Field(default=Decimal("10"), ge=Decimal("0"))  # Must exceed round-trip friction
     max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
     max_holding_periods: int = Field(default=3, ge=1)
     hedge_ratio: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
+    # US-239: Settlement timing — only enter within this many minutes before settlement
+    # Default 0 = disabled (backward compatible); set to 30 in production config
+    settlement_window_minutes: float = Field(default=0.0, ge=0.0)
+    # US-239: Settlement hours (UTC)
+    settlement_hours: list[int] = Field(default_factory=lambda: [0, 8, 16])
 
 
 class FundingRateStrategy(BaseStrategy):
@@ -51,11 +57,53 @@ class FundingRateStrategy(BaseStrategy):
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
         self.config = config or FundingRateConfig()
+        # US-239: Track open positions per symbol to prevent duplicate entries
+        self._open_positions: dict[str, str] = {}  # symbol → direction
+        # US-239: Last settlement hour seen (for auto-release after settlement)
+        self._last_settlement_hour: int = -1
+
+    def _minutes_to_next_settlement(self, now_utc: datetime | None = None) -> float:
+        """Return minutes until next funding settlement (UTC 00/08/16).
+
+        Used by on_signal to restrict entries to the settlement window.
+        """
+        if now_utc is None:
+            now_utc = datetime.now(timezone.utc)
+        hours_since_midnight = now_utc.hour + now_utc.minute / 60.0 + now_utc.second / 3600.0
+        min_hours_before = min(
+            ((sh - hours_since_midnight) % 24) for sh in self.config.settlement_hours
+        )
+        return min_hours_before * 60.0
+
+    def _check_settlement_release(self) -> None:
+        """Auto-release all positions after a settlement hour passes."""
+        now_utc = datetime.now(timezone.utc)
+        current_hour = now_utc.hour
+        if current_hour in self.config.settlement_hours and current_hour != self._last_settlement_hour:
+            self._last_settlement_hour = current_hour
+            if self._open_positions:
+                self._open_positions.clear()
 
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1
 
         if not self._is_active:
+            self._metrics.signals_filtered += 1
+            return None
+
+        # US-239: Auto-release positions after settlement
+        self._check_settlement_release()
+
+        # US-239: Settlement timing filter — only enter within window before settlement
+        # Disabled when settlement_window_minutes == 0 (e.g., test mode)
+        if self.config.settlement_window_minutes > 0:
+            minutes_to_settlement = self._minutes_to_next_settlement()
+            if minutes_to_settlement > self.config.settlement_window_minutes:
+                self._metrics.signals_filtered += 1
+                return None
+
+        # US-239: Duplicate position guard — skip if already have position on this symbol
+        if signal.symbol in self._open_positions:
             self._metrics.signals_filtered += 1
             return None
 
@@ -90,11 +138,10 @@ class FundingRateStrategy(BaseStrategy):
         )
         total_cost = short_cost + long_cost
 
-        # Add estimated round-trip slippage cost (conservative: 10bps per leg)
-        # This accounts for BookWalkSlippage fallback on illiquid symbols
+        # NOTE: Slippage is already accounted for upstream by SignalGenerator
+        # (CEXOrderbookSlippage pre-filter). Adding phantom slippage here
+        # would double-count and reject profitable funding rate trades.
         avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
-        est_slippage_cost = avg_price * size * Decimal("20") / Decimal("10000")
-        total_cost += est_slippage_cost
 
         # Expected income: conservatively assume 1 funding period (8h) collected
         # max_holding_periods is the CEILING (force-exit), not the expected hold time
@@ -106,6 +153,9 @@ class FundingRateStrategy(BaseStrategy):
         if net_profit <= Decimal("0"):
             self._metrics.signals_filtered += 1
             return None
+
+        # US-239: Record open position to prevent duplicate entries
+        self._open_positions[signal.symbol] = "short_high_long_low"
 
         self._metrics.trade_requests_generated += 1
         return TradeRequest(

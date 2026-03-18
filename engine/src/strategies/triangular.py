@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 class TriangularConfig(BaseModel):
     """Configuration for TriangularStrategy."""
 
-    min_profit_bps: Decimal = Field(default=Decimal("10"), ge=Decimal("0"))
+    # US-241: Reduced from 10 to 8 bps (3x Coinone fee = 6bps, 8 > 6)
+    min_profit_bps: Decimal = Field(default=Decimal("8"), ge=Decimal("0"))
     max_position_usdt: Decimal = Field(default=Decimal("1000"), gt=Decimal("0"))
 
 
@@ -84,7 +85,16 @@ class TriangularStrategy(BaseStrategy):
             if first_price > 0
             else signal.volume
         )
-        size = min(signal.volume, max_base_size)
+        # US-241: Use bottleneck volume from scanner if available
+        bottleneck_usdt = meta.get("max_volume_usdt")
+        if bottleneck_usdt is not None:
+            try:
+                bottleneck_base = Decimal(str(bottleneck_usdt)) / first_price if first_price > 0 else signal.volume
+                size = min(signal.volume, max_base_size, bottleneck_base)
+            except Exception:
+                size = min(signal.volume, max_base_size)
+        else:
+            size = min(signal.volume, max_base_size)
 
         # Calculate 3× taker fees (one per leg)
         total_cost = Decimal("0")
@@ -105,6 +115,17 @@ class TriangularStrategy(BaseStrategy):
         net_profit = gross_profit - total_cost
 
         if net_profit <= Decimal("0"):
+            self._metrics.signals_filtered += 1
+            return None
+
+        # US-241: Sanity check — reject obviously fake spreads (stale cross-pair data)
+        # Max realistic triangular profit is ~50bps; >500bps is certainly fake
+        if signal.spread_pct > Decimal("0.05"):  # 5%
+            logger.warning(
+                "triangular.fake_spread_rejected spread_pct=%.4f path=%s",
+                float(signal.spread_pct),
+                path,
+            )
             self._metrics.signals_filtered += 1
             return None
 
