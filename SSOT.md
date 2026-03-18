@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-18 (Phase S13 확장 완료 — US-238~243 + 1H Shadow PnL +$1,674) | 최신 커밋: e35c63a
+> 마지막 업데이트: 2026-03-18 (TF QF 7차 PASS + TF SF Stage 2 PASS — 2H PnL +$3,312) | 최신 커밋: afdc603
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (234개 User Stories, 232 pass / 2 pending)
-> **실행 순서**: A~M ✅ → **S1~S12** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13 ✅** → **Phase S14 ✅** → **TF QF** → TF SF → TF Final → Live
+> **실행 순서**: A~M ✅ → **S1~S12** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13 ✅** → **Phase S14 ✅** → **TF QF 7차 ✅** → **TF SF Stage 2 ✅** → TF SF Stage 3~6 → TF Final → Live
 
 ---
 
@@ -31,11 +31,11 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S13 ✅ + S14 ✅ → TF QF 대기
-**Tests**: 4,831 passed / 0 failed / 12 skipped
+**Phase**: S13 ✅ + S14 ✅ → TF QF 7차 ✅ → TF SF Stage 2 ✅
+**Tests**: 4,843 passed / 0 failed / 12 skipped
 **Coverage**: 86%
-**TF Status**: QF 6차 PASS, SF 2차 FAIL → S13+S14 완료, TF QF 대기
-**Next**: TF QF → TF SF → TF Final → Live
+**TF Status**: QF 7차 PASS (2026-03-18), SF 3차 Stage 2 PASS (2H PnL +$3,312.08)
+**Next**: TF SF Stage 3~6 → TF Final → Live
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 
@@ -417,17 +417,17 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-### TF Quarter-Final (QF): Development Verification — ✅ PASS 6차 (2026-03-17)
+### TF Quarter-Final (QF): Development Verification — ✅ PASS 7차 (2026-03-18)
 
 > **핵심 질문**: "코드가 올바르고, 빠진 것이 없는가?"
 > **진입 가드**: 회귀 Phase 전부 완료 + pytest 0 fail + Docker healthy
 > **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → QF 재검증
 > **PASS 기준**: CRITICAL 0, HIGH 0, MEDIUM ≤ 5 (자금 손실 경로 아님)
-> **판정**: 6차 PASS (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 + LOW 4
-> **체크리스트**: `docs/checklists/tf-quarter-final_20260317.md`
+> **판정**: 7차 PASS (2026-03-18) — CRITICAL 0, HIGH 0, MEDIUM 4
+> **체크리스트**: `docs/checklists/tf-quarter-final_20260318.md`
 
 **[단계 0] Smoke Test Gate**
-- [x] 전체 pytest PASS (4,695 passed, 0 failed, 12 skipped)
+- [x] 전체 pytest PASS (4,843 passed, 0 failed, 12 skipped)
 - [x] Docker 전 컨테이너 healthy (15/15, promtail starting 비핵심)
 - [x] 통합 Shadow 10min (crash=0, 4전략 신호 흐름, PnL=-$0.70, 2889 trades)
 
@@ -481,19 +481,24 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > 회귀 수정: S1~S6 (33/35 US PASS, 2개 Phase F 대기)
 > 재검증 보고서: `docs/checklists/tf-semi-final-recheck_20260315.md`
 
-> **#6 PASS (2026-03-17) ← CURRENT**
+> **#6 PASS (2026-03-17)**
 > 판정: **PASS** — CRITICAL 0, HIGH 0, MEDIUM 6, LOW 4 (자금 손실 경로 0건)
 > 4695 tests, Shadow 10min crash=0, 조립 검증 4/4 PASS
 > 체크리스트: `docs/checklists/tf-quarter-final_20260317.md`
 
-### TF Semi-Final (SF): System Validation — ❌ Stage 2 FAIL (2차) → Phase S13 회귀
+> **#7 PASS (2026-03-18) ← CURRENT**
+> 판정: **PASS** — CRITICAL 0, HIGH 0, MEDIUM 4
+> 4,843 tests, 7개 전략 로직 개선 (stat_arb routing, hedge-ratio, spot_futures direction, funding_rate phantom fix)
+> 체크리스트: `docs/checklists/tf-quarter-final_20260318.md`
+
+### TF Semi-Final (SF): System Validation — 3차 Stage 2 PASS (2026-03-18)
 
 > **핵심 질문**: "24시간 동안 실제로 돈을 벌 수 있는가?"
 > **진입 가드**: TF QF PASS
 > **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → SF 재검증 (QF 스킵, 구조적 결함 시 QF부터)
 > **PASS 기준**: 24H+ 6-Stage ALL PASS + 전략별 WR>50% + E2E 10/10 + LiveGate 6-check
-> **현재**: 2차 Stage 2 FAIL → Phase S13 회귀. S13 완료 후 TF QF → TF SF 재시작
-> **체크리스트**: `docs/checklists/tf-semi-final_20260317.md`
+> **현재**: 3차 Stage 2 PASS (2H PnL +$3,312.08) → Stage 3~6 진행 예정
+> **체크리스트**: `docs/checklists/tf-semi-final_20260318.md`
 
 #### 검증 이력
 
@@ -511,11 +516,18 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > 1-B 전략별 독립검증: PASS (PnL +$59.80, 4전략, crash=0)
 > 1-C 전략 상호작용: PASS (overlap=0, PnL 무결성 99.99%, 8555 trades)
 >
-> **2차 [단계 2] Stage 1 PASS → Stage 2 FAIL (2026-03-17) ← CURRENT**
+> **2차 [단계 2] Stage 1 PASS → Stage 2 FAIL (2026-03-17)**
 > Stage 1: 1H crash=0, 4전략 활성, 10/10 거래소 → PASS
 > Stage 2: 2H45M PnL **-$153.47**, WR 90.7%, loss_capped 17건(-$850) → **FAIL**
 > 근본 원인: (1) futures_futures stale 진입 17건×-$50 (2) spot_futures WR 42% (3) funding_rate WR 6.7%
-> **후속**: Phase S13 생성 (5 US: stale guard 강화, circuit breaker, 전략 비활성화, loss_cap 차등)
+> **후속**: Phase S13 생성 (stale guard 강화, circuit breaker, 전략 비활성화, loss_cap 차등)
+>
+> **3차 [단계 2] Stage 2 PASS (2026-03-18) ← CURRENT**
+> Stage 1: 1H crash=0, 5전략 활성 → PASS
+> Stage 2: 2H PnL **+$3,312.08**, WR 72.7%, 6,902 trades → **PASS**
+> 전략별: spot_futures 4,508 / triangular 1,292 / futures_futures 958 / stat_arb 139 / funding_rate 5
+> loss_capped: 11건 (cap $1~$5), regime_check: 119, adaptive_threshold: 24
+> 이전 2차 FAIL(-$153.47) 대비 완전 반전 (+$3,465.55 개선)
 
 **[단계 1-A] 경량 재확인 (Delta Check)** ✅ ALL PASS (2026-03-15, 재검증 완료)
 - [x] QF 이후 변경분 CRITICAL/HIGH 신규 0건 (S7 12 US + 3-Round 문서 변경분, HIGH 2건 발견→즉시 수정)
@@ -533,8 +545,8 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] Strategy overlap 메트릭 = 0 확인
 
 **[단계 2] Progressive Shadow (24H+) — 순차 OFF→ON 오토튜너 비교**
-- [ ] Stage 1: 1H (튜너 OFF) → crash=0, PnL 기록
-- [ ] Stage 2: 2H (튜너 OFF) → WR>60%, PnL>0, 전략별 리포트
+- [x] Stage 1: 1H (튜너 OFF) → crash=0, PnL 기록 ✅ PASS
+- [x] Stage 2: 2H (튜너 OFF) → WR>60%, PnL>0, 전략별 리포트 ✅ PASS (PnL +$3,312.08, WR 72.7%)
 - [ ] Stage 3: 2H (튜너 ON) → Stage 2 대비 비교 (PROVEN/NEUTRAL/HARMFUL/BUG 판정)
 - [ ] Stage 4: 6H (최적 설정) → 각 전략 WR>50%, 마찰력 오차<20%
 - [ ] Stage 5: 12H → 메모리<100MB증가, CPU<80%, WS 재연결
