@@ -264,9 +264,9 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S12 ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → Phase S13 ✅ → Phase S14 ✅ → **TF QF** → TF SF → TF Final → Live
+- **Phase 순서**: A~M✅ → S1~S12 ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → Phase S13 (추가 6 US) → Phase S14 ✅ → **TF QF** → TF SF → TF Final → Live
 - **Tests**: 4,809 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (228개 US, 226 pass / 2 pending)
+- **PRD**: `.omc/prd.json` (234개 US, 226 pass / 8 pending)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
 - **다음 작업**: TF QF → TF SF → TF Final → Live
 - **TF QF 6차**: ✅ PASS (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 + LOW 4 (단계 3.5 알림 Dead Wiring 수정 포함)

@@ -4154,6 +4154,99 @@
         "per-strategy CB 상태 API 노출 → 대시보드 표시",
         "테스트: 로그인 플로우 + API 정합성 (10개)"
       ]
+    },
+    {
+      "id": "US-238",
+      "title": "spot_futures 로직 개선 — Korean stale 보정 + basis 최적화 + 백테스트 검증",
+      "phase": "S13",
+      "priority": 238,
+      "passes": false,
+      "files": ["engine/src/strategies/spot_futures.py", "engine/src/core/real_signal_producer.py"],
+      "dependencies": ["US-226", "US-227"],
+      "acceptanceCriteria": [
+        "spot_futures 백테스트 1000거래 이상에서 WR > 55%, Sharpe > 1.0",
+        "Korean stale data 4계층 보호 적용 상태에서 거래 실행",
+        "spot-futures basis 계산에 실제 funding_rate 반영",
+        "loss_cap $5 이내에서 안정적 운용",
+        "Shadow 30min 단독 검증: PnL > 0, WR > 50%"
+      ]
+    },
+    {
+      "id": "US-239",
+      "title": "funding_rate 로직 개선 — 시그널 빈도 증가 + diff threshold 최적화 + 백테스트 검증",
+      "phase": "S13",
+      "priority": 239,
+      "passes": false,
+      "files": ["engine/src/strategies/funding_rate.py", "engine/src/core/real_signal_producer.py"],
+      "dependencies": ["US-226"],
+      "acceptanceCriteria": [
+        "funding_rate 백테스트에서 시그널 빈도 >= 10건/시간",
+        "FUNDING_MIN_DIFF_BPS 최적값 도출 (백테스트 기반)",
+        "4거래소 funding rate 수집 정상 작동 확인",
+        "Shadow 30min 단독 검증: PnL > 0, 시그널 >= 5건"
+      ]
+    },
+    {
+      "id": "US-240",
+      "title": "statistical_arb 거래 전환 개선 — 마찰력 재계산 + z-score threshold 최적화 + 백테스트 검증",
+      "phase": "S13",
+      "priority": 240,
+      "passes": false,
+      "files": ["engine/src/strategies/statistical_arb.py", "engine/src/core/real_signal_producer.py"],
+      "dependencies": ["US-231"],
+      "acceptanceCriteria": [
+        "statistical_arb 백테스트에서 시그널→거래 전환율 > 20%",
+        "z-score entry threshold 백테스트 기반 최적화",
+        "cross-asset pair 마찰력 정확하게 반영",
+        "Shadow 30min 단독 검증: 거래 >= 5건, PnL > 0"
+      ]
+    },
+    {
+      "id": "US-241",
+      "title": "triangular 로직 개선 — cycle 감지 임계값 재설계 + 백테스트 검증",
+      "phase": "S13",
+      "priority": 241,
+      "passes": false,
+      "files": ["engine/src/strategies/triangular.py", "engine/src/core/triangular_scanner.py"],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "triangular 백테스트에서 cycle 감지 >= 10건/시간",
+        "min_profit_bps 백테스트 기반 최적화",
+        "3-leg 마찰력 정확 반영 (수수료 3x)",
+        "Shadow 30min: 시그널 >= 3건"
+      ]
+    },
+    {
+      "id": "US-242",
+      "title": "cex_dex 인프라 구성 + 로직 검증 — DEX RPC 설정 + 백테스트",
+      "phase": "S13",
+      "priority": 242,
+      "passes": false,
+      "files": ["engine/src/strategies/cex_dex.py", "engine/.env"],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "DEX_RPC_URL 설정 (Infura/Alchemy free tier)",
+        "Uniswap V3 가격 조회 정상 작동",
+        "gas 비용 정확 반영",
+        "cex_dex 백테스트에서 시그널 >= 5건/시간",
+        "Shadow 30min: 시그널 >= 1건"
+      ]
+    },
+    {
+      "id": "US-243",
+      "title": "7개 전략 통합 백테스트 + 복합지표 검증 — 전 전략 동시 1시간 Shadow PASS",
+      "phase": "S13",
+      "priority": 243,
+      "passes": false,
+      "files": ["engine/src/modes/shadow.py", "engine/src/tuning/strategy_backtest.py"],
+      "dependencies": ["US-238", "US-239", "US-240", "US-241", "US-242"],
+      "acceptanceCriteria": [
+        "7개 전략 전부 활성화 상태에서 1시간 Shadow PnL > 0",
+        "각 전략별 최소 1건 이상 시그널 생성",
+        "복합지표 6-check 전부 PASS (MDD<5%, 신호>=100/day, KillSwitch, CB, Health>=95%)",
+        "전략 간 충돌 0건 (PositionRegistry)",
+        "loss_capped 0건"
+      ]
     }
   ]
 }
