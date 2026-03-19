@@ -340,7 +340,7 @@ class SignalGenerator:
             else:
                 self._crisis_start_time = None
             regime_edge = REGIME_MIN_EDGE.get(regime, self._config.min_edge)
-            effective_min_edge = max(self._config.min_edge, regime_edge)
+            effective_min_edge = max(effective_min_edge, regime_edge)
         if net_edge < effective_min_edge:
             return None
 

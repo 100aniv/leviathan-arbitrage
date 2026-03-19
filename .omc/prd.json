@@ -4292,7 +4292,7 @@
       "title": "stat_arb regime_detector 주입",
       "phase": "S15",
       "priority": 245,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/main.py",
         "engine/src/strategies/statistical_arb.py"
@@ -4309,7 +4309,7 @@
       "title": "LiveGate 실행 경로 강제 적용",
       "phase": "S15",
       "priority": 246,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/main.py",
         "engine/src/modes/live_gate.py"
@@ -4326,7 +4326,7 @@
       "title": "estimate_cost() → calculate() 통합",
       "phase": "S15",
       "priority": 247,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/friction/cost_calculator.py",
         "engine/src/strategies/cross_exchange.py",
@@ -4362,7 +4362,7 @@
       "title": "삼각 차익 leg별 통화 크기 보정",
       "phase": "S15",
       "priority": 249,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/triangular.py"
       ],
@@ -4398,7 +4398,7 @@
       "title": "ComplianceChecker 시작 시 실행",
       "phase": "S15",
       "priority": 250.1,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/main.py",
         "engine/src/infra/compliance.py"
@@ -4415,7 +4415,7 @@
       "title": "HMM Trainer 학습 루프 연결",
       "phase": "S15",
       "priority": 251,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/main.py",
         "engine/src/ml/hmm_trainer.py"
@@ -4433,7 +4433,7 @@
       "title": "XGBoost Trainer 학습 루프 + ONNX export",
       "phase": "S15",
       "priority": 252,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/main.py",
         "engine/src/ml/xgb_trainer.py",
@@ -4473,7 +4473,7 @@
       "title": "RegimeDetector 전 전략 연결",
       "phase": "S15",
       "priority": 254,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/cross_exchange.py",
         "engine/src/strategies/spot_futures.py",
@@ -4498,7 +4498,7 @@
       "title": "AdaptiveThreshold 전략별 분리",
       "phase": "S15",
       "priority": 255,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/signal.py",
         "engine/src/core/adaptive_threshold.py"
@@ -4532,7 +4532,7 @@
       "title": "profit_factor 계산 버그 수정",
       "phase": "S15",
       "priority": 257,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py"
       ],
@@ -4548,7 +4548,7 @@
       "title": "ShadowMiniTuner 활성화",
       "phase": "S15",
       "priority": 258.1,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py"
       ],

@@ -266,11 +266,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → **TF SF 9H 중단** → **Phase S15~S21 회귀** → TF QF → TF SF → TF Final → Live
-- **Tests**: 4,843 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (232+65개 US, US-245~US-300+서브항목)
+- **Phase 순서**: A~M✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 9H 중단 → **Phase S15 완료 (2026-03-19)** → **Phase S16~S21** → TF QF → TF SF → TF Final → Live
+- **Tests**: 4,940 passed, 0 failed, 12 skipped
+- **PRD**: `.omc/prd.json` (243+54개 US, 243 passes:true / 54 passes:false)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: Phase S15 (CRITICAL 버그 + ML 연결) → S16~S21 → TF QF → TF SF → TF Final → Live
+- **다음 작업**: Phase S16 (동적 임계치 + 고급 기능) → S17~S21 → TF QF → TF SF → TF Final → Live
 - **TF SF 9H 중단**: CRITICAL 6건 + 수학 오류 3건 발견 → Phase S15~S21 회귀 (2026-03-19)
 - **회귀 사유**: profit_factor 계산 버그, LiveGate 차단 미동작, ML 미연결, 전략 평가 기준 위반
 - **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)

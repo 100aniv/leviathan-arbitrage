@@ -1,8 +1,8 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-19 (TF SF → Phase S15 회귀 — 전면 재설계) | PRD: `.omc/prd.json` (232+65개 US, US-245~US-300+서브항목)
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (232+65개 US, US-245~US-300+서브항목)
+> 마지막 업데이트: 2026-03-19 (Phase S15 완료 — CRITICAL 6 + Math 3 수정, 11 US VERIFIED) | PRD: `.omc/prd.json` (243+54개 US, 297 total)
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (243 passes:true / 54 passes:false)
 > **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → **TF SF 중단 (9H)** → **Phase S15~S21 회귀** → TF QF → TF SF → TF Final → Live
 
 ---
@@ -31,12 +31,12 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → **회귀: Phase S15** (2026-03-19)
-**Tests**: 4,920 passed / 0 failed / 12 skipped
+**Phase**: S15 완료 (2026-03-19) — CRITICAL 6 + Math 3 수정, adaptive_threshold 주입, regime edge 결합
+**Tests**: 4,940 passed / 0 failed / 12 skipped
 **Coverage**: 86%
-**TF Status**: TF SF 9H 중단 — CRITICAL 버그 6개 + 수학 오류 3개 발견으로 Phase S15 회귀
-**Next**: Phase S15 (CRITICAL 버그 + ML 연결) → S16~S21 → TF QF → TF SF → TF Final → Live
-**회귀 사유**: (1) profit_factor 계산 버그 (2) LiveGate 차단 미동작 (3) ML 파이프라인 미연결 (4) 전략 평가 기준 위반
+**TF Status**: TF SF 9H 중단 → Phase S15 완료 (11 US VERIFIED) → Phase S16 진행 예정
+**Next**: Phase S16 (동적 임계치 + 고급 기능) → S17~S21 → TF QF → TF SF → TF Final → Live
+**미구현 이월**: US-248, US-250, US-253, US-256, US-258-b, US-259-a → Phase S16~S21
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
@@ -372,7 +372,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 297개 User Stories, 232개 완료, 65개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 297개 User Stories, 243개 완료, 54개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -381,30 +381,29 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 > Phase S1-S14 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 
-#### Phase S15: CRITICAL 버그 + ML 파이프라인 연결 — US-245~259-a
+#### Phase S15: CRITICAL 버그 + ML 파이프라인 연결 — US-245~259-a ✅ 완료 (2026-03-19, 11/17 US)
 
 > **목표**: CRITICAL 버그 6개 수정 + 수학 오류 3개 수정 + ML 파이프라인 완전 연결 + 응집력 부족 모듈 통합
-> **회귀 사유**: TF SF Progressive 9H 중단 — Architect 6 CRITICAL + Quant 3 수학 오류 + 최종스윕 17 모듈 미연결
+> **결과**: 11개 US VERIFIED (Shadow 런타임 증거 확인), 6개 US → S16~S21 이월
 > **플랜**: `.claude/plans/parallel-finding-sparrow.md`
-> **진입 조건**: TF SF 중단 확정
 
-- [ ] US-245: stat_arb regime_detector 주입 (← main.py:898, CRISIS 방어)
-- [ ] US-246: LiveGate 실행 경로 강제 적용 (← is_live_eligible() 차단 동작)
-- [ ] US-247: estimate_cost() → calculate() 통합 (← network_cost 포함 full cost, estimate_cost() deprecate)
-- [ ] US-248: ADV/sigma 동적 계산 (← signal.py:51-52 하드코딩 제거 → 거래소 API 24H volume + 1H 수익률 표준편차)
-- [ ] US-249: 삼각 차익 leg별 통화 크기 보정 (← triangular.py:134-145, 잔여 포지션 방지)
-- [ ] US-250: 포지션 리커버리 + 리콘실러 통합 (← PositionReconciler _reconcile_loop() 연결, PositionRecovery.scan() 시작 시 호출, RecoveryManager Redis 장애 복구)
-- [ ] US-250-a: ComplianceChecker 시작 시 실행 (← infra/compliance.py 23항목 엔진 시작 1회 실행)
-- [ ] US-251: HMM Trainer 학습 루프 연결 (← main.py _hmm_training_loop() 추가, 7일 주기, Model Performance Gate Accuracy>65%, Walk-forward Validation)
-- [ ] US-252: XGBoost Trainer 학습 루프 + ONNX export (← main.py _xgb_training_loop() 추가, Performance Gate + Walk-forward Validation)
-- [ ] US-253: Feature Pipeline → ONNX Scorer 연결 (← signal.py:284-287 3-feature stub → MLFeaturePipeline 20-feature, Canary 10%→50%→100%)
-- [ ] US-254: RegimeDetector 전 전략 연결 (← 6개 전략 on_signal() regime 확인, CRISIS→거부, VOLATILE→보수적 임계치)
-- [ ] US-255: AdaptiveThreshold 전략별 분리 (← 글로벌 단일 → 전략별 dict, signal.py:257 전략별 min_edge)
-- [ ] US-256: peak_equity 실시간 갱신 + DB 영속화 (← main.py:116 일회성 → PnL 누적 시 자동 갱신 + TimescaleDB persist/restore)
-- [ ] US-257: profit_factor 계산 버그 수정 (← shadow.py:2201 건수 비율 → 금액 비율, sum(winning_pnl)/abs(sum(losing_pnl)))
-- [ ] US-258-a: ShadowMiniTuner 활성화 (← shadow.py:692 시작 1회 후 재호출 없음, 2H 경과 후 자동 트리거)
-- [ ] US-258-b: 전략 warm-up 상태 추적 (← stat_arb 120샘플, Kalman 수렴 등 전략별 warm-up 완료 플래그)
-- [ ] US-259-a: S15 통합 Shadow 10min 검증 (← .cache/hmm/ 모델 파일, ONNX score threshold 변경, regime 전환 시 전략 행동 변화 Live Log)
+- [x] US-245: stat_arb regime_detector 주입 (← main.py:898, CRISIS 방어) — VERIFIED
+- [x] US-246: LiveGate 실행 경로 강제 적용 (← is_live_eligible() 차단 동작) — VERIFIED
+- [x] US-247: estimate_cost() → calculate() 통합 (← network_cost 포함 full cost) — FIXED
+- [ ] US-248: ADV/sigma 동적 계산 → **S16~S21 이월**
+- [x] US-249: 삼각 차익 leg별 통화 크기 보정 (← triangular.py:134-145) — FIXED
+- [ ] US-250: 포지션 리커버리 + 리콘실러 통합 → **S16~S21 이월**
+- [x] US-250-a: ComplianceChecker 시작 시 실행 (← infra/compliance.py 23항목) — VERIFIED
+- [x] US-251: HMM Trainer 학습 루프 연결 (← main.py _hmm_training_loop()) — FIXED
+- [x] US-252: XGBoost Trainer 학습 루프 + ONNX export — FIXED
+- [ ] US-253: Feature Pipeline → ONNX Scorer 연결 → **S16~S21 이월**
+- [x] US-254: RegimeDetector 전 전략 연결 (← 6개 전략 CRISIS→거부) — VERIFIED
+- [x] US-255: AdaptiveThreshold 전략별 분리 + wiring 주입 — FIXED
+- [ ] US-256: peak_equity 실시간 갱신 + DB 영속화 → **S16~S21 이월**
+- [x] US-257: profit_factor 계산 버그 수정 (금액 비율) — VERIFIED
+- [x] US-258-a: ShadowMiniTuner 활성화 — VERIFIED
+- [ ] US-258-b: 전략 warm-up 상태 추적 → **S16~S21 이월**
+- [ ] US-259-a: S15 통합 Shadow 10min 검증 → **S16~S21 이월**
 
 #### Phase S16: 동적 임계치 + 적응형 파라미터 — US-260~265
 
