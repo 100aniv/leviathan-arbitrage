@@ -368,7 +368,7 @@ Agent(subagent_type="oh-my-claudecode:verifier", name="assembly-verifier", model
 
 > **목적**: 자기 코드의 리뷰자가 되는 Claude의 **확증 편향(confirmation bias) 제거**.
 >
-> **설계 이유**: Stage B에서 Claude(IVE팀)가 코드를 구현했음. Claude가 자신의 코드를 먼저 리뷰하면 "원래 이렇게 설계했으므로 맞다"는 합리화가 발생 → 맹점 방치. 따라서 **프로젝트 컨텍스트 없는 신선한 눈(3개 외부 모델)이 먼저 봄**. Claude는 외부 모델 결과를 받아본 후 C-Step 6에서 informed하게 심층 리뷰.
+> **설계 이유**: Stage B에서 Claude(IVE팀)가 코드를 구현했음. Claude가 자신의 코드를 먼저 리뷰하면 "원래 이렇게 설계했으므로 맞다"는 합리화가 발생 → 맹점 방치. 따라서 **프로젝트 컨텍스트 없는 신선한 눈(3개 외부 모델)이 먼저 봄**. Claude는 외부 모델 결과를 받아본 후 C-Step 3에서 informed하게 심층 리뷰.
 >
 > **인라인 실행** (AskUserQuestion 없음, TeamCreate 없음 — leviathan 자동 흐름 보장)
 
@@ -394,10 +394,10 @@ Agent(name="qwen-code-reviewer",
 - Agent(subagent_type="oh-my-claudecode:security-reviewer") 직접 수행 (외부 CLI 불필요)
 
 **4단계: 결과 주입**
-- quorum 합의 결과를 Jennie(C-Step 6) 코드리뷰 컨텍스트에 주입
+- quorum 합의 결과를 Jennie(C-Step 3) 코드리뷰 컨텍스트에 주입
 - "멀티모델 감사에서 N개 모델이 지적한 MUST FIX 이슈: [목록]" 형태로 전달
 
-> MUST FIX 이슈 0건 → C-Step 6 코드리뷰 진행.
+> MUST FIX 이슈 0건 → C-Step 3 코드리뷰 진행.
 > MUST FIX 이슈 1건 이상 → Stage B-Step 1 fix 루프 복귀.
 >
 > **Claude의 역할은?** C-Step 3(Jennie/코드리뷰)과 C-Step 5(Karina/최종 판단)에서 외부 모델 결과를 참고하여 정보를 갖춘 심층 리뷰 수행. C-Step 2에서 제외된 것은 **기계적 결함이 아니라 편향 제거의 의도적 설계**.
@@ -634,7 +634,7 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 | pytest | 0 failures | B (Step 1) |
 | Shadow 13항목 | 복합지표 전부 PASS (§B-Step 2 표 참조) | B (Step 2) |
 | Docker | 전 컨테이너 healthy | B (Step 2) |
-| **Assembly Gate** | **init chain non-None + signal flow E2E + dead wiring 0건** | **C (Step 0.5)** |
+| **Assembly Gate** | **init chain non-None + signal flow E2E + dead wiring 0건** | **C (Step 1)** |
 | 코드리뷰 | CRITICAL/HIGH 0건 + **통합 추적 검증** | C (Step 1) |
 | 보안리뷰 | CRITICAL 0건 | C (Step 1) |
 | REVIEW.md | `docs/review/Phase-X_REVIEW.md` 존재 | C (Step 1) |
