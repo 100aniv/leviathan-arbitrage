@@ -366,10 +366,13 @@ Agent(subagent_type="oh-my-claudecode:verifier", name="assembly-verifier", model
 
 #### C-Step 1.5: 멀티모델 독립 감사 (Assembly PASS 후, 코드리뷰 전)
 
-> **목적**: Claude 단독 리뷰의 맹점(blind spot) 제거. 3개 외부 모델(Codex+Gemini+Qwen)이 독립적으로 코드를 감사하고 quorum 합의로 이슈 판정.
+> **목적**: 자기 코드의 리뷰자가 되는 Claude의 **확증 편향(confirmation bias) 제거**.
+>
+> **설계 이유**: Stage B에서 Claude(IVE팀)가 코드를 구현했음. Claude가 자신의 코드를 먼저 리뷰하면 "원래 이렇게 설계했으므로 맞다"는 합리화가 발생 → 맹점 방치. 따라서 **프로젝트 컨텍스트 없는 신선한 눈(3개 외부 모델)이 먼저 봄**. Claude는 외부 모델 결과를 받아본 후 C-Step 1에서 informed하게 심층 리뷰.
+>
 > **인라인 실행** (AskUserQuestion 없음, TeamCreate 없음 — leviathan 자동 흐름 보장)
 
-**1단계: 3개 외부 모델 병렬 코드 리뷰**
+**1단계: 3개 외부 모델 병렬 코드 리뷰 (Claude 미포함 = 의도적)**
 
 프롬프트 (`CODE_REVIEW_PROMPT`):
 > "이 프로젝트의 Phase X에서 변경된 파일들을 감사하라. `git diff main...HEAD`로 변경사항을 확인하고, 다음을 검증: 로직 오류, 누락된 엣지케이스, 수학적 정확성, 통합 연결(wiring). 이슈별로 CRITICAL/HIGH/MEDIUM 심각도를 부여하라."
@@ -383,9 +386,8 @@ Agent(name="qwen-code-reviewer",
       prompt="Bash로 timeout 300 qwen --approval-mode plan -p '$CODE_REVIEW_PROMPT' 실행. 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션.")
 ```
 
-**2단계: Claude 독립 리뷰 + quorum 합의**
-- Claude가 동일 변경사항을 독립 리뷰 (4번째 관점)
-- 4개 리뷰 결과 수집 → **quorum**: 2개 이상 모델이 지적한 이슈 = **MUST FIX**
+**2단계: Quorum 합의 (3개 모델만 투표)**
+- 3개 리뷰 결과 수집 → **quorum**: 2개 이상 모델이 지적한 이슈 = **MUST FIX**
 - 결과를 `.omc/artifacts/consensus-code-{phase}.md`에 저장
 
 **3단계: 보안 스캔 (전략/API 변경 시에만)**
@@ -397,6 +399,8 @@ Agent(name="qwen-code-reviewer",
 
 > MUST FIX 이슈 0건 → C-Step 1 코드리뷰 진행.
 > MUST FIX 이슈 1건 이상 → Stage B-Step 1 fix 루프 복귀.
+>
+> **Claude의 역할은?** C-Step 1(Jennie/코드리뷰)과 C-Step 2(Karina/최종 판단)에서 외부 모델 결과를 참고하여 정보를 갖춘 심층 리뷰 수행. C-Step 1.5에서 제외된 것은 **기계적 결함이 아니라 편향 제거의 의도적 설계**.
 
 #### C-Step 1: 코드리뷰 + 보안리뷰 (병렬 Sub-agents)
 
