@@ -8,15 +8,22 @@
 **절대 금지**: 사용자 확인 요청, Stage 간 멈춤, 에이전트 대기 중 멈춤, US 간 멈춤, 상태 보고만 하고 멈춤, **run_in_background: true**
 **강제**: 모든 응답에 tool call 포함. Stage A→B→C→다음Phase 끊김 없는 연속 흐름. **모든 Agent는 foreground 실행** (background 금지 — 메인 스레드 멈춤 버그).
 **외부 CLI 규칙**: codex/gemini/qwen은 **동일 메시지 foreground 병렬 호출** + `timeout 300`. CLI 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션 (스킵 절대 금지).
-**멈춤 허용**: (1) 전 US `passes:true` (2) 5회 연속 동일 US 실패 (3) 사용자 "stop/cancel/멈춰" (4) Stage C 완료 후 사장님 승인 대기
+**멈춤 허용**: (1) 전 US `passes:true` (2) 5회 연속 동일 US 실패 (3) 사용자 "stop/cancel/멈춰"
 **컨텍스트 압축 후에도 이 규칙 유지. 압축으로 지시 소실 시 §0과 §99 참조.**
 **에이전트 반환 크기 제한**: 모든 에이전트 반환 3K 토큰 이내. 상세는 파일에 기록. (컨텍스트 팽창 → 압축 → 멈춤 방지)
+**ANTI-STALL (근본 멈춤 방지 — GitHub #33043/#30625/#34238 대응)**:
+- **모든 응답에 텍스트 1줄 + tool call 병행** (텍스트 없으면 stop hook이 "완료"로 판단 → 루프 종료 버그 #30625). 예: "다음 Step 진행." + Agent() 호출.
+- 매 에이전트 결과 수신 후 **즉시** 다음 tool call 발행. "다음 세션에서 하자" 응답 금지 (#34238).
+- C-Step 사이 전환: 이전 Step 결과 수신 즉시 다음 Step Agent 스폰. 중간 요약/분석 금지.
+- **컨텍스트 60% 감지 시**: 즉시 checkpoint 저장 → 텔레그램 경고 → `/clear` → progress.json으로 재개.
+- **Stage C 전체가 1개 메시지 체인**: C-Step 1~7을 끊기 없이 연속 실행.
+- **TeamCreate hang 방지 (#33043)**: TeamCreate 후 30초 내 teammate 응답 없으면 TeamDelete → Agent() fallback.
 
 ```
 Stage A (Entry Gate → 기획 → QUANT GATE → checkpoint)
   → Stage B (TeamCreate → pytest PASS → TeamDelete → Shadow 10min+ → 모니터링 → checkpoint)
-  → Stage C (코드리뷰+보안 → Phase 완료 리뷰+Go/No-Go → SSOT+git push → 텔레그램 → 사장님 승인)
-  → 다음 Phase Stage A
+  → Stage C (코드리뷰+보안 → Phase 완료 리뷰+Go/No-Go → SSOT+git push → 텔레그램)
+  → 다음 Phase Stage A (자동 진행)
 ```
 
 > **용어 규칙**: "Stage" = 워크플로우 단계 (A~C), "Phase" = 로드맵/PRD 단계 (G/H/I/K/L/M/F). 혼용 금지.
@@ -512,6 +519,12 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
                  - 확인 방법: grep Shadow 로그 또는 Prometheus 메트릭
               1) prd.json: 런타임 증거 확인된 US만 passes:true 마킹
               2) SSOT.md §2: Phase, 테스트 수, 완료 US 카운트, 다음 작업 업데이트
+              2-b) **이월 항목 SSOT.md §7 동기화 (필수)**:
+                 - passes:false로 남은 US가 있으면 SSOT.md §7 다음 Phase 섹션에 '이월 항목' 블록 추가
+                 - 형식: `- [ ] US-XXX: [제목] (← S[N] 이월, [사유 한줄])`
+                 - 이월 사유: 구현 미완, 런타임 증거 미확보, 의존성 미충족 중 택1
+                 - SSOT.md §2 '미구현 이월' 라인도 동기화
+                 - **사장님이 SSOT.md로 프로젝트 상태를 확인하므로 이월 항목 누락 = 정보 비대칭 = FAIL**
               3) SSOT.md §7 헤더: 'N개 User Stories, M개 완료, K개 미완' 숫자를 prd.json 실제 카운트와 동기화
               4) CLAUDE.md '현재 상태' 섹션: PRD 카운트, 테스트 수, 다음 작업을 SSOT.md §2와 동기화
               5) **검증**: Grep으로 prd.json passes:true/false 카운트 → 3곳(SSOT §2, §7, CLAUDE.md) 숫자 대조. 불일치 시 수정.
@@ -527,19 +540,11 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 - 모든 검사 OK 확인 후 git push 진행
 - 실행: `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) checkpoint save --trigger "phase_complete"`
 
-#### C-Step 7: 텔레그램 알림 + 사장님 승인 대기
-
-- Sakura(C-Step 6)의 git push 완료 후, 사장님에게 Phase 완료 알림 전송
-- `WORKFLOW_TELEGRAM_BOT_TOKEN`으로 알림 메시지 발행
-- 알림 내용: Phase X 완료, 테스트 수, Shadow 결과 (PnL/WR/DD), 변경 파일 수
-- **사장님 승인까지 대기** (자동 진행 금지)
-- 승인 후 다음 Phase의 Stage A로 진행
-
 **활성 팀**: BLACKPINK(코드리뷰, Step 1) + LE SSERAFIM(Phase 완료 리뷰+SSOT, Step 2-3) + ITZY(퀀트, 해당 시)
 
 **산출물**: `docs/review/Phase-X_REVIEW.md`
 
-**C→다음Phase 전환:** Karina Go + Sakura SSOT+git push + 텔레그램 알림 + 사장님 승인 수신 즉시 → `state_write(next_stage:"A", next_phase:"Phase-Y")` && 다음 Phase Stage A 시작. 중간 상태 보고 금지.
+**C→다음Phase 전환:** Karina Go + Sakura SSOT+git push 즉시 → `state_write(next_stage:"A", next_phase:"Phase-Y")` && 다음 Phase Stage A 시작. 중간 상태 보고 금지.
 
 ---
 
@@ -642,7 +647,6 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 | SSOT.md | 해당 섹션 업데이트됨 | C (Step 3) |
 | prd.json | `passes: true` | C (Step 3) |
 | Git | `git add` + `git commit` + `git push origin main` 일괄 완료 | C (Step 3) |
-| 텔레그램 | 사장님 알림 전송 | C (Step 4) |
 | **Phase D/H 추가** | Chrome 렌더링 + API 200 + WebSocket + 모바일 반응형 | B+C |
 
 > `npm run build` 성공만으로 Phase D/H 완료 선언 금지. Chrome 실제 렌더링 필수.
@@ -685,9 +689,9 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 | L2 | 3회 초과/구조적 문제 | Stage A 복귀 → 새 PLAN.md |
 | L3 | SSOT↔PRD↔코드 모순 | SSOT→PRD 수정 → Stage A 재기획 |
 | L4 | Phase 범위 초과 | 새 US → prd.json 추가 |
-| **L5** | **동일 Phase 3회 이상 실패** | **텔레그램 알림 → 사장님 대기** |
+| **L5** | **동일 Phase 3회 이상 실패** | **텔레그램 알림 → 자동 일시정지 후 재시도** |
 
-L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승인 필수.**
+L0~L4 자동 처리. L5 텔레그램 알림 후 1회 추가 재시도, 재실패 시 자동 일시정지.
 
 ### 4.6 추가 안전장치 (워크플로우 V2 보강)
 
@@ -708,9 +712,9 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승�
 - Shadow 13항목 PASS 후: `checkpoint save --trigger "shadow_13item_pass"`
 - 세션 크래시 시 체크포인트에서 재개 가능 (Gate 재실행 방지)
 
-**R5. 텔레그램 승인 타임아웃:**
-- 사장님 승인 요청 후 4시간 초과 시 → 2차 알림 (재전송)
-- 8시간 초과 시 → 자동 일시정지 (무한 대기 방지, 다음 세션에서 재개)
+**R5. 텔레그램 알림 (정보 전달용):**
+- Phase 완료 시 텔레그램 알림 전송 (정보 전달 목적, 승인 대기 없음)
+- 알림 전송 후 즉시 다음 Phase 자동 진행
 
 **R6. Assembly Gate 조건부 실행:**
 - `git diff --name-only`에 `class ` 정의 또는 `__init__` 변경이 포함된 경우에만 실행
@@ -735,7 +739,7 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승�
 | Stage B-Step 2 완료 | Shadow PASS + checkpoint → 즉시 Stage C |
 | Stage C Step 1 완료 | 코드리뷰 PASS → 즉시 Step 2 Karina |
 | Stage C Step 2 완료 | Go → 즉시 Step 3 Sakura |
-| Stage C Step 3 완료 | SSOT/git push + 텔레그램 → **사장님 승인 대기** |
+| Stage C Step 3 완료 | SSOT/git push + 텔레그램 → **즉시 다음 Phase Stage A** |
 
 **체크포인트**: `.omc/state/leviathan-progress.json` — 세션 복구 전용.
 세션 크래시/수동 `/clear` 시 → `/leviathan` 재호출 → progress 파일로 재개.
@@ -756,7 +760,7 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승�
 
 **실행 순서:**
 - S15 + S19 + S20 병렬 → S16 → S17 → S18 → S21
-- 한 Phase씩 사장님 승인 후 다음 진행
+- Phase 완료 즉시 다음 Phase 자동 진행
 
 **Phase 완료 기준 (강화판):**
 1. 단위 테스트 PASS
@@ -1097,8 +1101,7 @@ WORKFLOW_TELEGRAM_CHAT_ID=<채팅 ID>
 ```
 
 **알림 조건:**
-1. **Phase 종료** (Stage C 완료): 결과 요약 → 사장님 승인까지 대기
-2. **L5 에스컬레이션**: 동일 Phase 3회 실패 → 사장님 판단 요청
+1. **L5 에스컬레이션**: 동일 Phase 3회 실패 → 사장님 판단 요청
 3. **컨텍스트 60% 도달**: `/clear` 시도 예고 알림 (`send_context_warning`)
 4. **컨텍스트 /clear 성공**: 자동 재개 알림 (`send_context_clear_success`)
 5. **컨텍스트 /clear 실패**: 수동 개입 필요 알림 (`send_context_alert`)
@@ -1120,7 +1123,7 @@ WORKFLOW_TELEGRAM_CHAT_ID=<채팅 ID>
 
 **3순위 — prd.json 스캔**: `passes:false`인 첫 번째 US의 Phase → Stage A
 
-> 모든 US `passes:true`까지 자동 루프. Phase 내 자동, Phase 간 사장님 승인 필수.
+> 모든 US `passes:true`까지 자동 루프. Phase 간 자동 진행 (승인 대기 없음).
 > 멈추는 조건: 전 US 완료 OR L5 에스컬레이션 OR 사용자 "stop/cancel/멈춰".
 
 ---
@@ -1134,4 +1137,6 @@ WORKFLOW_TELEGRAM_CHAT_ID=<채팅 ID>
 - Stage 전환 순서: **A→B(TeamCreate) → B-Step 2(Shadow) → C(Assembly+Review) → C(Go/No-Go) → C(SSOT+push) → 텔레그램 → 다음Phase A**
 - "Churned/Brewed/Cooked" 후 반드시 tool call. 요약/보고만 하고 멈추면 = **BUG**.
 - 모든 에이전트 반환 3K 토큰 이내. 상세는 파일에 기록.
-- **run_in_background 금지**. 모든 Agent foreground 실행.
+- **run_in_background 금지**. 모든 Agent foreground 실행. 외부 CLI는 foreground 병렬 + timeout 300 + 3회 재시도 → L5.
+- **모든 응답에 텍스트 1줄 + tool call 병행** (텍스트 없으면 stop hook이 루프 종료 — #30625).
+- **"다음 세션에서 하자" 응답 절대 금지** (#34238). 컨텍스트 부족 시 checkpoint → `/clear` → 자동 재개.

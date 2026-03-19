@@ -307,14 +307,14 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
   - C-Step 4: 3개 모델 Go/No-Go 병렬 토론 → 과반수 판정
 - **수동 실행 (직접 호출)**: `/consensus-code-review`, `/consensus-plan-review`, `/octo-security`, `/octo-debate` — 대화형 (TeamCreate + AskUserQuestion 포함)
 - **CLI**: Codex(`codex exec`), Gemini(`gemini -p`), Qwen(`qwen -p`) — 3개 인증 완료. Kimi는 `kimi-cli login` 후 추가 가능
-- **Stage C 워크플로우**: Assembly Gate(1) → **멀티모델 감사(2)** → 코드리뷰(3) → **멀티모델 토론(4)** → Go/No-Go(5) → SSOT(6) → Telegram(7)
+- **Stage C 워크플로우**: Assembly Gate(1) → **멀티모델 감사(2)** → 코드리뷰(3) → **멀티모델 토론(4)** → Go/No-Go(5) → SSOT+git(6) → 즉시 다음 Phase
 
 ## 실행 워크플로우 (ralph autopilot)
 
 **3-Stage Sequential 연속 실행** (leviathan.md 참조):
 1. **Stage A** (기획): [Entry Gate(karina) 순차 → NingNing+Winter+Giselle 병렬] → PLAN.md + WIRING AC → QUANT GATE → **즉시 Stage B**
 2. **Stage B** (구현+검증): TeamCreate(IVE) → pytest PASS → TeamDelete → Shadow 13항목 복합지표(NewJeans) → **즉시 Stage C**
-3. **Stage C** (리뷰+릴리스): [**C-Step 1 Assembly Gate(조립검증)**] → [**C-Step 2 멀티모델 인라인 감사(3CLI 병렬→quorum)**] → [**C-Step 3 코드리뷰**(Jennie+Jisoo 통합추적)] → [**C-Step 4 멀티모델 Go/No-Go 토론(3CLI 병렬)**] → [**C-Step 5 최종리뷰**(Karina 7항목+Go/No-Go)] → [**C-Step 6 SSOT+git**(Sakura)] → [**C-Step 7 텔레그램**(사장님 승인 대기)]
+3. **Stage C** (리뷰+릴리스): [**C-Step 1 Assembly Gate(조립검증)**] → [**C-Step 2 멀티모델 인라인 감사(3CLI 병렬→quorum)**] → [**C-Step 3 코드리뷰**(Jennie+Jisoo 통합추적)] → [**C-Step 4 멀티모델 Go/No-Go 토론(3CLI 병렬)**] → [**C-Step 5 최종리뷰**(Karina 7항목+Go/No-Go)] → [**C-Step 6 SSOT+git**(Sakura)] → 즉시 다음 Phase
 
 **세션 관리**: Stage A→B→C 연속 실행 (세션 초기화 없음, ralph 루프 유지).
 **`/compact` 절대 금지**. 컨텍스트 60% 시 텔레그램 알림 → `/clear` 시도 → 성공/실패 모두 텔레그램 알림.
