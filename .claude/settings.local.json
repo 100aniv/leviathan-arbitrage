@@ -51,7 +51,15 @@
       "Bash(grep -A5 '\"\"prd\"\"' /Users/100aniv/Development/arbitrage_OMC/.omc/state/leviathan-active-phase.json)",
       "mcp__plugin_oh-my-claudecode_t__state_list_active",
       "mcp__plugin_oh-my-claudecode_t__python_repl",
-      "Bash(find . -name assembly-gate.sh -o -name *assembly* -type f)"
+      "Bash(find . -name assembly-gate.sh -o -name *assembly* -type f)",
+      "Bash(pkill -f \"src.main\")",
+      "Bash(find . -type d -name __pycache__ -exec rm -rf {} +)",
+      "Bash(find . -name \"*.pyc\" -delete)",
+      "Read(//Users/100aniv/Development/arbitrage_OMC/**)",
+      "Bash(xargs kill:*)",
+      "Bash(grep -n \"class DatabasePool\\\\|def acquire\" engine/src/infra/*.py)",
+      "Bash(grep -B 5 'DatabasePool.*object has no attribute' engine/src/ml/*.py)",
+      "Bash(grep -n \"db_pool.acquire\\\\|\\\\.acquire\\(\\)\" engine/src/ml/*.py)"
     ],
     "deny": [],
     "ask": []

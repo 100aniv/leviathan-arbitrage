@@ -200,14 +200,14 @@
   "hotPaths": [
     {
       "path": "src/main.py",
-      "accessCount": 54,
-      "lastAccessed": 1773926472558,
+      "accessCount": 61,
+      "lastAccessed": 1773926665222,
       "type": "file"
     },
     {
       "path": "src/modes/shadow.py",
-      "accessCount": 32,
-      "lastAccessed": 1773874535059,
+      "accessCount": 33,
+      "lastAccessed": 1773926649278,
       "type": "file"
     },
     {
@@ -218,14 +218,26 @@
     },
     {
       "path": "src/strategies/triangular.py",
-      "accessCount": 18,
-      "lastAccessed": 1773924031908,
+      "accessCount": 20,
+      "lastAccessed": 1773926666736,
       "type": "file"
     },
     {
       "path": "src/strategies/statistical_arb.py",
       "accessCount": 16,
       "lastAccessed": 1773875384736,
+      "type": "file"
+    },
+    {
+      "path": "src/tuning/adaptive_threshold.py",
+      "accessCount": 13,
+      "lastAccessed": 1773926729730,
+      "type": "file"
+    },
+    {
+      "path": "src/friction/cost_calculator.py",
+      "accessCount": 11,
+      "lastAccessed": 1773926679449,
       "type": "file"
     },
     {
@@ -241,33 +253,21 @@
       "type": "file"
     },
     {
-      "path": "src/friction/cost_calculator.py",
-      "accessCount": 9,
-      "lastAccessed": 1773874966481,
-      "type": "file"
-    },
-    {
       "path": "tests/test_stat_arb_warmup.py",
       "accessCount": 9,
       "lastAccessed": 1773876485637,
       "type": "file"
     },
     {
-      "path": "src/tuning/adaptive_threshold.py",
+      "path": "src/strategies/spot_futures.py",
       "accessCount": 9,
-      "lastAccessed": 1773926460751,
+      "lastAccessed": 1773926667429,
       "type": "file"
     },
     {
       "path": "src/strategies/cross_exchange.py",
       "accessCount": 8,
       "lastAccessed": 1773875048065,
-      "type": "file"
-    },
-    {
-      "path": "src/strategies/spot_futures.py",
-      "accessCount": 7,
-      "lastAccessed": 1773924038878,
       "type": "file"
     },
     {
@@ -295,6 +295,12 @@
       "type": "directory"
     },
     {
+      "path": "",
+      "accessCount": 6,
+      "lastAccessed": 1773926643897,
+      "type": "directory"
+    },
+    {
       "path": "src/strategies/futures_futures.py",
       "accessCount": 5,
       "lastAccessed": 1773874584226,
@@ -305,12 +311,6 @@
       "accessCount": 5,
       "lastAccessed": 1773875175126,
       "type": "file"
-    },
-    {
-      "path": "",
-      "accessCount": 5,
-      "lastAccessed": 1773923877377,
-      "type": "directory"
     },
     {
       "path": "tests/unit/test_triangular.py",
@@ -398,8 +398,8 @@
     },
     {
       "path": "src",
-      "accessCount": 1,
-      "lastAccessed": 1773874334934,
+      "accessCount": 2,
+      "lastAccessed": 1773926686646,
       "type": "directory"
     },
     {

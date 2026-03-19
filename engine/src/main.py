@@ -2132,7 +2132,7 @@ class Engine:
                 continue
 
             try:
-                async with self._db_pool.acquire() as conn:
+                async with self._db_pool.pool.acquire() as conn:
                     trained = await trainer.scheduled_train(conn)
 
                 if trained:
@@ -2197,7 +2197,7 @@ class Engine:
 
             try:
                 logger.info("xgb_training_loop_cycle_start")
-                async with self._db_pool.acquire() as conn:
+                async with self._db_pool.pool.acquire() as conn:
                     trained = await trainer.scheduled_train(conn)
 
                 if not trained:

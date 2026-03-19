@@ -134,15 +134,15 @@
   },
   "hotPaths": [
     {
-      "path": ".claude/commands/leviathan.md",
-      "accessCount": 152,
-      "lastAccessed": 1773926332190,
+      "path": "engine/src/main.py",
+      "accessCount": 154,
+      "lastAccessed": 1773926731919,
       "type": "file"
     },
     {
-      "path": "engine/src/main.py",
-      "accessCount": 150,
-      "lastAccessed": 1773926491094,
+      "path": ".claude/commands/leviathan.md",
+      "accessCount": 152,
+      "lastAccessed": 1773926332190,
       "type": "file"
     },
     {

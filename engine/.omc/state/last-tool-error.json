@@ -1,7 +1,7 @@
 {
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"python -c \\\"\\nfrom src.strategies.cross_exchange import CrossExchangeStrategy\\nfrom src.strategies.spot_futures import SpotFuturesStrategy\\nfrom src.strategies.futures_futures import Futur...",
-  "error": "Exit code 1\nTraceback (most recent call last):\n  File \"<string>\", line 20, in <module>\nTypeError: CrossExchangeStrategy.__init__() got an unexpected keyword argument 'regime_detector'",
-  "timestamp": "2026-03-18T23:03:45.050Z",
-  "retry_count": 4
+  "tool_name": "Read",
+  "tool_input_preview": "{\"file_path\":\"/Users/100aniv/Development/arbitrage_OMC/engine/src/shadow.py\",\"offset\":2245,\"limit\":30}",
+  "error": "File does not exist. Note: your current working directory is /Users/100aniv/Development/arbitrage_OMC/engine.",
+  "timestamp": "2026-03-19T13:23:59.195Z",
+  "retry_count": 1
 }

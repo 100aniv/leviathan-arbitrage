@@ -699,11 +699,20 @@
       "agent_type": "shadow-tester",
       "started_at": "2026-03-19T13:11:38.794Z",
       "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-19T13:22:50.677Z",
+      "duration_ms": 671883
+    },
+    {
+      "agent_id": "a75d4ccefa98bfc42",
+      "agent_type": "oh-my-claudecode:verifier",
+      "started_at": "2026-03-19T13:23:53.536Z",
+      "parent_mode": "none",
       "status": "running"
     }
   ],
-  "total_spawned": 82,
-  "total_completed": 77,
+  "total_spawned": 83,
+  "total_completed": 78,
   "total_failed": 0,
-  "last_updated": "2026-03-19T13:11:38.897Z"
+  "last_updated": "2026-03-19T13:23:53.642Z"
 }
