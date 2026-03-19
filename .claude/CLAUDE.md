@@ -285,14 +285,14 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 > 워크플로우 구조 분석 결과 반영. 근본 원인: "누가 통합 연결을 검증하는가?" — 아무도 안 했음.
 > 학술 근거: MAST (NeurIPS 2025, 1642 트레이스 분석), Google/MIT 팀 규모 연구
 
-- **Assembly Gate (C-Step 6)**: 코드리뷰 전 조립 검증 (init chain + signal flow + dead wiring + config audit). TF QF 단계 3.5를 매 Phase에 상시화
+- **Assembly Gate (C-Step 1)**: 코드리뷰 전 조립 검증 (init chain + signal flow + dead wiring + config audit). TF QF 단계 3.5를 매 Phase에 상시화
 - **Shadow 13항목 복합지표**: 시드 무관 절대 지표(MDD%, Profit Factor, Sharpe, Calmar) + 통합 검증(전략별 trade>=1, 방어 레이어 활성)
 - **WIRING AC 필수**: 새 컴포넌트 US에 `⚡ WIRING:` AC 3개 (생성→주입→호출)
 - **Jennie 통합 추적**: 코드리뷰에서 새 클래스의 생성→주입→호출 경로 추적 (CRITICAL 우선순위)
 - **Fix Loop 유형 분류**: Type W(Wiring→즉시 L2) / Type P(Parameter→3회) / Type B(Bug→3회)
 - **검증 유틸리티**: `.claude/hooks/assembly-gate.sh` + `shadow-evidence-gate.sh` (에이전트 수동 호출용, 자동 Stop hook 아님)
 - **Shadow 결과 파일**: `.omc/state/shadow-result-latest.json` 필수 기록 (Assembly Verifier + Karina 검증용)
-- **멀티모델 독립 감사 (C-Step 5)**: Assembly Gate 후, 코드리뷰 전에 3개 외부 모델(Codex+Gemini+Qwen) 인라인 병렬 호출 → quorum 합의. Claude 편향 구조적 제거 목적. 과반수 이슈 지적 시 MUST FIX.
+- **멀티모델 독립 감사 (C-Step 2)**: Assembly Gate 후, 코드리뷰 전에 3개 외부 모델(Codex+Gemini+Qwen) 인라인 병렬 호출 → quorum 합의. Claude 편향 구조적 제거 목적. 과반수 이슈 지적 시 MUST FIX.
 
 ## 멀티모델 감사 (2026-03-19 도입)
 
@@ -301,8 +301,8 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 - **자동 실행 (leviathan 내)**: Agent()로 CLI 직접 호출 → AskUserQuestion 0개, TeamCreate 0개 → 멈추지 않음
   - Stage A: 3개 모델 PLAN.md 병렬 리뷰 → quorum 합의
-  - C-Step 5: 3개 모델 코드 병렬 감사 → quorum 합의 (MUST FIX 판정)
-  - C-Step 7: 3개 모델 Go/No-Go 병렬 토론 → 과반수 판정
+  - C-Step 2: 3개 모델 코드 병렬 감사 → quorum 합의 (MUST FIX 판정)
+  - C-Step 4: 3개 모델 Go/No-Go 병렬 토론 → 과반수 판정
 - **수동 실행 (직접 호출)**: `/consensus-code-review`, `/consensus-plan-review`, `/octo-security`, `/octo-debate` — 대화형 (TeamCreate + AskUserQuestion 포함)
 - **CLI**: Codex(`codex exec`), Gemini(`gemini -p`), Qwen(`qwen -p`) — 3개 인증 완료. Kimi는 `kimi-cli login` 후 추가 가능
 - **Stage C 워크플로우**: Assembly Gate(1) → **멀티모델 감사(2)** → 코드리뷰(3) → **멀티모델 토론(4)** → Go/No-Go(5) → SSOT(6) → Telegram(7)
@@ -312,7 +312,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 **3-Stage Sequential 연속 실행** (leviathan.md 참조):
 1. **Stage A** (기획): [Entry Gate(karina) 순차 → NingNing+Winter+Giselle 병렬] → PLAN.md + WIRING AC → QUANT GATE → **즉시 Stage B**
 2. **Stage B** (구현+검증): TeamCreate(IVE) → pytest PASS → TeamDelete → Shadow 13항목 복합지표(NewJeans) → **즉시 Stage C**
-3. **Stage C** (리뷰+릴리스): [**C-Step 6 Assembly Gate(조립검증)**] → [**C-Step 5 멀티모델 인라인 감사(3CLI 병렬→quorum)**] → [Jennie+Jisoo 코드리뷰(통합추적)] → [**C-Step 7 멀티모델 Go/No-Go 토론(3CLI 병렬)**] → [Karina Phase완료리뷰 7항목+Go/No-Go] → [Sakura SSOT+git push] → **텔레그램 → 사장님 승인 대기**
+3. **Stage C** (리뷰+릴리스): [**C-Step 1 Assembly Gate(조립검증)**] → [**C-Step 2 멀티모델 인라인 감사(3CLI 병렬→quorum)**] → [**C-Step 3 코드리뷰**(Jennie+Jisoo 통합추적)] → [**C-Step 4 멀티모델 Go/No-Go 토론(3CLI 병렬)**] → [**C-Step 5 최종리뷰**(Karina 7항목+Go/No-Go)] → [**C-Step 6 SSOT+git**(Sakura)] → [**C-Step 7 텔레그램**(사장님 승인 대기)]
 
 **세션 관리**: Stage A→B→C 연속 실행 (세션 초기화 없음, ralph 루프 유지).
 **`/compact` 절대 금지**. 컨텍스트 60% 시 텔레그램 알림 → `/clear` 시도 → 성공/실패 모두 텔레그램 알림.

@@ -433,9 +433,9 @@ cd engine && timeout 600 python -m src.main
 
 ---
 
-## 9. Assembly Gate 체크리스트 (C-Step 6)
+## 9. Assembly Gate 체크리스트 (C-Step 1)
 
-> Phase 완료 후 코드리뷰(BLACKPINK) 전 필수 검증
+> Phase 완료 후 코드리뷰 전 필수 검증 (Assembly Verifier)
 
 - [ ] **init chain**: 신규/수정 컴포넌트가 Engine.run() 경로에서 올바르게 초기화
   - HMM/XGBoost background task 등록 경로

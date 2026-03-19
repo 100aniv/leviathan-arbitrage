@@ -469,9 +469,9 @@ cd engine && python -m pytest tests/test_shadow_profit_factor.py tests/test_live
 
 ---
 
-## 9. Assembly Gate 체크리스트 (C-Step 0.5)
+## 9. Assembly Gate 체크리스트 (C-Step 1)
 
-> Phase 완료 후 코드리뷰 전 필수 검증
+> Phase 완료 후 코드리뷰 전 필수 검증 (Assembly Verifier)
 
 - [ ] init chain: 17개 US의 새 컴포넌트가 Engine.__init__() → run() 경로에서 올바르게 초기화
 - [ ] signal flow: RegimeDetector → 6개 전략, ML Scorer → SignalGenerator 연결 확인
