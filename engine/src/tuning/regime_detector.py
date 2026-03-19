@@ -50,6 +50,55 @@ REGIME_MIN_EDGE: dict[MarketRegime, Decimal] = {
 }
 
 
+# US-263: Regime parameter matrix — per-regime strategy parameters
+# Keys: (regime, param_name) → value.  Strategies query this at runtime.
+REGIME_PARAM_MATRIX: dict[str, dict[str, float]] = {
+    "CALM": {
+        "max_position_multiplier": 1.2,   # slightly larger positions
+        "min_edge_bps": 3.0,
+        "cooldown_seconds": 3.0,          # faster re-entry
+        "volatility_multiplier": 0.8,     # tighter thresholds
+    },
+    "NORMAL": {
+        "max_position_multiplier": 1.0,
+        "min_edge_bps": 5.0,
+        "cooldown_seconds": 5.0,
+        "volatility_multiplier": 1.0,
+    },
+    "VOLATILE": {
+        "max_position_multiplier": 0.7,   # reduce exposure
+        "min_edge_bps": 8.0,
+        "cooldown_seconds": 10.0,         # slower re-entry
+        "volatility_multiplier": 1.5,     # wider thresholds
+    },
+    "CRISIS": {
+        "max_position_multiplier": 0.0,   # no new positions
+        "min_edge_bps": 15.0,
+        "cooldown_seconds": 30.0,
+        "volatility_multiplier": 2.0,
+    },
+    # Aliases for HMM regime names
+    "LOW": {
+        "max_position_multiplier": 1.2,
+        "min_edge_bps": 3.0,
+        "cooldown_seconds": 3.0,
+        "volatility_multiplier": 0.8,
+    },
+    "MEDIUM": {
+        "max_position_multiplier": 1.0,
+        "min_edge_bps": 5.0,
+        "cooldown_seconds": 5.0,
+        "volatility_multiplier": 1.0,
+    },
+    "HIGH": {
+        "max_position_multiplier": 0.7,
+        "min_edge_bps": 8.0,
+        "cooldown_seconds": 10.0,
+        "volatility_multiplier": 1.5,
+    },
+}
+
+
 class RegimeDetector:
     """시장 체제 분류기 — 변동성/스프레드 기반."""
 
@@ -61,6 +110,29 @@ class RegimeDetector:
         }
         self.current_regime = MarketRegime.MEDIUM
         self.history: list[dict] = []
+        self.confidence: float = 0.5
+        self.transition_prob: float = 0.1
+
+    def get_regime_params(self, param_name: str, default: float = 0.0) -> float:
+        """US-263: Look up a regime-specific parameter from the matrix.
+
+        Args:
+            param_name: One of max_position_multiplier, min_edge_bps,
+                        cooldown_seconds, volatility_multiplier.
+            default: Fallback if regime/param not found.
+
+        Returns:
+            Parameter value for the current regime.
+        """
+        regime_key = self.current_regime.value if hasattr(self.current_regime, "value") else str(self.current_regime)
+        params = REGIME_PARAM_MATRIX.get(regime_key, {})
+        val = params.get(param_name, default)
+        if val != default:
+            logger.debug(
+                "regime_param_matrix regime=%s param=%s value=%.3f",
+                regime_key, param_name, val,
+            )
+        return val
 
     def detect(self, returns: list[float], spread_std: float = 0.0) -> MarketRegime:
         """최근 수익률 배열로 변동성 계산 → 체제 분류."""

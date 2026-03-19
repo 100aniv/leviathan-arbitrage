@@ -11,6 +11,8 @@ signal.metadata must contain:
 """
 from __future__ import annotations
 
+import logging
+import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
@@ -19,6 +21,8 @@ from pydantic import BaseModel, Field
 
 from src.core.models import OrderSide, OrderType, Signal, Trade
 from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeRequest
+
+logger = logging.getLogger(__name__)
 
 
 class FundingRateConfig(BaseModel):
@@ -63,6 +67,9 @@ class FundingRateStrategy(BaseStrategy):
         self._open_positions: dict[str, str] = {}  # symbol → direction
         # US-239: Last settlement hour seen (for auto-release after settlement)
         self._last_settlement_hour: int = -1
+        # US-262: Rolling funding rate history for z-score dynamic threshold
+        from collections import deque
+        self._funding_diff_history: deque[float] = deque(maxlen=360)  # ~8H at 80s intervals
 
     def _minutes_to_next_settlement(self, now_utc: datetime | None = None) -> float:
         """Return minutes until next funding settlement (UTC 00/08/16).
@@ -124,6 +131,26 @@ class FundingRateStrategy(BaseStrategy):
         funding_rate_buy = Decimal(str(signal.metadata.get("funding_rate_buy", "0")))
         funding_diff = funding_rate_sell - funding_rate_buy
         funding_diff_bps = funding_diff * Decimal("10000")
+
+        # US-262: Z-score dynamic threshold for funding rate
+        self._funding_diff_history.append(float(funding_diff_bps))
+        if len(self._funding_diff_history) >= 30:
+            import math
+            _hist = list(self._funding_diff_history)
+            _mean = sum(_hist) / len(_hist)
+            _var = sum((x - _mean) ** 2 for x in _hist) / (len(_hist) - 1)
+            _std = math.sqrt(_var) if _var > 0 else 0.0
+            if _std > 0:
+                _z_score = (float(funding_diff_bps) - _mean) / _std
+                # Only enter when z-score > 1.5 (significant deviation)
+                _z_threshold = float(os.environ.get("FUNDING_ZSCORE_THRESHOLD", "1.5"))
+                if _z_score < _z_threshold:
+                    self._metrics.signals_filtered += 1
+                    logger.debug(
+                        "funding_rate.zscore_filter z=%.2f threshold=%.1f diff_bps=%.1f",
+                        _z_score, _z_threshold, float(funding_diff_bps),
+                    )
+                    return None
 
         if funding_diff_bps < self.config.min_funding_diff_bps:
             self._metrics.signals_filtered += 1

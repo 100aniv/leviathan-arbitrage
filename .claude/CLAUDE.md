@@ -257,6 +257,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **cancel_order**: order.symbol 전달 필수 (Binance rollback). TypeError fallback for legacy adapters
 - **friction prefix**: cost_calculator가 `paper_`/`sandbox_` prefix 자동 strip
 - **passes:true 거짓 양성 금지**: 코드 존재만으로 완료 판정 금지. Shadow 10min 런타임에서 해당 기능 호출 증거(로그/메트릭) 필수. dead code(정의만 있고 호출 안 됨) = passes:false
+- **ANTI-STALL (멈춤 방지)**: 모든 응답에 텍스트 1줄 + tool call 병행 (텍스트 없으면 stop hook이 루프 종료 #30625). "다음 세션에서 하자" 응답 금지 (#34238). TeamCreate 30초 무응답 시 TeamDelete → Agent() fallback (#33043).
 
 ## 플랜 파일 (유저 레벨 — 레포 밖)
 
@@ -266,11 +267,12 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 9H 중단 → **Phase S15 완료 (2026-03-19)** → **Phase S16~S21** → TF QF → TF SF → TF Final → Live
-- **Tests**: 4,940 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (243+54개 US, 243 passes:true / 54 passes:false)
+- **Phase 순서**: A~M✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 9H 중단 → **Phase S15~S16 완료** → **Phase S17~S21** → TF QF → TF SF → TF Final → Live
+- **Tests**: 4,962 passed, 0 failed, 12 skipped
+- **PRD**: `.omc/prd.json` (255+42개 US, 255 passes:true / 42 passes:false)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: Phase S16 (동적 임계치 + 고급 기능) → S17~S21 → TF QF → TF SF → TF Final → Live
+- **다음 작업**: Phase S17 (전략별 고급 기능 + 실행 안전장치) → S18~S21 → TF QF → TF SF → TF Final → Live
+- **Phase S16**: ✅ 완료 (2026-03-20) — 12 US: S15 이월 6개 + 동적 임계치 6개, Shadow 11min +$379.44, 22 new tests
 - **TF SF 9H 중단**: CRITICAL 6건 + 수학 오류 3건 발견 → Phase S15~S21 회귀 (2026-03-19)
 - **회귀 사유**: profit_factor 계산 버그, LiveGate 차단 미동작, ML 미연결, 전략 평가 기준 위반
 - **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)

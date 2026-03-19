@@ -392,6 +392,7 @@ class ShadowMode:
         kill_switch: Any | None = None,
         regime_detector: Any | None = None,
         adaptive_threshold: Any | None = None,
+        db_pool: Any | None = None,
     ) -> None:
         """Initialise the shadow mode orchestrator.
 
@@ -421,6 +422,7 @@ class ShadowMode:
         self._strategy_manager = strategy_manager
         self._regime_detector = regime_detector
         self._adaptive_threshold = adaptive_threshold
+        self._db_pool = db_pool  # US-256: peak_equity persistence
         # Shadow-local min_edge multiplier (CRISIS 레짐 시 2배 상향, log-only 모드)
         self._shadow_min_edge_factor: float = 1.0
 
@@ -617,6 +619,8 @@ class ShadowMode:
 
         self._running = True
         self._stats = ShadowStats(start_time=time.monotonic())
+        # US-256: restore peak_equity from DB before any drawdown calculations
+        await self._load_peak_equity_from_db()
 
         logger.info("shadow_mode.starting")
 
@@ -1992,22 +1996,27 @@ class ShadowMode:
                 "pnl": ss.pnl,
             })
 
-        # US-258-b: warn on trade=0 strategies, but skip warm-up incomplete stat_arb
+        # US-258-b: Check #11 gate — warm-up / CRISIS exclusion for trade=0 strategies
+        # Adds warmup_excluded / crisis_excluded flags to strategy_breakdown so
+        # shadow-tester can properly skip them when evaluating check #11.
         try:
-            from src.strategies.statistical_arb import StatisticalArbStrategy
-            _warmed_strategy_ids: set[str] = set()
+            _is_crisis = getattr(self, "_shadow_min_edge_factor", 1.0) >= 2.0
+            _warmup_incomplete_ids: set[str] = set()
             for _strategy in self._strategy_manager._strategies.values():
-                if isinstance(_strategy, StatisticalArbStrategy):
-                    if not _strategy.is_warmed_up():
-                        _warmed_strategy_ids.add(_strategy.strategy_id)
+                if hasattr(_strategy, "is_warmed_up") and not _strategy.is_warmed_up():
+                    _warmup_incomplete_ids.add(_strategy.strategy_id)
             for _sb in strategy_breakdown:
+                _sid = _sb["strategy_id"]
+                _sb["warmup_excluded"] = _sid in _warmup_incomplete_ids
+                _sb["crisis_excluded"] = _is_crisis
                 if _sb["trades"] == 0:
-                    _sid = _sb["strategy_id"]
-                    # Extract base id (e.g. "statistical_arb_v1" from "statistical_arb_v1")
-                    _base = _sid.split("_v")[0] + "_v1" if "_v" not in _sid else _sid
-                    if _base in _warmed_strategy_ids or _sid in _warmed_strategy_ids:
+                    if _sb["warmup_excluded"]:
                         logger.info(
                             "shadow_mode.strategy_trade_zero_warmup_incomplete strategy=%s", _sid
+                        )
+                    elif _is_crisis:
+                        logger.info(
+                            "shadow_mode.strategy_trade_zero_crisis_regime strategy=%s", _sid
                         )
                     else:
                         logger.warning(
@@ -2081,6 +2090,11 @@ class ShadowMode:
         pnl = self._stats.total_pnl
         if pnl > self._stats.peak_pnl:
             self._stats.peak_pnl = pnl
+            # US-256: persist new peak to DB (fire-and-forget, only when event loop running)
+            try:
+                asyncio.get_running_loop().create_task(self._save_peak_equity_to_db())
+            except RuntimeError:
+                pass  # no running loop (test/sync context) — skip DB save
 
         # Absolute drawdown in USD (not fraction — avoids blowup when peak is tiny)
         drawdown = self._stats.peak_pnl - pnl
@@ -2093,6 +2107,39 @@ class ShadowMode:
             dd_pct = min(drawdown / self._stats.peak_pnl, 1.0)  # clamp to 0~1
             if dd_pct > self._stats.max_drawdown_pct:
                 self._stats.max_drawdown_pct = dd_pct
+
+    # -----------------------------------------------------------------------
+    # US-256: peak_equity DB persistence
+    # -----------------------------------------------------------------------
+
+    async def _load_peak_equity_from_db(self) -> None:
+        """Load peak_pnl from TimescaleDB shadow_peak_equity on startup."""
+        if self._db_pool is None:
+            logger.info("[peak_equity] no db_pool, using memory default")
+            return
+        try:
+            async with self._db_pool.pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT peak_equity FROM shadow_peak_equity WHERE id = 1")
+                if row and row["peak_equity"] > 0:
+                    self._stats.peak_pnl = float(row["peak_equity"])
+                    logger.info("[peak_equity] loaded from DB: $%.2f", self._stats.peak_pnl)
+                else:
+                    logger.info("[peak_equity] no prior peak_equity in DB, starting at 0")
+        except Exception as exc:
+            logger.warning("[peak_equity] DB load failed (non-fatal): %s", exc)
+
+    async def _save_peak_equity_to_db(self) -> None:
+        """Persist current peak_pnl to TimescaleDB."""
+        if self._db_pool is None:
+            return
+        try:
+            async with self._db_pool.pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE shadow_peak_equity SET peak_equity = $1, updated_at = now() WHERE id = 1",
+                    self._stats.peak_pnl,
+                )
+        except Exception as exc:
+            logger.debug("[peak_equity] DB save failed (non-fatal): %s", exc)
 
     # -----------------------------------------------------------------------
     # US-067: Strategy validation helpers

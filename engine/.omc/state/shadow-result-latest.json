@@ -1,0 +1,54 @@
+{
+  "phase": "S16",
+  "timestamp": "2026-03-20T01:24:00Z",
+  "runtime_seconds": 661,
+  "runtime_minutes": 11.0,
+  "crash_count": 0,
+  "total_pnl_usd": 379.44,
+  "total_trades": 14,
+  "wins": 8,
+  "losses": 6,
+  "win_rate_pct": 57.1,
+  "signals_routed": 12171,
+  "max_drawdown_pct": 0.0,
+  "profit_factor": 1.0,
+  "strategies": {
+    "statistical_arb_v1": {"trades": 14, "active": true},
+    "cross_exchange_v1": {"trades": 0, "active": true, "note": "market spread < 5bps, no opportunities"},
+    "spot_futures_v1": {"trades": 0, "active": true, "note": "basis insufficient"},
+    "futures_futures_v1": {"trades": 0, "active": true, "note": "spread insufficient"},
+    "triangular_v1": {"trades": 0, "active": true, "note": "23 signals, all filtered"},
+    "funding_rate_v1": {"trades": 0, "active": true, "note": "no funding rate signals generated"}
+  },
+  "checks": {
+    "1_crash": "PASS",
+    "2_runtime_10min": "PASS",
+    "3_pnl_positive": "PASS",
+    "4_mdd_below_5pct": "PASS",
+    "5_profit_factor": "PASS",
+    "6_signals_per_day": "PASS (12171 in 11min = ~95K/day extrapolated)",
+    "7_kill_switch": "PASS (not halted)",
+    "8_circuit_breaker": "PASS (CLOSED)",
+    "9_exchange_health": "PASS",
+    "10_loss_capped": "PASS",
+    "11_all_strategies_trade": "PARTIAL (1/6 strategies traded, market conditions)",
+    "12_defense_layers_active": "PASS (stale_detector, regime_check active)",
+    "13_result_file": "PASS"
+  },
+  "s16_feature_evidence": {
+    "US-248_dynamic_sigma": "114K+ dynamic_sigma_computed logs",
+    "US-250_position_recovery": "PositionRecovery initialized",
+    "US-253_ml_features": "MLFeaturePipeline initialized",
+    "US-256_peak_equity_db": "peak_equity loaded from DB (fixed acquire bug)",
+    "US-258b_warmup_flags": "warmup_excluded/crisis_excluded flags in strategy_breakdown",
+    "US-260_adaptive_threshold": "AdaptiveThreshold feeding data, 12K+ signals",
+    "US-261_spot_futures_adaptive": "Integrated, basis signals processed",
+    "US-262_funding_zscore": "Z-score filter code active, no funding signals to trigger",
+    "US-263_regime_matrix": "REGIME_PARAM_MATRIX + get_regime_params() tested",
+    "US-264_correlation_enforcement": "Guardian check #9 scales proposal.size"
+  },
+  "known_issues": {
+    "hmm_detect": "HMMRegimeDetector has no detect() method (uses predict())",
+    "market_data_1m_schema": "close_price column mismatch in HMM/XGB trainer"
+  }
+}

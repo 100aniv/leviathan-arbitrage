@@ -912,12 +912,14 @@ class Engine:
         ce_config = CrossExchangeConfig(
             min_spread_bps=Decimal(str(ce_p.get("min_spread_bps", 10))),
             max_position_size=Decimal(str(ce_p.get("max_position_size_usdt", 9767))) / _BTC_REFERENCE_PRICE,
+            min_book_depth_usd=Decimal(os.environ.get("CROSS_EXCHANGE_MIN_BOOK_DEPTH_USD", "500")),
         ) if ce_p.get("status") in ("READY", "MONITOR") else None
 
         ff_p = tuned.get("futures_futures", {})
         ff_config = FuturesFuturesConfig(
             min_spread_bps=Decimal(str(ff_p.get("min_spread_bps", 8))),
             max_position_size=Decimal(str(ff_p.get("max_position_size_usdt", 1738))) / _BTC_REFERENCE_PRICE,
+            min_book_depth_usd=Decimal(os.environ.get("FUTURES_MIN_BOOK_DEPTH_USD", "500")),
         ) if ff_p.get("status") in ("READY", "MONITOR") else None
 
         tri_p = tuned.get("triangular", {})
@@ -2288,6 +2290,7 @@ class Engine:
             kill_switch=_shadow_kill_switch,
             regime_detector=self._regime_detector,
             adaptive_threshold=self._adaptive_threshold,
+            db_pool=self._db_pool,  # US-256
         )
 
         # Set all registered strategies to shadow mode and start them
@@ -2382,6 +2385,7 @@ class Engine:
             strategy_manager=self._strategy_manager,
             regime_detector=self._regime_detector,
             adaptive_threshold=self._adaptive_threshold,
+            db_pool=self._db_pool,  # US-256
         )
 
         if self._strategy_manager is not None:
@@ -2455,6 +2459,7 @@ class Engine:
             strategy_manager=self._strategy_manager,
             regime_detector=self._regime_detector,
             adaptive_threshold=self._adaptive_threshold,
+            db_pool=self._db_pool,  # US-256
         )
 
         # Set all registered strategies to shadow mode
@@ -2539,13 +2544,19 @@ class Engine:
         """US-250: Scan for orphaned positions (WAL) on engine startup."""
         if self._position_recovery is None:
             return
-        # PositionRecovery uses sync Redis — try best-effort with available client
-        redis_raw = getattr(self._redis_client, "_client", None) or getattr(self._redis_client, "client", None)
-        if redis_raw is None:
-            logger.debug("startup_position_scan skipped: no sync Redis client available")
+        # Use public .redis property (raises RuntimeError if not connected)
+        if self._redis_client is None:
+            logger.debug("startup_position_scan skipped: no Redis client available")
             return
         try:
-            result = self._position_recovery.recover(redis_raw)
+            redis_conn = self._redis_client.redis  # public property → aioredis.Redis
+        except RuntimeError:
+            logger.debug("startup_position_scan skipped: Redis not connected")
+            return
+        try:
+            from src.execution.position_recovery import PositionRecovery
+            recovery = PositionRecovery(redis=redis_conn)
+            result = await recovery.scan()
             if result.positions_found > 0:
                 logger.warning(
                     "startup_orphan_positions found=%d closed=%d resumed=%d skipped=%d",
@@ -2559,6 +2570,7 @@ class Engine:
                     )
             else:
                 logger.info("startup_position_scan: no orphaned positions found")
+            logger.info("[position_recovery] scan completed")
         except Exception as exc:
             logger.warning("startup_position_scan_error error=%s", exc)
 
@@ -2640,7 +2652,17 @@ class Engine:
                 # US-250: PositionReconciler — compare engine vs exchange positions
                 if self._position_reconciler is not None:
                     try:
-                        result = await self._position_reconciler.reconcile({})
+                        from src.core.models import Position
+                        engine_positions: dict[str, Position] = {}
+                        if self._position_manager is not None:
+                            for p in self._position_manager.get_all_positions():
+                                key = f"{p.exchange_id}:{p.symbol}"
+                                engine_positions[key] = Position(
+                                    exchange_id=p.exchange_id,
+                                    symbol=p.symbol,
+                                    size=p.quantity,
+                                )
+                        result = await self._position_reconciler.reconcile(engine_positions)
                         if result.has_discrepancy:
                             logger.warning(
                                 "position_reconciler_discrepancy count=%d",
@@ -2654,29 +2676,70 @@ class Engine:
                 logger.error("Reconcile error: %s", exc)
 
     async def _peak_equity_persist_loop(self) -> None:
-        """US-256: Persist peak_equity to JSON file every 5 minutes for MDD accuracy across restarts."""
+        """US-256: Persist peak_equity to TimescaleDB (primary) + JSON (backup) every 5 minutes."""
         import json
         import pathlib
         state_path = pathlib.Path(__file__).parent.parent / ".omc" / "state" / "peak_equity.json"
         state_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Load from file on first run
-        try:
-            if state_path.exists():
-                data = json.loads(state_path.read_text())
-                stored = data.get("peak_equity")
-                if stored and self._peak_equity is None:
-                    self._peak_equity = Decimal(str(stored))
-                    logger.info("peak_equity_restored_from_file value=%s", stored)
-        except Exception as exc:
-            logger.warning("peak_equity_file_restore_failed error=%s", exc)
+        _CREATE_TABLE = """
+            CREATE TABLE IF NOT EXISTS engine_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """
+        _UPSERT = """
+            INSERT INTO engine_state (key, value, updated_at)
+            VALUES ('peak_equity', $1, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()
+        """
+
+        # Restore on startup: DB first, then JSON fallback
+        if self._peak_equity is None:
+            if self._db_pool is not None:
+                try:
+                    async with self._db_pool.pool.acquire() as conn:
+                        await conn.execute(_CREATE_TABLE)
+                        row = await conn.fetchrow(
+                            "SELECT value FROM engine_state WHERE key = 'peak_equity'"
+                        )
+                        if row is not None:
+                            self._peak_equity = Decimal(row["value"])
+                            logger.info("peak_equity_restored_from_db value=%s", row["value"])
+                except Exception as exc:
+                    logger.warning("peak_equity_db_restore_failed error=%s", exc)
+            if self._peak_equity is None:
+                try:
+                    if state_path.exists():
+                        data = json.loads(state_path.read_text())
+                        stored = data.get("peak_equity")
+                        if stored:
+                            self._peak_equity = Decimal(str(stored))
+                            logger.info("peak_equity_restored_from_file value=%s", stored)
+                except Exception as exc:
+                    logger.warning("peak_equity_file_restore_failed error=%s", exc)
 
         while self.state.running:
             await asyncio.sleep(300)  # 5 minutes
             try:
                 if self._peak_equity is not None:
-                    state_path.write_text(json.dumps({"peak_equity": str(self._peak_equity)}))
-                    logger.debug("peak_equity_persisted value=%s", self._peak_equity)
+                    val_str = str(self._peak_equity)
+                    # Primary: TimescaleDB
+                    if self._db_pool is not None:
+                        try:
+                            async with self._db_pool.pool.acquire() as conn:
+                                await conn.execute(_CREATE_TABLE)
+                                await conn.execute(_UPSERT, val_str)
+                            logger.debug("peak_equity_persisted_to_db value=%s", val_str)
+                        except Exception as exc:
+                            logger.warning("peak_equity_db_persist_failed error=%s", exc)
+                    # Backup: JSON file (dual write)
+                    try:
+                        state_path.write_text(json.dumps({"peak_equity": val_str}))
+                        logger.debug("peak_equity_persisted_to_file value=%s", val_str)
+                    except Exception as exc:
+                        logger.debug("peak_equity_file_persist_error error=%s", exc)
             except asyncio.CancelledError:
                 break
             except Exception as exc:

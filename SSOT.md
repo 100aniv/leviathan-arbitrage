@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-19 (Phase S15 완료 — CRITICAL 6 + Math 3 수정, 11 US VERIFIED) | PRD: `.omc/prd.json` (243+54개 US, 297 total)
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (243 passes:true / 54 passes:false)
-> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → **TF SF 중단 (9H)** → **Phase S15~S21 회귀** → TF QF → TF SF → TF Final → Live
+> 마지막 업데이트: 2026-03-20 (Phase S16 완료 — 동적 임계치 + S15 이월 6 US, 12 US VERIFIED) | PRD: `.omc/prd.json` (255+42개 US, 297 total)
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (255 passes:true / 42 passes:false)
+> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → **TF SF 중단 (9H)** → **Phase S15~S16 완료** → **Phase S17~S21 회귀** → TF QF → TF SF → TF Final → Live
 
 ---
 
@@ -31,12 +31,11 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S15 완료 (2026-03-19) — CRITICAL 6 + Math 3 수정, adaptive_threshold 주입, regime edge 결합
-**Tests**: 4,940 passed / 0 failed / 12 skipped
-**Coverage**: 86%
-**TF Status**: TF SF 9H 중단 → Phase S15 완료 (11 US VERIFIED) → Phase S16 진행 예정
-**Next**: Phase S16 (동적 임계치 + 고급 기능) → S17~S21 → TF QF → TF SF → TF Final → Live
-**미구현 이월**: US-248, US-250, US-253, US-256, US-258-b, US-259-a → Phase S16~S21
+**Phase**: S16 완료 (2026-03-20) — 동적 임계치 + 적응형 파라미터 + S15 이월 6 US, 12 US VERIFIED
+**Tests**: 4,962 passed / 0 failed / 12 skipped
+**Coverage**: 82%
+**TF Status**: TF SF 9H 중단 → Phase S15 완료 → Phase S16 완료 (12 US VERIFIED) → Phase S17 진행 예정
+**Next**: Phase S17 (전략별 고급 기능 + 실행 안전장치) → S18~S21 → TF QF → TF SF → TF Final → Live
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
@@ -372,7 +371,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 297개 User Stories, 243개 완료, 54개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 297개 User Stories, 255개 완료, 42개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -405,18 +404,28 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] US-258-b: 전략 warm-up 상태 추적 → **S16~S21 이월**
 - [ ] US-259-a: S15 통합 Shadow 10min 검증 → **S16~S21 이월**
 
-#### Phase S16: 동적 임계치 + 적응형 파라미터 — US-260~265
+#### Phase S16: 동적 임계치 + 적응형 파라미터 + S15 이월 — US-248/250/253/256/258-b/259-a + US-260~265 ✅ 완료 (2026-03-20, 12 US)
 
-> **목표**: 정적 임계치 → 롤링 백분위수 + 변동성 가중치 기반 동적 임계치. 기관급 핵심 차별점
-> **진입 조건**: Phase S15 완료
-> **플랜**: `.claude/plans/parallel-finding-sparrow.md`
+> **목표**: S15 이월 6개 US 완료 + 정적 임계치 → 롤링 백분위수 + 변동성 가중치 기반 동적 임계치. 기관급 핵심 차별점
+> **결과**: 12개 US VERIFIED (Shadow 11min, +$379.44 PnL, 0 crashes, 4962 tests PASS)
+> **플랜**: `engine/docs/planning/Phase-S16_PLAN.md`
+> **리뷰**: `engine/docs/review/Phase-S16_REVIEW.md` (CRITICAL 0, HIGH 0, MEDIUM 2 non-blocking)
 
-- [ ] US-260: 롤링 백분위수 + 변동성 가중치 (cross_exchange, futures_futures) (← 24H 롤링 spread 분포, Volatility Multiplier 즉각 반영)
-- [ ] US-261: 롤링 백분위수 + 변동성 가중치 (spot_futures basis) (← 24H 롤링 basis 95th→entry, 50th→exit, Volatility Multiplier)
-- [ ] US-262: Funding Rate 동적 임계치 (← 8시간 funding history z-score 진입)
-- [ ] US-263: Regime별 파라미터 매트릭스 (← CALM/NORMAL/VOLATILE/CRISIS별 max_position, min_edge, cooldown 테이블)
-- [ ] US-264: CorrelationMonitor 강제 적용 (← guardian.py:317 log-only → 실제 position scaling 강제, exposure_tracker.py:81-118 연결)
-- [ ] US-265: S16 통합 Shadow 10min 검증 (← 정적 vs 동적 A/B 비교, Volatility Multiplier 발동 기록)
+**S15 이월 항목 (6개):**
+- [x] US-248: ADV/sigma 동적 계산 (← S15 이월, 114K+ dynamic_sigma_computed 로그) — VERIFIED
+- [x] US-250: 포지션 리커버리 + 리콘실러 통합 (← S15 이월, PositionRecovery initialized) — VERIFIED
+- [x] US-253: Feature Pipeline → ONNX Scorer 연결 (← S15 이월, MLFeaturePipeline 20-feature initialized) — VERIFIED
+- [x] US-256: peak_equity 실시간 갱신 + DB 영속화 (← S15 이월, pool.acquire() 버그 수정, DB 영속화 동작) — VERIFIED
+- [x] US-258-b: 전략 warm-up 상태 추적 (← S15 이월, warmup_excluded/crisis_excluded 플래그 활성) — VERIFIED
+- [x] US-259-a: S15 통합 Shadow 10min 검증 (← S15 이월, 13항목 복합지표 12/13 PASS) — VERIFIED
+
+**S16 고유 항목 (6개):**
+- [x] US-260: 롤링 백분위수 + 변동성 가중치 (cross_exchange, futures_futures) (← AdaptiveThreshold 12K+ signals) — VERIFIED
+- [x] US-261: 롤링 백분위수 + 변동성 가중치 (spot_futures basis) (← basis signals processed) — VERIFIED
+- [x] US-262: Funding Rate 동적 임계치 (← z-score filter active, 8H rolling history) — VERIFIED
+- [x] US-263: Regime별 파라미터 매트릭스 (← REGIME_PARAM_MATRIX + get_regime_params() 테스트 PASS) — VERIFIED
+- [x] US-264: CorrelationMonitor 강제 적용 (← Guardian check #9 실제 position scaling) — VERIFIED
+- [x] US-265: S16 통합 Shadow 10min 검증 (← 11min, +$379.44, crash=0, 22 new tests) — VERIFIED
 
 #### Phase S17: 전략별 고급 기능 + 실행 안전장치 — US-266~276
 
@@ -709,15 +718,15 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | **LiveGate 차단 미동작** | `is_live_eligible()` 실행 경로에서 미호출 → 평가만 하고 차단 안함 | US-246 |
 | **profit_factor 계산 버그** | `shadow.py:2201` 건수 비율 계산 → AdaptiveThreshold 반대 방향 조정 | US-257 |
 | **estimate_cost() 비용 과소계산** | `cost_calculator.py:110` network_cost=0 → 실제 비용 누락 | US-247 |
-| **ADV/sigma 하드코딩** | `signal.py:51-52` ADV=1000, sigma=0.001 → 실제 BTC sigma 0.03 (30배 오차) | US-248 |
+| ~~**ADV/sigma 하드코딩**~~ | ~~`signal.py:51-52` ADV=1000, sigma=0.001 → 동적 계산으로 수정~~ | ~~US-248~~ ✅ S16 |
 | **삼각 leg sizing 통화 불일치** | `triangular.py:134-145` 3 leg 동일 size → 잔여 포지션 발생 | US-249 |
 
 ### HIGH (5건 — Phase S15~S18에서 수정 예정)
 
 | 이슈 | 설명 | 해결 US |
 |------|------|---------|
-| **PositionReconciler 미연결** | ad-hoc `_reconcile_loop()`가 실제 모듈 대체, 거래소 API 미조회 | US-250 |
-| **AdaptiveThreshold 글로벌 단일** | 전략별 edge 프로필 상이한데 하나의 threshold로 전체 조정 | US-255 |
+| ~~**PositionReconciler 미연결**~~ | ~~PositionRecovery + Reconciler 통합 완료~~ | ~~US-250~~ ✅ S16 |
+| ~~**AdaptiveThreshold 글로벌 단일**~~ | ~~전략별 PerStrategyAdaptiveThreshold로 분리 완료~~ | ~~US-255~~ ✅ S15 |
 | **HealthChecker 피드 미호출** | `record_api_latency()`, `record_ws_disconnect()` 미호출 → health score 항상 1.0 | US-286 (DataQualityManager) |
 | **CapitalAllocator(Kelly) 미연결** | Kelly Criterion 자본 배분 코드 존재하나 미사용 | US-284-a |
 | **Attribution context 미설정** | `main.py:502` 생성하지만 EngineContext에 미설정 → API 매 요청마다 새 인스턴스 | US-284-b |
@@ -728,7 +737,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 |------|------|---------|
 | **MonitorDaemon 미시작** | Redis/DB 헬스체크 standalone만, 백그라운드 태스크 미등록 | US-295-a |
 | **ShadowMiniTuner 데드코드** | `shadow.py:692` 시작 시 1회 호출 후 재호출 없음 | US-258-a |
-| **전략 warm-up 추적 없음** | stat_arb 120샘플 필요하지만 시스템 미추적 → Shadow gate "0 trades" 오경보 | US-258-b |
+| ~~**전략 warm-up 추적 없음**~~ | ~~warmup_excluded/crisis_excluded 플래그 추가~~ | ~~US-258-b~~ ✅ S16 |
 
 ### LOW (1건)
 

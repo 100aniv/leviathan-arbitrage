@@ -58,6 +58,19 @@ class FuturesFuturesStrategy(BaseStrategy):
             )
         self.config = config
 
+        # US-260: Adaptive threshold — rolling percentile + volatility weight
+        try:
+            from src.core.adaptive_threshold import AdaptiveThreshold
+            self._adaptive_threshold = AdaptiveThreshold(
+                window=1440,
+                entry_percentile=95.0,
+                exit_percentile=50.0,
+                static_entry=float(config.min_spread_bps),
+                static_exit=float(config.min_spread_bps) * 0.5,
+            )
+        except ImportError:
+            self._adaptive_threshold = None
+
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1
 
@@ -75,7 +88,17 @@ class FuturesFuturesStrategy(BaseStrategy):
             except Exception:
                 pass  # graceful fallback
 
-        min_spread = self.config.min_spread_bps / Decimal("10000")
+        # US-260: Feed spread to adaptive threshold tracker
+        _spread_bps = float(signal.spread_pct) * 10000
+        if self._adaptive_threshold is not None:
+            self._adaptive_threshold.update(_spread_bps)
+
+        # US-260: dynamic threshold when ready, static fallback
+        if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
+            _entry_bps, _ = self._adaptive_threshold.thresholds
+            min_spread = Decimal(str(_entry_bps)) / Decimal("10000")
+        else:
+            min_spread = self.config.min_spread_bps / Decimal("10000")
         if signal.spread_pct < min_spread:
             self._metrics.signals_filtered += 1
             return None

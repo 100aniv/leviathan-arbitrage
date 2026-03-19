@@ -103,6 +103,8 @@ class SignalGenerator:
         self._adaptive_threshold = adaptive_threshold  # US-255: per-strategy threshold
         self._crisis_start_time: float | None = None  # US-173: CRISIS timeout tracking
         self._price_history: dict[str, list[Decimal]] = {}  # US-248: mid-price cache per symbol
+        self._adv: Decimal = self._config.default_adv  # US-248: last computed dynamic ADV
+        self._sigma: Decimal = self._config.default_sigma  # US-248: last computed dynamic sigma
 
     def _dedup_key(self, buy_ex: str, sell_ex: str, symbol: str) -> str:
         return f"{symbol}:{buy_ex}:{sell_ex}"
@@ -149,6 +151,11 @@ class SignalGenerator:
                 mean_r = sum(returns) / len(returns)
                 variance = sum((r - mean_r) ** 2 for r in returns) / len(returns)
                 sigma = Decimal(str(math.sqrt(float(variance))))
+                sigma = min(sigma, Decimal("0.10"))  # US-248: CRISIS upper clamp — prevent full signal block
+                logger.info(
+                    "signal.dynamic_sigma_computed symbol=%s sigma=%s history_len=%d",
+                    symbol, sigma, len(prices),
+                )
                 return max(sigma, Decimal("0.0001"))
 
         # Cold-start: estimate sigma from orderbook spread as proxy
@@ -293,6 +300,10 @@ class SignalGenerator:
             except Exception:
                 trade_size = Decimal("1")
 
+        # US-248: compute dynamic ADV/sigma and cache on instance for monitoring
+        self._adv = self._compute_dynamic_adv(symbol, buy_book, sell_book)
+        self._sigma = self._compute_dynamic_sigma(symbol, buy_book, sell_book)
+
         # Friction filter — use actual base asset for network cost
         transfer_coin = symbol.split("/")[0] if "/" in symbol else "XRP"
         try:
@@ -304,8 +315,8 @@ class SignalGenerator:
                 size=trade_size,
                 buy_price=buy_price,
                 sell_price=sell_price,
-                adv=self._compute_dynamic_adv(symbol, buy_book, sell_book),
-                sigma=self._compute_dynamic_sigma(symbol, buy_book, sell_book),
+                adv=self._adv,
+                sigma=self._sigma,
                 transfer_coin=transfer_coin,
             )
         except Exception as exc:
@@ -366,16 +377,62 @@ class SignalGenerator:
                             )
                             spread_arr = np.full(len(returns_arr), float(net_edge), dtype=np.float64)
                             vol_arr = np.full(len(returns_arr), float(trade_size), dtype=np.float64)
+                            # Extract regime state as int (HMM map: CALM=0, NORMAL=1, VOLATILE/CRISIS=2)
+                            _REGIME_INT = {"CALM": 0, "LOW": 0, "NORMAL": 1, "MEDIUM": 1,
+                                           "VOLATILE": 2, "HIGH": 2, "CRISIS": 2}
+                            regime_state = 1
+                            regime_confidence = 0.5
+                            transition_prob = 0.1
+                            if self._regime_detector is not None:
+                                try:
+                                    rd = self._regime_detector.current_regime
+                                    regime_state = _REGIME_INT.get(
+                                        rd.value if hasattr(rd, "value") else str(rd), 1
+                                    )
+                                    regime_confidence = float(getattr(self._regime_detector, "confidence", 0.5))
+                                    transition_prob = float(getattr(self._regime_detector, "transition_prob", 0.1))
+                                except Exception:
+                                    pass
+                            # Build orderbook context for depth/spread features
+                            try:
+                                d_l1 = float(buy_book.volume_at_price(best_ask.price, "ask"))
+                            except Exception:
+                                d_l1 = 0.0
+                            orderbook_data = {
+                                "spread_bps": float(net_edge) * 10000,
+                                "depth_l1": d_l1,
+                                "depth_l3": 0.0,
+                                "depth_l5": 0.0,
+                            }
                             raw = self._ml_feature_pipeline.extract(
+                                orderbook_data=orderbook_data,
                                 returns=returns_arr,
-                                spreads=spread_arr,
                                 volumes=vol_arr,
+                                spreads=spread_arr,
+                                regime_state=regime_state,
+                                regime_confidence=regime_confidence,
+                                transition_prob=transition_prob,
                             )
+                            # Shape assertion guard (QUANT GATE — silent corruption prevention)
                             n_exp = getattr(self._ml_scorer, "_n_features", 20)
-                            padded = np.zeros(n_exp, dtype=np.float32)
-                            n = min(len(raw), n_exp)
-                            padded[:n] = raw[:n]
-                            features = padded.reshape(1, -1)
+                            if raw.ndim != 2 or raw.shape[0] != 1:
+                                raw = raw.reshape(1, -1)
+                            got = raw.shape[1]
+                            if got == n_exp:
+                                features = raw.astype(np.float32)
+                            elif got > n_exp:
+                                # compact mode: slice to model's expected count
+                                features = raw[:, :n_exp].astype(np.float32)
+                                logger.warning(
+                                    "ml_feature_pipeline: compact mode got=%d expected=%d sliced",
+                                    got, n_exp,
+                                )
+                            else:
+                                # shape mismatch — fall back to 3-feature stub below
+                                logger.warning(
+                                    "ml_feature_pipeline: shape mismatch got=%d expected=%d fallback",
+                                    got, n_exp,
+                                )
                     except Exception:
                         pass
                 if features is None:
@@ -396,6 +453,14 @@ class SignalGenerator:
                 score = self._ml_scorer.predict_signal(features)
                 if not math.isfinite(score):
                     score = 0.5
+                # US-253: log canary stage + score for Shadow evidence
+                canary_stage = "DISABLED"
+                if self._ml_canary is not None:
+                    try:
+                        canary_stage = self._ml_canary.stage.value
+                    except Exception:
+                        pass
+                logger.info("[ml_scorer] canary=%s score=%.2f", canary_stage, score)
                 if score < self._ml_scorer.score_threshold:
                     logger.debug(
                         "ml_scorer_rejected symbol=%s score=%.3f threshold=%.3f",

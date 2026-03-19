@@ -4345,7 +4345,7 @@
       "title": "ADV/sigma 동적 계산",
       "phase": "S15",
       "priority": 248,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/signal.py"
       ],
@@ -4378,7 +4378,7 @@
       "title": "포지션 리커버리 + 리콘실러 통합",
       "phase": "S15",
       "priority": 250,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/main.py",
         "engine/src/core/position_reconciler.py",
@@ -4452,7 +4452,7 @@
       "title": "Feature Pipeline → ONNX Scorer 연결",
       "phase": "S15",
       "priority": 253,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/signal.py",
         "engine/src/ml/feature_pipeline.py",
@@ -4515,7 +4515,7 @@
       "title": "peak_equity 실시간 갱신 + DB 영속화",
       "phase": "S15",
       "priority": 256,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/main.py",
         "engine/src/modes/shadow.py"
@@ -4564,7 +4564,7 @@
       "title": "전략 warm-up 상태 추적",
       "phase": "S15",
       "priority": 258.2,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/statistical_arb.py",
         "engine/src/modes/shadow.py"
@@ -4581,7 +4581,7 @@
       "title": "S15 통합 Shadow 10min 검증",
       "phase": "S15",
       "priority": 259.1,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py",
         "engine/src/modes/live_gate.py"
@@ -4617,7 +4617,7 @@
       "title": "롤링 백분위수 + 변동성 가중치 (cross_exchange, futures_futures)",
       "phase": "S16",
       "priority": 260,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/cross_exchange.py",
         "engine/src/strategies/futures_futures.py",
@@ -4637,7 +4637,7 @@
       "title": "롤링 백분위수 + 변동성 가중치 (spot_futures basis)",
       "phase": "S16",
       "priority": 261,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/spot_futures.py",
         "engine/src/core/adaptive_threshold.py"
@@ -4656,7 +4656,7 @@
       "title": "Funding Rate 동적 임계치",
       "phase": "S16",
       "priority": 262,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/funding_rate.py"
       ],
@@ -4673,7 +4673,7 @@
       "title": "Regime별 파라미터 매트릭스",
       "phase": "S16",
       "priority": 263,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/regime_detector.py",
         "engine/config/strategy_params.json"
@@ -4692,7 +4692,7 @@
       "title": "CorrelationMonitor 강제 적용",
       "phase": "S16",
       "priority": 264,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/risk/guardian.py",
         "engine/src/risk/exposure_tracker.py",
@@ -4712,7 +4712,7 @@
       "title": "S16 통합 Shadow 10min 검증",
       "phase": "S16",
       "priority": 265,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py"
       ],

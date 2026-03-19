@@ -312,7 +312,7 @@ class RiskGuardian:
                 ),
             )
 
-        # CHECK #9: Strategy correlation scale-down (US-118 / US-176)
+        # CHECK #9: Strategy correlation scale-down (US-118 / US-176 / US-264)
         if self.correlation_monitor is not None:
             events = self.correlation_monitor.check_correlations()
             for evt in events:
@@ -323,9 +323,18 @@ class RiskGuardian:
                         scale=evt.scale,
                         reason=evt.reason,
                     )
-                    # US-176: propagate scale to DynamicSizer (don't reject — size down)
+                    # US-264: ENFORCE position scaling (was log-only before US-264)
                     if self._dynamic_sizer is not None:
                         self._dynamic_sizer.set_correlation_scale(proposal.strategy_id, evt.scale)
+                    # US-264: Apply scale directly to proposal size even without DynamicSizer
+                    proposal.size = proposal.size * Decimal(str(evt.scale))
+                    RISK_REJECTIONS_TOTAL.labels(
+                        check_number="9", reason="correlation_scale_down"
+                    ).inc()
+                    logger.info(
+                        "risk_check_9_enforced scale=%.2f new_size=%.6f strategy=%s reason=%s",
+                        evt.scale, float(proposal.size), proposal.strategy_id, evt.reason,
+                    )
                     break
 
         # CHECK #10: Max concurrent positions (US-154)

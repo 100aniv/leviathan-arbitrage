@@ -51,6 +51,19 @@ class SpotFuturesStrategy(BaseStrategy):
         self._regime_detector = regime_detector
         self.config = config or SpotFuturesConfig()
 
+        # US-261: Adaptive threshold for basis — 95th entry, 50th exit
+        try:
+            from src.core.adaptive_threshold import AdaptiveThreshold
+            self._adaptive_threshold = AdaptiveThreshold(
+                window=1440,
+                entry_percentile=95.0,
+                exit_percentile=50.0,
+                static_entry=float(self.config.min_basis_bps),
+                static_exit=float(self.config.min_basis_bps) * 0.5,
+            )
+        except ImportError:
+            self._adaptive_threshold = None
+
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1
 
@@ -77,7 +90,18 @@ class SpotFuturesStrategy(BaseStrategy):
         basis_bps = Decimal(str(signal.metadata.get("basis_bps", "0")))
         abs_basis_bps = abs(basis_bps)
 
-        if abs_basis_bps < self.config.min_basis_bps:
+        # US-261: Feed basis to adaptive threshold tracker
+        if self._adaptive_threshold is not None:
+            self._adaptive_threshold.update(float(abs_basis_bps))
+
+        # US-261: Dynamic basis threshold when ready, static fallback
+        if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
+            _entry_bps, _ = self._adaptive_threshold.thresholds
+            _min_basis = Decimal(str(_entry_bps))
+        else:
+            _min_basis = self.config.min_basis_bps
+
+        if abs_basis_bps < _min_basis:
             self._metrics.signals_filtered += 1
             return None
 

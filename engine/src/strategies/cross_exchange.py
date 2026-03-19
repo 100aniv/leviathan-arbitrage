@@ -76,6 +76,19 @@ class CrossExchangeStrategy(BaseStrategy):
         self.config = config
         self._latency_tracker = latency_tracker
 
+        # US-260: Adaptive threshold — rolling percentile + volatility weight
+        try:
+            from src.core.adaptive_threshold import AdaptiveThreshold
+            self._adaptive_threshold = AdaptiveThreshold(
+                window=1440,
+                entry_percentile=95.0,
+                exit_percentile=50.0,
+                static_entry=float(config.min_spread_bps),
+                static_exit=float(config.min_spread_bps) * 0.5,
+            )
+        except ImportError:
+            self._adaptive_threshold = None
+
     def _latency_advantage_ms(self, fast_exchange: str, slow_exchange: str) -> float:
         """Return EMA latency difference (slow - fast) in ms, or 0 if data missing."""
         if self._latency_tracker is None:
@@ -111,8 +124,17 @@ class CrossExchangeStrategy(BaseStrategy):
                 self._metrics.signals_filtered += 1
                 return None
 
-        # Check spread threshold
-        min_spread = self.config.min_spread_bps / Decimal("10000")
+        # US-260: Feed spread to adaptive threshold tracker
+        _spread_bps = float(signal.spread_pct) * 10000
+        if self._adaptive_threshold is not None:
+            self._adaptive_threshold.update(_spread_bps)
+
+        # Check spread threshold (US-260: dynamic when ready, static fallback)
+        if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
+            _entry_bps, _ = self._adaptive_threshold.thresholds
+            min_spread = Decimal(str(_entry_bps)) / Decimal("10000")
+        else:
+            min_spread = self.config.min_spread_bps / Decimal("10000")
         if signal.spread_pct < min_spread:
             self._metrics.signals_filtered += 1
             return None
