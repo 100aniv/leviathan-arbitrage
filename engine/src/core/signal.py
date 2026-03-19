@@ -48,8 +48,9 @@ class SignalConfig:
     max_spread_pct: Decimal = Decimal("0.05") # max gross spread as fraction (5%) — reject data anomalies
     cooldown_seconds: float = 5.0              # dedup suppression window (5s prevents overtrading on marginal edges)
     max_rollback_cost_usd: Decimal = Decimal("50")
-    default_adv: Decimal = Decimal("1000")
-    default_sigma: Decimal = Decimal("0.001")
+    # US-248: conservative defaults — BTC ADV ~15000, sigma ~0.03; old 1000/0.001 caused ~7.7x slippage underestimate
+    default_adv: Decimal = Decimal("10000")
+    default_sigma: Decimal = Decimal("0.03")
     min_price_usd: Decimal = Decimal("0.10")
     max_book_age_seconds: float = 30.0  # reject orderbooks not updated within this window
     min_delta_update_count: int = 3    # STALE_MIN_DELTA_UPDATES: min deltas since snapshot for delta exchanges
@@ -84,6 +85,9 @@ class SignalGenerator:
         regime_detector: Any | None = None,  # US-084
         ml_scorer: Any | None = None,  # US-094: ONNXSignalScorer
         dynamic_sizer: Any | None = None,  # US-130: DynamicSizer
+        ml_feature_pipeline: Any | None = None,  # US-253: MLFeaturePipeline
+        ml_canary: Any | None = None,  # US-253: MLCanary staged rollout
+        adaptive_threshold: Any | None = None,  # US-255: PerStrategyAdaptiveThreshold
     ) -> None:
         self._hub = price_hub
         self._calc = cost_calculator
@@ -94,7 +98,11 @@ class SignalGenerator:
         self._regime_detector = regime_detector  # US-084
         self._ml_scorer = ml_scorer  # US-094
         self._dynamic_sizer = dynamic_sizer  # US-130
+        self._ml_feature_pipeline = ml_feature_pipeline  # US-253
+        self._ml_canary = ml_canary  # US-253
+        self._adaptive_threshold = adaptive_threshold  # US-255: per-strategy threshold
         self._crisis_start_time: float | None = None  # US-173: CRISIS timeout tracking
+        self._price_history: dict[str, list[Decimal]] = {}  # US-248: mid-price cache per symbol
 
     def _dedup_key(self, buy_ex: str, sell_ex: str, symbol: str) -> str:
         return f"{symbol}:{buy_ex}:{sell_ex}"
@@ -107,6 +115,53 @@ class SignalGenerator:
 
     def _mark_emitted(self, key: str) -> None:
         self._last_signal[key] = time.time()
+
+    def _compute_dynamic_adv(self, symbol: str, buy_book: OrderBook, sell_book: OrderBook) -> Decimal:
+        """Estimate ADV from top-5 orderbook depth (bid+ask volume sum). US-248."""
+        total_depth = Decimal("0")
+        for book in (buy_book, sell_book):
+            sorted_bids = sorted(book.bids.items(), reverse=True)[:5]
+            sorted_asks = sorted(book.asks.items())[:5]
+            for _, qty in sorted_bids + sorted_asks:
+                total_depth += qty
+        return max(total_depth, Decimal("1"))
+
+    def _compute_dynamic_sigma(
+        self,
+        symbol: str,
+        buy_book: OrderBook | None = None,
+        sell_book: OrderBook | None = None,
+    ) -> Decimal:
+        """Estimate sigma from recent mid-price returns std dev. US-248.
+
+        Cold-start fallback: if price history is insufficient, use bid-ask spread
+        of the provided orderbooks as a proxy for short-term volatility.
+        This avoids over-penalizing signals when no history is available yet.
+        """
+        prices = self._price_history.get(symbol)
+        if prices is not None and len(prices) >= 10:
+            returns = [
+                (prices[i] - prices[i - 1]) / prices[i - 1]
+                for i in range(1, len(prices))
+                if prices[i - 1] != 0
+            ]
+            if len(returns) >= 5:
+                mean_r = sum(returns) / len(returns)
+                variance = sum((r - mean_r) ** 2 for r in returns) / len(returns)
+                sigma = Decimal(str(math.sqrt(float(variance))))
+                return max(sigma, Decimal("0.0001"))
+
+        # Cold-start: estimate sigma from orderbook spread as proxy
+        if buy_book is not None:
+            best_ask = buy_book.best_ask()  # returns Decimal | None
+            best_bid = buy_book.best_bid()  # returns Decimal | None
+            if best_ask is not None and best_bid is not None and best_ask > 0:
+                spread_frac = (best_ask - best_bid) / best_ask
+                # Use spread fraction directly as sigma proxy; clamp to [1e-5, 0.05]
+                cold_sigma = max(Decimal("0.00001"), min(spread_frac, Decimal("0.05")))
+                return cold_sigma
+
+        return self._config.default_sigma
 
     async def on_orderbook_update(
         self,
@@ -142,6 +197,13 @@ class SignalGenerator:
         sell_exchange = best_bid.exchange  # sell at highest bid
         buy_price = best_ask.price
         sell_price = best_bid.price
+
+        # US-248: Cache mid price for sigma estimation
+        mid_price = (buy_price + sell_price) / 2
+        history = self._price_history.setdefault(symbol, [])
+        history.append(mid_price)
+        if len(history) > 120:  # keep last 120 ticks (~2 min at 1s cadence)
+            history.pop(0)
 
         # Raw spread gate
         if sell_price <= buy_price:
@@ -242,8 +304,8 @@ class SignalGenerator:
                 size=trade_size,
                 buy_price=buy_price,
                 sell_price=sell_price,
-                adv=self._config.default_adv,
-                sigma=self._config.default_sigma,
+                adv=self._compute_dynamic_adv(symbol, buy_book, sell_book),
+                sigma=self._compute_dynamic_sigma(symbol, buy_book, sell_book),
                 transfer_coin=transfer_coin,
             )
         except Exception as exc:
@@ -253,8 +315,17 @@ class SignalGenerator:
         notional = buy_price * trade_size
         net_edge = friction.net_profit / notional if notional > 0 else Decimal("0")
 
-        # Min edge gate — US-084 / US-173: regime-adaptive threshold (QUANT: max(adaptive, regime))
-        effective_min_edge = self._config.min_edge
+        # Min edge gate — US-084 / US-173 / US-255: regime-adaptive + per-strategy threshold
+        # US-255: read per-strategy adaptive edge (strategy_type = config.strategy_id)
+        if self._adaptive_threshold is not None:
+            try:
+                strategy_edge_bps = self._adaptive_threshold.get_edge(self._config.strategy_id)
+                strategy_edge = Decimal(str(strategy_edge_bps)) / Decimal("10000")
+                effective_min_edge = max(self._config.min_edge, strategy_edge)
+            except Exception:
+                effective_min_edge = self._config.min_edge
+        else:
+            effective_min_edge = self._config.min_edge
         if self._regime_detector is not None:
             from src.tuning.regime_detector import REGIME_MIN_EDGE, MarketRegime
             regime = self._regime_detector.current_regime
@@ -282,10 +353,46 @@ class SignalGenerator:
         if self._ml_scorer and self._ml_scorer.enabled:
             try:
                 import numpy as np
-                features = np.array(
-                    [[float(net_edge * 10000), float(trade_size), float(self._config.default_sigma)]],
-                    dtype=np.float32,
-                )
+                # US-253: Full ML feature pipeline (fallback to 3-feature stub)
+                features = None
+                if self._ml_feature_pipeline is not None:
+                    try:
+                        prices = self._price_history.get(symbol, [])
+                        if len(prices) >= 10:
+                            pf = [float(p) for p in prices[-100:]]
+                            returns_arr = np.array(
+                                [(pf[i] - pf[i-1]) / pf[i-1] for i in range(1, len(pf))],
+                                dtype=np.float64,
+                            )
+                            spread_arr = np.full(len(returns_arr), float(net_edge), dtype=np.float64)
+                            vol_arr = np.full(len(returns_arr), float(trade_size), dtype=np.float64)
+                            raw = self._ml_feature_pipeline.extract(
+                                returns=returns_arr,
+                                spreads=spread_arr,
+                                volumes=vol_arr,
+                            )
+                            n_exp = getattr(self._ml_scorer, "_n_features", 20)
+                            padded = np.zeros(n_exp, dtype=np.float32)
+                            n = min(len(raw), n_exp)
+                            padded[:n] = raw[:n]
+                            features = padded.reshape(1, -1)
+                    except Exception:
+                        pass
+                if features is None:
+                    features = np.array(
+                        [[float(net_edge * 10000), float(trade_size), float(self._config.default_sigma)]],
+                        dtype=np.float32,
+                    )
+                # US-253: MLCanary staged rollout gate
+                if self._ml_canary is not None:
+                    try:
+                        if not self._ml_canary.should_use_ml():
+                            features = np.array(
+                                [[float(net_edge * 10000), float(trade_size), float(self._config.default_sigma)]],
+                                dtype=np.float32,
+                            )
+                    except Exception:
+                        pass
                 score = self._ml_scorer.predict_signal(features)
                 if not math.isfinite(score):
                     score = 0.5

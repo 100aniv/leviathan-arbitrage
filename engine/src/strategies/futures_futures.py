@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -46,8 +46,10 @@ class FuturesFuturesStrategy(BaseStrategy):
         strategy_id: str,
         cost_calculator: CostCalculator,
         config: FuturesFuturesConfig | None = None,
+        regime_detector: Any = None,
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
+        self._regime_detector = regime_detector
         if config is None:
             config = FuturesFuturesConfig(
                 min_spread_bps=Decimal(os.environ.get("FUTURES_MIN_SPREAD_BPS", "15")),
@@ -62,6 +64,16 @@ class FuturesFuturesStrategy(BaseStrategy):
         if not self._is_active:
             self._metrics.signals_filtered += 1
             return None
+
+
+        # US-254: Regime check — block new entries in CRISIS mode
+        if self._regime_detector is not None:
+            try:
+                if self._regime_detector.current_regime == "CRISIS":
+                    self._metrics.signals_filtered += 1
+                    return None
+            except Exception:
+                pass  # graceful fallback
 
         min_spread = self.config.min_spread_bps / Decimal("10000")
         if signal.spread_pct < min_spread:

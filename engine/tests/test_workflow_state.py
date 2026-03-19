@@ -122,7 +122,7 @@ class TestLoadState:
         )
 
         assert isinstance(state, dict), "반환 타입은 dict이어야 한다"
-        assert "current_phase" in state, "active-phase 상태에는 'current_phase' 키가 있어야 한다"
+        assert "phase" in state, "active-phase 상태에는 'phase' 키가 있어야 한다"
 
     @pytest.mark.skipif(
         not _REAL_CURRENT_STAGE.exists(),

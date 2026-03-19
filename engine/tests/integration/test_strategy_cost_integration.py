@@ -52,24 +52,24 @@ class TestProtocolConformance:
         assert result > 0
 
     def test_estimate_cost_binance(self, real_cost_calculator):
-        # 0.10% taker * (50000 * 0.01) = 0.10% * 500 = 0.50
+        # 0.10% taker * (50000 * 0.01) = 0.50 + rollback (5% * $5 = 0.25) = 0.75
         result = real_cost_calculator.estimate_cost(
             "binance", "BTC/USDT", OrderSide.BUY, Decimal("0.01"), Decimal("50000")
         )
-        assert result == Decimal("0.5")
+        assert result == Decimal("0.75")
 
     def test_estimate_cost_paper_prefix_stripped(self, real_cost_calculator):
         result = real_cost_calculator.estimate_cost(
             "paper_binance", "BTC/USDT", OrderSide.BUY, Decimal("0.01"), Decimal("50000")
         )
-        assert result == Decimal("0.5")
+        assert result == Decimal("0.75")
 
     def test_estimate_cost_unknown_exchange_no_crash(self, real_cost_calculator):
         result = real_cost_calculator.estimate_cost(
             "totally_unknown", "BTC/USDT", OrderSide.BUY, Decimal("0.01"), Decimal("50000")
         )
-        # Should use 0.25% fallback: 0.0025 * 500 = 1.25
-        assert result == Decimal("1.25")
+        # 0.25% fallback: 0.0025 * 500 = 1.25 + rollback 0.25 = 1.50
+        assert result == Decimal("1.50")
 
 
 class TestStrategyInstantiationWithRealCostCalculator:
@@ -219,5 +219,6 @@ class TestFuturesExchangeFees:
         result = real_cost_calculator.estimate_cost(
             exchange, "BTC/USDT", OrderSide.BUY, Decimal("0.2"), Decimal("50000")
         )
-        expected = expected_rate * notional
+        # US-247: estimate_cost = fee + network + rollback (5% cold-start * $5 = $0.25)
+        expected = expected_rate * notional + Decimal("0.25")
         assert result == expected

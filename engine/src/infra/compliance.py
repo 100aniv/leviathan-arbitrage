@@ -57,6 +57,7 @@ class ComplianceItem:
     description: str       # what was checked
     detail: str = ""       # additional context / measurement
     recommendation: str = ""  # action if FAIL/PARTIAL
+    severity: str = ""     # US-250-a: "CRITICAL", "HIGH", "MEDIUM", ""
 
 
 # ---------------------------------------------------------------------------
@@ -1496,6 +1497,37 @@ class ComplianceChecker:
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# US-250-a: ComplianceAudit — thin wrapper over ComplianceChecker for startup use
+# ---------------------------------------------------------------------------
+
+
+class ComplianceAudit:
+    """Startup compliance auditor (alias for ComplianceChecker with run() method).
+
+    US-250-a: Called on engine startup to surface CRITICAL compliance violations.
+    Non-blocking — failures are logged but do not prevent engine start.
+    """
+
+    def __init__(
+        self,
+        db_pool=None,
+        kill_switch=None,
+        circuit_breaker=None,
+        telegram=None,
+    ) -> None:
+        self._checker = ComplianceChecker(
+            db_pool=db_pool,
+            kill_switch=kill_switch,
+            circuit_breaker=circuit_breaker,
+            telegram=telegram,
+        )
+
+    async def run(self) -> "ComplianceReport":
+        """Run compliance audit and return report. Wraps ComplianceChecker.run_audit()."""
+        return await self._checker.run_audit()
+
+
 # __main__ entry point
 # ---------------------------------------------------------------------------
 

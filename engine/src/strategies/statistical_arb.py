@@ -218,6 +218,10 @@ class StatisticalArbStrategy(BaseStrategy):
         self._state = StatArbState.FLAT
         self._bars_in_position: int = 0
 
+        # US-258-b: warm-up tracking — strategy not ready until min_history samples received
+        self._warmup_complete: bool = False
+        self._total_samples_received: int = 0
+
     @property
     def state(self) -> StatArbState:
         return self._state
@@ -225,6 +229,10 @@ class StatisticalArbStrategy(BaseStrategy):
     @property
     def bars_in_position(self) -> int:
         return self._bars_in_position
+
+    def is_warmed_up(self) -> bool:
+        """US-258-b: Return True once min_history samples have been received."""
+        return self._warmup_complete
 
     # ------------------------------------------------------------------
     # Cross-asset mode: on_orderbook_update + _evaluate_statistical_arb
@@ -247,6 +255,12 @@ class StatisticalArbStrategy(BaseStrategy):
 
         self._all_books.setdefault(symbol, {})[exchange] = mid_price
         self._metrics.signals_received += 1
+
+        # US-258-b: track total samples for warm-up detection
+        self._total_samples_received += 1
+        if not self._warmup_complete and self._total_samples_received >= self.config.min_history:
+            self._warmup_complete = True
+            logger.info("stat_arb.warmup_complete samples=%d", self._total_samples_received)
 
         results: list[TradeRequest] = []
         for sym_a, sym_b in self.config.pairs:
@@ -739,10 +753,6 @@ class StatisticalArbStrategy(BaseStrategy):
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1
 
-        if not self._is_active:
-            self._metrics.signals_filtered += 1
-            return None
-
         buy_f = float(signal.buy_price)
         sell_f = float(signal.sell_price)
 
@@ -752,9 +762,14 @@ class StatisticalArbStrategy(BaseStrategy):
 
         spread = log_sell - hedge_ratio * log_buy
 
+        # Accumulate spread history regardless of active state (warmup progresses in background)
         self._buy_prices.append(buy_f)
         self._sell_prices.append(sell_f)
         self._spreads.append(spread)
+
+        if not self._is_active:
+            self._metrics.signals_filtered += 1
+            return None
 
         if self._state != StatArbState.FLAT:
             self._bars_in_position += 1

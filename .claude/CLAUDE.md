@@ -194,8 +194,8 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 2. **도구 활용 (CLI 우선)**:
    - **GitHub**: `gh` CLI로 push, PR, issue 관리
    - **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`
-   - **Shadow 실행**: `cd engine && timeout 600 python -m src.main`
-   - **Docker**: `docker compose up -d && docker compose ps`
+   - **Shadow 실행**: `cd engine && timeout 600 python -m src.main` (로컬, 최신 코드 즉시 반영)
+   - **Docker 인프라**: DB/Redis 상시 실행 `docker compose up -d timescaledb redis`. 나머지(engine/auto-tuner/dashboard 등)는 Phase/US에서 필요할 때 `docker compose build <서비스> && docker compose up -d <서비스>` (새 빌드 필수). `docker compose up -d` (전체)는 이전 코드 engine 실행 → 데이터 꼬임 + 로컬 충돌 위험
    - **Exa.ai**: 리서치 시 `mcp__exa__web_search_exa` 사용
 
 3. **완료 기준**: 단위테스트 통과만으로 Phase 완료 선언 금지.
@@ -203,15 +203,16 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 팀 구조 (7팀 + TF)
 
-> 팀은 기능별 정의, Stage가 필요한 팀을 호출. Stage B Phase 1만 TeamCreate, 나머지 Agent() 서브에이전트.
+> 팀은 기능별 정의, Stage가 필요한 팀을 호출. Stage B-Step 1만 TeamCreate, 나머지 Agent() 서브에이전트.
 
 | 팀 | Stage | 에이전트 | 역할 |
 |----|-------|---------|------|
 | ① AESPA (기획) | A | Karina(architect/opus), NingNing(analyst), Winter(critic/opus), Giselle(planner) | Entry Gate 정합성, 요구사항, 기획비판, PLAN.md |
-| ② IVE (개발) | B-Phase1 | Yujin/Gaeul/Leeseo/Liz(executor), Wonyoung(test-engineer), Rei(designer) | TeamCreate 협업, 최대 6명 |
-| ③ BLACKPINK (코드리뷰) | C-Step1 | Jennie(code-reviewer/opus), Jisoo(security-reviewer) | 코드리뷰+품질+Shadow교차평가, 보안 |
-| ④ NewJeans (테스트) | B-Phase2 | Minji(shadow-tester), Hanni(qa-tester/haiku), Danielle(scientist/haiku), Haerin(browser-verifier), Hyein(debugger) | Shadow 10min+, QA, 모니터링 |
-| ⑤ LE SSERAFIM (릴리스) | C-Step2~3 | Karina(architect/opus), Sakura(ssot-keeper/sonnet) | Phase완료리뷰+Go/No-Go, SSOT+git push |
+| ② IVE (개발) | B-Step 1 | Yujin/Gaeul/Leeseo/Liz(executor), Wonyoung(test-engineer), Rei(designer) | TeamCreate 협업, 최대 6명 |
+| ②-B Assembly Gate | C-Step 0.5 | Assembly Verifier(verifier/sonnet) | **조립검증**: init chain + signal flow + dead wiring + config audit (독립 에이전트, 코드리뷰 전 필수) |
+| ③ BLACKPINK (코드리뷰) | C-Step 1 | Jennie(code-reviewer/opus), Jisoo(security-reviewer) | 코드리뷰+통합추적+Shadow교차평가, 보안 (Assembly Gate PASS 후에만 진행) |
+| ④ NewJeans (테스트) | B-Step 2 | Minji(shadow-tester), Hanni(qa-tester/haiku), Danielle(scientist/haiku), Haerin(browser-verifier), Hyein(debugger) | Shadow 13항목 복합지표, QA, 모니터링 |
+| ⑤ LE SSERAFIM (릴리스) | C-Step 2~3 | Karina(architect/opus), Sakura(ssot-keeper/sonnet) | Phase완료리뷰(7항목)+Go/No-Go, SSOT+git push |
 | ⑥ ITZY (퀀트) | A+B | Yeji(quant-validator/opus), Ryujin(scientist), Lia(ml-pipeline), Chaeryeong(dex-specialist), Yuna(analyst) | 수학 검증, ML, DEX |
 | ⑦ Fix 루프 | L1+ | Joy(debugger), Irene(build-fixer), Wendy(code-simplifier/opus) | 에스컬레이션 시 활성화 |
 | TF TWICE | QF/SF/Final | Nayeon(TF리더), Karina, Jeongyeon, Momo, Sana, Mina, Dahyun, Chaeyoung, Tzuyu (9명+Jisoo차출) | 상용화 최종 검증 (3-Round) |
@@ -233,7 +234,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **대시보드**: Next.js 14 (App Router) — `dashboard/src/app/`
 - **DB**: TimescaleDB + Redis — `docker-compose.yml`
 - **거래소**: 10 native WS adapters (7 spot + 3 futures, ccxt 미사용) — `engine/src/collectors/`
-- **전략 8개**: `engine/src/strategies/` (cross_exchange, spot_futures, futures_futures, triangular, funding_rate, statistical_arb, latency_arb, cex_dex)
+- **전략 7개**: `engine/src/strategies/` (cross_exchange, spot_futures, futures_futures, triangular, funding_rate, statistical_arb, cex_dex) — latency_arb는 US-194에서 cross_exchange로 병합
 - **API**: `engine/src/api/` (FastAPI + JWT)
 - **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`
 - **슬리피지**: CEXOrderbookSlippage만 활성 (PowerLaw k=0.0 비활성)
@@ -251,10 +252,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **ENGINE_ENV**: `dev|staging|prod|test`만 허용 (`development` 사용 금지)
 - **KRW 거래소**: upbit, bithumb, coinone은 KRW 페어 자동 매핑. auto-symbols `min_exchanges=3` 필수 (7로 하면 0개)
 - **Bithumb stale data**: 증분 orderbook에서 소형코인 2-10x 가격 오차 → fake spread. Phase G에서 해결
-- **Stage B Phase 2 중 /compact 금지**: Shadow/QA 백그라운드 에이전트 실행 중 압축하면 결과 소실. Stage C 완료 + git push 후에만
+- **Stage B-Step 2 중 /compact 금지**: Shadow/QA 백그라운드 에이전트 실행 중 압축하면 결과 소실. Stage C 완료 + git push 후에만
 - **Coinone 수수료**: 0.20% → 0.02% (API 할인 적용)
 - **cancel_order**: order.symbol 전달 필수 (Binance rollback). TypeError fallback for legacy adapters
 - **friction prefix**: cost_calculator가 `paper_`/`sandbox_` prefix 자동 strip
+- **passes:true 거짓 양성 금지**: 코드 존재만으로 완료 판정 금지. Shadow 10min 런타임에서 해당 기능 호출 증거(로그/메트릭) 필수. dead code(정의만 있고 호출 안 됨) = passes:false
 
 ## 플랜 파일 (유저 레벨 — 레포 밖)
 
@@ -264,28 +266,53 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S12 ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13 ✅** → **Phase S14 ✅** → **TF QF** → TF SF → TF Final → Live
-- **Tests**: 4,831 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (234개 US, 232 pass / 2 pending)
+- **Phase 순서**: A~M✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → **TF SF 9H 중단** → **Phase S15~S21 회귀** → TF QF → TF SF → TF Final → Live
+- **Tests**: 4,843 passed, 0 failed, 12 skipped
+- **PRD**: `.omc/prd.json` (232+65개 US, US-245~US-300+서브항목)
 - **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: TF QF → TF SF → TF Final → Live
-- **TF QF 6차**: ✅ PASS (2026-03-17) — CRITICAL 0, HIGH 0, MEDIUM 6 + LOW 4 (단계 3.5 알림 Dead Wiring 수정 포함)
-- **TF SF 2차**: ❌ FAIL (2026-03-17) — 2H45M PnL -$153.47, loss_capped 17건(-$850), futures stale 진입
+- **다음 작업**: Phase S15 (CRITICAL 버그 + ML 연결) → S16~S21 → TF QF → TF SF → TF Final → Live
+- **TF SF 9H 중단**: CRITICAL 6건 + 수학 오류 3건 발견 → Phase S15~S21 회귀 (2026-03-19)
+- **회귀 사유**: profit_factor 계산 버그, LiveGate 차단 미동작, ML 미연결, 전략 평가 기준 위반
+- **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 - **Phase S13**: ✅ 완료 (2026-03-18) — 22 US (US-221~233, US-235~243): 기관급 전략 완전체 + 7개 전략 로직 개선 + 1H Shadow PnL +$1,674 (9,338 trades, WR 76.2%)
 - **Phase S14**: ✅ 완료 (2026-03-18) — 1 US (US-234): Auto-tuner Shadow 통합 + Optuna 미니 튜너
 - **Phase S13~S14 플랜**: `.claude/plans/snuggly-chasing-spark.md` (15 Part, 5라운드 검증, 9명 전문가 리뷰)
-- **Phase S12 핵심**: ✅ 완료 (2026-03-17) — SmartTelegramAlerter, Analytics/Alerts/Portfolio/Settings 페이지, 사이드바 3그룹, Telegram Bot 커맨드, 주간 리포트
-- **Phase S10 핵심**: ✅ 완료 — latency_arb 병합(8→7전략), stat_arb cross-asset, AdaptiveThreshold 복합지표, futures stale guard
-- **Phase S10 플랜**: `.claude/plans/goofy-napping-feather.md`
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%
 - **GAP 분석**: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합 분석)
+
+## 워크플로우 강화 (2026-03-19 적용)
+
+> 워크플로우 구조 분석 결과 반영. 근본 원인: "누가 통합 연결을 검증하는가?" — 아무도 안 했음.
+> 학술 근거: MAST (NeurIPS 2025, 1642 트레이스 분석), Google/MIT 팀 규모 연구
+
+- **Assembly Gate (C-Step 0.5)**: 코드리뷰 전 조립 검증 (init chain + signal flow + dead wiring + config audit). TF QF 단계 3.5를 매 Phase에 상시화
+- **Shadow 13항목 복합지표**: 시드 무관 절대 지표(MDD%, Profit Factor, Sharpe, Calmar) + 통합 검증(전략별 trade>=1, 방어 레이어 활성)
+- **WIRING AC 필수**: 새 컴포넌트 US에 `⚡ WIRING:` AC 3개 (생성→주입→호출)
+- **Jennie 통합 추적**: 코드리뷰에서 새 클래스의 생성→주입→호출 경로 추적 (CRITICAL 우선순위)
+- **Fix Loop 유형 분류**: Type W(Wiring→즉시 L2) / Type P(Parameter→3회) / Type B(Bug→3회)
+- **검증 유틸리티**: `.claude/hooks/assembly-gate.sh` + `shadow-evidence-gate.sh` (에이전트 수동 호출용, 자동 Stop hook 아님)
+- **Shadow 결과 파일**: `.omc/state/shadow-result-latest.json` 필수 기록 (Assembly Verifier + Karina 검증용)
+- **멀티모델 독립 감사 (C-Step 1.5)**: Assembly Gate 후, 코드리뷰 전에 3개 외부 모델(Codex+Gemini+Qwen) 인라인 병렬 호출 → quorum 합의. Claude 편향 구조적 제거 목적. 과반수 이슈 지적 시 MUST FIX.
+
+## 멀티모델 감사 (2026-03-19 도입)
+
+> 근본 원인: "클로드가 자기 프로젝트의 맹점을 못 본다" — CCG는 Claude가 최종 종합하므로 편향 제거 불가.
+> 해결: 3개 외부 CLI(Codex+Gemini+Qwen)를 Agent()로 직접 병렬 호출. Claude 편향 구조적 제거.
+
+- **자동 실행 (leviathan 내)**: Agent()로 CLI 직접 호출 → AskUserQuestion 0개, TeamCreate 0개 → 멈추지 않음
+  - Stage A: 3개 모델 PLAN.md 병렬 리뷰 → quorum 합의
+  - C-Step 1.5: 3개 모델 코드 병렬 감사 → quorum 합의 (MUST FIX 판정)
+  - C-Step 1.8: 3개 모델 Go/No-Go 병렬 토론 → 과반수 판정
+- **수동 실행 (직접 호출)**: `/consensus-code-review`, `/consensus-plan-review`, `/octo-security`, `/octo-debate` — 대화형 (TeamCreate + AskUserQuestion 포함)
+- **CLI**: Codex(`codex exec`), Gemini(`gemini -p`), Qwen(`qwen -p`) — 3개 인증 완료. Kimi는 `kimi-cli login` 후 추가 가능
+- **Stage C 워크플로우**: Assembly Gate(0.5) → **멀티모델 감사(1.5)** → 코드리뷰(1) → **멀티모델 토론(1.8)** → Go/No-Go(2) → SSOT(3)
 
 ## 실행 워크플로우 (ralph autopilot)
 
 **3-Stage Sequential 연속 실행** (leviathan.md 참조):
-1. **Stage A** (기획): [Entry Gate(karina) 순차 → NingNing+Winter+Giselle 병렬] → PLAN.md → QUANT GATE → **즉시 Stage B**
-2. **Stage B** (구현+검증): TeamCreate(IVE) → pytest PASS → TeamDelete → Shadow 10min+(NewJeans) → **즉시 Stage C**
-3. **Stage C** (리뷰+릴리스): [Jennie+Jisoo 코드리뷰] → [Karina Phase완료리뷰+Go/No-Go] → [Sakura SSOT+git push] → **텔레그램 → 사장님 승인 대기**
+1. **Stage A** (기획): [Entry Gate(karina) 순차 → NingNing+Winter+Giselle 병렬] → PLAN.md + WIRING AC → QUANT GATE → **즉시 Stage B**
+2. **Stage B** (구현+검증): TeamCreate(IVE) → pytest PASS → TeamDelete → Shadow 13항목 복합지표(NewJeans) → **즉시 Stage C**
+3. **Stage C** (리뷰+릴리스): [**C-Step 0.5 Assembly Gate(조립검증)**] → [**C-Step 1.5 멀티모델 인라인 감사(3CLI 병렬→quorum)**] → [Jennie+Jisoo 코드리뷰(통합추적)] → [**C-Step 1.8 멀티모델 Go/No-Go 토론(3CLI 병렬)**] → [Karina Phase완료리뷰 7항목+Go/No-Go] → [Sakura SSOT+git push] → **텔레그램 → 사장님 승인 대기**
 
 **세션 관리**: Stage A→B→C 연속 실행 (세션 초기화 없음, ralph 루프 유지).
 **`/compact` 절대 금지**. 컨텍스트 60% 시 텔레그램 알림 → `/clear` 시도 → 성공/실패 모두 텔레그램 알림.

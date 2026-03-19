@@ -200,13 +200,29 @@ python -m src.cli.tune_cli --strategy cross_exchange --output results.json
 
 ## Beta Gate 기준
 
-전략이 프로덕션에 적용되려면 다음 기준을 충족해야 합니다:
+> **참조**: SSOT.md §2 Shadow 통과 기준 (복합지표 — LiveGate 6-check 기반)
+> 단순 PnL/WR이 아닌 시드 무관 절대 지표 기반. 사장님 지시 (2026-03-18).
 
-| 기준 | 임계값 | 설명 |
-|------|--------|------|
-| Net PnL | > 0 | 순이익이 양수 |
-| Profit Factor | > 1.2 | 총 이익 / 총 손실 > 1.2 |
-| Max Drawdown | < 2% | 최대 손실폭 2% 미만 |
+전략이 프로덕션에 적용되려면 다음 **13항목 복합지표**를 충족해야 합니다:
+
+| # | 기준 | 임계값 | 유형 |
+|---|------|--------|------|
+| 1 | crash | = 0 | 시스템 |
+| 2 | 무중단 실행 | >= 10분 | 시스템 |
+| 3 | Net PnL | >= $0 | 기본 (참고용) |
+| 4 | Max Drawdown | < 5% (자본 대비) | **절대 지표** |
+| 5 | Profit Factor | > 1.0 (총이익/총손실) | **절대 지표** |
+| 6 | 신호 수 | >= 100/day (외삽) | 활성도 |
+| 7 | Kill Switch | Not halted | 방어 레이어 |
+| 8 | Circuit Breaker | CLOSED | 방어 레이어 |
+| 9 | 거래소 Health | >= 95% | 인프라 |
+| 10 | loss_capped | = 0 | 리스크 |
+| 11 | 전략별 trade | 모든 활성 전략 trade >= 1 | 통합 검증 |
+| 12 | 방어 레이어 활성 | CB/StaleDetector/OutlierFilter 로그 >= 1건 | 통합 검증 |
+| 13 | 결과 파일 | `.omc/state/shadow-result-latest.json` 존재 | 검증 증거 |
+
+**TF SF 추가**: 위 + Sharpe >= 2.0, Calmar > 0, 전략별 WR > 50%
+**TF Final 추가**: 위 + Sharpe >= 2.5, Profit Factor > 1.2, 리콘실리에이션 오차 < 1%
 
 ## 수수료 구조
 

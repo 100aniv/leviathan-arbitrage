@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -49,8 +49,10 @@ class TriangularStrategy(BaseStrategy):
         strategy_id: str,
         cost_calculator: CostCalculator,
         config: TriangularConfig | None = None,
+        regime_detector: Any = None,
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
+        self._regime_detector = regime_detector
         self.config = config or TriangularConfig()
 
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
@@ -59,6 +61,15 @@ class TriangularStrategy(BaseStrategy):
         if not self._is_active:
             self._metrics.signals_filtered += 1
             return None
+
+        # US-254: Regime check — block new entries in CRISIS mode
+        if self._regime_detector is not None:
+            try:
+                if self._regime_detector.current_regime == "CRISIS":
+                    self._metrics.signals_filtered += 1
+                    return None
+            except Exception:
+                pass  # graceful fallback
 
         # Validate triangle metadata
         meta = signal.metadata
@@ -96,16 +107,38 @@ class TriangularStrategy(BaseStrategy):
         else:
             size = min(signal.volume, max_base_size)
 
-        # Calculate 3× taker fees (one per leg)
+        # US-249: Compute per-leg sizes — each leg uses its own base asset unit
+        # Start from USDT-equivalent capital, propagate through the triangle
+        leg_sizes: list[Decimal] = []
+        try:
+            current_amount = size * first_price  # convert BTC→USDT for propagation
+            for _pair, _side, price_str in zip(pairs, sides, prices):
+                price = Decimal(str(price_str))
+                if _side == "buy":
+                    if price == 0:
+                        raise ZeroDivisionError("zero price in buy leg")
+                    leg_size = current_amount / price  # quote asset → base asset
+                    current_amount = leg_size
+                else:
+                    leg_size = current_amount  # sell base asset we hold
+                    current_amount = leg_size * price  # → quote asset output
+                leg_sizes.append(leg_size)
+        except ZeroDivisionError:
+            # Fallback to uniform size when prices are invalid (e.g. first_price=0)
+            leg_sizes = [size] * len(pairs)
+
+        # Calculate 3× taker fees (one per leg) using per-leg sizes
         total_cost = Decimal("0")
-        for pair, side, price_str in zip(pairs, sides, prices):
+        for leg_sz, pair, side, price_str in zip(leg_sizes, pairs, sides, prices):
             order_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
+            _extra = {"dest_exchange_id": exchange_id} if self._calc_supports_dest_exchange else {}
             leg_cost = self._cost_calculator.estimate_cost(
                 exchange_id=exchange_id,
                 symbol=pair,
                 side=order_side,
-                size=size,
+                size=leg_sz,
                 price=Decimal(str(price_str)),
+                **_extra,  # US-247: intra-exchange, skip network_cost when supported
             )
             total_cost += leg_cost
 
@@ -129,16 +162,16 @@ class TriangularStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
-        # Build 3 trade legs
+        # Build 3 trade legs with per-leg sizes
         legs: list[TradeLeg] = []
-        for pair, side, price_str in zip(pairs, sides, prices):
+        for leg_sz, pair, side, price_str in zip(leg_sizes, pairs, sides, prices):
             order_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
             legs.append(
                 TradeLeg(
                     exchange_id=exchange_id,
                     symbol=pair,
                     side=order_side,
-                    size=size,
+                    size=leg_sz,
                     order_type=OrderType.MARKET,
                     price=Decimal(str(price_str)),
                 )

@@ -1,8 +1,10 @@
 {
   "session_id": "4c2329b2-b170-43aa-8acc-5648a78b3409",
-  "ended_at": "2026-03-17T14:37:09.473Z",
-  "reason": "clear",
-  "agents_spawned": 7,
-  "agents_completed": 4,
-  "modes_used": []
+  "ended_at": "2026-03-18T14:49:06.134Z",
+  "reason": "other",
+  "agents_spawned": 9,
+  "agents_completed": 9,
+  "modes_used": [
+    "ralph"
+  ]
 }

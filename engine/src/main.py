@@ -134,6 +134,9 @@ class Engine:
         self._exposure_tracker: Any = None
         # Bug 1-F: shared HTTP client for FundingRateCollector (initialized in _init_infrastructure)
         self._http_client: Any = None
+        # US-250: PositionRecovery + PositionReconciler
+        self._position_recovery: Any = None
+        self._position_reconciler: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -153,6 +156,8 @@ class Engine:
             await self._init_risk()
             await self._init_execution()
             await self._populate_context()
+            await self._startup_position_scan()
+            await self._startup_compliance_audit()
             await self._start_background_tasks()
             await self._init_tuner()
 
@@ -749,6 +754,35 @@ class Engine:
         except Exception as exc:
             logger.warning("ONNXSignalScorer init failed (non-fatal): %s", exc)
 
+        # US-253: MLFeaturePipeline — graceful fallback
+        ml_feature_pipeline = None
+        try:
+            from src.ml.feature_pipeline import MLFeaturePipeline
+            ml_feature_pipeline = MLFeaturePipeline()
+            logger.info("MLFeaturePipeline initialized")
+        except ImportError:
+            logger.info("MLFeaturePipeline not available")
+        except Exception as exc:
+            logger.warning("MLFeaturePipeline init failed (non-fatal): %s", exc)
+
+        # US-253: MLCanary staged rollout (10% → 50% → 100%) — graceful fallback
+        ml_canary = None
+        try:
+            from src.ml.canary import MLCanary
+            ml_canary = MLCanary(
+                ml_scorer=ml_scorer,
+                min_signals_to_promote=50,
+                min_pnl_delta=0.0,
+                auto_promote=True,
+            )
+            if ml_scorer is not None:
+                ml_canary.start()  # begin at 10% ML traffic
+            logger.info("MLCanary initialized (stage=%s)", ml_canary.stage.value)
+        except ImportError:
+            logger.info("MLCanary not available")
+        except Exception as exc:
+            logger.warning("MLCanary init failed (non-fatal): %s", exc)
+
         self._signal_generator = SignalGenerator(
             price_hub=self._price_hub,
             cost_calculator=self._cost_calculator,
@@ -757,6 +791,8 @@ class Engine:
             stale_detector=stale_detector,
             regime_detector=self._regime_detector,
             ml_scorer=ml_scorer,
+            ml_feature_pipeline=ml_feature_pipeline,
+            ml_canary=ml_canary,
         )
 
         # US-170: TriangularScanner
@@ -769,13 +805,13 @@ class Engine:
         except Exception as exc:
             logger.warning("TriangularScanner init failed (non-fatal): %s", exc)
 
-        # US-174: AdaptiveThreshold
+        # US-174/255: PerStrategyAdaptiveThreshold for dynamic MIN_EDGE per strategy
         try:
-            from src.tuning.adaptive_threshold import AdaptiveThreshold
-            self._adaptive_threshold = AdaptiveThreshold(
-                initial_edge_bps=float(min_edge_bps),
+            from src.tuning.adaptive_threshold import PerStrategyAdaptiveThreshold
+            self._adaptive_threshold = PerStrategyAdaptiveThreshold(
+                default_edge_bps=float(min_edge_bps),
             )
-            logger.info("AdaptiveThreshold initialized (initial_edge_bps=%s)", min_edge_bps)
+            logger.info("PerStrategyAdaptiveThreshold initialized (initial_edge_bps=%s)", min_edge_bps)
         except Exception as exc:
             logger.warning("AdaptiveThreshold init failed (non-fatal): %s", exc)
 
@@ -890,12 +926,18 @@ class Engine:
 
         strategies = [
             CrossExchangeStrategy("cross_exchange_v1", cost_calc, config=ce_config,
-                                  latency_tracker=self._latency_tracker),
-            SpotFuturesStrategy("spot_futures_v1", cost_calc, config=sf_config),
-            FuturesFuturesStrategy("futures_futures_v1", cost_calc, config=ff_config),
-            TriangularStrategy("triangular_v1", cost_calc, config=tri_config),
-            FundingRateStrategy("funding_rate_v1", cost_calc, config=fr_config),
-            StatisticalArbStrategy("statistical_arb_v1", cost_calc),
+                                  latency_tracker=self._latency_tracker,
+                                  regime_detector=self._regime_detector),
+            SpotFuturesStrategy("spot_futures_v1", cost_calc, config=sf_config,
+                                regime_detector=self._regime_detector),
+            FuturesFuturesStrategy("futures_futures_v1", cost_calc, config=ff_config,
+                                   regime_detector=self._regime_detector),
+            TriangularStrategy("triangular_v1", cost_calc, config=tri_config,
+                               regime_detector=self._regime_detector),
+            FundingRateStrategy("funding_rate_v1", cost_calc, config=fr_config,
+                                regime_detector=self._regime_detector),
+            StatisticalArbStrategy("statistical_arb_v1", cost_calc,
+                                   regime_detector=self._regime_detector),
         ]
 
         # CexDex requires a DEXAdapter — register only if configured
@@ -1137,6 +1179,34 @@ class Engine:
                 )
         except Exception as exc:
             logger.warning("InventoryRebalancer init failed (non-fatal): %s", exc)
+
+        # US-250: PositionRecovery (WAL-based orphan detection on startup)
+        try:
+            from src.execution.position_recovery import PositionRecovery
+            self._position_recovery = PositionRecovery()
+            logger.info("PositionRecovery initialized")
+        except Exception as exc:
+            logger.warning("PositionRecovery init failed (non-fatal): %s", exc)
+
+        # US-250: PositionReconciler (60s periodic engine-vs-exchange check)
+        try:
+            from src.execution.reconciler import PositionReconciler
+
+            def _on_reconcile_discrepancy(result) -> None:
+                if self._telegram:
+                    summary = result.discrepancies[:3]
+                    asyncio.ensure_future(self._telegram.send_alert(
+                        f"⚠️ 포지션 불일치 {len(result.discrepancies)}건: {summary}",
+                        level="CRITICAL",
+                    ))
+
+            self._position_reconciler = PositionReconciler(
+                exchanges=list(self._exchanges.values()),
+                on_discrepancy=_on_reconcile_discrepancy,
+            )
+            logger.info("PositionReconciler initialized (exchanges=%d)", len(self._exchanges))
+        except Exception as exc:
+            logger.warning("PositionReconciler init failed (non-fatal): %s", exc)
 
     def _build_risk_check_fn(self):
         """Create a risk check callable for the trade consumer (US-129: all 8 fields populated)."""
@@ -1574,6 +1644,21 @@ class Engine:
                 self._adaptive_threshold_loop(), name="adaptive_threshold"
             ))
 
+        # US-256: peak_equity DB persistence loop (5min periodic)
+        tasks.append(asyncio.create_task(
+            self._peak_equity_persist_loop(), name="peak_equity_persist"
+        ))
+
+        # US-251: HMM model retraining loop (24h cycle)
+        tasks.append(asyncio.create_task(
+            self._hmm_training_loop(), name="hmm_training"
+        ))
+
+        # US-252: XGBoost + ONNX training loop (24h cycle)
+        tasks.append(asyncio.create_task(
+            self._xgb_training_loop(), name="xgb_training"
+        ))
+
         self.state.background_tasks.extend(tasks)
         logger.info("Started %d background tasks", len(tasks))
 
@@ -1800,6 +1885,28 @@ class Engine:
             latency_tracker=getattr(self, "_latency_tracker", None),
         )
 
+        # US-246: LiveGate enforce_or_fallback before starting live data
+        # Block live mode if LiveGate is absent (not initialized) — fail-safe
+        if self._live_gate is None:
+            logger.error(
+                "live_gate_not_initialized — blocking live mode, falling back to shadow",
+            )
+            self._data_mode = DataMode.SHADOW
+            return
+        from src.modes.live_gate import LiveGate
+        if isinstance(self._live_gate, LiveGate):
+            try:
+                eligible = await self._live_gate.enforce_or_fallback()
+                if not eligible:
+                    logger.warning("live_gate_enforcement_fallback_to_shadow — switching to shadow mode")
+                    self._data_mode = DataMode.SHADOW
+                    return
+            except Exception as exc:
+                logger.warning("live_gate_enforce_or_fallback_error error=%s", exc)
+                self._data_mode = DataMode.SHADOW
+                return
+
+
         async def on_orderbook(exchange_id: str, symbol: str, bids: list, asks: list) -> None:
             core_book = CoreOrderBook(symbol=symbol, exchange=exchange_id)
             core_book.apply_snapshot(
@@ -1895,11 +2002,11 @@ class Engine:
                 returns = self._regime_pnl_history.copy()
                 if returns:
                     try:
-                        self._regime_detector.detect(returns)
-                    except Exception:
-                        pass  # detect() may not exist on all detector types — try predict()
-                    try:
-                        self._regime_detector.predict(returns)
+                        # US-254 fix: HMMRegimeDetector has predict(), RegimeDetector has detect()
+                        if hasattr(self._regime_detector, 'detect'):
+                            self._regime_detector.detect(returns)
+                        elif hasattr(self._regime_detector, 'predict'):
+                            self._regime_detector.predict(returns)
                     except Exception:
                         pass
             except asyncio.CancelledError:
@@ -1955,7 +2062,11 @@ class Engine:
                             profit_factor = sum(winning_pnl) / abs(sum(losing_pnl)) if winning_pnl else 0.0
 
                 new_edge_bps = self._adaptive_threshold.adjust(
-                    win_rate, total_trades, expected_edge_bps, profit_factor
+                    "global",
+                    win_rate=win_rate,
+                    total_trades=total_trades,
+                    expected_edge_bps=expected_edge_bps,
+                    profit_factor=profit_factor,
                 )
 
                 # Update SignalConfig.min_edge at runtime
@@ -1980,6 +2091,155 @@ class Engine:
                 break
             except Exception as exc:
                 logger.warning("adaptive_threshold_loop error: %s", exc)
+
+    async def _hmm_training_loop(self) -> None:
+        """US-251: Background HMM model retraining (7-day cycle).
+
+        Flow: wait 7 days → acquire DB conn → scheduled_train() →
+        Performance Gate (is_fitted) → save_model() to .cache/hmm/.
+        Graceful fallback: no DB or import error → loop exits silently.
+        """
+        try:
+            from src.ml.hmm_trainer import HMMTrainer
+        except ImportError as exc:
+            logger.info("hmm_trainer_skipped (import): %s", exc)
+            return
+
+        # Share the live RegimeDetector if available so the trained model
+        # is applied immediately without a process restart.
+        trainer = HMMTrainer(
+            hmm_detector=self._regime_detector if self._regime_detector is not None else None,
+        )
+        os.makedirs(".cache/hmm", exist_ok=True)
+
+        INTERVAL_S = 7 * 24 * 3600  # 7 days
+        RETRY_S = 3600               # 1 hour on failure
+
+        # US-251: train immediately if no model file exists (avoid 7-day delay on first run)
+        _hmm_first_run = not (os.path.exists(".cache/hmm") and os.listdir(".cache/hmm"))
+
+        while not self._shutdown_event.is_set():
+            if _hmm_first_run:
+                _hmm_first_run = False
+            else:
+                try:
+                    await asyncio.sleep(INTERVAL_S)
+                except asyncio.CancelledError:
+                    break
+
+            if not self._db_pool:
+                logger.debug("hmm_training_skipped: no DB pool")
+                continue
+
+            try:
+                async with self._db_pool.acquire() as conn:
+                    trained = await trainer.scheduled_train(conn)
+
+                if trained:
+                    # Performance Gate: model must be fitted (HMM has no accuracy score)
+                    if trainer.detector.is_fitted:
+                        trainer.save_model()
+                        logger.info(
+                            "HMM model deployed: samples=%d, saved to %s",
+                            trainer._train_samples, trainer._cache_dir,
+                        )
+                    else:
+                        logger.warning("HMM model rejected: not fitted after training")
+                else:
+                    logger.debug("HMM training skipped: not due or insufficient data")
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.error("HMM training failed: %s — retrying in 1h", exc)
+                try:
+                    await asyncio.sleep(RETRY_S)
+                except asyncio.CancelledError:
+                    break
+
+    async def _xgb_training_loop(self) -> None:
+        """US-252: Background XGBoost training + ONNX export (24h cycle).
+
+        Flow: wait 24h → acquire DB conn → scheduled_train() →
+        Performance Gate (best_score > 0.65) → ONNXExporter.export() →
+        reload ONNXSignalScorer hot-swap.
+        Graceful fallback: no DB / missing optional deps → loop exits silently.
+        """
+        try:
+            from src.ml.xgb_trainer import XGBTrainer
+            from src.ml.onnx_exporter import ONNXExporter
+        except ImportError as exc:
+            logger.info("xgb_trainer_skipped (import): %s", exc)
+            return
+
+        trainer = XGBTrainer()
+        exporter = ONNXExporter()
+        os.makedirs("models/latest", exist_ok=True)
+
+        INTERVAL_S = 24 * 3600  # 24 hours
+        RETRY_S = 3600          # 1 hour on failure
+        ACCURACY_GATE = 0.65    # Performance Gate: AUC must exceed this
+
+        # US-252: train immediately if no ONNX model exists (avoid 24-hour delay on first run)
+        _xgb_first_run = not os.path.exists("models/latest/model.onnx")
+
+        while not self._shutdown_event.is_set():
+            if _xgb_first_run:
+                _xgb_first_run = False
+            else:
+                try:
+                    await asyncio.sleep(INTERVAL_S)
+                except asyncio.CancelledError:
+                    break
+
+            if not self._db_pool:
+                logger.debug("xgb_training_skipped: no DB pool")
+                continue
+
+            try:
+                logger.info("xgb_training_loop_cycle_start")
+                async with self._db_pool.acquire() as conn:
+                    trained = await trainer.scheduled_train(conn)
+
+                if not trained:
+                    logger.debug("XGBoost training skipped: not due or insufficient data")
+                    continue
+
+                # Performance Gate: AUC score must exceed threshold
+                if trainer.best_score < ACCURACY_GATE:
+                    logger.warning(
+                        "XGBoost model rejected: best_score=%.4f < %.2f",
+                        trainer.best_score, ACCURACY_GATE,
+                    )
+                    continue
+
+                # ONNX export — requires onnxmltools (optional dep)
+                try:
+                    n_features = len(trainer._feature_names) if trainer._feature_names else 20
+                    onnx_path = exporter.export(
+                        trainer.model,
+                        n_features=n_features,
+                        feature_names=trainer._feature_names or None,
+                    )
+                    # Hot-reload ONNX scorer in SignalGenerator
+                    if self._signal_generator is not None:
+                        scorer = getattr(self._signal_generator, "_ml_scorer", None)
+                        if scorer is not None and hasattr(scorer, "reload_model"):
+                            scorer.reload_model(onnx_path)
+                    logger.info(
+                        "XGBoost model deployed + ONNX exported: path=%s, best_score=%.4f",
+                        onnx_path, trainer.best_score,
+                    )
+                except Exception as export_exc:
+                    logger.warning("ONNX export failed (model trained but not exported): %s", export_exc)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.error("XGBoost training failed: %s — retrying in 1h", exc)
+                try:
+                    await asyncio.sleep(RETRY_S)
+                except asyncio.CancelledError:
+                    break
 
     async def _shadow_mode_loop(self) -> None:
         """Start Shadow Mode: real data + paper execution + full metrics.
@@ -2273,6 +2533,61 @@ class Engine:
         else:
             logger.debug("Health check OK")
 
+    async def _startup_position_scan(self) -> None:
+        """US-250: Scan for orphaned positions (WAL) on engine startup."""
+        if self._position_recovery is None:
+            return
+        # PositionRecovery uses sync Redis — try best-effort with available client
+        redis_raw = getattr(self._redis_client, "_client", None) or getattr(self._redis_client, "client", None)
+        if redis_raw is None:
+            logger.debug("startup_position_scan skipped: no sync Redis client available")
+            return
+        try:
+            result = self._position_recovery.recover(redis_raw)
+            if result.positions_found > 0:
+                logger.warning(
+                    "startup_orphan_positions found=%d closed=%d resumed=%d skipped=%d",
+                    result.positions_found, result.closed, result.resumed, result.skipped,
+                )
+                if self._telegram:
+                    await self._telegram.send_alert(
+                        f"⚠️ 시작 시 미정리 포지션 {result.positions_found}건 발견 "
+                        f"(종료={result.closed}, 재개={result.resumed})",
+                        level="WARNING",
+                    )
+            else:
+                logger.info("startup_position_scan: no orphaned positions found")
+        except Exception as exc:
+            logger.warning("startup_position_scan_error error=%s", exc)
+
+    async def _startup_compliance_audit(self) -> None:
+        """US-250-a: Run ComplianceChecker on engine startup (non-blocking)."""
+        try:
+            from src.infra.compliance import ComplianceChecker, ComplianceStatus
+            checker = ComplianceChecker(
+                db_pool=self._db_pool,
+                kill_switch=None,
+                circuit_breaker=self._circuit_breaker,
+                telegram=self._telegram,
+            )
+            report = await checker.run_audit()
+            if report.fail_count > 0:
+                logger.error(
+                    "compliance_startup_audit: FAIL=%d PARTIAL=%d PASS=%d score=%.1f%%",
+                    report.fail_count, report.partial_count, report.pass_count, report.score_pct,
+                )
+                fail_names = [i.name for i in report.items if i.status == ComplianceStatus.FAIL]
+                logger.error("compliance_failures: %s", fail_names)
+            else:
+                logger.info(
+                    "compliance_startup_audit: PASS=%d PARTIAL=%d score=%.1f%%",
+                    report.pass_count, report.partial_count, report.score_pct,
+                )
+        except ImportError:
+            logger.debug("compliance_checker_not_available")
+        except Exception as exc:
+            logger.warning("compliance_startup_audit_error error=%s", exc)
+
     async def _reconcile_loop(self) -> None:
         interval = float(os.environ.get("RECONCILIATION_INTERVAL_S", str(self.RECONCILE_INTERVAL)))
         while self.state.running:
@@ -2319,10 +2634,51 @@ class Engine:
                 # Save current state as the new recovery snapshot
                 await self._redis_client.hset("leviathan:recovery:balances", current)
                 logger.debug("Position reconciliation tick — snapshot saved (%d exchanges)", len(current))
+
+                # US-250: PositionReconciler — compare engine vs exchange positions
+                if self._position_reconciler is not None:
+                    try:
+                        result = await self._position_reconciler.reconcile({})
+                        if result.has_discrepancy:
+                            logger.warning(
+                                "position_reconciler_discrepancy count=%d",
+                                len(result.discrepancies),
+                            )
+                    except Exception as exc:
+                        logger.debug("position_reconciler_error: %s", exc)
             except asyncio.CancelledError:
                 break
             except Exception as exc:
                 logger.error("Reconcile error: %s", exc)
+
+    async def _peak_equity_persist_loop(self) -> None:
+        """US-256: Persist peak_equity to JSON file every 5 minutes for MDD accuracy across restarts."""
+        import json
+        import pathlib
+        state_path = pathlib.Path(__file__).parent.parent / ".omc" / "state" / "peak_equity.json"
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Load from file on first run
+        try:
+            if state_path.exists():
+                data = json.loads(state_path.read_text())
+                stored = data.get("peak_equity")
+                if stored and self._peak_equity is None:
+                    self._peak_equity = Decimal(str(stored))
+                    logger.info("peak_equity_restored_from_file value=%s", stored)
+        except Exception as exc:
+            logger.warning("peak_equity_file_restore_failed error=%s", exc)
+
+        while self.state.running:
+            await asyncio.sleep(300)  # 5 minutes
+            try:
+                if self._peak_equity is not None:
+                    state_path.write_text(json.dumps({"peak_equity": str(self._peak_equity)}))
+                    logger.debug("peak_equity_persisted value=%s", self._peak_equity)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.debug("peak_equity_persist_error error=%s", exc)
 
     async def _heartbeat_loop(self) -> None:
         while self.state.running:

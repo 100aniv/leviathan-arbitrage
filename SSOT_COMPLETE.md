@@ -280,6 +280,18 @@
 | ~~Docker pre-flight 체크~~ | S8 설정/환경 갭 |
 | ~~IOC limit order 미구현~~ | S8 US-178 |
 | ~~마찰 vs Gross Spread~~ | S8 US-174 |
+
+### RESOLVED 이슈 (S13/S14 해소 — 2026-03-19 이관)
+
+| 이슈 | 해소 Phase/US |
+|------|-------------|
+| ~~전략 영역 겹침 (_CROSS_EXCHANGE_CONSUMERS 중복 라우팅)~~ | S13 US-232 (PositionRegistry 심볼 레벨 락) |
+| ~~stat_arb 구조적 결함 (WFE=-1.03, cross_exchange 영역 겹침)~~ | S13 US-231 (z-score 하드스톱 3.5 + 레짐 게이트) |
+| ~~AdaptiveThreshold WR 기반 피드백 루프 (WR>90%에서 edge 하향)~~ | S13 US-226 + S14 US-234 |
+| ~~Auto-tuner 미작동 (ScheduledTuner 로그 미관찰)~~ | S13 US-226 (로깅 강화) + S14 US-234 (Shadow 미니 튜너) |
+| ~~전략 간 포지션 충돌 (동일 symbol 동시 거래)~~ | S13 US-232 (PositionRegistry) |
+| ~~전략별 자본 할당 없음 (per-strategy 한도 없음)~~ | S13 US-224 (loss_cap 차등) + US-228 (전략별 CB) |
+| ~~cross_exchange MIN_EDGE 과소 (5bps vs round-trip 32-65bps)~~ | S13 US-235 (max_spread 100bps + min_book_depth 500) |
 | ~~Coinone Rate Limit~~ | 자동 재연결 구현 |
 | ~~빈 Orderbook 경고~~ | crash 없음, 무시 |
 | ~~cex_dex 미구현~~ | S8 US-177 |
@@ -540,6 +552,47 @@
 - [x] US-218: 사이드바 재구성 — MONITOR/ANALYZE/MANAGE 3그룹
 - [x] US-219: Telegram Bot 커맨드 — /pnl, /strategies, /risk, /pause, /resume, /alerts
 - [x] US-220: 주간 자동 리포트 — 일요일 23:59 KST 자동 발송
+
+### Phase S13: 기관급 전략 완전체 — US-221~233, US-235~243 (← TF SF 2차 FAIL + 6명 전문가 리뷰) ✅ 완료
+
+> **목표**: 기관급 전략 완전체 구현. CRITICAL 버그 5개 수정 + 4계층 Stale 감지 + 전략별 CB + Auto-tuner 연동
+> **회귀 사유**: TF SF 2차 Stage 2 FAIL — 2H45M PnL -$153.47, loss_capped 17건×-$50=-$850
+> **전문가 리뷰**: Karina(아키텍트), Yeji(퀀트), Winter(비판), Wonyoung(테스트), Jisoo(보안), 디버거 + 외부 리서치 3팀
+> **플랜**: `.claude/plans/snuggly-chasing-spark.md` (15 Part, 5라운드 검증)
+> **진입 조건**: TF SF FAIL 확정
+
+- [x] US-221: futures_futures 2차 freshness 검증 (← stale 17건 통과, threshold 3.0→1.5s + spread outlier)
+- [x] US-222: per-strategy circuit breaker — 연속 손실 자동 쿨다운 (← -$50×4건 연속 8초)
+- [x] US-223: spot_futures + funding_rate 비활성화 (← WR 42%, WR 6.7%)
+- [x] US-224: loss_cap 전략별 차등 — futures $3, cross_exchange $7 (← $50×17건=-$850, $70 자본 기준 재설계)
+- [x] US-225: futures spread outlier filter — >100bps WARNING, >200bps 블랙리스트 60s (← fake spread 진입)
+- [x] US-226: CRITICAL 버그 5개 수정 — funding_rate=0.0 하드코딩, estimate_cost 슬리피지, AdaptiveThreshold 지연, RegimeDetector 미연결, Auto-tuner 검증
+- [x] US-227: 4계층 Stale 감지 — 타임스탬프 분리 + 하트비트 EMA + 시퀀스 갭 + 스프레드 정상성
+- [x] US-228: 전략별 서킷브레이커 상태머신 — ACTIVE/THROTTLED/HALTED/SUSPENDED + 복합 점수 + FIA 2024
+- [x] US-229: spot_futures/funding_rate 시그널 레벨 사전 필터 강화 + cex_dex 명시적 비활성화
+- [x] US-230: 스프레드 이상치 필터 — 적응형 롤링 중앙값 + 타임스탬프 교차검증 300ms
+- [x] US-231: stat_arb z-score 하드스톱 3.5 + Kalman stale 가드 + 레짐 게이트 (학계 합의 Park 2026)
+- [x] US-232: 전략 간 충돌 방지 — PositionRegistry 심볼 레벨 락 + 우선순위 계층
+- [x] US-233: futures_futures 전용 강화 — min_spread 15bps + 호가 깊이 + 노셔널 캡
+- [x] US-235: cross_exchange 미세 조정 — max_spread 100bps + min_book_depth 500
+- [x] US-236: 엔진 Dead Wiring 전수 수정 — stat_arb Dead Code 연결, _position_manager 초기화, Redis 오타, PortfolioState 미연결
+- [x] US-237: 대시보드 정합성 + 로그인 수정 — CORS/CSP, Alert API 경로, ParameterSlider, JWT 검증
+- [x] US-238: spot_futures 로직 개선 — Korean stale 보정 + basis 최적화 + 백테스트 검증
+- [x] US-239: funding_rate 로직 개선 — 시그널 빈도 증가 + diff threshold 최적화 + 백테스트 검증
+- [x] US-240: statistical_arb 거래 전환 개선 — 마찰력 재계산 + z-score threshold 최적화 + 백테스트 검증
+- [x] US-241: triangular 로직 개선 — cycle 감지 임계값 재설계 + 백테스트 검증
+- [x] US-242: cex_dex 인프라 구성 + 로직 검증 — DEX RPC 설정 + 백테스트
+- [x] US-243: 7개 전략 통합 백테스트 + 복합지표 검증 — 전 전략 동시 1시간 Shadow PASS
+
+> **Shadow 1시간 (US-243 완료 기준)**: 9,338 trades, PnL +$1,674.06, WR 76.2%, crash 0
+> **전략별**: spot_futures 7,021 ✅ / futures_futures 2,117 ✅ / triangular 122 ✅ / stat_arb 73 ✅ / funding_rate 5 ✅
+
+### Phase S14: Auto-tuner 완전 연동 — US-234 ✅ 완료
+
+> **목표**: AdaptiveThreshold + RegimeDetector Shadow 통합 + Optuna 미니 튜너
+> **진입 조건**: Phase S13 완료
+
+- [x] US-234: AdaptiveThreshold + RegimeDetector Shadow 통합 + Auto-tuner 미니 튜너
 
 ---
 

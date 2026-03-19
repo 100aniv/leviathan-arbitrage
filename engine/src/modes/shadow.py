@@ -347,6 +347,9 @@ class ShadowStats:
     trades_rejected: int = 0
     trades_partial_fill: int = 0
     trades_rate_limited: int = 0
+    # US-257: PnL accumulation for correct profit_factor (amount ratio, not count ratio)
+    winning_pnl_sum: float = 0.0
+    losing_pnl_sum: float = 0.0
     # Per-strategy breakdown
     by_strategy: dict[str, StrategyStats] = field(default_factory=dict)
 
@@ -682,15 +685,14 @@ class ShadowMode:
                 self._shadow_adaptive_threshold_loop(), name="shadow_adaptive_threshold"
             )
 
-        # US-234: ShadowMiniTuner (Optuna n_trials=20, 2h data후 활성)
+        # US-234/US-258-a: ShadowMiniTuner (Optuna n_trials=20, 2h 경과 후 자동 트리거)
         self._shadow_mini_tuner = None
         try:
             from src.tuning.scheduled_tuner import ShadowMiniTuner
             self._shadow_mini_tuner = ShadowMiniTuner(
                 hot_reload_callback=self._shadow_params_hot_reload
             )
-            self._shadow_mini_tuner.run_in_thread()
-            logger.info("shadow_mode.mini_tuner_started")
+            logger.info("shadow_mode.mini_tuner_initialized (will trigger after 2h)")
         except Exception as exc:
             logger.warning("shadow_mode.mini_tuner_init_failed: %s", exc)
 
@@ -1214,6 +1216,7 @@ class ShadowMode:
 
         Periodically verifies that virtual balance totals remain consistent
         with the recorded PnL. Logs warnings on drift but never raises.
+        US-258-a: Also triggers ShadowMiniTuner after 2h elapsed.
         """
         interval = float(os.getenv("SHADOW_RECONCILE_INTERVAL_S", "60"))
         try:
@@ -1226,6 +1229,24 @@ class ShadowMode:
                     trades=self._stats.trades_executed,
                     balances=balance_summary,
                 )
+
+                # US-258-a: Trigger ShadowMiniTuner after 2h elapsed
+                if self._shadow_mini_tuner is not None:
+                    elapsed_s = time.monotonic() - self._stats.start_time
+                    if elapsed_s >= 7200 and not self._shadow_mini_tuner._triggered:
+                        trades = self._stats.trades_executed
+                        wins = self._stats.trades_won
+                        win_rate = wins / trades if trades > 0 else 0.5
+                        logger.info(
+                            "shadow_mode.mini_tuner_2h_trigger elapsed_s=%.0f trades=%d win_rate=%.2f",
+                            elapsed_s, trades, win_rate,
+                        )
+                        self._shadow_mini_tuner.run_in_thread(
+                            shadow_elapsed_seconds=elapsed_s,
+                            win_rate=win_rate,
+                            total_trades=trades,
+                            expected_edge_bps=0.0,
+                        )
         except asyncio.CancelledError:
             pass
 
@@ -1432,10 +1453,12 @@ class ShadowMode:
 
         if net_pnl_float > 0:
             self._stats.trades_won += 1
+            self._stats.winning_pnl_sum += net_pnl_float  # US-257
             ss.wins += 1
             result_label = "win"
         else:
             self._stats.trades_lost += 1
+            self._stats.losing_pnl_sum += abs(net_pnl_float)  # US-257
             ss.losses += 1
             result_label = "loss"
 
@@ -1726,10 +1749,12 @@ class ShadowMode:
 
         if net_pnl_float > 0:
             self._stats.trades_won += 1
+            self._stats.winning_pnl_sum += net_pnl_float  # US-257
             ss.wins += 1
             result_label = "win"
         else:
             self._stats.trades_lost += 1
+            self._stats.losing_pnl_sum += abs(net_pnl_float)  # US-257
             ss.losses += 1
             result_label = "loss"
 
@@ -1967,6 +1992,30 @@ class ShadowMode:
                 "pnl": ss.pnl,
             })
 
+        # US-258-b: warn on trade=0 strategies, but skip warm-up incomplete stat_arb
+        try:
+            from src.strategies.statistical_arb import StatisticalArbStrategy
+            _warmed_strategy_ids: set[str] = set()
+            for _strategy in self._strategy_manager._strategies.values():
+                if isinstance(_strategy, StatisticalArbStrategy):
+                    if not _strategy.is_warmed_up():
+                        _warmed_strategy_ids.add(_strategy.strategy_id)
+            for _sb in strategy_breakdown:
+                if _sb["trades"] == 0:
+                    _sid = _sb["strategy_id"]
+                    # Extract base id (e.g. "statistical_arb_v1" from "statistical_arb_v1")
+                    _base = _sid.split("_v")[0] + "_v1" if "_v" not in _sid else _sid
+                    if _base in _warmed_strategy_ids or _sid in _warmed_strategy_ids:
+                        logger.info(
+                            "shadow_mode.strategy_trade_zero_warmup_incomplete strategy=%s", _sid
+                        )
+                    else:
+                        logger.warning(
+                            "shadow_mode.strategy_trade_zero strategy=%s", _sid
+                        )
+        except Exception:
+            pass
+
         summary_data: dict[str, Any] = {
             "date": now.strftime("%Y-%m-%d"),
             "strategy": self.STRATEGY_ID,
@@ -2198,9 +2247,27 @@ class ShadowMode:
                 # 총 PnL과 trade 수로 expected_edge 추정
                 pnl_total = float(self._stats.total_pnl)
                 expected_edge_bps = (pnl_total / trades * 10000) if trades > 0 else 0.0
-                profit_factor = (float(self._stats.trades_won) / max(1, float(self._stats.trades_lost)))
+                # US-257: profit_factor = gross_profit / gross_loss (amount ratio, not count ratio)
+                _losing = self._stats.losing_pnl_sum
+                profit_factor = (self._stats.winning_pnl_sum / _losing) if _losing > 0 else 10.0
 
+                # US-255: per-strategy adjust if PerStrategyAdaptiveThreshold; fallback to global
+                by_strategy = self._stats.by_strategy
+                if by_strategy and hasattr(self._adaptive_threshold, "adjust"):
+                    for _sid, _ss in list(by_strategy.items()):
+                        if _ss.trades < 5:
+                            continue
+                        _wr = float(_ss.wins / _ss.trades)
+                        _edge = (float(_ss.pnl) / _ss.trades * 10000)
+                        self._adaptive_threshold.adjust(
+                            strategy_id=_sid,
+                            win_rate=_wr,
+                            total_trades=_ss.trades,
+                            expected_edge_bps=_edge,
+                            profit_factor=profit_factor,
+                        )
                 new_edge = self._adaptive_threshold.adjust(
+                    strategy_id="global",
                     win_rate=win_rate,
                     total_trades=trades,
                     expected_edge_bps=expected_edge_bps,

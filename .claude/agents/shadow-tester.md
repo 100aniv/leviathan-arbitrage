@@ -29,10 +29,59 @@ cd engine && timeout 600 python -m src.main
 # DATA_MODE=shadow, EXECUTION_MODE=paper (engine/.env)
 ```
 
-## 결과 분석 기준
-- **PASS**: PnL > 0, crash 0건, WR > 50%, DD < 5%
-- **CONDITIONAL**: PnL > 0이지만 WR < 50% 또는 DD > 2%
-- **FAIL**: PnL < 0 또는 crash 발생 또는 0 trades
+## 결과 분석 기준 (강화된 복합지표 — 시드 무관 절대 지표 포함)
+
+**PASS 조건 (13항목 전부 충족):**
+| # | 체크 | 임계값 |
+|---|------|--------|
+| 1 | crash | = 0 |
+| 2 | 무중단 실행 | >= 10분 |
+| 3 | PnL | >= $0 (참고용) |
+| 4 | Max Drawdown | < 5% |
+| 5 | Profit Factor | > 1.0 (총이익/총손실) |
+| 6 | 신호 수 | >= 100/day (외삽) |
+| 7 | Kill Switch | Not halted |
+| 8 | Circuit Breaker | CLOSED |
+| 9 | 거래소 Health | >= 95% |
+| 10 | loss_capped | = 0 |
+| 11 | 전략별 trade | 모든 활성 전략 trade >= 1 |
+| 12 | 방어 레이어 | CB/StaleDetector/OutlierFilter 로그 >= 1건 |
+| 13 | 결과 파일 기록 | `.omc/state/shadow-result-latest.json` 작성 완료 |
+
+- **CONDITIONAL**: 1~10 PASS이지만 11~12 일부 미달
+- **FAIL**: 1~10 중 하나라도 FAIL
+
+## 결과 파일 기록 (필수 — Assembly Verifier + Karina 검증용)
+
+**반드시 Shadow 실행 완료 후 아래 JSON을 `.omc/state/shadow-result-latest.json`에 기록할 것.**
+이 파일이 없으면 Assembly Verifier(C-Step 0.5)가 FAIL 판정 + Karina Go/No-Go에서 차단.
+
+```json
+{
+  "timestamp": "2026-03-19T00:00:00Z",
+  "runtime_seconds": 600,
+  "total_pnl": 1234.56,
+  "total_trades": 500,
+  "win_rate": 76.2,
+  "max_drawdown_pct": 1.5,
+  "profit_factor": 2.3,
+  "crash_count": 0,
+  "loss_capped_count": 0,
+  "signal_count": 9338,
+  "kill_switch_halted": false,
+  "circuit_breaker_state": "CLOSED",
+  "exchange_health_pct": 100,
+  "by_strategy": [
+    {"strategy_id": "cross_exchange", "trades": 150, "pnl": 500.0, "win_rate": 80.0, "active": true},
+    {"strategy_id": "futures_futures", "trades": 120, "pnl": 300.0, "win_rate": 75.0, "active": true}
+  ],
+  "defense_layers": {
+    "circuit_breaker_events": 2,
+    "stale_detector_events": 5,
+    "outlier_filter_events": 3
+  }
+}
+```
 
 ## 출력 형식
 ```
@@ -42,10 +91,13 @@ cd engine && timeout 600 python -m src.main
 - 승률: _%
 - PnL: $_ USDT
 - Max Drawdown: _%
-- 연결 거래소: _/8
-- 활성 전략: _
+- Profit Factor: _
+- 연결 거래소: _/10
+- 활성 전략: _ (전략별 trade 수 포함)
+- 방어 레이어: CB _건, Stale _건, Outlier _건
 - 판정: PASS/CONDITIONAL/FAIL
 - 상세: (이슈 있으면)
+- 결과 파일: .omc/state/shadow-result-latest.json ✅/❌
 ```
 
 ## ML Canary 검증 (Phase M)

@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-18 (TF QF 7차 PASS + TF SF Stage 2 PASS — 2H PnL +$3,312) | 최신 커밋: afdc603
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (234개 User Stories, 232 pass / 2 pending)
-> **실행 순서**: A~M ✅ → **S1~S12** ✅ → TF QF 6차 ✅ → TF SF FAIL(2차) → **Phase S13 ✅** → **Phase S14 ✅** → **TF QF 7차 ✅** → **TF SF Stage 2 ✅** → TF SF Stage 3~6 → TF Final → Live
+> 마지막 업데이트: 2026-03-19 (TF SF → Phase S15 회귀 — 전면 재설계) | PRD: `.omc/prd.json` (232+65개 US, US-245~US-300+서브항목)
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (232+65개 US, US-245~US-300+서브항목)
+> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → **TF SF 중단 (9H)** → **Phase S15~S21 회귀** → TF QF → TF SF → TF Final → Live
 
 ---
 
@@ -31,11 +31,13 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S13 ✅ + S14 ✅ → TF QF 7차 ✅ → TF SF Stage 2 ✅
-**Tests**: 4,843 passed / 0 failed / 12 skipped
+**Phase**: S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → **회귀: Phase S15** (2026-03-19)
+**Tests**: 4,920 passed / 0 failed / 12 skipped
 **Coverage**: 86%
-**TF Status**: QF 7차 PASS (2026-03-18), SF 3차 Stage 2 PASS (2H PnL +$3,312.08)
-**Next**: TF SF Stage 3~6 → TF Final → Live
+**TF Status**: TF SF 9H 중단 — CRITICAL 버그 6개 + 수학 오류 3개 발견으로 Phase S15 회귀
+**Next**: Phase S15 (CRITICAL 버그 + ML 연결) → S16~S21 → TF QF → TF SF → TF Final → Live
+**회귀 사유**: (1) profit_factor 계산 버그 (2) LiveGate 차단 미동작 (3) ML 파이프라인 미연결 (4) 전략 평가 기준 위반
+**계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 
@@ -46,11 +48,12 @@
 > 24H 단계적 검증으로 조기 문제 발견 (장기 안정성은 TF Final Canary 7일에서 실 자본 검증)
 
 ```
-Stage 1: 1H  → 기본 동작 확인 (crash=0, 신호 흐름 정상)
-Stage 2: 2H  → 승률/PnL 추세 안정성 (WR>60%, PnL 양수)
-Stage 3: 6H  → 전략별 메트릭 분리 + 마찰력 정확도 검증
-Stage 4: 12H → 메모리 누수/리소스 사용량 안정성
-Stage 5: 24H → LiveGate 6-check + Sharpe>2.0, MDD<5%, 일일 PnL 양수 (최종)
+Stage 1: 1H  (튜너 OFF) → 기본 동작 확인 (crash=0, 신호 흐름 정상)
+Stage 2: 2H  (튜너 OFF) → 승률/PnL 추세 안정성 (WR>60%, PnL 양수)
+Stage 3: 2H  (튜너 ON)  → Stage 2 대비 오토튜너 비교 (PROVEN/NEUTRAL/HARMFUL/BUG)
+Stage 4: 6H  (최적 설정) → 전략별 메트릭 분리 + 마찰력 정확도 검증
+Stage 5: 12H → 메모리 누수/리소스 사용량 안정성
+Stage 6: 24H → LiveGate 6-check + Sharpe>2.0, MDD<5%, 일일 PnL 양수 (최종)
 ```
 각 Stage PASS 시 자동으로 다음 Stage 연장 (멈추지 않고 누적)
 
@@ -60,22 +63,27 @@ Stage 5: 24H → LiveGate 6-check + Sharpe>2.0, MDD<5%, 일일 PnL 양수 (최�
 
 > 모든 Shadow 테스트에서 단순 PnL/WR이 아닌 복합지표 기준 적용 (사장님 지시)
 
-**Stage B Shadow 10min:**
+**Stage B Shadow 10min (13항목 복합지표 — 시드 무관 절대 지표 포함):**
 
-| # | 체크 | 임계값 |
-|---|------|--------|
-| 1 | Max Drawdown | < 5% (자본 대비) |
-| 2 | 신호 수 | >= 100/day (외삽) |
-| 3 | Kill Switch | Not halted |
-| 4 | Circuit Breaker | CLOSED |
-| 5 | 거래소 Health | >= 95% |
-| 6 | PnL | >= $0 |
-| 7 | crash | = 0 |
-| 8 | loss_capped | = 0 |
+| # | 체크 | 임계값 | 유형 |
+|---|------|--------|------|
+| 1 | crash | = 0 | 시스템 |
+| 2 | 무중단 실행 | >= 10분 | 시스템 |
+| 3 | PnL | >= $0 | 기본 (참고용) |
+| 4 | Max Drawdown | < 5% (자본 대비) | **절대 지표** |
+| 5 | Profit Factor | > 1.0 (총이익/총손실) | **절대 지표** |
+| 6 | 신호 수 | >= 100/day (외삽) | 활성도 |
+| 7 | Kill Switch | Not halted | 방어 레이어 |
+| 8 | Circuit Breaker | CLOSED | 방어 레이어 |
+| 9 | 거래소 Health | >= 95% | 인프라 |
+| 10 | loss_capped | = 0 | 리스크 |
+| 11 | 전략별 trade | 모든 활성 전략 trade >= 1 | **통합 검증** |
+| 12 | 방어 레이어 활성 | CB/StaleDetector/OutlierFilter 로그 >= 1건 | **통합 검증** |
+| 13 | 결과 파일 | `.omc/state/shadow-result-latest.json` 존재 | 검증 증거 |
 
-**TF SF Progressive Shadow 24H**: 위 기준 + Sharpe >= 2.0, 전략별 WR > 50%
+**TF SF Progressive Shadow 24H**: 위 기준 + Sharpe >= 2.0, Calmar > 0, 전략별 WR > 50%, Expected Edge > 0 bps
 
-**TF Final Canary 7일**: 위 기준 + Sharpe >= 2.5, 리콘실리에이션 오차 < 1%
+**TF Final Canary 7일**: 위 기준 + Sharpe >= 2.5, Profit Factor > 1.2, 리콘실리에이션 오차 < 1%
 
 ---
 
@@ -177,14 +185,14 @@ Engine.run()
 
 | # | 전략 | 파일 | 상태 | 차단 GAP | 예상 연간수익 |
 |---|------|------|------|---------|------------|
-| 1 | cross_exchange | `strategies/cross_exchange.py` | **활성** | ~~GAP 1,2~~ RESOLVED | 5-25% |
-| 2 | spot_futures | `strategies/spot_futures.py` | 대기(CONDITIONAL) | 비용>basis (시장 조건), 신호 파이프라인 검증 완료 | 8-30% |
-| 3 | futures_futures | `strategies/futures_futures.py` | **활성** | OKX/Bybit futures 수집기 추가로 2+ 선물 거래소 확보 (US-075) | 5-15% |
-| 4 | triangular | `strategies/triangular.py` | 대기(CONDITIONAL) | ~~GAP 7,4~~ RESOLVED, 실시장 cycle 희소 | 2-10% |
-| 5 | funding_rate | `strategies/funding_rate.py` | **검증됨** | 4거래소×8심볼 수집 성공, diff<threshold 시 정상 필터 | 15-30% |
-| 6 | statistical_arb | `strategies/statistical_arb.py` | **검증됨** | ~~GAP 3~~ RESOLVED, 2 trades 실행, WFE 음수 주의 | 11-16% |
+| 1 | cross_exchange | `strategies/cross_exchange.py` | **활성 (기관급 25%)** | ~~GAP 1,2~~ RESOLVED | 5-25% |
+| 2 | spot_futures | `strategies/spot_futures.py` | 대기 (기관급 15%) | 비용>basis (시장 조건), 신호 파이프라인 검증 완료 | 8-30% |
+| 3 | futures_futures | `strategies/futures_futures.py` | **활성 (기관급 20%)** | OKX/Bybit futures 수집기 추가로 2+ 선물 거래소 확보 (US-075) | 5-15% |
+| 4 | triangular | `strategies/triangular.py` | 대기 (수학오류 발견) | ~~GAP 7,4~~ RESOLVED, leg sizing 통화 불일치 S15에서 수정 | 2-10% |
+| 5 | funding_rate | `strategies/funding_rate.py` | **검증됨 (기관급 30%)** | 4거래소×8심볼 수집 성공, diff<threshold 시 정상 필터 | 15-30% |
+| 6 | statistical_arb | `strategies/statistical_arb.py` | **검증됨 (WFE -1.03, OOS 손실)** | ~~GAP 3~~ RESOLVED, regime_detector 미주입 S15에서 수정 | 11-16% |
 | 7 | latency_arb | `strategies/latency_arb.py` | **병합됨(US-194)** | cross_exchange.latency_boost 모드로 통합, deprecated shim 유지 | (cross_exchange 포함) |
-| 8 | cex_dex | `strategies/cex_dex.py` | 조건부 | GAP 8 (DEX stub, TF) | 10-50% |
+| 8 | cex_dex | `strategies/cex_dex.py` | 비활성 (DEX 비용 문제, 추후 검토) | GAP 8 (DEX stub, TF) | 10-50% |
 
 > **GAP 의존성 순서**: GAP9→10→(5,6,7 병렬)→3→(1,2)→4 — 상세: §9 참조
 
@@ -364,56 +372,127 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 234개 User Stories, 232개 완료, 2개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 297개 User Stories, 232개 완료, 65개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
 
 > **Phase A~M 완료 상세 → [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)** (토큰 최적화로 아카이브 분리)
 
-> Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
+> Phase S1-S14 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 
-#### Phase S13: 기관급 전략 완전체 — US-221~233, US-235~243 (← TF SF 2차 FAIL + 6명 전문가 리뷰) ✅ 완료
+#### Phase S15: CRITICAL 버그 + ML 파이프라인 연결 — US-245~259-a
 
-> **목표**: 기관급 전략 완전체 구현. CRITICAL 버그 5개 수정 + 4계층 Stale 감지 + 전략별 CB + Auto-tuner 연동
-> **회귀 사유**: TF SF 2차 Stage 2 FAIL — 2H45M PnL -$153.47, loss_capped 17건×-$50=-$850
-> **전문가 리뷰**: Karina(아키텍트), Yeji(퀀트), Winter(비판), Wonyoung(테스트), Jisoo(보안), 디버거 + 외부 리서치 3팀
-> **플랜**: `.claude/plans/snuggly-chasing-spark.md` (15 Part, 5라운드 검증)
-> **진입 조건**: TF SF FAIL 확정
+> **목표**: CRITICAL 버그 6개 수정 + 수학 오류 3개 수정 + ML 파이프라인 완전 연결 + 응집력 부족 모듈 통합
+> **회귀 사유**: TF SF Progressive 9H 중단 — Architect 6 CRITICAL + Quant 3 수학 오류 + 최종스윕 17 모듈 미연결
+> **플랜**: `.claude/plans/parallel-finding-sparrow.md`
+> **진입 조건**: TF SF 중단 확정
 
-- [x] US-221: futures_futures 2차 freshness 검증 (← stale 17건 통과, threshold 3.0→1.5s + spread outlier)
-- [x] US-222: per-strategy circuit breaker — 연속 손실 자동 쿨다운 (← -$50×4건 연속 8초)
-- [x] US-223: spot_futures + funding_rate 비활성화 (← WR 42%, WR 6.7%)
-- [x] US-224: loss_cap 전략별 차등 — futures $3, cross_exchange $7 (← $50×17건=-$850, $70 자본 기준 재설계)
-- [x] US-225: futures spread outlier filter — >100bps WARNING, >200bps 블랙리스트 60s (← fake spread 진입)
-- [x] US-226: CRITICAL 버그 5개 수정 — funding_rate=0.0 하드코딩, estimate_cost 슬리피지, AdaptiveThreshold 지연, RegimeDetector 미연결, Auto-tuner 검증
-- [x] US-227: 4계층 Stale 감지 — 타임스탬프 분리 + 하트비트 EMA + 시퀀스 갭 + 스프레드 정상성
-- [x] US-228: 전략별 서킷브레이커 상태머신 — ACTIVE/THROTTLED/HALTED/SUSPENDED + 복합 점수 + FIA 2024
-- [x] US-229: spot_futures/funding_rate 시그널 레벨 사전 필터 강화 + cex_dex 명시적 비활성화
-- [x] US-230: 스프레드 이상치 필터 — 적응형 롤링 중앙값 + 타임스탬프 교차검증 300ms
-- [x] US-231: stat_arb z-score 하드스톱 3.5 + Kalman stale 가드 + 레짐 게이트 (학계 합의 Park 2026)
-- [x] US-232: 전략 간 충돌 방지 — PositionRegistry 심볼 레벨 락 + 우선순위 계층
-- [x] US-233: futures_futures 전용 강화 — min_spread 15bps + 호가 깊이 + 노셔널 캡
-- [x] US-235: cross_exchange 미세 조정 — max_spread 100bps + min_book_depth 500
-- [x] US-236: 엔진 Dead Wiring 전수 수정 — stat_arb Dead Code 연결, _position_manager 초기화, Redis 오타, PortfolioState 미연결
-- [x] US-237: 대시보드 정합성 + 로그인 수정 — CORS/CSP, Alert API 경로, ParameterSlider, JWT 검증
-- [x] US-238: spot_futures 로직 개선 — Korean stale 보정 + basis 최적화 + 백테스트 검증
-- [x] US-239: funding_rate 로직 개선 — 시그널 빈도 증가 + diff threshold 최적화 + 백테스트 검증
-- [x] US-240: statistical_arb 거래 전환 개선 — 마찰력 재계산 + z-score threshold 최적화 + 백테스트 검증
-- [x] US-241: triangular 로직 개선 — cycle 감지 임계값 재설계 + 백테스트 검증
-- [x] US-242: cex_dex 인프라 구성 + 로직 검증 — DEX RPC 설정 + 백테스트
-- [x] US-243: 7개 전략 통합 백테스트 + 복합지표 검증 — 전 전략 동시 1시간 Shadow PASS
+- [ ] US-245: stat_arb regime_detector 주입 (← main.py:898, CRISIS 방어)
+- [ ] US-246: LiveGate 실행 경로 강제 적용 (← is_live_eligible() 차단 동작)
+- [ ] US-247: estimate_cost() → calculate() 통합 (← network_cost 포함 full cost, estimate_cost() deprecate)
+- [ ] US-248: ADV/sigma 동적 계산 (← signal.py:51-52 하드코딩 제거 → 거래소 API 24H volume + 1H 수익률 표준편차)
+- [ ] US-249: 삼각 차익 leg별 통화 크기 보정 (← triangular.py:134-145, 잔여 포지션 방지)
+- [ ] US-250: 포지션 리커버리 + 리콘실러 통합 (← PositionReconciler _reconcile_loop() 연결, PositionRecovery.scan() 시작 시 호출, RecoveryManager Redis 장애 복구)
+- [ ] US-250-a: ComplianceChecker 시작 시 실행 (← infra/compliance.py 23항목 엔진 시작 1회 실행)
+- [ ] US-251: HMM Trainer 학습 루프 연결 (← main.py _hmm_training_loop() 추가, 7일 주기, Model Performance Gate Accuracy>65%, Walk-forward Validation)
+- [ ] US-252: XGBoost Trainer 학습 루프 + ONNX export (← main.py _xgb_training_loop() 추가, Performance Gate + Walk-forward Validation)
+- [ ] US-253: Feature Pipeline → ONNX Scorer 연결 (← signal.py:284-287 3-feature stub → MLFeaturePipeline 20-feature, Canary 10%→50%→100%)
+- [ ] US-254: RegimeDetector 전 전략 연결 (← 6개 전략 on_signal() regime 확인, CRISIS→거부, VOLATILE→보수적 임계치)
+- [ ] US-255: AdaptiveThreshold 전략별 분리 (← 글로벌 단일 → 전략별 dict, signal.py:257 전략별 min_edge)
+- [ ] US-256: peak_equity 실시간 갱신 + DB 영속화 (← main.py:116 일회성 → PnL 누적 시 자동 갱신 + TimescaleDB persist/restore)
+- [ ] US-257: profit_factor 계산 버그 수정 (← shadow.py:2201 건수 비율 → 금액 비율, sum(winning_pnl)/abs(sum(losing_pnl)))
+- [ ] US-258-a: ShadowMiniTuner 활성화 (← shadow.py:692 시작 1회 후 재호출 없음, 2H 경과 후 자동 트리거)
+- [ ] US-258-b: 전략 warm-up 상태 추적 (← stat_arb 120샘플, Kalman 수렴 등 전략별 warm-up 완료 플래그)
+- [ ] US-259-a: S15 통합 Shadow 10min 검증 (← .cache/hmm/ 모델 파일, ONNX score threshold 변경, regime 전환 시 전략 행동 변화 Live Log)
 
-> **Shadow 1시간 (US-243 완료 기준)**: 9,338 trades, PnL +$1,674.06, WR 76.2%, crash 0
-> **전략별**: spot_futures 7,021 ✅ / futures_futures 2,117 ✅ / triangular 122 ✅ / stat_arb 73 ✅ / funding_rate 5 ✅
-> **로직 수정**: stat_arb routing fix, hedge-ratio sizing, cross-asset PnL, funding_rate phantom slippage 제거, spot_futures direction-aware filter, triangular fake spread 차단
+#### Phase S16: 동적 임계치 + 적응형 파라미터 — US-260~265
 
-#### Phase S14: Auto-tuner 완전 연동 — US-234
+> **목표**: 정적 임계치 → 롤링 백분위수 + 변동성 가중치 기반 동적 임계치. 기관급 핵심 차별점
+> **진입 조건**: Phase S15 완료
+> **플랜**: `.claude/plans/parallel-finding-sparrow.md`
 
-> **목표**: AdaptiveThreshold + RegimeDetector Shadow 통합 + Optuna 미니 튜너
-> **진입 조건**: Phase S13 완료
+- [ ] US-260: 롤링 백분위수 + 변동성 가중치 (cross_exchange, futures_futures) (← 24H 롤링 spread 분포, Volatility Multiplier 즉각 반영)
+- [ ] US-261: 롤링 백분위수 + 변동성 가중치 (spot_futures basis) (← 24H 롤링 basis 95th→entry, 50th→exit, Volatility Multiplier)
+- [ ] US-262: Funding Rate 동적 임계치 (← 8시간 funding history z-score 진입)
+- [ ] US-263: Regime별 파라미터 매트릭스 (← CALM/NORMAL/VOLATILE/CRISIS별 max_position, min_edge, cooldown 테이블)
+- [ ] US-264: CorrelationMonitor 강제 적용 (← guardian.py:317 log-only → 실제 position scaling 강제, exposure_tracker.py:81-118 연결)
+- [ ] US-265: S16 통합 Shadow 10min 검증 (← 정적 vs 동적 A/B 비교, Volatility Multiplier 발동 기록)
 
-- [x] US-234: AdaptiveThreshold + RegimeDetector Shadow 통합 + Auto-tuner 미니 튜너
+#### Phase S17: 전략별 고급 기능 + 실행 안전장치 — US-266~276
+
+> **목표**: GPT/Gemini 공통 지적 + 사장님 추가 피드백 반영. 전략별 고급 기법 + Atomic Fallback
+> **진입 조건**: Phase S16 완료
+> **플랜**: `.claude/plans/parallel-finding-sparrow.md`
+
+- [ ] US-266: Bellman-Ford + 비용 통합 (triangular) (← log 변환에 Gas Cost + Orderbook Depth 잠식 포함)
+- [ ] US-267: 삼각 차익 Latency Budget 500ms (triangular) (← 3 leg 총 500ms 초과 시 자동 취소)
+- [ ] US-268: OU Process Funding Rate 예측 (funding_rate) (← OU 파라미터 추정, 다음 funding 예측 사전 진입, Half-life < Execution Latency 시 차단)
+- [ ] US-269: Funding Rate 다중 거래소 스캐너 (funding_rate) (← 2개 → 4개 거래소 동시 스캔, 최적 쌍 선택)
+- [ ] US-270: spot_futures OU Basis Modeling (← OU half-life 적용, Half-life < Execution Latency 시 차단)
+- [ ] US-271: spot_futures max_holding_hours 강제 (← spot_futures.py:25 선언 필드 → 실제 타이머 기반 강제 청산)
+- [ ] US-272: futures_futures Funding Convergence (← spread + funding rate diff 합산 수익 계산)
+- [ ] US-273: futures_futures Stale Guard (← max_book_age_seconds 체크 추가)
+- [ ] US-274: stat_arb Z-score 거래비용 조정 (← z-score 진입에 왕복 비용 반영, 비용 > 예상수익 시 스킵)
+- [ ] US-275: Atomic Fallback (Partial Fill 대응) (← 한쪽 leg만 체결 시 수치 기준 손절, 델타 불균형 X초 이상 또는 Y% 이상 시 시장가 청산)
+- [ ] US-275-a: DepthAnalyzer 주문 사이징 연결 (← core/depth_analyzer.py VWAP/유동성 미사용 → AtomicExecutor 대형 주문 depth 기반 사이징)
+- [ ] US-276: S17 통합 Shadow 10min 검증 (← 각 전략 독립 5min + 통합 10min, Bellman-Ford 비용 로그)
+
+#### Phase S18: 포트폴리오 리스크 + 평가 체계 + Slippage Feedback — US-277~285
+
+> **목표**: 개별 전략 완성 후 포트폴리오 리스크 관리 + 실제 Slippage Feedback Loop + Market Impact
+> **진입 조건**: Phase S17 완료
+> **플랜**: `.claude/plans/parallel-finding-sparrow.md`
+
+- [ ] US-277: portfolio_risk.py 신규 생성 (← 전략간 PnL 상관 행렬 30min rolling, 상관>0.7 합산 포지션 제한, 포트폴리오 VaR)
+- [ ] US-278: 포트폴리오 MDD 관리 (← 전체 MDD 3% → 신규 진입 차단, 5% → 전체 청산)
+- [ ] US-279: Regime-Aware 자본 배분 (← CALM→공격적, VOLATILE→보수적, CRISIS→방어적, 전략별 max_position 동적 조정)
+- [ ] US-280: LiveGate Enforcer 상시화 (← 모든 Shadow/TF에서 6-check 자동 계산+로깅, 미달 시 자동 FAIL, 24H 주기 재평가)
+- [ ] US-281: Sharpe/Calmar/Sortino + Consistency 실시간 계산 (← 1분 PnL → 1H/1D/7D 롤링, 수익 일관성=양수 PnL 비율, 이상치 필터링)
+- [ ] US-282: 전략별 Attribution 분석 (← 수익 기여도, 드로다운 기여도, 신호 품질 분해)
+- [ ] US-283: Slippage Feedback Loop (← 실제 체결가 vs 주문 시점 Orderbook 차이 DB 기록 → CostCalculator 실시간 피드백)
+- [ ] US-284: Market Impact Cost 모델 (← 주문 크기 대비 호가 잠식, Temporary+Permanent impact 분리, 대형 주문 분할 실행)
+- [ ] US-284-a: CapitalAllocator(Kelly) 연결 (← core/capital_allocator.py 미사용 → 전략별 edge/WR 기반 자본 배분, 거래 이력 30+ 후 활성화)
+- [ ] US-284-b: Attribution context 연결 (← main.py:502 생성하지만 EngineContext 미설정, API 매 요청마다 새 인스턴스 생성 문제 수정)
+- [ ] US-285: S18 통합 Shadow 10min 검증 (← MDD 관리, 상관관계 제한, Slippage feedback, CapitalAllocator 동작 확인)
+
+#### Phase S19: 데이터 품질 통합 — DataQualityManager — US-286~290-a
+
+> **목표**: StaleDetector/HealthChecker 개별 존재 → DataQualityManager 단일 진입점 통합. stale 진입 0건
+> **진입 조건**: Phase S15 완료 (S16/S17/S18과 병렬 가능)
+> **플랜**: `.claude/plans/parallel-finding-sparrow.md`
+
+- [ ] US-286: DataQualityManager 중앙 관리 객체 (← StaleOrderbookDetector + HealthChecker 단일 통합, update_orderbook()/get_health_scores()/is_blacklisted()/cleanup(), RiskGuardian/LiveGate 주입, 블랙리스트 TTL 관리)
+- [ ] US-287: 전략별/거래소별 차등 Freshness Threshold (← CEX-CEX: 500ms, Korean: 1s, 기본: 2s, DataQualityManager 설정 관리)
+- [ ] US-288: Exchange Health Score 실시간 계산 (← DataQualityManager.get_health_scores() 통합, WS+메시지빈도+지연 → 0-100점, <80 비활성)
+- [ ] US-289: Anomaly Detection (← 30초 롤링 평균 대비 ±5% → 3초 격리 후 재확인, DataQualityManager 레이어)
+- [ ] US-290: Bithumb 증분 Orderbook Stale 특화 (← 소형코인 2-10x 가격 오차 패턴 탐지 → fake spread 거부)
+- [ ] US-290-a: S19 통합 Shadow 10min 검증 (← DataQualityManager 동작, stale 거부 건수, health score 모니터링)
+
+#### Phase S20: 사용자 편의성 + 모니터링 — US-291~296
+
+> **목표**: 기관급 알고리즘 + 개인 사용자 편의성. 상용 봇(Bitsgap/Pionex) 수준 원클릭 편의성
+> **진입 조건**: Phase S15 완료 (S16/S17/S18과 병렬 가능)
+> **플랜**: `.claude/plans/parallel-finding-sparrow.md`
+
+- [ ] US-291: Prometheus 계측 완성 (← 전략별 trades/signals/latency, 포트폴리오 PnL/MDD, 거래소 health, 신호→체결 Execution Latency)
+- [ ] US-292: Grafana 대시보드 4개 (← Overview/전략별상세/거래소상태/ML모델성능, 개인 사용자 빠른 상태 파악)
+- [ ] US-293: Alertmanager → 텔레그램 알림 강화 + Kill Switch 버튼 (← MDD>3% WARNING, MDD>5% CRITICAL, 텔레그램 한국어+인라인 버튼 Kill Switch)
+- [ ] US-294: 원클릭 시작/중지 CLI (← python -m src.main start/stop/status, .env 자동 검증)
+- [ ] US-295: 일일 요약 리포트 (텔레그램) (← 매일 09:00 KST 전일 PnL+전략별 성과+Sharpe+MDD+주요 이벤트 자동 발송)
+- [ ] US-295-a: MonitorDaemon 백그라운드 시작 (← infra/monitor_daemon.py 5분 주기 Redis/DB/API 헬스체크, main.py 백그라운드 태스크 연결)
+- [ ] US-296: S20 통합 Shadow 10min 검증 (← Grafana 실시간 확인, 텔레그램 알림 트리거, CLI 동작, MonitorDaemon 테스트)
+
+#### Phase S21: 전략 포트폴리오 최적화 + Live 준비 — US-297~300
+
+> **목표**: S15~S20 전체 완성 후 포트폴리오 최종 최적화. 실데이터 WFE + 통합 1H Shadow
+> **진입 조건**: Phase S18 + S19 + S20 전부 완료
+> **플랜**: `.claude/plans/parallel-finding-sparrow.md`
+
+- [ ] US-297: stat_arb WFE 음수 해결 (← WFE=-1.03 원인 분석 후 cross-asset 파라미터 재최적화, 개선 안되면 비활성화)
+- [ ] US-298: 실데이터 WFE 백테스트 (← TUNER_DATA_SOURCE=timescaledb, ScheduledTuner 실행, 실데이터 WFE 재계산)
+- [ ] US-299: 전략별 독립 Shadow 30min (← 각 전략 개별 30min, Sharpe/MDD/Consistency 개별 측정)
+- [ ] US-300: 포트폴리오 통합 Shadow 1H (← 전체 전략 동시 1H, 포트폴리오 Sharpe>2.0, MDD<3%)
 
 ---
 
@@ -623,27 +702,34 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 > **RESOLVED 항목**: S8/S9에서 해소된 GAP 3/7/8 + HIGH 9건 + LOW 2건 → US-193 완료 시 SSOT_COMPLETE.md §9로 이관 예정.
 
-### CRITICAL (3건 — Phase S13에서 해소)
+### CRITICAL (6건 — Phase S15에서 수정 예정)
 
 | 이슈 | 설명 | 해결 US |
 |------|------|---------|
-| **전략 영역 겹침** | `_CROSS_EXCHANGE_CONSUMERS`가 stat_arb+latency_arb에 cross_exchange 신호 라우팅 → 중복 거래 | US-187, US-194 → **US-232** (PositionRegistry 심볼 레벨 락) |
-| **stat_arb 구조적 결함** | 교차거래소 동일심볼 mean-reversion = cross_exchange 동일 영역, WFE=-1.03 | US-188 → **US-231** (z-score 하드스톱 3.5 + 레짐 게이트) |
-| **AdaptiveThreshold WR 기반 피드백 루프** | WR 93.8%인데 손실 → WR>90%에서 edge 하향 = 손실 악화 | US-201 → **US-226** (첫 실행 지연 수정) + **US-234** (Shadow 통합) |
+| **stat_arb regime_detector 미주입** | `main.py:898`에서 regime_detector 미전달 → CRISIS에서도 거래 | US-245 |
+| **LiveGate 차단 미동작** | `is_live_eligible()` 실행 경로에서 미호출 → 평가만 하고 차단 안함 | US-246 |
+| **profit_factor 계산 버그** | `shadow.py:2201` 건수 비율 계산 → AdaptiveThreshold 반대 방향 조정 | US-257 |
+| **estimate_cost() 비용 과소계산** | `cost_calculator.py:110` network_cost=0 → 실제 비용 누락 | US-247 |
+| **ADV/sigma 하드코딩** | `signal.py:51-52` ADV=1000, sigma=0.001 → 실제 BTC sigma 0.03 (30배 오차) | US-248 |
+| **삼각 leg sizing 통화 불일치** | `triangular.py:134-145` 3 leg 동일 size → 잔여 포지션 발생 | US-249 |
 
-### HIGH (3건 — Phase S13에서 해소)
-
-| 이슈 | 설명 | 해결 US |
-|------|------|---------|
-| **Auto-tuner 미작동** | ScheduledTuner 로그 미관찰, AdaptiveThreshold/RegimeDetector/ONNX 호출 미확인 | US-190, US-191 → **US-226** (로깅 강화) + **US-234** (Shadow 미니 튜너) |
-| **전략 간 포지션 충돌** | 2개 전략이 동일 symbol 동시 거래 가능, 방지 메커니즘 없음 | US-195 → **US-232** (PositionRegistry) |
-| **전략별 자본 할당 없음** | 7개 전략이 독립적으로 자본 사용, per-strategy 한도 없음 | US-196 → **US-224** (loss_cap 차등) + **US-228** (전략별 CB) |
-
-### MEDIUM (1건)
+### HIGH (5건 — Phase S15~S18에서 수정 예정)
 
 | 이슈 | 설명 | 해결 US |
 |------|------|---------|
-| **cross_exchange MIN_EDGE 과소** | 5bps → 실제 round-trip 비용 32-65bps, 슬리피지 1건이 17건 이익 소멸 | US-189 |
+| **PositionReconciler 미연결** | ad-hoc `_reconcile_loop()`가 실제 모듈 대체, 거래소 API 미조회 | US-250 |
+| **AdaptiveThreshold 글로벌 단일** | 전략별 edge 프로필 상이한데 하나의 threshold로 전체 조정 | US-255 |
+| **HealthChecker 피드 미호출** | `record_api_latency()`, `record_ws_disconnect()` 미호출 → health score 항상 1.0 | US-286 (DataQualityManager) |
+| **CapitalAllocator(Kelly) 미연결** | Kelly Criterion 자본 배분 코드 존재하나 미사용 | US-284-a |
+| **Attribution context 미설정** | `main.py:502` 생성하지만 EngineContext에 미설정 → API 매 요청마다 새 인스턴스 | US-284-b |
+
+### MEDIUM (3건)
+
+| 이슈 | 설명 | 해결 US |
+|------|------|---------|
+| **MonitorDaemon 미시작** | Redis/DB 헬스체크 standalone만, 백그라운드 태스크 미등록 | US-295-a |
+| **ShadowMiniTuner 데드코드** | `shadow.py:692` 시작 시 1회 호출 후 재호출 없음 | US-258-a |
+| **전략 warm-up 추적 없음** | stat_arb 120샘플 필요하지만 시스템 미추적 → Shadow gate "0 trades" 오경보 | US-258-b |
 
 ### LOW (1건)
 
@@ -651,6 +737,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 |------|------|----------|
 | **Phase D 대시보드 브라우저 미검증** | Chrome 렌더링, 모바일 반응형 미확인 | TF SF [단계 3-A] |
 
-### RESOLVED (US-193 완료 — SSOT_COMPLETE.md §9로 이관됨)
+### RESOLVED (S13/S14에서 해소 — SSOT_COMPLETE.md §9로 이관)
 
-> 14건 RESOLVED → [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md) 참조
+> S13 CRITICAL 3건 (전략 영역 겹침, stat_arb 구조적 결함, AdaptiveThreshold 피드백 루프) + HIGH 3건 (Auto-tuner, 포지션 충돌, 자본 할당) + MEDIUM 1건 (MIN_EDGE 과소) → [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md) 참조
+> 기존 14건 RESOLVED → [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md) 참조

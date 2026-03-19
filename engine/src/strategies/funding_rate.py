@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -54,8 +54,10 @@ class FundingRateStrategy(BaseStrategy):
         strategy_id: str,
         cost_calculator: CostCalculator,
         config: FundingRateConfig | None = None,
+        regime_detector: Any = None,
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
+        self._regime_detector = regime_detector
         self.config = config or FundingRateConfig()
         # US-239: Track open positions per symbol to prevent duplicate entries
         self._open_positions: dict[str, str] = {}  # symbol → direction
@@ -90,6 +92,16 @@ class FundingRateStrategy(BaseStrategy):
         if not self._is_active:
             self._metrics.signals_filtered += 1
             return None
+
+
+        # US-254: Regime check — block new entries in CRISIS mode
+        if self._regime_detector is not None:
+            try:
+                if self._regime_detector.current_regime == "CRISIS":
+                    self._metrics.signals_filtered += 1
+                    return None
+            except Exception:
+                pass  # graceful fallback
 
         # US-239: Auto-release positions after settlement
         self._check_settlement_release()

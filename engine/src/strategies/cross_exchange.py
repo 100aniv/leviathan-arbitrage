@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -60,8 +60,10 @@ class CrossExchangeStrategy(BaseStrategy):
         cost_calculator: CostCalculator,
         config: CrossExchangeConfig | None = None,
         latency_tracker=None,
+        regime_detector: Any = None,
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
+        self._regime_detector = regime_detector
         if config is None:
             config = CrossExchangeConfig(
                 max_spread_bps=Decimal(
@@ -90,6 +92,16 @@ class CrossExchangeStrategy(BaseStrategy):
         if not self._is_active:
             self._metrics.signals_filtered += 1
             return None
+
+
+        # US-254: Regime check — block new entries in CRISIS mode
+        if self._regime_detector is not None:
+            try:
+                if self._regime_detector.current_regime == "CRISIS":
+                    self._metrics.signals_filtered += 1
+                    return None
+            except Exception:
+                pass  # graceful fallback
 
         # US-198: Korean exchange filter for latency_boost mode
         # Korean exchanges have stale orderbook data, making latency-based decisions unreliable

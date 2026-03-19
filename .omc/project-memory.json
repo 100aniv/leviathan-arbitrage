@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1773755310402,
+  "lastScanned": 1773843985753,
   "projectRoot": "/Users/100aniv/Development/arbitrage_OMC",
   "techStack": {
     "languages": [
@@ -45,7 +45,7 @@
       "path": "dashboard",
       "purpose": null,
       "fileCount": 16,
-      "lastAccessed": 1773755310372,
+      "lastAccessed": 1773843985734,
       "keyFiles": [
         "README.md",
         "jest.config.ts",
@@ -58,7 +58,7 @@
       "path": "docker",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1773755310375,
+      "lastAccessed": 1773843985735,
       "keyFiles": [
         "dashboard.Dockerfile",
         "engine.Dockerfile",
@@ -69,7 +69,7 @@
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 6,
-      "lastAccessed": 1773755310375,
+      "lastAccessed": 1773843985736,
       "keyFiles": [
         "QUANT_MANIFESTO.md",
         "config_reference_ko.md",
@@ -82,7 +82,7 @@
       "path": "engine",
       "purpose": null,
       "fileCount": 11,
-      "lastAccessed": 1773755310377,
+      "lastAccessed": 1773843985736,
       "keyFiles": [
         "=4.1",
         "alembic.ini",
@@ -95,14 +95,14 @@
       "path": "infra",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1773755310377,
+      "lastAccessed": 1773843985736,
       "keyFiles": []
     },
     "reports": {
       "path": "reports",
       "purpose": null,
       "fileCount": 8,
-      "lastAccessed": 1773755310378,
+      "lastAccessed": 1773843985737,
       "keyFiles": [
         "cross_validation_results.json",
         "tune_cex_dex_final.json",
@@ -115,7 +115,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 1,
-      "lastAccessed": 1773755310381,
+      "lastAccessed": 1773843985737,
       "keyFiles": [
         "backup_db.sh"
       ]
@@ -124,7 +124,7 @@
       "path": "engine/config",
       "purpose": "Configuration files",
       "fileCount": 5,
-      "lastAccessed": 1773755310385,
+      "lastAccessed": 1773843985739,
       "keyFiles": [
         "shadow_mode.json",
         "strategy_activation.json",
@@ -134,303 +134,303 @@
   },
   "hotPaths": [
     {
-      "path": "SSOT.md",
-      "accessCount": 38,
-      "lastAccessed": 1773813948061,
+      "path": ".claude/commands/leviathan.md",
+      "accessCount": 152,
+      "lastAccessed": 1773926332190,
       "type": "file"
     },
     {
       "path": "engine/src/main.py",
-      "accessCount": 24,
-      "lastAccessed": 1773758182206,
+      "accessCount": 150,
+      "lastAccessed": 1773926491094,
       "type": "file"
     },
     {
-      "path": "engine/src/modes/shadow.py",
-      "accessCount": 18,
-      "lastAccessed": 1773790575806,
-      "type": "directory"
+      "path": "SSOT.md",
+      "accessCount": 92,
+      "lastAccessed": 1773926340959,
+      "type": "file"
     },
     {
       "path": "engine/src",
-      "accessCount": 15,
-      "lastAccessed": 1773790437390,
+      "accessCount": 86,
+      "lastAccessed": 1773925914342,
       "type": "directory"
     },
     {
       "path": ".claude/CLAUDE.md",
-      "accessCount": 9,
-      "lastAccessed": 1773758168077,
+      "accessCount": 56,
+      "lastAccessed": 1773926082967,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/core/signal.py",
+      "accessCount": 44,
+      "lastAccessed": 1773923622101,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 34,
+      "lastAccessed": 1773925236024,
       "type": "directory"
     },
     {
       "path": "engine/src/strategies/statistical_arb.py",
-      "accessCount": 3,
-      "lastAccessed": 1773758138305,
+      "accessCount": 22,
+      "lastAccessed": 1773923878772,
       "type": "file"
     },
     {
-      "path": "engine/src/risk/guardian.py",
-      "accessCount": 3,
-      "lastAccessed": 1773758139665,
+      "path": "engine/src/tuning/adaptive_threshold.py",
+      "accessCount": 15,
+      "lastAccessed": 1773926455875,
       "type": "file"
     },
     {
-      "path": "engine/src/workflow/state_schema.py",
-      "accessCount": 2,
-      "lastAccessed": 1773756150596,
+      "path": ".claude/settings.local.json",
+      "accessCount": 14,
+      "lastAccessed": 1773924227816,
       "type": "file"
     },
     {
-      "path": "dashboard/src/middleware.ts",
-      "accessCount": 2,
-      "lastAccessed": 1773756980765,
-      "type": "file"
-    },
-    {
-      "path": "dashboard/src/app/login/page.tsx",
-      "accessCount": 2,
-      "lastAccessed": 1773756992268,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/api/auth.py",
-      "accessCount": 2,
-      "lastAccessed": 1773756997193,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/api/server.py",
-      "accessCount": 2,
-      "lastAccessed": 1773757021770,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/api",
-      "accessCount": 2,
-      "lastAccessed": 1773757125816,
-      "type": "directory"
-    },
-    {
-      "path": "engine/src/api/routes/health.py",
-      "accessCount": 2,
-      "lastAccessed": 1773757132798,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/cross_exchange.py",
-      "accessCount": 2,
-      "lastAccessed": 1773758117996,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/futures_futures.py",
-      "accessCount": 2,
-      "lastAccessed": 1773758118328,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/spot_futures.py",
-      "accessCount": 2,
-      "lastAccessed": 1773758124980,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/funding_rate.py",
-      "accessCount": 2,
-      "lastAccessed": 1773758125137,
+      "path": ".claude/agents/shadow-tester.md",
+      "accessCount": 13,
+      "lastAccessed": 1773924022304,
       "type": "file"
     },
     {
       "path": "engine/src/strategies/triangular.py",
-      "accessCount": 2,
-      "lastAccessed": 1773758130545,
+      "accessCount": 11,
+      "lastAccessed": 1773923857117,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/tuning/regime_detector.py",
+      "accessCount": 10,
+      "lastAccessed": 1773924018588,
+      "type": "file"
+    },
+    {
+      "path": "docs/strategies_ko.md",
+      "accessCount": 9,
+      "lastAccessed": 1773911213627,
+      "type": "file"
+    },
+    {
+      "path": "docs",
+      "accessCount": 6,
+      "lastAccessed": 1773919752895,
+      "type": "directory"
+    },
+    {
+      "path": "engine/src/strategies/spot_futures.py",
+      "accessCount": 6,
+      "lastAccessed": 1773923863839,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/strategies/cross_exchange.py",
+      "accessCount": 6,
+      "lastAccessed": 1773923987917,
+      "type": "file"
+    },
+    {
+      "path": ".claude/hooks/assembly-gate.sh",
+      "accessCount": 6,
+      "lastAccessed": 1773924032739,
+      "type": "file"
+    },
+    {
+      "path": ".claude/hooks/shadow-evidence-gate.sh",
+      "accessCount": 6,
+      "lastAccessed": 1773924033128,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/ml/feature_pipeline.py",
+      "accessCount": 5,
+      "lastAccessed": 1773920533372,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/ml/hmm_trainer.py",
+      "accessCount": 5,
+      "lastAccessed": 1773923843232,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/strategies/funding_rate.py",
+      "accessCount": 5,
+      "lastAccessed": 1773923844149,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/strategies/futures_futures.py",
+      "accessCount": 4,
+      "lastAccessed": 1773847219827,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/ml/onnx_runtime.py",
+      "accessCount": 4,
+      "lastAccessed": 1773920532861,
+      "type": "file"
+    },
+    {
+      "path": "docs/QUANT_MANIFESTO.md",
+      "accessCount": 3,
+      "lastAccessed": 1773847232675,
+      "type": "file"
+    },
+    {
+      "path": "engine",
+      "accessCount": 3,
+      "lastAccessed": 1773850122132,
+      "type": "directory"
+    },
+    {
+      "path": "GPT_opinion.md",
+      "accessCount": 3,
+      "lastAccessed": 1773851208183,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/tuning/scheduled_tuner.py",
+      "accessCount": 3,
+      "lastAccessed": 1773920549303,
+      "type": "file"
+    },
+    {
+      "path": "engine/.env",
+      "accessCount": 3,
+      "lastAccessed": 1773925231721,
       "type": "file"
     },
     {
       "path": "engine/src/strategies/cex_dex.py",
       "accessCount": 2,
-      "lastAccessed": 1773758130928,
+      "lastAccessed": 1773844423898,
+      "type": "file"
+    },
+    {
+      "path": "docs/checklists/tf-quarter-final_20260318.md",
+      "accessCount": 2,
+      "lastAccessed": 1773844707756,
+      "type": "file"
+    },
+    {
+      "path": "docs/checklists/tf-semi-final_20260317.md",
+      "accessCount": 2,
+      "lastAccessed": 1773844707857,
+      "type": "file"
+    },
+    {
+      "path": "docs/planning/Phase-S10_PLAN.md",
+      "accessCount": 2,
+      "lastAccessed": 1773846747967,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/infra/metrics.py",
+      "accessCount": 2,
+      "lastAccessed": 1773846808091,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/strategies/latency_arb.py",
+      "accessCount": 2,
+      "lastAccessed": 1773846813301,
       "type": "file"
     },
     {
       "path": "engine/src/strategies/base.py",
       "accessCount": 2,
-      "lastAccessed": 1773758152612,
+      "lastAccessed": 1773847232787,
       "type": "file"
     },
     {
-      "path": ".claude/commands/leviathan.md",
-      "accessCount": 1,
-      "lastAccessed": 1773756142945,
+      "path": "engine/src/strategies/manager.py",
+      "accessCount": 2,
+      "lastAccessed": 1773849960656,
       "type": "file"
     },
     {
-      "path": "engine/src/workflow/cli.py",
+      "path": "engine/config/strategy_activation.json",
       "accessCount": 1,
-      "lastAccessed": 1773756150005,
+      "lastAccessed": 1773844402076,
       "type": "file"
     },
     {
-      "path": "engine/src/workflow/consistency.py",
+      "path": "engine/src/infra/dex/uniswap_v3.py",
       "accessCount": 1,
-      "lastAccessed": 1773756150214,
+      "lastAccessed": 1773844424871,
       "type": "file"
     },
     {
-      "path": "engine/src/workflow/checkpoint_engine.py",
+      "path": "engine/src/infra/dex/gas_oracle.py",
       "accessCount": 1,
-      "lastAccessed": 1773756150566,
+      "lastAccessed": 1773844424981,
       "type": "file"
     },
     {
-      "path": "engine/src/api/middleware.py",
+      "path": "engine/src/execution/trade_consumer.py",
       "accessCount": 1,
-      "lastAccessed": 1773756879064,
+      "lastAccessed": 1773844435351,
       "type": "file"
     },
     {
-      "path": "dashboard/src/app/page.tsx",
+      "path": "engine/src/friction/dex_cost.py",
       "accessCount": 1,
-      "lastAccessed": 1773756885119,
+      "lastAccessed": 1773844509675,
       "type": "file"
     },
     {
-      "path": "dashboard/src/app/layout.tsx",
+      "path": "engine/src/dex/mock_adapter.py",
       "accessCount": 1,
-      "lastAccessed": 1773756885886,
+      "lastAccessed": 1773844510076,
       "type": "file"
     },
     {
-      "path": "dashboard/src/lib/api.ts",
+      "path": ".claude/agents/quant-validator.md",
       "accessCount": 1,
-      "lastAccessed": 1773756891745,
+      "lastAccessed": 1773844704304,
       "type": "file"
     },
     {
-      "path": "dashboard/src/lib/websocket.ts",
+      "path": ".claude/agents/ssot-keeper.md",
       "accessCount": 1,
-      "lastAccessed": 1773756896928,
+      "lastAccessed": 1773844704714,
       "type": "file"
     },
     {
-      "path": "dashboard/src/hooks/useEngineWs.ts",
+      "path": ".claude/agents/browser-verifier.md",
       "accessCount": 1,
-      "lastAccessed": 1773756898068,
+      "lastAccessed": 1773844705173,
       "type": "file"
     },
     {
-      "path": "engine/src/api/routes/strategies.py",
+      "path": "docs/planning/Phase-S13_PLAN.md",
       "accessCount": 1,
-      "lastAccessed": 1773756903191,
+      "lastAccessed": 1773844706125,
       "type": "file"
     },
     {
-      "path": "engine/src/api/routes/settings.py",
+      "path": "docs/review/Phase-S8_REVIEW.md",
       "accessCount": 1,
-      "lastAccessed": 1773756903317,
+      "lastAccessed": 1773844706573,
       "type": "file"
     },
     {
-      "path": "engine/src/api/routes/trading.py",
+      "path": "docs/review/Phase-S4_REVIEW.md",
       "accessCount": 1,
-      "lastAccessed": 1773756908542,
+      "lastAccessed": 1773844716562,
       "type": "file"
     },
     {
-      "path": "engine/src/api/routes/risk.py",
+      "path": "docs/review/Phase-S2_REVIEW.md",
       "accessCount": 1,
-      "lastAccessed": 1773756908907,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/api/routes/system.py",
-      "accessCount": 1,
-      "lastAccessed": 1773756909421,
-      "type": "file"
-    },
-    {
-      "path": "dashboard/src/app/analytics/page.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1773756914724,
-      "type": "file"
-    },
-    {
-      "path": "dashboard/src/app/settings/page.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1773756915495,
-      "type": "file"
-    },
-    {
-      "path": "infra/nginx/nginx.conf",
-      "accessCount": 1,
-      "lastAccessed": 1773756930845,
-      "type": "file"
-    },
-    {
-      "path": "dashboard/src/app/portfolio/page.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1773756931489,
-      "type": "file"
-    },
-    {
-      "path": "dashboard/src/types/index.ts",
-      "accessCount": 1,
-      "lastAccessed": 1773756939877,
-      "type": "file"
-    },
-    {
-      "path": "dashboard/src/components/Sidebar.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1773756940570,
-      "type": "file"
-    },
-    {
-      "path": "dashboard/src/components/MissionControlStrip.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1773756941874,
-      "type": "file"
-    },
-    {
-      "path": "dashboard/src/hooks/useApi.ts",
-      "accessCount": 1,
-      "lastAccessed": 1773756947529,
-      "type": "file"
-    },
-    {
-      "path": "dashboard/tailwind.config.ts",
-      "accessCount": 1,
-      "lastAccessed": 1773756954605,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/api/routes/attribution.py",
-      "accessCount": 1,
-      "lastAccessed": 1773756955007,
-      "type": "file"
-    },
-    {
-      "path": "dashboard/src/app/alerts/page.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1773756961387,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/api/routes",
-      "accessCount": 1,
-      "lastAccessed": 1773757028680,
-      "type": "directory"
-    },
-    {
-      "path": "dashboard/src",
-      "accessCount": 1,
-      "lastAccessed": 1773757036278,
-      "type": "directory"
-    },
-    {
-      "path": "engine/src/api/routes/alerts.py",
-      "accessCount": 1,
-      "lastAccessed": 1773757047767,
+      "lastAccessed": 1773844716702,
       "type": "file"
     }
   ],

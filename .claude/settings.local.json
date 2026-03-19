@@ -44,7 +44,14 @@
       "Bash(python -m pytest tests/test_workflow_state.py tests/test_checkpoint_engine.py tests/test_consistency.py -x --tb=short -q)",
       "Bash(git add:*)",
       "Bash(python3 -c \":*)",
-      "Bash(python3 -c \"import json; data=json.load\\(open\\(''.omc/prd.json''\\)\\); total=len\\(data[''userStories'']\\); passes=sum\\(1 for s in data[''userStories''] if s[''passes'']\\); print\\(f''총 US: {total}, passes: {passes}, pending: {total-passes}''\\); last3=[s[''id''] for s in data[''userStories''][-3:]]; print\\(f''마지막 3개: {last3}''\\)\")"
+      "Bash(python3 -c \"import json; data=json.load\\(open\\(''.omc/prd.json''\\)\\); total=len\\(data[''userStories'']\\); passes=sum\\(1 for s in data[''userStories''] if s[''passes'']\\); print\\(f''총 US: {total}, passes: {passes}, pending: {total-passes}''\\); last3=[s[''id''] for s in data[''userStories''][-3:]]; print\\(f''마지막 3개: {last3}''\\)\")",
+      "Bash(grep -c '\"\"passes\"\": true' /Users/100aniv/Development/arbitrage_OMC/.omc/prd.json)",
+      "Bash(grep -c '\"\"passes\"\": false' /Users/100aniv/Development/arbitrage_OMC/.omc/prd.json)",
+      "Bash(kill 72330)",
+      "Bash(grep -A5 '\"\"prd\"\"' /Users/100aniv/Development/arbitrage_OMC/.omc/state/leviathan-active-phase.json)",
+      "mcp__plugin_oh-my-claudecode_t__state_list_active",
+      "mcp__plugin_oh-my-claudecode_t__python_repl",
+      "Bash(find . -name assembly-gate.sh -o -name *assembly* -type f)"
     ],
     "deny": [],
     "ask": []

@@ -1,6 +1,7 @@
 """Base protocol and abstractions for all arbitrage strategies."""
 from __future__ import annotations
 
+import inspect
 from abc import ABC, abstractmethod
 from decimal import Decimal
 from typing import Any, Optional, Protocol, runtime_checkable
@@ -72,6 +73,10 @@ class BaseStrategy(ABC):
         self._is_active = False
         self._shadow_mode = shadow_mode
         self._metrics = StrategyMetrics()
+        # US-247: detect if cost calculator supports dest_exchange_id (intra-exchange optimization)
+        self._calc_supports_dest_exchange: bool = "dest_exchange_id" in inspect.signature(
+            cost_calculator.estimate_cost
+        ).parameters
 
     @property
     def strategy_id(self) -> str:

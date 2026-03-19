@@ -2,9 +2,9 @@
   "project": "LEVIATHAN Arbitrage Engine",
   "version": "2.0",
   "created": "2026-03-08",
-  "updated": "2026-03-17",
+  "updated": "2026-03-19",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 228,
+  "total_stories": 297,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -40,7 +40,15 @@
     "S10": "Strategy Architecture Hardening (전략 아키텍처 하드닝)",
     "S11": "Operations UX Core (운영 UX 핵심)",
     "S12": "Extended UX + Analytics (확장 UX + 분석)",
-    "S13": "Shadow Loss Prevention (TF SF 2차 FAIL 회귀)"
+    "S13": "Shadow Loss Prevention (TF SF 2차 FAIL 회귀)",
+    "S14": "Auto-tuner Shadow 통합 + Optuna 미니 튜너",
+    "S15": "CRITICAL 버그 + ML 파이프라인 연결 (최우선)",
+    "S16": "동적 임계치 + 적응형 파라미터",
+    "S17": "전략별 고급 기능 + 실행 안전장치",
+    "S18": "포트폴리오 리스크 + 평가 체계 + Slippage Feedback",
+    "S19": "데이터 품질 통합 — DataQualityManager",
+    "S20": "사용자 편의성 + 모니터링",
+    "S21": "전략 포트폴리오 최적화 + Live 준비"
   },
   "gap_dependency_order": "GAP9 -> GAP10 -> (GAP5,GAP6,GAP7 parallel) -> GAP3 -> GAP1,GAP2 -> GAP4",
   "stories": [
@@ -4161,8 +4169,14 @@
       "phase": "S13",
       "priority": 238,
       "passes": true,
-      "files": ["engine/src/strategies/spot_futures.py", "engine/src/core/real_signal_producer.py"],
-      "dependencies": ["US-226", "US-227"],
+      "files": [
+        "engine/src/strategies/spot_futures.py",
+        "engine/src/core/real_signal_producer.py"
+      ],
+      "dependencies": [
+        "US-226",
+        "US-227"
+      ],
       "acceptanceCriteria": [
         "spot_futures 백테스트 1000거래 이상에서 WR > 55%, Sharpe > 1.0",
         "Korean stale data 4계층 보호 적용 상태에서 거래 실행",
@@ -4177,8 +4191,13 @@
       "phase": "S13",
       "priority": 239,
       "passes": true,
-      "files": ["engine/src/strategies/funding_rate.py", "engine/src/core/real_signal_producer.py"],
-      "dependencies": ["US-226"],
+      "files": [
+        "engine/src/strategies/funding_rate.py",
+        "engine/src/core/real_signal_producer.py"
+      ],
+      "dependencies": [
+        "US-226"
+      ],
       "acceptanceCriteria": [
         "funding_rate 백테스트에서 시그널 빈도 >= 10건/시간",
         "FUNDING_MIN_DIFF_BPS 최적값 도출 (백테스트 기반)",
@@ -4192,8 +4211,13 @@
       "phase": "S13",
       "priority": 240,
       "passes": true,
-      "files": ["engine/src/strategies/statistical_arb.py", "engine/src/core/real_signal_producer.py"],
-      "dependencies": ["US-231"],
+      "files": [
+        "engine/src/strategies/statistical_arb.py",
+        "engine/src/core/real_signal_producer.py"
+      ],
+      "dependencies": [
+        "US-231"
+      ],
       "acceptanceCriteria": [
         "statistical_arb 백테스트에서 시그널→거래 전환율 > 20%",
         "z-score entry threshold 백테스트 기반 최적화",
@@ -4207,7 +4231,10 @@
       "phase": "S13",
       "priority": 241,
       "passes": true,
-      "files": ["engine/src/strategies/triangular.py", "engine/src/core/triangular_scanner.py"],
+      "files": [
+        "engine/src/strategies/triangular.py",
+        "engine/src/core/triangular_scanner.py"
+      ],
       "dependencies": [],
       "acceptanceCriteria": [
         "triangular 백테스트에서 cycle 감지 >= 10건/시간",
@@ -4222,7 +4249,10 @@
       "phase": "S13",
       "priority": 242,
       "passes": true,
-      "files": ["engine/src/strategies/cex_dex.py", "engine/.env"],
+      "files": [
+        "engine/src/strategies/cex_dex.py",
+        "engine/.env"
+      ],
       "dependencies": [],
       "acceptanceCriteria": [
         "DEX_RPC_URL 설정 (Infura/Alchemy free tier)",
@@ -4238,14 +4268,1278 @@
       "phase": "S13",
       "priority": 243,
       "passes": true,
-      "files": ["engine/src/modes/shadow.py", "engine/src/tuning/strategy_backtest.py"],
-      "dependencies": ["US-238", "US-239", "US-240", "US-241", "US-242"],
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/tuning/strategy_backtest.py"
+      ],
+      "dependencies": [
+        "US-238",
+        "US-239",
+        "US-240",
+        "US-241",
+        "US-242"
+      ],
       "acceptanceCriteria": [
         "7개 전략 전부 활성화 상태에서 1시간 Shadow PnL > 0",
         "각 전략별 최소 1건 이상 시그널 생성",
         "복합지표 6-check 전부 PASS (MDD<5%, 신호>=100/day, KillSwitch, CB, Health>=95%)",
         "전략 간 충돌 0건 (PositionRegistry)",
         "loss_capped 0건"
+      ]
+    },
+    {
+      "id": "US-245",
+      "title": "stat_arb regime_detector 주입",
+      "phase": "S15",
+      "priority": 245,
+      "passes": false,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/strategies/statistical_arb.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "main.py:898 에서 StatisticalArb 생성 시 regime_detector=self._regime_detector 전달",
+        "CRISIS 레짐일 때 stat_arb가 신규 진입 거부하는 로그 확인",
+        "Shadow 5min: regime 전환 시 stat_arb 행동 변화 로그 증거"
+      ]
+    },
+    {
+      "id": "US-246",
+      "title": "LiveGate 실행 경로 강제 적용",
+      "phase": "S15",
+      "priority": 246,
+      "passes": false,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/modes/live_gate.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "risk_check_fn 또는 trade_consumer에서 is_live_eligible() 호출",
+        "LiveGate 미달 시 신규 진입 차단 동작 확인",
+        "Shadow 5min: LiveGate 6-check 계산 + 차단 로그 존재"
+      ]
+    },
+    {
+      "id": "US-247",
+      "title": "estimate_cost() → calculate() 통합",
+      "phase": "S15",
+      "priority": 247,
+      "passes": false,
+      "files": [
+        "engine/src/friction/cost_calculator.py",
+        "engine/src/strategies/cross_exchange.py",
+        "engine/src/strategies/statistical_arb.py",
+        "engine/src/strategies/triangular.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "모든 전략이 network_cost 포함한 full cost 계산에 calculate() 사용",
+        "estimate_cost() deprecated 처리 또는 calculate()로 위임",
+        "비용 계산 단위 테스트: network_cost > 0 확인"
+      ]
+    },
+    {
+      "id": "US-248",
+      "title": "ADV/sigma 동적 계산",
+      "phase": "S15",
+      "priority": 248,
+      "passes": false,
+      "files": [
+        "engine/src/core/signal.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "signal.py:51-52 하드코딩(ADV=1000, sigma=0.001) 제거",
+        "거래소 API 24H volume으로 ADV 동적 계산",
+        "1H 수익률 표준편차로 sigma 동적 계산",
+        "BTC sigma 실측치 ~0.03 범위 검증"
+      ]
+    },
+    {
+      "id": "US-249",
+      "title": "삼각 차익 leg별 통화 크기 보정",
+      "phase": "S15",
+      "priority": 249,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/triangular.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "triangular.py:134-145 — leg별 quote currency 기준 size 재계산",
+        "잔여 포지션 0건 검증 (3 leg 완전 매칭)",
+        "단위 테스트: BTC/ETH/USDT 3-leg 통화 단위 불일치 없음"
+      ]
+    },
+    {
+      "id": "US-250",
+      "title": "포지션 리커버리 + 리콘실러 통합",
+      "phase": "S15",
+      "priority": 250,
+      "passes": false,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/core/position_reconciler.py",
+        "engine/src/execution/recovery.py",
+        "engine/src/infra/recovery_manager.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "PositionReconciler를 _reconcile_loop()에 연결 (ad-hoc 구현 대체)",
+        "PositionRecovery.scan()을 엔진 시작 시 호출 (고아 포지션 탐지)",
+        "RecoveryManager를 Redis 장애 복구에 연결",
+        "Shadow 5min: 엔진 재시작 후 고아 포지션 0건 확인"
+      ]
+    },
+    {
+      "id": "US-250-a",
+      "title": "ComplianceChecker 시작 시 실행",
+      "phase": "S15",
+      "priority": 250.1,
+      "passes": false,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/infra/compliance.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "infra/compliance.py 23항목 검증을 엔진 시작 시 1회 실행",
+        "컴플라이언스 미달 항목 시작 시 로그 출력",
+        "현재 테스트에서만 실행되는 구조에서 main.py startup으로 이동"
+      ]
+    },
+    {
+      "id": "US-251",
+      "title": "HMM Trainer 학습 루프 연결",
+      "phase": "S15",
+      "priority": 251,
+      "passes": false,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/ml/hmm_trainer.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "main.py에 _hmm_training_loop() 추가 (7일 주기 재학습)",
+        "Model Performance Gate: Validation Accuracy > 65% 미달 시 배포 중단",
+        "Walk-forward Validation 리포트 생성 (과적합 방지)",
+        ".cache/hmm/ 모델 파일 생성 확인"
+      ]
+    },
+    {
+      "id": "US-252",
+      "title": "XGBoost Trainer 학습 루프 + ONNX export",
+      "phase": "S15",
+      "priority": 252,
+      "passes": false,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/ml/xgb_trainer.py",
+        "engine/src/ml/onnx_runtime.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "main.py에 _xgb_training_loop() 추가 (학습 완료 시 ONNX export)",
+        "동일 Performance Gate + Walk-forward Validation 적용",
+        "models/latest/model.onnx 파일 생성 확인",
+        "ONNX 추론값이 실제 threshold 변경에 반영"
+      ]
+    },
+    {
+      "id": "US-253",
+      "title": "Feature Pipeline → ONNX Scorer 연결",
+      "phase": "S15",
+      "priority": 253,
+      "passes": false,
+      "files": [
+        "engine/src/core/signal.py",
+        "engine/src/ml/feature_pipeline.py",
+        "engine/src/ml/canary.py",
+        "engine/src/ml/onnx_runtime.py"
+      ],
+      "dependencies": [
+        "US-252"
+      ],
+      "acceptanceCriteria": [
+        "signal.py:284-287 3-feature stub → MLFeaturePipeline 20-feature 연결",
+        "MLCanary 점진 배포: 10% → 50% → 100%",
+        "ML score가 실제 threshold 변경하는 Live Log 제출"
+      ]
+    },
+    {
+      "id": "US-254",
+      "title": "RegimeDetector 전 전략 연결",
+      "phase": "S15",
+      "priority": 254,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/cross_exchange.py",
+        "engine/src/strategies/spot_futures.py",
+        "engine/src/strategies/futures_futures.py",
+        "engine/src/strategies/funding_rate.py",
+        "engine/src/strategies/triangular.py",
+        "engine/src/strategies/statistical_arb.py",
+        "engine/src/core/regime_detector.py"
+      ],
+      "dependencies": [
+        "US-245"
+      ],
+      "acceptanceCriteria": [
+        "6개 전략 on_signal()에 regime 확인 추가",
+        "CRISIS → 신규 진입 거부",
+        "VOLATILE → 보수적 임계치 적용",
+        "Shadow 5min: regime 전환 시 전략별 행동 변화 로그"
+      ]
+    },
+    {
+      "id": "US-255",
+      "title": "AdaptiveThreshold 전략별 분리",
+      "phase": "S15",
+      "priority": 255,
+      "passes": false,
+      "files": [
+        "engine/src/core/signal.py",
+        "engine/src/core/adaptive_threshold.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "글로벌 단일 threshold → 전략별 dict로 분리",
+        "cross_exchange / triangular / stat_arb 각자 독립 조정",
+        "signal.py:257에서 전략별 min_edge 읽기"
+      ]
+    },
+    {
+      "id": "US-256",
+      "title": "peak_equity 실시간 갱신 + DB 영속화",
+      "phase": "S15",
+      "priority": 256,
+      "passes": false,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "main.py:116의 일회성 설정 → PnL 누적 시 자동 갱신",
+        "TimescaleDB에 peak_equity persist/restore (재시작 시 MDD 왜곡 방지)",
+        "Shadow 5min: 재시작 후 peak_equity 정상 복원 확인"
+      ]
+    },
+    {
+      "id": "US-257",
+      "title": "profit_factor 계산 버그 수정",
+      "phase": "S15",
+      "priority": 257,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "shadow.py:2201 — 건수 비율 → 금액 비율로 수정",
+        "profit_factor = sum(winning_pnl) / abs(sum(losing_pnl)) 구현",
+        "AdaptiveThreshold 반대 방향 조정 방지 확인"
+      ]
+    },
+    {
+      "id": "US-258-a",
+      "title": "ShadowMiniTuner 활성화",
+      "phase": "S15",
+      "priority": 258.1,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "shadow.py:692 — 2H 경과 후 자동 트리거 구현",
+        "ShadowMiniTuner가 Shadow 실행 중 실제로 호출되는 로그 확인",
+        "또는 기능 제거 후 코드 정리"
+      ]
+    },
+    {
+      "id": "US-258-b",
+      "title": "전략 warm-up 상태 추적",
+      "phase": "S15",
+      "priority": 258.2,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/statistical_arb.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "stat_arb 120샘플 warm-up 완료 플래그 구현",
+        "Kalman 수렴 완료 플래그 구현",
+        "미완료 시 Shadow gate에서 '0 trades' 오경보 방지"
+      ]
+    },
+    {
+      "id": "US-259-a",
+      "title": "S15 통합 Shadow 10min 검증",
+      "phase": "S15",
+      "priority": 259.1,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/modes/live_gate.py"
+      ],
+      "dependencies": [
+        "US-245",
+        "US-246",
+        "US-247",
+        "US-248",
+        "US-249",
+        "US-250",
+        "US-251",
+        "US-252",
+        "US-253",
+        "US-254",
+        "US-255",
+        "US-256",
+        "US-257",
+        "US-258-a",
+        "US-258-b"
+      ],
+      "acceptanceCriteria": [
+        ".cache/hmm/ 모델 파일 존재 확인",
+        "models/latest/model.onnx 생성 + ONNX score가 실제 threshold 변경하는 로그",
+        "regime 전환 시 전략별 행동 변화 로그 증거",
+        "LiveGate 6-check 계산 + 차단 동작 확인",
+        "profit_factor 금액 기반으로 정확히 계산 확인",
+        "Shadow 10min: crash 0건"
+      ]
+    },
+    {
+      "id": "US-260",
+      "title": "롤링 백분위수 + 변동성 가중치 (cross_exchange, futures_futures)",
+      "phase": "S16",
+      "priority": 260,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/cross_exchange.py",
+        "engine/src/strategies/futures_futures.py",
+        "engine/src/core/adaptive_threshold.py"
+      ],
+      "dependencies": [
+        "US-259-a"
+      ],
+      "acceptanceCriteria": [
+        "24H 롤링 spread 분포 기반 동적 진입/청산 임계치 구현",
+        "변동성 폭발 시 Volatility Multiplier 즉각 반영",
+        "정적 vs 동적 임계치 A/B 비교 로그"
+      ]
+    },
+    {
+      "id": "US-261",
+      "title": "롤링 백분위수 + 변동성 가중치 (spot_futures basis)",
+      "phase": "S16",
+      "priority": 261,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/spot_futures.py",
+        "engine/src/core/adaptive_threshold.py"
+      ],
+      "dependencies": [
+        "US-259-a"
+      ],
+      "acceptanceCriteria": [
+        "24H 롤링 basis 분포에서 95th→entry, 50th→exit 동적 임계치",
+        "Volatility Multiplier 동일하게 적용",
+        "Shadow 5min: basis 동적 임계치 동작 로그"
+      ]
+    },
+    {
+      "id": "US-262",
+      "title": "Funding Rate 동적 임계치",
+      "phase": "S16",
+      "priority": 262,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/funding_rate.py"
+      ],
+      "dependencies": [
+        "US-259-a"
+      ],
+      "acceptanceCriteria": [
+        "8시간 funding history 기반 z-score 진입 임계치 구현",
+        "정적 FUNDING_MIN_DIFF_BPS 대비 false positive 감소율 측정"
+      ]
+    },
+    {
+      "id": "US-263",
+      "title": "Regime별 파라미터 매트릭스",
+      "phase": "S16",
+      "priority": 263,
+      "passes": false,
+      "files": [
+        "engine/src/core/regime_detector.py",
+        "engine/config/strategy_params.json"
+      ],
+      "dependencies": [
+        "US-254"
+      ],
+      "acceptanceCriteria": [
+        "CALM / NORMAL / VOLATILE / CRISIS별 전략 파라미터 테이블 구현",
+        "max_position, min_edge, cooldown 레짐별 조정",
+        "Shadow 5min: 레짐 전환 시 파라미터 변경 로그"
+      ]
+    },
+    {
+      "id": "US-264",
+      "title": "CorrelationMonitor 강제 적용",
+      "phase": "S16",
+      "priority": 264,
+      "passes": false,
+      "files": [
+        "engine/src/risk/guardian.py",
+        "engine/src/risk/exposure_tracker.py",
+        "engine/src/risk/correlation_monitor.py"
+      ],
+      "dependencies": [
+        "US-259-a"
+      ],
+      "acceptanceCriteria": [
+        "guardian.py:317 log-only → 실제 position scaling 강제 적용",
+        "check_correlation() 실행 경로 연결 (exposure_tracker.py:81-118)",
+        "상관 > 0.7 시 소규모 전략 포지션 50% 자동 축소 동작 확인"
+      ]
+    },
+    {
+      "id": "US-265",
+      "title": "S16 통합 Shadow 10min 검증",
+      "phase": "S16",
+      "priority": 265,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [
+        "US-260",
+        "US-261",
+        "US-262",
+        "US-263",
+        "US-264"
+      ],
+      "acceptanceCriteria": [
+        "정적 vs 동적 임계치 A/B 비교 결과 수치 리포트",
+        "동적 임계치가 정적 대비 최소 동등 이상 성능",
+        "Volatility Multiplier 발동 기록",
+        "false positive 감소율 측정",
+        "Shadow 10min: crash 0건"
+      ]
+    },
+    {
+      "id": "US-266",
+      "title": "Bellman-Ford + 비용 통합 (triangular)",
+      "phase": "S17",
+      "priority": 266,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/triangular.py",
+        "engine/src/core/triangular_scanner.py"
+      ],
+      "dependencies": [
+        "US-265"
+      ],
+      "acceptanceCriteria": [
+        "log 변환에 Gas Cost + Orderbook Depth 잠식 포함",
+        "Bellman-Ford 사이클 탐지 구현",
+        "비용 통합 로그: 단순 가격 대비 수익성 재계산 확인"
+      ]
+    },
+    {
+      "id": "US-267",
+      "title": "삼각 차익 Latency Budget 500ms",
+      "phase": "S17",
+      "priority": 267,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/triangular.py",
+        "engine/src/execution/atomic.py"
+      ],
+      "dependencies": [
+        "US-266"
+      ],
+      "acceptanceCriteria": [
+        "3 leg 총 500ms 초과 시 자동 취소 구현",
+        "타임아웃 취소 건수 Prometheus 메트릭 기록",
+        "단위 테스트: 600ms 시나리오에서 취소 동작 확인"
+      ]
+    },
+    {
+      "id": "US-268",
+      "title": "OU Process Funding Rate 예측",
+      "phase": "S17",
+      "priority": 268,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/funding_rate.py",
+        "engine/src/strategies/statistical_arb.py"
+      ],
+      "dependencies": [
+        "US-265"
+      ],
+      "acceptanceCriteria": [
+        "OU 파라미터 추정 → 다음 funding 예측 → 사전 진입 구현",
+        "Half-life < Execution Latency 시 진입 차단 로직",
+        "Shadow 5min: OU 예측 기반 진입 건수 로그"
+      ]
+    },
+    {
+      "id": "US-269",
+      "title": "Funding Rate 다중 거래소 스캐너",
+      "phase": "S17",
+      "priority": 269,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/funding_rate.py",
+        "engine/src/collectors/binance_futures_collector.py"
+      ],
+      "dependencies": [
+        "US-268"
+      ],
+      "acceptanceCriteria": [
+        "2개 → 4개 거래소 동시 funding rate 스캔",
+        "최적 쌍 선택 로직 구현",
+        "Shadow 5min: 4거래소 funding 수집 확인"
+      ]
+    },
+    {
+      "id": "US-270",
+      "title": "spot_futures OU Basis Modeling",
+      "phase": "S17",
+      "priority": 270,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/spot_futures.py",
+        "engine/src/strategies/statistical_arb.py"
+      ],
+      "dependencies": [
+        "US-265"
+      ],
+      "acceptanceCriteria": [
+        "statistical_arb.py의 Kalman Filter 재사용하여 OU basis modeling",
+        "Half-life < Execution Latency 시 진입 차단",
+        "Shadow 5min: OU half-life vs latency 차단 로그"
+      ]
+    },
+    {
+      "id": "US-271",
+      "title": "spot_futures max_holding_hours 강제",
+      "phase": "S17",
+      "priority": 271,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/spot_futures.py",
+        "engine/src/execution/atomic.py"
+      ],
+      "dependencies": [
+        "US-270"
+      ],
+      "acceptanceCriteria": [
+        "spot_futures.py:25의 선언만 된 max_holding_hours 필드 → 실제 타이머 기반 강제 청산",
+        "보유 시간 초과 시 자동 청산 동작 확인",
+        "단위 테스트: max_holding_hours 경과 시나리오"
+      ]
+    },
+    {
+      "id": "US-272",
+      "title": "futures_futures Funding Convergence",
+      "phase": "S17",
+      "priority": 272,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/futures_futures.py"
+      ],
+      "dependencies": [
+        "US-265"
+      ],
+      "acceptanceCriteria": [
+        "spread + funding rate diff 합산 수익 계산 구현",
+        "funding convergence 진입 조건 로그",
+        "Shadow 5min: funding 합산 수익 계산 확인"
+      ]
+    },
+    {
+      "id": "US-273",
+      "title": "futures_futures Stale Guard",
+      "phase": "S17",
+      "priority": 273,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/futures_futures.py"
+      ],
+      "dependencies": [
+        "US-265"
+      ],
+      "acceptanceCriteria": [
+        "max_book_age_seconds 체크 추가 (현재 없음)",
+        "stale orderbook 진입 차단 로그",
+        "단위 테스트: stale book 시나리오 거부 확인"
+      ]
+    },
+    {
+      "id": "US-274",
+      "title": "stat_arb Z-score 거래비용 조정",
+      "phase": "S17",
+      "priority": 274,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/statistical_arb.py",
+        "engine/src/friction/cost_calculator.py"
+      ],
+      "dependencies": [
+        "US-265"
+      ],
+      "acceptanceCriteria": [
+        "z-score 진입에 왕복 비용 반영",
+        "비용 > 예상 수익 시 스킵 로직",
+        "단위 테스트: 비용 초과 시나리오에서 진입 거부"
+      ]
+    },
+    {
+      "id": "US-275",
+      "title": "Atomic Fallback (Partial Fill 대응)",
+      "phase": "S17",
+      "priority": 275,
+      "passes": false,
+      "files": [
+        "engine/src/execution/atomic.py",
+        "engine/src/core/position_reconciler.py"
+      ],
+      "dependencies": [
+        "US-265"
+      ],
+      "acceptanceCriteria": [
+        "한쪽 leg만 체결 시 수치 기준 기반 손절 구현",
+        "델타 불균형 X초 이상 또는 Y% 이상 시 시장가 청산",
+        "Partial fill 시뮬레이션 → 자동 청산 로그 확인"
+      ]
+    },
+    {
+      "id": "US-275-a",
+      "title": "DepthAnalyzer 주문 사이징 연결",
+      "phase": "S17",
+      "priority": 275.1,
+      "passes": false,
+      "files": [
+        "engine/src/core/depth_analyzer.py",
+        "engine/src/execution/atomic.py"
+      ],
+      "dependencies": [
+        "US-275"
+      ],
+      "acceptanceCriteria": [
+        "core/depth_analyzer.py VWAP/유동성 분석을 AtomicExecutor에서 실제 사용",
+        "대형 주문 시 depth 기반 사이징 적용",
+        "단위 테스트: 유동성 부족 시 사이즈 축소 확인"
+      ]
+    },
+    {
+      "id": "US-276",
+      "title": "S17 통합 Shadow 10min 검증",
+      "phase": "S17",
+      "priority": 276,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [
+        "US-266",
+        "US-267",
+        "US-268",
+        "US-269",
+        "US-270",
+        "US-271",
+        "US-272",
+        "US-273",
+        "US-274",
+        "US-275",
+        "US-275-a"
+      ],
+      "acceptanceCriteria": [
+        "각 전략 최소 10 trades 확인",
+        "Bellman-Ford 비용 통합 로그",
+        "OU half-life vs latency 차단 로그",
+        "각 전략 독립 5min + 통합 10min Shadow PASS"
+      ]
+    },
+    {
+      "id": "US-277",
+      "title": "portfolio_risk.py 신규 생성",
+      "phase": "S18",
+      "priority": 277,
+      "passes": false,
+      "files": [
+        "engine/src/core/portfolio_risk.py"
+      ],
+      "dependencies": [
+        "US-276"
+      ],
+      "acceptanceCriteria": [
+        "전략간 PnL 상관 행렬 30min rolling 계산",
+        "상관 > 0.7 합산 포지션 제한",
+        "포트폴리오 VaR 계산",
+        "단위 테스트: 상관 행렬 + VaR 정확성"
+      ]
+    },
+    {
+      "id": "US-278",
+      "title": "포트폴리오 MDD 관리",
+      "phase": "S18",
+      "priority": 278,
+      "passes": false,
+      "files": [
+        "engine/src/core/portfolio_risk.py",
+        "engine/src/main.py"
+      ],
+      "dependencies": [
+        "US-277"
+      ],
+      "acceptanceCriteria": [
+        "전체 MDD 3% → 신규 진입 차단",
+        "전체 MDD 5% → 전체 청산",
+        "Shadow 5min: MDD 임계치 동작 확인"
+      ]
+    },
+    {
+      "id": "US-279",
+      "title": "Regime-Aware 자본 배분",
+      "phase": "S18",
+      "priority": 279,
+      "passes": false,
+      "files": [
+        "engine/src/core/portfolio_risk.py",
+        "engine/src/core/regime_detector.py"
+      ],
+      "dependencies": [
+        "US-277",
+        "US-263"
+      ],
+      "acceptanceCriteria": [
+        "CALM → 공격적 자본 배분",
+        "VOLATILE → 보수적 자본 배분",
+        "CRISIS → 방어적 자본 배분 (전략별 max_position 동적 조정)",
+        "Shadow 5min: 레짐별 자본 배분 변화 로그"
+      ]
+    },
+    {
+      "id": "US-280",
+      "title": "LiveGate Enforcer 상시화",
+      "phase": "S18",
+      "priority": 280,
+      "passes": false,
+      "files": [
+        "engine/src/modes/live_gate.py",
+        "engine/src/main.py"
+      ],
+      "dependencies": [
+        "US-246"
+      ],
+      "acceptanceCriteria": [
+        "모든 Shadow/TF에서 6-check 자동 계산 + 로깅",
+        "미달 시 자동 FAIL 처리",
+        "24H 주기 재평가 루프 구현"
+      ]
+    },
+    {
+      "id": "US-281",
+      "title": "Sharpe/Calmar/Sortino + Consistency 실시간 계산",
+      "phase": "S18",
+      "priority": 281,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/core/portfolio_risk.py"
+      ],
+      "dependencies": [
+        "US-277"
+      ],
+      "acceptanceCriteria": [
+        "1분 PnL → 1H/1D/7D 롤링 Sharpe/Calmar/Sortino 계산",
+        "수익 일관성 = 양수 PnL 비율 (1H 윈도우) 계산",
+        "이상치 필터링 로직 포함",
+        "Shadow 5min: 지표 계산 결과 로그"
+      ]
+    },
+    {
+      "id": "US-282",
+      "title": "전략별 Attribution 분석",
+      "phase": "S18",
+      "priority": 282,
+      "passes": false,
+      "files": [
+        "engine/src/core/attribution.py"
+      ],
+      "dependencies": [
+        "US-277"
+      ],
+      "acceptanceCriteria": [
+        "수익 기여도 전략별 분해",
+        "드로다운 기여도 분석",
+        "신호 품질 분해 지표",
+        "API 엔드포인트 또는 리포트로 제공"
+      ]
+    },
+    {
+      "id": "US-283",
+      "title": "Slippage Feedback Loop",
+      "phase": "S18",
+      "priority": 283,
+      "passes": false,
+      "files": [
+        "engine/src/friction/slippage_feedback.py",
+        "engine/src/friction/cost_calculator.py",
+        "engine/src/execution/paper.py"
+      ],
+      "dependencies": [
+        "US-276"
+      ],
+      "acceptanceCriteria": [
+        "실제 체결가 vs 주문 시점 Orderbook 가격 차이(Slippage) DB 기록",
+        "CostCalculator에 실시간 피드백으로 다음 주문 수익성 보정",
+        "Shadow 5min: Slippage feedback이 CostCalculator 보정하는 로그"
+      ]
+    },
+    {
+      "id": "US-284",
+      "title": "Market Impact Cost 모델",
+      "phase": "S18",
+      "priority": 284,
+      "passes": false,
+      "files": [
+        "engine/src/core/market_impact.py",
+        "engine/src/friction/cost_calculator.py"
+      ],
+      "dependencies": [
+        "US-276"
+      ],
+      "acceptanceCriteria": [
+        "주문 크기 대비 호가 잠식 분석",
+        "Temporary + Permanent impact 분리 계산",
+        "대형 주문 시 분할 실행 로직",
+        "단위 테스트: impact 계산 정확성"
+      ]
+    },
+    {
+      "id": "US-284-a",
+      "title": "CapitalAllocator(Kelly) 연결",
+      "phase": "S18",
+      "priority": 284.1,
+      "passes": false,
+      "files": [
+        "engine/src/core/capital_allocator.py",
+        "engine/src/main.py"
+      ],
+      "dependencies": [
+        "US-277"
+      ],
+      "acceptanceCriteria": [
+        "core/capital_allocator.py Kelly Criterion을 실제 전략 자본 배분에 적용",
+        "충분한 거래 이력 30+ 후 활성화 로직",
+        "전략별 edge/WR 기반 자본 배분 동작 확인"
+      ]
+    },
+    {
+      "id": "US-284-b",
+      "title": "Attribution context 연결",
+      "phase": "S18",
+      "priority": 284.2,
+      "passes": false,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/core/attribution.py"
+      ],
+      "dependencies": [
+        "US-282"
+      ],
+      "acceptanceCriteria": [
+        "main.py:502에서 생성 후 EngineContext에 설정",
+        "API가 매 요청마다 새 인스턴스 생성하는 문제 수정 (1줄 fix)",
+        "단위 테스트: EngineContext에서 attribution 접근 확인"
+      ]
+    },
+    {
+      "id": "US-285",
+      "title": "S18 통합 Shadow 10min 검증",
+      "phase": "S18",
+      "priority": 285,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/core/portfolio_risk.py"
+      ],
+      "dependencies": [
+        "US-277",
+        "US-278",
+        "US-279",
+        "US-280",
+        "US-281",
+        "US-282",
+        "US-283",
+        "US-284",
+        "US-284-a",
+        "US-284-b"
+      ],
+      "acceptanceCriteria": [
+        "포트폴리오 MDD < 5% 확인",
+        "상관 모니터링 동작 확인",
+        "Slippage feedback이 CostCalculator 보정하는 로그",
+        "CapitalAllocator 동작 확인",
+        "Shadow 10min: crash 0건"
+      ]
+    },
+    {
+      "id": "US-286",
+      "title": "DataQualityManager 중앙 관리 객체",
+      "phase": "S19",
+      "priority": 286,
+      "passes": false,
+      "files": [
+        "engine/src/core/data_quality_manager.py",
+        "engine/src/risk/guardian.py",
+        "engine/src/modes/live_gate.py"
+      ],
+      "dependencies": [
+        "US-259-a"
+      ],
+      "acceptanceCriteria": [
+        "StaleOrderbookDetector + HealthChecker를 단일 진입점으로 통합",
+        "update_orderbook() / get_health_scores() / is_blacklisted() / cleanup() 제공",
+        "RiskGuardian/LiveGate에 DataQualityManager 주입",
+        "블랙리스트 TTL 관리 구현"
+      ]
+    },
+    {
+      "id": "US-287",
+      "title": "전략별/거래소별 차등 Freshness Threshold",
+      "phase": "S19",
+      "priority": 287,
+      "passes": false,
+      "files": [
+        "engine/src/core/data_quality_manager.py"
+      ],
+      "dependencies": [
+        "US-286"
+      ],
+      "acceptanceCriteria": [
+        "CEX-CEX: 500ms, Korean: 1s, 기본: 2s 차등 설정",
+        "DataQualityManager 설정으로 관리",
+        "단위 테스트: 거래소별 threshold 적용 확인"
+      ]
+    },
+    {
+      "id": "US-288",
+      "title": "Exchange Health Score 실시간 계산",
+      "phase": "S19",
+      "priority": 288,
+      "passes": false,
+      "files": [
+        "engine/src/core/data_quality_manager.py",
+        "engine/src/core/exchange_health.py"
+      ],
+      "dependencies": [
+        "US-286"
+      ],
+      "acceptanceCriteria": [
+        "DataQualityManager.get_health_scores()로 통합",
+        "WS + 메시지 빈도 + 지연 → 0-100 점수",
+        "< 80이면 비활성 처리",
+        "Shadow 5min: 거래소별 health score 로그"
+      ]
+    },
+    {
+      "id": "US-289",
+      "title": "Anomaly Detection (가격 이상치)",
+      "phase": "S19",
+      "priority": 289,
+      "passes": false,
+      "files": [
+        "engine/src/core/data_quality_manager.py"
+      ],
+      "dependencies": [
+        "US-286"
+      ],
+      "acceptanceCriteria": [
+        "30초 롤링 평균 대비 ±5% → 3초 격리 후 재확인",
+        "DataQualityManager 레이어로 추가",
+        "단위 테스트: ±5% 이상치 격리 동작 확인"
+      ]
+    },
+    {
+      "id": "US-290",
+      "title": "Bithumb 증분 Orderbook Stale 특화",
+      "phase": "S19",
+      "priority": 290,
+      "passes": false,
+      "files": [
+        "engine/src/core/data_quality_manager.py",
+        "engine/src/collectors/bithumb_collector.py"
+      ],
+      "dependencies": [
+        "US-286"
+      ],
+      "acceptanceCriteria": [
+        "소형코인 2-10x 가격 오차 패턴 탐지",
+        "fake spread 거부 로직 구현",
+        "Shadow 5min: Bithumb stale 거부 건수 로그"
+      ]
+    },
+    {
+      "id": "US-290-a",
+      "title": "S19 통합 Shadow 10min 검증",
+      "phase": "S19",
+      "priority": 290.1,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/core/data_quality_manager.py"
+      ],
+      "dependencies": [
+        "US-286",
+        "US-287",
+        "US-288",
+        "US-289",
+        "US-290"
+      ],
+      "acceptanceCriteria": [
+        "DataQualityManager 동작 확인",
+        "stale 거부 건수 리포트",
+        "거래소별 health score 모니터링",
+        "stale 진입 0건 확인",
+        "Shadow 10min: crash 0건"
+      ]
+    },
+    {
+      "id": "US-291",
+      "title": "Prometheus 계측 완성",
+      "phase": "S20",
+      "priority": 291,
+      "passes": false,
+      "files": [
+        "engine/src/infra/metrics.py"
+      ],
+      "dependencies": [
+        "US-259-a"
+      ],
+      "acceptanceCriteria": [
+        "전략별 trades/signals/latency 메트릭 추가",
+        "포트폴리오 PnL/MDD 메트릭 추가",
+        "거래소 health 메트릭 추가",
+        "신호→체결 Execution Latency 메트릭 추가",
+        "curl localhost:8000/metrics 에서 신규 메트릭 존재 확인"
+      ]
+    },
+    {
+      "id": "US-292",
+      "title": "Grafana 대시보드 4개",
+      "phase": "S20",
+      "priority": 292,
+      "passes": false,
+      "files": [
+        "docker/grafana/dashboards/overview.json",
+        "docker/grafana/dashboards/strategy_detail.json",
+        "docker/grafana/dashboards/exchange_health.json",
+        "docker/grafana/dashboards/ml_performance.json"
+      ],
+      "dependencies": [
+        "US-291"
+      ],
+      "acceptanceCriteria": [
+        "Overview 대시보드: PnL/MDD/Sharpe 한눈에 확인",
+        "전략별 상세 대시보드",
+        "거래소 상태 대시보드",
+        "ML 모델 성능 대시보드",
+        "4개 대시보드 렌더링 확인"
+      ]
+    },
+    {
+      "id": "US-293",
+      "title": "Alertmanager → 텔레그램 알림 강화 + Kill Switch 버튼",
+      "phase": "S20",
+      "priority": 293,
+      "passes": false,
+      "files": [
+        "docker/alertmanager/rules.yml",
+        "engine/src/infra/telegram_bot.py"
+      ],
+      "dependencies": [
+        "US-291"
+      ],
+      "acceptanceCriteria": [
+        "MDD > 3% → WARNING 알림",
+        "MDD > 5% → CRITICAL 알림",
+        "전략 비활성 → 알림",
+        "텔레그램 한국어 메시지 + 요약 리포트",
+        "인라인 버튼 클릭으로 Kill Switch 작동"
+      ]
+    },
+    {
+      "id": "US-294",
+      "title": "원클릭 시작/중지 CLI",
+      "phase": "S20",
+      "priority": 294,
+      "passes": false,
+      "files": [
+        "engine/src/cli.py"
+      ],
+      "dependencies": [
+        "US-259-a"
+      ],
+      "acceptanceCriteria": [
+        "python -m src.main start / stop / status 명령 구현",
+        ".env 자동 검증 포함",
+        "복잡한 docker 명령 없이 간편 제어",
+        "기본값 현명하게 설정, 고급 옵션은 문서에"
+      ]
+    },
+    {
+      "id": "US-295",
+      "title": "일일 요약 리포트 (텔레그램)",
+      "phase": "S20",
+      "priority": 295,
+      "passes": false,
+      "files": [
+        "engine/src/infra/daily_report.py",
+        "engine/src/main.py"
+      ],
+      "dependencies": [
+        "US-281"
+      ],
+      "acceptanceCriteria": [
+        "매일 09:00 KST에 전일 PnL 텔레그램 자동 발송",
+        "전략별 성과, Sharpe, MDD, 주요 이벤트 포함",
+        "단위 테스트: 리포트 생성 및 발송 확인"
+      ]
+    },
+    {
+      "id": "US-295-a",
+      "title": "MonitorDaemon 백그라운드 시작",
+      "phase": "S20",
+      "priority": 295.1,
+      "passes": false,
+      "files": [
+        "engine/src/infra/monitor_daemon.py",
+        "engine/src/main.py"
+      ],
+      "dependencies": [
+        "US-259-a"
+      ],
+      "acceptanceCriteria": [
+        "main.py 시작 시 MonitorDaemon 백그라운드 태스크로 등록",
+        "5분 주기 Redis/DB/API 헬스체크 + 텔레그램 알림",
+        "현재 standalone만인 구조에서 main.py 통합"
+      ]
+    },
+    {
+      "id": "US-296",
+      "title": "S20 통합 Shadow 10min 검증",
+      "phase": "S20",
+      "priority": 296,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [
+        "US-291",
+        "US-292",
+        "US-293",
+        "US-294",
+        "US-295",
+        "US-295-a"
+      ],
+      "acceptanceCriteria": [
+        "Grafana 4개 대시보드 실시간 확인",
+        "텔레그램 알림 트리거 확인",
+        "CLI start/stop/status 동작 확인",
+        "MonitorDaemon 정상 동작 확인",
+        "Shadow 10min: crash 0건"
+      ]
+    },
+    {
+      "id": "US-297",
+      "title": "stat_arb WFE 음수 해결",
+      "phase": "S21",
+      "priority": 297,
+      "passes": false,
+      "files": [
+        "engine/src/strategies/statistical_arb.py",
+        "engine/config/strategy_params.json"
+      ],
+      "dependencies": [
+        "US-285",
+        "US-290-a",
+        "US-296"
+      ],
+      "acceptanceCriteria": [
+        "WFE=-1.03 원인 분석 후 cross-asset 파라미터 재최적화",
+        "WFE > 0 달성 또는 전략 비활성화 결정",
+        "Walk-forward 검증 리포트 제출"
+      ]
+    },
+    {
+      "id": "US-298",
+      "title": "실데이터 WFE 백테스트",
+      "phase": "S21",
+      "priority": 298,
+      "passes": false,
+      "files": [
+        "engine/src/tuning/scheduled_tuner.py",
+        "engine/config/strategy_params.json"
+      ],
+      "dependencies": [
+        "US-285",
+        "US-290-a",
+        "US-296"
+      ],
+      "acceptanceCriteria": [
+        "TUNER_DATA_SOURCE=timescaledb 설정",
+        "TimescaleDB 축적 데이터로 ScheduledTuner 실행",
+        "실데이터 WFE 재계산 리포트",
+        "전 전략 WFE > 0 또는 비활성화 결정"
+      ]
+    },
+    {
+      "id": "US-299",
+      "title": "전략별 독립 Shadow 30min",
+      "phase": "S21",
+      "priority": 299,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py"
+      ],
+      "dependencies": [
+        "US-297",
+        "US-298"
+      ],
+      "acceptanceCriteria": [
+        "각 전략 개별 30min Shadow 실행",
+        "전략별 Sharpe, MDD, Consistency 개별 측정",
+        "각 전략 PASS/FAIL 판정 리포트"
+      ]
+    },
+    {
+      "id": "US-300",
+      "title": "포트폴리오 통합 Shadow 1H",
+      "phase": "S21",
+      "priority": 300,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/core/portfolio_risk.py"
+      ],
+      "dependencies": [
+        "US-299"
+      ],
+      "acceptanceCriteria": [
+        "전체 전략 동시 1H Shadow 실행",
+        "포트폴리오 Sharpe > 2.0 목표",
+        "포트폴리오 MDD < 3% 목표",
+        "LiveGate 6-check 전부 PASS",
+        "TF QF 재시작 승인 조건 달성"
       ]
     }
   ]

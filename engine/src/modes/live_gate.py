@@ -316,6 +316,30 @@ class LiveGate:
             return False
         return self._latest_result.eligible
 
+    async def enforce_or_fallback(self) -> bool:
+        """Evaluate LiveGate 6-check. Return True if live-eligible, False to fallback.
+
+        US-246: Called by Engine before entering live mode.
+        """
+        result = await self.evaluate()
+        if result is None or not result.eligible:
+            logger.warning(
+                "live_gate_enforcement_blocked",
+                eligible=False,
+                checks={c.name: c.passed for c in result.checks} if result else {},
+            )
+            if self._telegram is not None:
+                try:
+                    await self._telegram.send_alert(
+                        "⚠️ LiveGate BLOCKED: 6-check 미통과 → Shadow fallback",
+                        level="warning",
+                    )
+                except Exception:
+                    pass
+            return False
+        logger.info("live_gate_enforcement_passed", eligible=True)
+        return True
+
     # ---------------------------------------------------------------------------
     # Internal helpers
     # ---------------------------------------------------------------------------

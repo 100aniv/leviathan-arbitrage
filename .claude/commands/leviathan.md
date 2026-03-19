@@ -7,7 +7,10 @@
 
 **절대 금지**: 사용자 확인 요청, Stage 간 멈춤, 에이전트 대기 중 멈춤, US 간 멈춤, 상태 보고만 하고 멈춤, **run_in_background: true**
 **강제**: 모든 응답에 tool call 포함. Stage A→B→C→다음Phase 끊김 없는 연속 흐름. **모든 Agent는 foreground 실행** (background 금지 — 메인 스레드 멈춤 버그).
+**외부 CLI 규칙**: codex/gemini/qwen은 **동일 메시지 foreground 병렬 호출** + `timeout 300`. CLI 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션 (스킵 절대 금지).
 **멈춤 허용**: (1) 전 US `passes:true` (2) 5회 연속 동일 US 실패 (3) 사용자 "stop/cancel/멈춰" (4) Stage C 완료 후 사장님 승인 대기
+**컨텍스트 압축 후에도 이 규칙 유지. 압축으로 지시 소실 시 §0과 §99 참조.**
+**에이전트 반환 크기 제한**: 모든 에이전트 반환 3K 토큰 이내. 상세는 파일에 기록. (컨텍스트 팽창 → 압축 → 멈춤 방지)
 
 ```
 Stage A (Entry Gate → 기획 → QUANT GATE → checkpoint)
@@ -23,7 +26,7 @@ Stage A (Entry Gate → 기획 → QUANT GATE → checkpoint)
 ## 1. 소스
 
 - `SSOT.md` — 유일한 설계 문서. 작업 전 반드시 읽기.
-- `.omc/prd.json` — 220 US 목록. `passes:false`인 첫 번째 US부터 시작.
+- `.omc/prd.json` — 234+62 US 목록 (S15~S21 회귀, US-245~US-300+서브항목). `passes:false`인 첫 번째 US부터 시작.
 - 팀 구조, 기술 스택, 커스텀 에이전트, 자주 틀리는 패턴 → **CLAUDE.md 참조** (여기서 중복 기술하지 않음)
 
 ## 2. 실행 모드
@@ -65,7 +68,8 @@ Agent(subagent_type="oh-my-claudecode:architect", name="karina", model="opus",
               4) SSOT.md §2 '다음 작업' vs CLAUDE.md '다음 작업' — 일치
               5) Phase 순서/기술스택/팀구조 일치
               6) 대상 파일 현재 코드 구조 파악
-              **불일치 발견 시**: 구체적 수정 지시 (파일:라인 + 현재값→정확값). 수정 완료까지 Stage B 진입 금지.")
+              **불일치 발견 시**: 구체적 수정 지시 (파일:라인 + 현재값→정확값). 수정 완료까지 Stage B 진입 금지.
+              **반환 3K 토큰 이내 요약. 상세 내용은 파일에 기록.**")
 ```
 > Entry Gate 결과 수신 즉시 → Step 2 스폰. 상태 요약/보고 금지.
 
@@ -74,18 +78,21 @@ Agent(subagent_type="oh-my-claudecode:architect", name="karina", model="opus",
 # NingNing: 요구사항 분석
 Agent(subagent_type="oh-my-claudecode:analyst", name="ningning",
       prompt="Phase X 요구사항 분석: [us_targets 목록] + acceptanceCriteria 검증.
-              엣지케이스 도출, 수용기준 누락/모호 확인. Entry Gate 결과 반영: [Karina 결과 주입]")
+              엣지케이스 도출, 수용기준 누락/모호 확인. Entry Gate 결과 반영: [Karina 결과 주입]
+              **반환 3K 토큰 이내 요약.**")
 
 # Winter: 기획 비판
 Agent(subagent_type="oh-my-claudecode:critic", name="winter", model="opus",
       prompt="Phase X 기획 비판: PLAN.md 초안 대비 설계 결함, 누락 사항, 과도한 복잡성 지적.
-              Entry Gate 결과 반영: [Karina 결과 주입]")
+              Entry Gate 결과 반영: [Karina 결과 주입]
+              **반환 3K 토큰 이내 요약.**")
 
 # Giselle: PLAN.md 작성
 Agent(subagent_type="oh-my-claudecode:planner", name="giselle",
       prompt="Phase X PLAN.md 작성: [us_targets 목록] + acceptanceCriteria 기반.
               SSOT.md §4 참조. 산출물: docs/planning/Phase-X_PLAN.md
-              **Entry Gate 결과 반영**: [Karina 결과 ~3K 토큰 주입]")
+              **Entry Gate 결과 반영**: [Karina 결과 ~3K 토큰 주입]
+              **반환 3K 토큰 이내 요약. 상세는 docs/planning/Phase-X_PLAN.md에 기록.**")
 ```
 > 3명 **병렬** 스폰. 근거: 독립 작업에 병렬 = +81% (Google DeepMind/MIT 2025).
 > 결과 수신 즉시 다음 블록 tool call 발행. 상태 요약/보고 금지.
@@ -111,12 +118,35 @@ Agent(subagent_type="oh-my-claudecode:planner", name="giselle",
 - **ralplan 직접 호출 금지** (plan mode 활성화 → 파일 수정 차단 데드락 위험)
 - 산출물: `docs/planning/Phase-X_PLAN.md`
 
+**PLAN REVIEW GATE — 멀티모델 플랜 감사 (PLAN.md 완성 후, QUANT GATE 전):**
+> 3개 외부 모델(Codex+Gemini+Qwen)이 독립적으로 PLAN.md를 검증. Claude 편향 제거.
+> **인라인 실행** (AskUserQuestion 없음, TeamCreate 없음 — leviathan 자동 흐름 보장)
+
+**실행 절차:**
+1. 프롬프트 작성: `REVIEW_PROMPT="docs/planning/Phase-X_PLAN.md를 읽고, 설계 결함, 누락된 요구사항, 과도한 복잡성, 엣지케이스 미고려를 지적하라. 이슈별로 CRITICAL/HIGH/MEDIUM 심각도를 부여하라."`
+2. 3개 Agent() **병렬** spawn (각각 CLI를 직접 실행):
+```
+Agent(name="codex-plan-reviewer",
+      prompt="Bash로 timeout 300 codex exec -s read-only '$REVIEW_PROMPT' 실행. 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션.")
+Agent(name="gemini-plan-reviewer",
+      prompt="Bash로 timeout 300 gemini -p '$REVIEW_PROMPT' --approval-mode plan 실행. 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션.")
+Agent(name="qwen-plan-reviewer",
+      prompt="Bash로 timeout 300 qwen --approval-mode plan -p '$REVIEW_PROMPT' 실행. 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션.")
+```
+3. Claude가 독립적으로 PLAN.md 리뷰 (4번째 관점)
+4. 4개 리뷰 결과 수집 → **quorum 합의**: 2개 이상 모델이 지적한 이슈 = MUST FIX
+5. 결과를 `.omc/artifacts/consensus-plan-{phase}.md`에 저장
+
+- quorum MUST FIX 이슈 1건 이상 → PLAN.md 수정 후 재검증 (최대 1회)
+- MUST FIX 이슈 0건 → QUANT GATE 진행
+
 **QUANT GATE — `files`에 전략/수식 키워드 포함 시에만:**
 키워드: `slippage|signal|strategy|executor|funding|futures|triangular|statistical|friction|cost_calculator|regime|hmm|xgboost|onnx|dex|gas_oracle`
 ```
 Agent(subagent_type="quant-validator", name="yeji", model="opus",
       prompt="Phase X 기획 검증: SSOT.md §4 대비 PLAN.md 정합성.
-              1) 파라미터 범위 2) 이중계산 여부 3) PnL 영향 4) 수식 일치. PASS/FAIL+근거")
+              1) 파라미터 범위 2) 이중계산 여부 3) PnL 영향 4) 수식 일치. PASS/FAIL+근거
+              **반환 3K 토큰 이내 요약.**")
 ```
 - PASS → Stage B. FAIL → PLAN 수정 후 재호출 (최대 2회)
 > 결과 수신 즉시 A→B 전환 tool call 발행. 상태 요약/보고 금지.
@@ -137,7 +167,7 @@ Agent(subagent_type="quant-validator", name="yeji", model="opus",
 > Stage B의 핵심: "만들고 동작 확인". 코드 작성부터 런타임 검증까지.
 > Shadow fix loop가 Stage B 내부에서 완결 = 0 stage 전환 (기존 5-Stage: 3 stage 전환).
 
-#### B-Phase 1: 개발 + 단위테스트 (TeamCreate)
+#### B-Step 1: 개발 + 단위테스트 (TeamCreate)
 
 **Step 1: 팀 생성**
 `TeamCreate(team_name="leviathan-phase-X")`
@@ -178,25 +208,28 @@ Agent(subagent_type="quant-validator", name="yeji", model="opus",
 
 **파일 소유권:** Yujin/Gaeul/Leeseo/Liz=`engine/src/`, Rei=`dashboard/src/`, Wonyoung=`tests/`+`docker-compose.yml`, Lead=SSOT/`.omc/`
 
-**배치 모드:** 배치 내 US 순차 Stage B Phase 1 → 전부 완료 후 Phase 2 일괄 실행. 동일 도메인은 팀 재사용 가능.
+**배치 모드:** 배치 내 US 순차 Stage B-Step 1 → 전부 완료 후 Phase 2 일괄 실행. 동일 도메인은 팀 재사용 가능.
 
 **활성 팀**: IVE(개발) — TeamCreate 협업 (최대 6명)
 
-#### B-Phase 2: Shadow 테스트 + 모니터링 (Sub-agents)
+#### B-Step 2: Shadow 테스트 + 모니터링 (Sub-agents)
 
 > TeamDelete 후, 독립 Sub-agents로 런타임 검증.
 > shadow-tester는 `context: fork`로 fresh context 자동 보장.
 
-**B-2-1. Docker 확인**
-- `docker compose up -d && docker compose ps` (실패 시 최대 2회 재시도)
-- 전 컨테이너 healthy 필수
+**B-2-1. Docker 인프라 확인**
+- `docker compose up -d timescaledb redis && docker compose ps` (DB/Redis만, 서비스 지정 필수)
+- `docker compose stop engine auto-tuner monitoring 2>/dev/null` (이전 코드 실행 방지, 로컬 엔진과 충돌 방지)
+- timescaledb healthy + redis healthy 필수
+- 오토튜너 테스트 시: `docker compose build engine auto-tuner && docker compose up -d engine auto-tuner` (새 빌드 필수)
 
 **B-2-2. Shadow 실행 (10분 이상 무중단)**
 ```
 Agent(subagent_type="shadow-tester", name="minji",
       prompt="Shadow 10분+: docker compose up -d 확인 후
               cd engine && timeout 600 python -m src.main.
-              PnL/WR/crash/DD 보고. 10분 미만 실행 = 자동 FAIL")
+              PnL/WR/crash/DD 보고. 10분 미만 실행 = 자동 FAIL
+              **반환 3K 토큰 이내 요약. 상세는 .omc/state/shadow-result-latest.json에 기록.**")
 ```
 
 **B-2-3. 데이터 모니터링 (Shadow 실행 중 병렬)**
@@ -223,28 +256,60 @@ Agent(subagent_type="oh-my-claudecode:debugger", name="hyein",
       prompt="crash 루트코즈 분석. 회귀 격리. 수정 방안 제시")
 ```
 
-**Shadow 필수 조건:**
-- `PnL > 0`
-- `crash = 0`
-- `10분 이상 무중단 실행`
+**Shadow 필수 조건 (강화된 복합지표 — 시드 무관 절대 지표 기반):**
+
+> **원칙**: 단순 PnL($)은 시드에 따라 상대적 → 절대적 판단 불가. 시드 무관 지표(Sharpe, PF, MDD%, Edge bps)로 판단.
+
+| # | 체크 | 임계값 | 유형 |
+|---|------|--------|------|
+| 1 | crash | = 0 | 시스템 |
+| 2 | 무중단 실행 | >= 10분 | 시스템 |
+| 3 | PnL | >= $0 | 기본 (참고용, 절대 지표 아님) |
+| 4 | Max Drawdown | < 5% (자본 대비) | **절대 지표** |
+| 5 | Profit Factor | > 1.0 (총이익/총손실) | **절대 지표** |
+| 6 | 신호 수 | >= 100/day (외삽) | 활성도 |
+| 7 | Kill Switch | Not halted | 방어 레이어 |
+| 8 | Circuit Breaker | CLOSED | 방어 레이어 |
+| 9 | 거래소 Health | >= 95% | 인프라 |
+| 10 | loss_capped | = 0 | 리스크 |
+| 11 | 활성 전략 trade | 등록된 모든 활성 전략 trade >= 1 | **통합 검증 (dead strategy 방지)** |
+| 12 | 방어 레이어 활성 | CB/StaleDetector/OutlierFilter 로그 >= 1건 | **통합 검증** |
+| 13 | 결과 파일 기록 | `.omc/state/shadow-result-latest.json` 존재 | 검증 증거 |
+
+> **TF SF 추가 기준**: 위 13항목 + Sharpe >= 2.0 + Calmar > 0 + 전략별 WR > 50% + Expected Edge > 0 bps
+> **TF Final 추가 기준**: 위 + Sharpe >= 2.5 + Profit Factor > 1.2 + 리콘실리에이션 오차 < 1%
+> **#11 dead strategy 방지**: 7개 전략 중 3개만 작동해도 PnL > 0이면 PASS되던 구멍 차단. trade=0 전략 발견 시 → FAIL (dead wiring 의심)
+> **#13 결과 파일**: shadow-tester(Minji)가 반드시 JSON 파일로 결과 기록. Assembly Verifier(C-Step 0.5) + Karina Go/No-Go가 이 파일을 검증.
 
 **활성 팀**: NewJeans(테스트, 최대 5명) + ITZY(퀀트 수식검증, 해당 시)
 
-#### B-Phase 3: Shadow 실패 시 fix loop
+#### B-Step 3: Shadow 실패 시 fix loop (실패 유형별 분류)
 
 ```
-Shadow FAIL → 원인 분석 → fix (executor sub-agent) → pytest 재확인 → Shadow 재실행
-fix loop 최대 3회. 3회 초과 시 Stage A 재기획 (에스컬레이션 L2)
+Shadow FAIL 시 실패 유형 분류 → 유형별 대응:
+
+Type W (Wiring): 전략 trade=0 또는 서브시스템 미활성 → 즉시 L2 (Stage A 재기획)
+  근거: 파라미터 문제가 아닌 구조적 미연결. fix loop로 해결 불가.
+
+Type P (Parameter): PnL < 0이지만 전체 전략 활성 (trade > 0) → fix loop 3회
+  근거: 임계값/파라미터 조정으로 해결 가능.
+
+Type B (Bug): crash > 0 또는 예외 발생 → debugger fix loop 3회
+  근거: 코드 버그 수정 필요.
+
+fix loop 최대 3회 (Type P/B). 3회 초과 시 Stage A 재기획 (에스컬레이션 L2).
+Type W는 fix loop 없이 즉시 L2 에스컬레이션.
 ```
 
 > **3-Stage 핵심 이점**: Shadow 실패 → Stage B 내부에서 fix + re-test = 0 stage 전환.
 > (기존 5-Stage: Shadow 실패(D) → B복귀 → pytest(B) → 리뷰(C) → Shadow(D) = 3 stage 전환)
+> **실패 유형 분류 이유**: "컴포넌트가 아예 연결 안 됨(Type W)"과 "파라미터가 안 맞음(Type P)"을 동일하게 fix loop 3회 돌리면 시간 낭비. Type W는 아키텍처 재설계가 필요.
 
 ### 자동 체크포인트 저장
 - 실행: `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) checkpoint save --trigger "stage_B_complete"`
 - Shadow 결과 메트릭(PnL, WR, crash count)이 체크포인트에 포함됨
 
-**B→C 전환 (동일 메시지 병렬 필수):** pytest PASS + Shadow PASS (PnL > 0, crash = 0, 10min+) 확인 즉시 → 아래 2개를 **반드시 동일 메시지에서 병렬 호출**:
+**B→C 전환 (동일 메시지 병렬 필수):** pytest PASS + Shadow 13항목 복합지표 전부 PASS (§B-Step 2 표 참조) 확인 즉시 → 아래 2개를 **반드시 동일 메시지에서 병렬 호출**:
 1. `state_write(next_stage:"C")`
 2. Stage C 리뷰 에이전트 2개 스폰 (jennie + jisoo)
 텍스트 출력 금지. tool call만 출력. state_write만 하고 에이전트 안 스폰하면 = BUG.
@@ -258,18 +323,105 @@ fix loop 최대 3회. 3회 초과 시 Stage A 재기획 (에스컬레이션 L2)
 > Stage C의 핵심: "이 코드가 좋은가?" + "이 Phase가 완료되었는가?" + 릴리스.
 > 리뷰어가 Shadow 결과를 참조 → 코드 품질 + 런타임 동작 교차 평가 가능.
 
+#### C-Step 0.5: Assembly Verification — 조립 검증 (코드리뷰 전 필수)
+
+> **"부품이 아니라, 조립된 완성품이 제대로 동작하는가?"**
+> 이 단계 없이 코드리뷰 진행 금지. TF QF "단계 3.5"를 매 Phase에 상시 적용.
+> Phase S2~S9에서 "코드는 있지만 연결 안 됨" 문제가 반복된 근본 원인: 조립 검증 부재.
+
+```
+Agent(subagent_type="oh-my-claudecode:verifier", name="assembly-verifier", model="sonnet",
+      prompt="Assembly Verification — 이번 Phase에서 추가/수정된 코드의 조립 상태 검증.
+              **4가지 서브 체크 전부 PASS 필수:**
+
+              1. Init Chain 검증:
+                 - main.py의 _init_*() 체인에서 이번 Phase 관련 서브시스템 non-None 확인
+                 - 새로 추가된 클래스가 Engine 인스턴스에 할당되어 있는지 확인
+
+              2. Signal Flow E2E:
+                 - 이번 Phase에서 추가/수정한 전략의 신호 경로 추적
+                 - SignalGenerator → Strategy.on_signal() → TradeRequest → Executor 경로 완성 확인
+
+              3. Dead Wiring Detection:
+                 - git diff로 이번 Phase에서 새로 생성된 클래스 목록 추출
+                 - 각 클래스가 (1) 인스턴스 생성 (2) 소비자에게 주입 (3) 런타임 호출 경로 3가지 모두 존재하는지
+                 - 하나라도 없으면 CRITICAL: Dead Wiring
+
+              4. Config Flag Audit:
+                 - 이번 Phase에서 추가된 env var/설정이 실제 로드되는지
+                 - ENABLE_* 플래그가 True일 때 해당 기능이 활성화되는 코드 경로 확인
+
+              5. US AC Method Trace (거짓 양성 방지):
+                 - 해당 Phase US의 acceptanceCriteria에 언급된 메서드/기능 목록 추출
+                 - 각 메서드가 (1) 정의됨 (2) 호출 경로 존재 (3) 테스트됨 확인
+                 - 정의만 있고 호출 안 됨 = CRITICAL: Dead Method (passes:true 금지)
+
+              **산출물**: 5개 서브체크 결과 + PASS/FAIL + FAIL 시 구체적 미연결 목록.
+              FAIL 시 Stage B-Step 1로 복귀 (fix 필요).
+              **반환 3K 토큰 이내 요약.**")
+```
+
+> Assembly FAIL → Stage B-Step 1 fix 루프 복귀. 코드리뷰 진입 금지.
+> Assembly PASS → C-Step 1.5 멀티모델 감사 진행.
+
+#### C-Step 1.5: 멀티모델 독립 감사 (Assembly PASS 후, 코드리뷰 전)
+
+> **목적**: Claude 단독 리뷰의 맹점(blind spot) 제거. 3개 외부 모델(Codex+Gemini+Qwen)이 독립적으로 코드를 감사하고 quorum 합의로 이슈 판정.
+> **인라인 실행** (AskUserQuestion 없음, TeamCreate 없음 — leviathan 자동 흐름 보장)
+
+**1단계: 3개 외부 모델 병렬 코드 리뷰**
+
+프롬프트 (`CODE_REVIEW_PROMPT`):
+> "이 프로젝트의 Phase X에서 변경된 파일들을 감사하라. `git diff main...HEAD`로 변경사항을 확인하고, 다음을 검증: 로직 오류, 누락된 엣지케이스, 수학적 정확성, 통합 연결(wiring). 이슈별로 CRITICAL/HIGH/MEDIUM 심각도를 부여하라."
+
+```
+Agent(name="codex-code-reviewer",
+      prompt="Bash로 timeout 300 codex exec -s read-only '$CODE_REVIEW_PROMPT' 실행. 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션.")
+Agent(name="gemini-code-reviewer",
+      prompt="Bash로 timeout 300 gemini -p '$CODE_REVIEW_PROMPT' --approval-mode plan 실행. 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션.")
+Agent(name="qwen-code-reviewer",
+      prompt="Bash로 timeout 300 qwen --approval-mode plan -p '$CODE_REVIEW_PROMPT' 실행. 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션.")
+```
+
+**2단계: Claude 독립 리뷰 + quorum 합의**
+- Claude가 동일 변경사항을 독립 리뷰 (4번째 관점)
+- 4개 리뷰 결과 수집 → **quorum**: 2개 이상 모델이 지적한 이슈 = **MUST FIX**
+- 결과를 `.omc/artifacts/consensus-code-{phase}.md`에 저장
+
+**3단계: 보안 스캔 (전략/API 변경 시에만)**
+- Agent(subagent_type="oh-my-claudecode:security-reviewer") 직접 수행 (외부 CLI 불필요)
+
+**4단계: 결과 주입**
+- quorum 합의 결과를 Jennie(C-Step 1) 코드리뷰 컨텍스트에 주입
+- "멀티모델 감사에서 N개 모델이 지적한 MUST FIX 이슈: [목록]" 형태로 전달
+
+> MUST FIX 이슈 0건 → C-Step 1 코드리뷰 진행.
+> MUST FIX 이슈 1건 이상 → Stage B-Step 1 fix 루프 복귀.
+
 #### C-Step 1: 코드리뷰 + 보안리뷰 (병렬 Sub-agents)
 
 ```
 Agent(subagent_type="oh-my-claudecode:code-reviewer", name="jennie", model="opus",
       prompt="Phase X 변경 코드 종합 리뷰. API 계약, 하위호환, 아키텍처 준수, 설계 비판(PLAN.md 대비).
               **품질 체크리스트**: SOLID 원칙 위반, 안티패턴, 에러 핸들링 일관성, 성능 병목, 유지보수성.
-              **Shadow 결과 참조**: PnL/WR/crash 수치와 코드 로직의 정합성 교차 평가.
+
+              **⚡ 통합 추적 검증 (CRITICAL 우선순위 — 반드시 수행):**
+              이번 diff에서 새로 생성된 모든 클래스/인스턴스에 대해:
+              1. 생성 위치: 어디서 __init__() 호출? (file:line)
+              2. 주입 위치: 어디서 소비자에게 전달? (file:line)
+              3. 호출 위치: 어디서 실제 메서드 호출? (file:line)
+              → 하나라도 없으면 CRITICAL: Dead Wiring으로 분류.
+              → Assembly Verifier 결과와 교차 대조하여 누락 확인.
+
+              **Shadow 결과 참조**: Shadow 복합지표(13항목)와 코드 로직의 정합성 교차 평가.
+              특히: trade=0 전략 존재 시 해당 전략 코드 경로 집중 분석.
               **Entry Gate 컨텍스트**: [Karina Entry Gate 결과 ~3K 토큰 주입]
-              docs/review/Phase-X_REVIEW.md 작성")
+              docs/review/Phase-X_REVIEW.md 작성
+              **반환 3K 토큰 이내 요약. 상세는 docs/review/Phase-X_REVIEW.md에 기록.**")
 
 Agent(subagent_type="oh-my-claudecode:security-reviewer", name="jisoo",
-      prompt="Phase X 보안 리뷰. JWT/API키/거래실행 보안, OWASP Top 10, 시크릿 노출")
+      prompt="Phase X 보안 리뷰. JWT/API키/거래실행 보안, OWASP Top 10, 시크릿 노출
+              **반환 3K 토큰 이내 요약.**")
 ```
 
 **조건부 추가 에이전트 (C-Step 1과 병렬):**
@@ -286,8 +438,32 @@ Agent(subagent_type="browser-verifier", name="haerin",
       prompt="Chrome DevTools MCP로 대시보드 검증: 페이지 렌더링, API 200, WebSocket, 모바일 뷰")
 ```
 
-> 리뷰 결과 수집 → CRITICAL/HIGH 이슈 발견 시 Stage B Phase 1 fix 루프 복귀.
-> 결과 수신 즉시 C-Step 2 tool call 발행. 상태 요약/보고 금지.
+> 리뷰 결과 수집 → CRITICAL/HIGH 이슈 발견 시 Stage B-Step 1 fix 루프 복귀.
+> 결과 수신 즉시 C-Step 1.8 tool call 발행. 상태 요약/보고 금지.
+
+#### C-Step 1.8: Phase 완료 멀티모델 토론 (Go/No-Go 판단 보조)
+
+> **목적**: Karina의 Go/No-Go 판단 전에 "이 Phase가 상용급인가?"를 3개 외부 모델이 적대적으로 평가.
+> Karina가 Claude이므로 자기 코드에 관대할 수 있음 → 외부 모델의 냉혹한 비판을 사전 주입.
+> **인라인 실행** (AskUserQuestion 없음 — leviathan 자동 흐름 보장)
+
+프롬프트 (`GONOGO_PROMPT`):
+> "이 Phase의 상용 준비 상태를 냉혹하게 평가하라. 기준: 1) PLAN.md 대비 구현 완성도 2) Shadow 13항목 복합지표 3) CRITICAL/HIGH 해결 여부 4) 통합 연결(wiring) 완전성. Go 또는 No-Go 판정과 근거를 제시하라. 관대하게 평가하지 말 것."
+
+```
+Agent(name="codex-gonogo",
+      prompt="Bash로 timeout 300 codex exec -s read-only '$GONOGO_PROMPT' 실행. 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션.")
+Agent(name="gemini-gonogo",
+      prompt="Bash로 timeout 300 gemini -p '$GONOGO_PROMPT' --approval-mode plan 실행. 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션.")
+Agent(name="qwen-gonogo",
+      prompt="Bash로 timeout 300 qwen --approval-mode plan -p '$GONOGO_PROMPT' 실행. 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션.")
+```
+
+- 3개 결과 수집 → 과반수(2+) Go → Go 판정, 아니면 No-Go
+- 결과를 `.omc/artifacts/consensus-gonogo-{phase}.md`에 저장
+- Karina(C-Step 2) Go/No-Go 컨텍스트에 주입: "외부 모델 Go/No-Go = [판정], 근거: [목록]"
+
+> 결과 수집 즉시 C-Step 2 tool call 발행.
 
 #### C-Step 2: Phase 완료 리뷰 — Karina (PM + Architect)
 
@@ -298,15 +474,23 @@ Agent(subagent_type="oh-my-claudecode:architect", name="karina", model="opus",
       prompt="Phase 완료 리뷰 (PM+Architect):
               1. 계획 이행: PLAN.md 대비 실제 구현 — 빠진 항목 없는가?
               2. 리뷰 해결: REVIEW.md CRITICAL/HIGH — 전부 해결?
-              3. 런타임 검증: Shadow 결과 — PnL > 0, crash = 0, 10min+?
-              4. 수용기준: prd.json acceptanceCriteria — 전부 충족?
-              5. 3-way 정합성: SSOT.md/prd.json/CLAUDE.md 숫자 일치?
-              6. Go/No-Go:
+              3. 런타임 검증 (복합지표): Shadow 13항목 전부 PASS?
+                 - 절대 지표 확인: MDD<5%, Profit Factor>1.0, 신호>=100/day
+                 - 통합 확인: 활성 전략 전부 trade>=1, 방어 레이어 활성
+                 - 단순 PnL>0만으로 판단 금지 (시드 대비 상대적 지표)
+              4. 조립 검증: Assembly Verifier 4-check 전부 PASS?
+                 - Init Chain, Signal Flow, Dead Wiring, Config Audit
+              5. 수용기준: prd.json acceptanceCriteria — 전부 충족?
+                 - ⚡ WIRING AC 있는 US: 생성→주입→호출 3가지 증거 확인
+              6. 3-way 정합성: SSOT.md/prd.json/CLAUDE.md 숫자 일치?
+              7. Go/No-Go:
                  - PASS → Sakura에게 SSOT+git 지시
-                 - FAIL → 복귀 대상 명시:
-                   • 코드 결함 → Stage B Phase 1 (개발 fix)
-                   • Shadow 미달 → Stage B Phase 2 (Shadow 재실행)
-                   • 기획 결함 → Stage A (재기획)")
+                 - FAIL → 복귀 대상 + 실패 유형 명시:
+                   • Dead Wiring(Type W) → Stage A (재기획, L2 에스컬레이션)
+                   • 파라미터(Type P) → Stage B-Step 2 (Shadow 재실행)
+                   • 코드 결함 → Stage B-Step 1 (개발 fix)
+                   • 기획 결함 → Stage A (재기획)
+              **반환 3K 토큰 이내 요약.**")
 ```
 
 > **Agent Teams 불필요**: Karina가 PLAN.md + REVIEW.md + Shadow 결과 + prd.json을 직접 읽으면,
@@ -318,12 +502,17 @@ Agent(subagent_type="oh-my-claudecode:architect", name="karina", model="opus",
 ```
 Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
       prompt="Phase 완료 반영 — 아래 6가지 전부 수행:
-              1) prd.json: 완료 US passes:true 마킹
+              0) **passes:true 전 런타임 증거 확인 (거짓 양성 방지)**:
+                 - 각 US의 acceptanceCriteria 기능이 Shadow 10min 로그에서 1회 이상 호출된 증거 확인
+                 - 증거 없으면 = dead code → passes:false 유지 (코드 존재만으로 완료 판정 금지)
+                 - 확인 방법: grep Shadow 로그 또는 Prometheus 메트릭
+              1) prd.json: 런타임 증거 확인된 US만 passes:true 마킹
               2) SSOT.md §2: Phase, 테스트 수, 완료 US 카운트, 다음 작업 업데이트
               3) SSOT.md §7 헤더: 'N개 User Stories, M개 완료, K개 미완' 숫자를 prd.json 실제 카운트와 동기화
               4) CLAUDE.md '현재 상태' 섹션: PRD 카운트, 테스트 수, 다음 작업을 SSOT.md §2와 동기화
               5) **검증**: Grep으로 prd.json passes:true/false 카운트 → 3곳(SSOT §2, §7, CLAUDE.md) 숫자 대조. 불일치 시 수정.
-              6) **Git**: git add + git commit -m 'Phase X: [US 목록] 완료' + git push origin main. push 누락 = FAIL.")
+              6) **Git**: git add + git commit -m 'Phase X: [US 목록] 완료' + git push origin main. push 누락 = FAIL.
+              **반환 3K 토큰 이내 요약.**")
 ```
 > 결과 수신 즉시 다음 블록 tool call 발행. 상태 요약/보고 금지.
 
@@ -352,7 +541,7 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 ## 3. 팀 구조 (7팀 + TF)
 
 > 팀은 **기능별로 정의**, Stage가 **필요한 팀을 호출**하는 구조.
-> Stage B Phase 1만 TeamCreate 사용 (개발자 간 협업 필요), 나머지는 Agent() 서브에이전트 (독립 작업).
+> Stage B-Step 1만 TeamCreate 사용 (개발자 간 협업 필요), 나머지는 Agent() 서브에이전트 (독립 작업).
 
 ### ① 기획팀 [AESPA] — Stage A 활성화 (4명)
 
@@ -365,7 +554,7 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 
 사전 단계: `oh-my-claudecode:explore` (haiku) — 코드베이스 탐색 후 architect에게 컨텍스트 제공
 
-### ② 개발팀 [IVE] — Stage B Phase 1 활성화 (최대 6명, TeamCreate)
+### ② 개발팀 [IVE] — Stage B-Step 1 활성화 (최대 6명, TeamCreate)
 
 | 팀원 | 에이전트 (subagent_type) | 모델 | 역할 |
 |------|------------------------|------|------|
@@ -385,7 +574,7 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 | **Jennie** | `oh-my-claudecode:code-reviewer` | opus | 종합 코드리뷰 + 설계 비판 + 품질 + Shadow 결과 교차 평가, REVIEW.md 작성 |
 | **Jisoo** | `oh-my-claudecode:security-reviewer` | sonnet | 보안: JWT/API키/OWASP (금융 필수) |
 
-### ④ 테스트팀 [NewJeans] — Stage B Phase 2 활성화 (최대 5명)
+### ④ 테스트팀 [NewJeans] — Stage B-Step 2 활성화 (최대 5명)
 
 | 팀원 | 에이전트 (subagent_type) | 모델 | 역할 |
 |------|------------------------|------|------|
@@ -423,7 +612,7 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 **팀 규칙:**
 - Karina는 AESPA(①) + LE SSERAFIM(⑤) 양쪽 — Entry Gate(A) + Phase 완료 리뷰(C) 연속성 보장
 - ITZY(⑥)는 Stage A + Stage B 양쪽 활성화
-- Stage B Phase 1만 TeamCreate (협업 필요), 나머지 Agent() (독립 작업)
+- Stage B-Step 1만 TeamCreate (협업 필요), 나머지 Agent() (독립 작업)
 - 병렬 필요 시 같은 역할 추가 스폰 가능 (IVE 최대 6명)
 - 모델 라우팅: opus=아키텍처/심층분석, sonnet=구현/표준, haiku=탐색/단순
 
@@ -435,14 +624,16 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 |------|------|-------|
 | Entry Gate | SSOT/prd.json/CLAUDE.md 정합성 PASS | A |
 | PLAN.md | `docs/planning/Phase-X_PLAN.md` 존재 | A |
+| WIRING AC | 새 컴포넌트 US에 `⚡ WIRING:` AC 3개 포함 (생성→주입→호출) | A |
 | QUANT GATE | 전략/수식 US 시 PASS | A |
-| pytest | 0 failures | B (Phase 1) |
-| Shadow 10min+ | PnL > 0, crash = 0, 10분 이상 | B (Phase 2) |
-| Docker | 전 컨테이너 healthy | B (Phase 2) |
-| 코드리뷰 | CRITICAL/HIGH 0건 | C (Step 1) |
+| pytest | 0 failures | B (Step 1) |
+| Shadow 13항목 | 복합지표 전부 PASS (§B-Step 2 표 참조) | B (Step 2) |
+| Docker | 전 컨테이너 healthy | B (Step 2) |
+| **Assembly Gate** | **init chain non-None + signal flow E2E + dead wiring 0건** | **C (Step 0.5)** |
+| 코드리뷰 | CRITICAL/HIGH 0건 + **통합 추적 검증** | C (Step 1) |
 | 보안리뷰 | CRITICAL 0건 | C (Step 1) |
 | REVIEW.md | `docs/review/Phase-X_REVIEW.md` 존재 | C (Step 1) |
-| Phase 완료 리뷰 | Karina Go/No-Go = PASS | C (Step 2) |
+| Phase 완료 리뷰 | Karina Go/No-Go = PASS (**통합 검증 포함**) | C (Step 2) |
 | SSOT.md | 해당 섹션 업데이트됨 | C (Step 3) |
 | prd.json | `passes: true` | C (Step 3) |
 | Git | `git add` + `git commit` + `git push origin main` 일괄 완료 | C (Step 3) |
@@ -451,6 +642,34 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 
 > `npm run build` 성공만으로 Phase D/H 완료 선언 금지. Chrome 실제 렌더링 필수.
 > Shadow 10분 미만 실행으로 완료 선언 금지. 실제 10분+ 무중단 필수.
+> **Assembly Gate 없이 코드리뷰 진행 금지.** 조립 검증이 코드 품질 리뷰보다 먼저.
+> **WIRING AC 없는 새 컴포넌트 US는 Stage A에서 차단.** 기획 시점에 통합 기준 수립 필수.
+
+### 4.1 prd.json Acceptance Criteria 작성 규칙 (WIRING 필수)
+
+> 새 클래스/모듈을 생성하는 모든 US에는 반드시 아래 3개 `⚡ WIRING:` AC를 포함할 것.
+> 이 규칙이 없어서 "코드는 있지만 연결 안 됨" 문제가 Phase S2~S9에서 반복 발생.
+
+```
+⚡ WIRING 필수 AC 3개:
+1. "⚡ WIRING: [파일]에서 [클래스] 인스턴스 생성 확인"
+2. "⚡ WIRING: [소비자]에 주입/등록 확인 (예: main.py → RiskGuardian.register())"
+3. "⚡ WIRING: Shadow 10min 중 [컴포넌트] 이벤트/호출 >= 1건 (런타임 활성 증거)"
+```
+
+예시:
+```json
+{
+  "id": "US-222",
+  "acceptanceCriteria": [
+    "StrategyManager에 per-strategy loss counter 추가",
+    "연속 N건 손실 시 해당 전략 300s 쿨다운",
+    "⚡ WIRING: main.py에서 PerStrategyCB 인스턴스 생성 확인",
+    "⚡ WIRING: RiskGuardian.register(per_strategy_cb) 호출 확인",
+    "⚡ WIRING: Shadow 10min 중 per_strategy_cb 이벤트 >= 1건"
+  ]
+}
+```
 
 ## 4.5 에스컬레이션
 
@@ -464,6 +683,34 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 | **L5** | **동일 Phase 3회 이상 실패** | **텔레그램 알림 → 사장님 대기** |
 
 L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승인 필수.**
+
+### 4.6 추가 안전장치 (워크플로우 V2 보강)
+
+> 효율성 분석 + 외부 리서치(MAST NeurIPS 2025, Google ADK, VeriMAP) 기반 보강.
+
+**R2. 전략 간 상관관계 체크 (Shadow 14번째 기준):**
+- Shadow 13항목 PASS 후 추가 검증: 활성 전략 쌍의 PnL 시계열 상관계수 |r| > 0.7이면 WARNING
+- 근거: TF SF 2차 FAIL 근본 원인 — stat_arb와 cross_exchange가 동일 신호 중복 소비
+- WARNING 시 전략 간 overlap 분석 → 필요 시 disabled_strategies 조정
+
+**R3. Fix Loop W/P/B 분류는 debugger가 수행:**
+- executor(개발자)가 자기 실패를 분류하면 이해충돌 (Type P로 과소 분류 가능)
+- Shadow FAIL 시 Hyein(debugger)이 원인 분석 + 유형 분류 → Lead가 에스컬레이션 결정
+- 근거: "Team of Rivals" 논문 (2026) — 생산자와 검증자 분리
+
+**R4. 새 Gate에 체크포인트 쓰기:**
+- Assembly Gate PASS 후: `checkpoint save --trigger "assembly_gate_pass"`
+- Shadow 13항목 PASS 후: `checkpoint save --trigger "shadow_13item_pass"`
+- 세션 크래시 시 체크포인트에서 재개 가능 (Gate 재실행 방지)
+
+**R5. 텔레그램 승인 타임아웃:**
+- 사장님 승인 요청 후 4시간 초과 시 → 2차 알림 (재전송)
+- 8시간 초과 시 → 자동 일시정지 (무한 대기 방지, 다음 세션에서 재개)
+
+**R6. Assembly Gate 조건부 실행:**
+- `git diff --name-only`에 `class ` 정의 또는 `__init__` 변경이 포함된 경우에만 실행
+- 파라미터/문서/설정 변경만 있는 Phase에서는 스킵 (불필요 오버헤드 제거)
+- 스킵 시에도 Shadow 13항목은 반드시 실행 (스킵 불가)
 
 ## 5. 인프라 규칙
 
@@ -479,8 +726,8 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승�
 | 시점 | 동작 |
 |------|------|
 | Stage A 완료 | PLAN.md + checkpoint → 즉시 Stage B TeamCreate |
-| Stage B Phase 1 완료 | pytest PASS + TeamDelete → 즉시 Phase 2 Shadow |
-| Stage B Phase 2 완료 | Shadow PASS + checkpoint → 즉시 Stage C |
+| Stage B-Step 1 완료 | pytest PASS + TeamDelete → 즉시 Phase 2 Shadow |
+| Stage B-Step 2 완료 | Shadow PASS + checkpoint → 즉시 Stage C |
 | Stage C Step 1 완료 | 코드리뷰 PASS → 즉시 Step 2 Karina |
 | Stage C Step 2 완료 | Go → 즉시 Step 3 Sakura |
 | Stage C Step 3 완료 | SSOT/git push + 텔레그램 → **사장님 승인 대기** |
@@ -495,6 +742,42 @@ L0~L1 자동 처리. L2~L4 로그 출력 후 자동 복귀. **L5 사장님 승�
 4. 성공 시 → `send_context_clear_success()` 알림 → progress.json으로 자동 재개
 5. 실패 시 → `send_context_alert()` 알림 → 사장님 수동 개입 필요
 6. **`/compact` 절대 금지** — 결과 소실 위험
+
+## 6.5 Phase S15~S21 실행 (2026-03-19 회귀)
+
+> 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
+> 회귀 사유: CRITICAL 버그 6개 + 수학 오류 3개 + ML/리스크 미연결
+> **다음 작업**: Phase S15 (최우선) → S16 → S17 → S18 → S19+S20 병렬 → S21 → TF QF 재개
+
+**실행 순서:**
+- S15 + S19 + S20 병렬 → S16 → S17 → S18 → S21
+- 한 Phase씩 사장님 승인 후 다음 진행
+
+**Phase 완료 기준 (강화판):**
+1. 단위 테스트 PASS
+2. Shadow 10min — crash 0, LiveGate 6-check 계산 + **차단 동작**
+3. 전략별 독립 검증 (5min) + 통합 검증 (10min)
+4. **수치 리포트 제출** — 성공 증명 로그 + 수치
+5. ML Phase: 모델 파일 생성 + Score→Threshold 변경 **Live Log 증명**
+6. SSOT.md 갱신
+
+**S15 핵심 (최우선):**
+- stat_arb regime_detector 주입 (main.py:898)
+- LiveGate 실행 경로 강제 (is_live_eligible 차단)
+- profit_factor 금액 비율 수정 (shadow.py:2201)
+- estimate_cost→calculate 통합 (cost_calculator.py)
+- ADV/sigma 동적 계산 (signal.py:51-52)
+- 삼각 leg sizing 보정 (triangular.py:134-145)
+- HMM/XGBoost 학습 루프 + ONNX export + Model Performance Gate
+- Feature Pipeline→ONNX Scorer 20-feature 연결
+- RegimeDetector 전 전략 연결
+- AdaptiveThreshold 전략별 분리
+- PositionReconciler + PositionRecovery + RecoveryManager 통합 (main.py)
+- ComplianceChecker 시작 시 실행 (startup sequence)
+- peak_equity DB 영속화 (TimescaleDB persist/restore on restart)
+- Walk-forward Validation (ML 모델 실데이터 검증)
+
+---
 
 ## 7. TF (Task Force) — Quarter-Final / Semi-Final / Final
 
@@ -826,7 +1109,7 @@ WORKFLOW_TELEGRAM_CHAT_ID=<채팅 ID>
 **1순위 — `.omc/state/leviathan-progress.json`**:
 - 존재 시 `next_stage`에 따라 해당 Stage부터 재개
 - `plan_file` 있으면 PLAN.md 읽어 복원
-- Stage B Phase 2 재개 시 progress.json의 메타데이터로 복원
+- Stage B-Step 2 재개 시 progress.json의 메타데이터로 복원
 
 **2순위 — $ARGUMENTS**: 인수가 있으면 해당 US부터 Stage A
 
@@ -834,3 +1117,16 @@ WORKFLOW_TELEGRAM_CHAT_ID=<채팅 ID>
 
 > 모든 US `passes:true`까지 자동 루프. Phase 내 자동, Phase 간 사장님 승인 필수.
 > 멈추는 조건: 전 US 완료 OR L5 에스컬레이션 OR 사용자 "stop/cancel/멈춰".
+
+---
+
+## 99. CONTINUATION ANCHOR (압축 후에도 유지 — 이 섹션은 반드시 파일 마지막에 위치)
+
+> 컨텍스트 압축 시 앞부분이 먼저 삭제됨. 이 섹션은 마지막에 있으므로 압축 후에도 살아남음.
+
+**절대 규칙 (§0 ZERO TOLERANCE 반복):**
+- 에이전트 결과 수신 즉시 다음 tool call 발행. 텍스트만 출력하고 멈추면 = **BUG**.
+- Stage 전환 순서: **A→B(TeamCreate) → B-Step 2(Shadow) → C(Assembly+Review) → C(Go/No-Go) → C(SSOT+push) → 텔레그램 → 다음Phase A**
+- "Churned/Brewed/Cooked" 후 반드시 tool call. 요약/보고만 하고 멈추면 = **BUG**.
+- 모든 에이전트 반환 3K 토큰 이내. 상세는 파일에 기록.
+- **run_in_background 금지**. 모든 Agent foreground 실행.

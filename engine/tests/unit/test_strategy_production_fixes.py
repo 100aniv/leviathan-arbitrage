@@ -267,24 +267,37 @@ class TestTriangularSizingFix:
 
     @pytest.mark.asyncio
     async def test_size_capped_to_base_units_from_max_position_usdt(self, active_strategy):
-        """max_position_usdt=1000, first_price=60000 → max_base=0.01667.
-        Signal volume=10.0 should be capped to 0.01667."""
+        """US-249: per-leg sizes propagate correctly through the triangle.
+        max_position_usdt=1000, prices=[60000, 0.054, 3500]
+          Leg1 (BUY BTC/USDT): 1000/60000 ≈ 0.01667 BTC
+          Leg2 (BUY ETH/BTC):  0.01667/0.054 ≈ 0.3086 ETH
+          Leg3 (SELL ETH/USDT): 0.3086 ETH (same as leg2)
+        """
         signal = self._make_tri_signal(volume="10.0", prices=["60000", "0.054", "3500"])
         result = await active_strategy.on_signal(signal)
         assert result is not None
-        expected_max_base = Decimal("1000") / Decimal("60000")
-        # size must not exceed expected_max_base (with tolerance for rounding)
-        for leg in result.legs:
-            assert leg.size <= expected_max_base + Decimal("1e-10")
+        assert len(result.legs) == 3
+        leg1_size = Decimal("1000") / Decimal("60000")
+        leg2_size = leg1_size / Decimal("0.054")
+        leg3_size = leg2_size
+        tol = Decimal("1e-8")
+        assert abs(result.legs[0].size - leg1_size) < tol, f"Leg1 size mismatch: {result.legs[0].size}"
+        assert abs(result.legs[1].size - leg2_size) < tol, f"Leg2 size mismatch: {result.legs[1].size}"
+        assert abs(result.legs[2].size - leg3_size) < tol, f"Leg3 size mismatch: {result.legs[2].size}"
 
     @pytest.mark.asyncio
     async def test_size_uses_signal_volume_when_smaller_than_max_base(self, active_strategy):
-        """Signal volume=0.001 < max_base=1000/60000≈0.0167 → size = 0.001."""
+        """US-249: when signal.volume < max_base, leg1 = volume, subsequent legs propagate.
+        volume=0.001 BTC → Leg1=0.001 BTC, Leg2=0.001/0.054 ETH, Leg3=same."""
         signal = self._make_tri_signal(volume="0.001", prices=["60000", "0.054", "3500"])
         result = await active_strategy.on_signal(signal)
         assert result is not None
-        for leg in result.legs:
-            assert leg.size == Decimal("0.001")
+        tol = Decimal("1e-10")
+        leg1_size = Decimal("0.001")
+        leg2_size = leg1_size / Decimal("0.054")
+        assert abs(result.legs[0].size - leg1_size) < tol
+        assert abs(result.legs[1].size - leg2_size) < tol
+        assert abs(result.legs[2].size - leg2_size) < tol
 
     @pytest.mark.asyncio
     async def test_gross_profit_uses_notional_not_raw_size(self, active_strategy):

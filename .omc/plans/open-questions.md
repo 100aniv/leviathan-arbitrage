@@ -13,3 +13,12 @@
 - [ ] Upbit 수수료를 CLAUDE.md "자주 틀리는 패턴"에 추가할지, SSOT 참조로 충분한지 결정 필요 — 세션마다 Upbit Maker 0.05% vs Taker 0.139% 혼동 빈도에 따라 판단 (US-150)
 - [ ] SSOT.md RiskGuardian Check #4가 두 가지 역할(CircuitBreaker + net_exposure)을 수행 — 번호를 분리할지(#4a/#4b) 또는 현행 유지할지 결정 필요 (US-151)
 - [ ] prd.json의 US-150 AC에 "3,747→실제 수"라고 되어 있으나 실제 현재 수는 4,460 — AC 자체도 현행화 필요 (US-150)
+
+## Phase S15 CRITICAL + ML 연결 - 2026-03-19
+- [ ] US-257: `_stats.total_profit`/`_stats.total_loss` 필드가 ShadowMode._stats에 이미 존재하는지 확인 필요 — 없으면 on_fill()에서 축적 로직 추가 필요
+- [ ] US-247: estimate_cost()에 rollback 비용 추가 시 avg_rollback_cost 파라미터를 어디서 가져올지 — CostCalculator 내부 trade_history 사용 vs 외부 주입
+- [ ] US-248: ADV 동적 계산의 시간 윈도우 결정 — 5분 vs 15분 vs 1시간 (시장 특성에 따라 다름)
+- [ ] US-254: RegimeDetector 인터페이스를 Protocol로 정의할지 ABC로 정의할지 — 6개 전략 공통 인터페이스
+- [ ] US-256: peak_equity DB 테이블 스키마 — 기존 shadow_metrics 테이블 확장 vs 신규 테이블
+- [ ] US-258-a: ShadowMiniTuner를 활성화할지 제거할지 — TF SF Stage 3 결과(PROVEN/NEUTRAL/HARMFUL) 기반 판단 필요, 현재 데이터 없음
+- [ ] US-253: MLCanary 초기 단계를 DISABLED로 시작할지 SHADOW로 시작할지 — ONNX 모델 미존재 시 DISABLED 강제가 안전

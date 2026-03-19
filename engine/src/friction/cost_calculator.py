@@ -114,6 +114,7 @@ class CostCalculator:
         side: OrderSide,
         size: Decimal,
         price: Decimal,
+        dest_exchange_id: str | None = None,
     ) -> Decimal:
         """Estimate cost in USDT for one trade leg (Protocol bridge).
 
@@ -121,11 +122,19 @@ class CostCalculator:
         Returns taker_fee + network_cost for the given notional (price * size).
         Note: slippage is excluded here — it is applied upstream by SignalGenerator
         (CEXOrderbookSlippage pre-filter) and cannot be computed without an orderbook.
+
+        Deprecated: prefer calculate() for full two-leg friction with slippage.
+        US-247: network_cost=0 when both legs are on the same exchange (no transfer needed).
         """
         ex = exchange_id.removeprefix("paper_").removeprefix("sandbox_")
         notional = price * size
         fee = self._fee_model.taker_fee(ex, notional)
-        return fee + self._network_cost
+        # US-247: Skip network transfer cost for intra-exchange trades (e.g. triangular)
+        dest_ex = dest_exchange_id.removeprefix("paper_").removeprefix("sandbox_") if dest_exchange_id else None
+        network_cost = Decimal("0") if (dest_ex is not None and dest_ex == ex) else self._network_cost
+        # US-247: Add expected rollback cost (avg $5 per rollback event)
+        rollback_cost = self.expected_rollback_cost(Decimal("5"))
+        return fee + network_cost + rollback_cost
 
     def calculate(
         self,

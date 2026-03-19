@@ -60,9 +60,14 @@ class PositionRecovery:
         self,
         stale_threshold_s: float = 300.0,  # 5 minutes
         redis_prefix: str = "leviathan:wal:",
+        # US-250: Accept redis client directly for async scan/reconcile
+        redis=None,
+        stale_threshold_seconds: float | None = None,
     ) -> None:
-        self.stale_threshold_s = stale_threshold_s
+        # stale_threshold_seconds overrides stale_threshold_s if provided
+        self.stale_threshold_s = stale_threshold_seconds if stale_threshold_seconds is not None else stale_threshold_s
         self.redis_prefix = redis_prefix
+        self._redis = redis  # async or sync redis client
 
     def write_wal(self, redis_conn, trade_id: str, state: dict) -> None:
         """Write trade state to Redis WAL before execution."""
@@ -162,3 +167,77 @@ class PositionRecovery:
         )
 
         return result
+
+    async def scan(self) -> "RecoveryResult":
+        """US-250: Async scan using stored redis client.
+
+        Scans WAL for incomplete entries and decides recovery action.
+        Uses self._redis (passed in __init__) instead of a passed-in conn.
+        """
+        if self._redis is None:
+            return RecoveryResult()
+        try:
+            # Support both sync and async redis clients
+            keys_coro = self._redis.keys(f"{self.redis_prefix}*")
+            if hasattr(keys_coro, "__await__"):
+                keys = await keys_coro
+            else:
+                keys = keys_coro
+        except Exception as exc:
+            logger.warning("scan.keys_error: %s", exc)
+            return RecoveryResult()
+
+        result = RecoveryResult(positions_found=0)
+        for key in keys:
+            try:
+                raw_coro = self._redis.get(key)
+                raw = await raw_coro if hasattr(raw_coro, "__await__") else raw_coro
+                if raw is None:
+                    continue
+                state = json.loads(raw)
+                opened_str = state.get("opened_at", "")
+                opened_at = (
+                    datetime.fromisoformat(opened_str)
+                    if opened_str
+                    else datetime.now(timezone.utc)
+                )
+                age = (datetime.now(timezone.utc) - opened_at).total_seconds()
+                pos = OpenPosition(
+                    trade_id=state.get("trade_id", str(key)),
+                    strategy_id=state.get("strategy_id", "unknown"),
+                    exchange_id=state.get("exchange_id", "unknown"),
+                    symbol=state.get("symbol", ""),
+                    side=state.get("side", "buy"),
+                    size=float(state.get("size", 0)),
+                    entry_price=float(state.get("entry_price", 0)),
+                    opened_at=opened_at,
+                    age_seconds=age,
+                )
+                result.positions_found += 1
+                action = self.decide_action(pos)
+                if action == RecoveryAction.CLOSE:
+                    result.closed += 1
+                    logger.info("recovery.close: %s age=%.0fs", pos.trade_id, age)
+                elif action == RecoveryAction.RESUME:
+                    result.resumed += 1
+                    logger.info("recovery.resume: %s age=%.0fs", pos.trade_id, age)
+                else:
+                    result.skipped += 1
+                result.actions.append({
+                    "trade_id": pos.trade_id,
+                    "action": action.value,
+                    "symbol": pos.symbol,
+                    "age_s": round(age, 1),
+                })
+            except Exception as exc:
+                logger.warning("scan.parse_error: key=%s err=%s", key, exc)
+
+        logger.info(
+            "recovery.scan_complete: found=%d closed=%d resumed=%d skipped=%d",
+            result.positions_found, result.closed, result.resumed, result.skipped,
+        )
+        return result
+
+    async def reconcile(self) -> "RecoveryResult":
+        """US-250: Alias for scan() — periodic reconciliation entry point."""
+        return await self.scan()

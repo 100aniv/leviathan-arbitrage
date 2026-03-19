@@ -129,3 +129,33 @@ class AdaptiveThreshold:
             self.history.clear()
         except Exception as exc:  # noqa: BLE001
             logger.error("adaptive_threshold.save_history failed", error=str(exc))
+
+
+class PerStrategyAdaptiveThreshold:
+    """US-255: Wrapper that manages per-strategy AdaptiveThreshold instances.
+
+    Provides independent edge_bps tuning per strategy while remaining backward
+    compatible with the existing global AdaptiveThreshold usage.
+    """
+
+    def __init__(self, default_edge_bps: float = 5.0) -> None:
+        self._default_edge = default_edge_bps
+        self._thresholds: dict[str, AdaptiveThreshold] = {}
+
+    def get_or_create(self, strategy_id: str) -> AdaptiveThreshold:
+        if strategy_id not in self._thresholds:
+            self._thresholds[strategy_id] = AdaptiveThreshold(
+                initial_edge_bps=self._default_edge
+            )
+        return self._thresholds[strategy_id]
+
+    def adjust(self, strategy_id: str = "global", **kwargs) -> float:
+        """Adjust threshold for a specific strategy."""
+        return self.get_or_create(strategy_id).adjust(**kwargs)
+
+    def get_edge(self, strategy_id: str = "global") -> float:
+        return self.get_or_create(strategy_id).current_edge_bps
+
+    @property
+    def strategy_ids(self) -> list[str]:
+        return list(self._thresholds.keys())
