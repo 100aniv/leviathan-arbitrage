@@ -156,6 +156,11 @@ class PerStrategyAdaptiveThreshold:
     def get_edge(self, strategy_id: str = "global") -> float:
         return self.get_or_create(strategy_id).current_edge_bps
 
+    async def save_history(self, conn) -> None:
+        """Persist history for all managed per-strategy thresholds."""
+        for threshold in self._thresholds.values():
+            await threshold.save_history(conn)
+
     @property
     def strategy_ids(self) -> list[str]:
         return list(self._thresholds.keys())

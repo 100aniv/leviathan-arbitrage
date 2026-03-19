@@ -135,38 +135,38 @@
   "hotPaths": [
     {
       "path": "engine/src/main.py",
-      "accessCount": 154,
-      "lastAccessed": 1773926731919,
+      "accessCount": 173,
+      "lastAccessed": 1773928237791,
       "type": "file"
     },
     {
       "path": ".claude/commands/leviathan.md",
-      "accessCount": 152,
-      "lastAccessed": 1773926332190,
+      "accessCount": 161,
+      "lastAccessed": 1773928651643,
       "type": "file"
     },
     {
       "path": "SSOT.md",
-      "accessCount": 92,
-      "lastAccessed": 1773926340959,
+      "accessCount": 94,
+      "lastAccessed": 1773927801847,
       "type": "file"
     },
     {
       "path": "engine/src",
-      "accessCount": 86,
-      "lastAccessed": 1773925914342,
+      "accessCount": 89,
+      "lastAccessed": 1773927827270,
       "type": "directory"
     },
     {
       "path": ".claude/CLAUDE.md",
-      "accessCount": 56,
-      "lastAccessed": 1773926082967,
+      "accessCount": 58,
+      "lastAccessed": 1773928557564,
       "type": "file"
     },
     {
       "path": "engine/src/core/signal.py",
-      "accessCount": 44,
-      "lastAccessed": 1773923622101,
+      "accessCount": 49,
+      "lastAccessed": 1773927823402,
       "type": "file"
     },
     {
@@ -183,8 +183,8 @@
     },
     {
       "path": "engine/src/tuning/adaptive_threshold.py",
-      "accessCount": 15,
-      "lastAccessed": 1773926455875,
+      "accessCount": 19,
+      "lastAccessed": 1773928230495,
       "type": "file"
     },
     {
@@ -201,8 +201,8 @@
     },
     {
       "path": "engine/src/strategies/triangular.py",
-      "accessCount": 11,
-      "lastAccessed": 1773923857117,
+      "accessCount": 13,
+      "lastAccessed": 1773927545320,
       "type": "file"
     },
     {
@@ -248,15 +248,15 @@
       "type": "file"
     },
     {
-      "path": "engine/src/ml/feature_pipeline.py",
-      "accessCount": 5,
-      "lastAccessed": 1773920533372,
+      "path": "engine/src/ml/hmm_trainer.py",
+      "accessCount": 6,
+      "lastAccessed": 1773927832641,
       "type": "file"
     },
     {
-      "path": "engine/src/ml/hmm_trainer.py",
+      "path": "engine/src/ml/feature_pipeline.py",
       "accessCount": 5,
-      "lastAccessed": 1773923843232,
+      "lastAccessed": 1773920533372,
       "type": "file"
     },
     {

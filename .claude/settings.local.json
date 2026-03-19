@@ -59,10 +59,18 @@
       "Bash(xargs kill:*)",
       "Bash(grep -n \"class DatabasePool\\\\|def acquire\" engine/src/infra/*.py)",
       "Bash(grep -B 5 'DatabasePool.*object has no attribute' engine/src/ml/*.py)",
-      "Bash(grep -n \"db_pool.acquire\\\\|\\\\.acquire\\(\\)\" engine/src/ml/*.py)"
+      "Bash(grep -n \"db_pool.acquire\\\\|\\\\.acquire\\(\\)\" engine/src/ml/*.py)",
+      "Bash(ls -la .omc/state/*.json)",
+      "Read(//private/var/folders/**)",
+      "Bash(xargs cat:*)",
+      "Bash(find /private/tmp -name *.output -mmin -5 2)",
+      "Bash(/dev/null -exec wc -l {})"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "/tmp"
+    ]
   },
   "teammateMode": "tmux"
 }

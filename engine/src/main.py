@@ -783,6 +783,17 @@ class Engine:
         except Exception as exc:
             logger.warning("MLCanary init failed (non-fatal): %s", exc)
 
+        # US-174/255: PerStrategyAdaptiveThreshold for dynamic MIN_EDGE per strategy
+        # Must be created BEFORE SignalGenerator so it can be injected
+        try:
+            from src.tuning.adaptive_threshold import PerStrategyAdaptiveThreshold
+            self._adaptive_threshold = PerStrategyAdaptiveThreshold(
+                default_edge_bps=float(min_edge_bps),
+            )
+            logger.info("PerStrategyAdaptiveThreshold initialized (initial_edge_bps=%s)", min_edge_bps)
+        except Exception as exc:
+            logger.warning("AdaptiveThreshold init failed (non-fatal): %s", exc)
+
         self._signal_generator = SignalGenerator(
             price_hub=self._price_hub,
             cost_calculator=self._cost_calculator,
@@ -793,6 +804,7 @@ class Engine:
             ml_scorer=ml_scorer,
             ml_feature_pipeline=ml_feature_pipeline,
             ml_canary=ml_canary,
+            adaptive_threshold=self._adaptive_threshold,
         )
 
         # US-170: TriangularScanner
@@ -804,16 +816,6 @@ class Engine:
             logger.info("TriangularScanner initialized (min_profit_bps=%s)", min_edge_bps)
         except Exception as exc:
             logger.warning("TriangularScanner init failed (non-fatal): %s", exc)
-
-        # US-174/255: PerStrategyAdaptiveThreshold for dynamic MIN_EDGE per strategy
-        try:
-            from src.tuning.adaptive_threshold import PerStrategyAdaptiveThreshold
-            self._adaptive_threshold = PerStrategyAdaptiveThreshold(
-                default_edge_bps=float(min_edge_bps),
-            )
-            logger.info("PerStrategyAdaptiveThreshold initialized (initial_edge_bps=%s)", min_edge_bps)
-        except Exception as exc:
-            logger.warning("AdaptiveThreshold init failed (non-fatal): %s", exc)
 
         logger.info(
             "Signal pipeline initialized min_edge_bps=%s max_spread_pct=%s stale_deviation_pct=%s"

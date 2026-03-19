@@ -279,7 +279,7 @@ Agent(subagent_type="oh-my-claudecode:debugger", name="hyein",
 > **TF SF 추가 기준**: 위 13항목 + Sharpe >= 2.0 + Calmar > 0 + 전략별 WR > 50% + Expected Edge > 0 bps
 > **TF Final 추가 기준**: 위 + Sharpe >= 2.5 + Profit Factor > 1.2 + 리콘실리에이션 오차 < 1%
 > **#11 dead strategy 방지**: 7개 전략 중 3개만 작동해도 PnL > 0이면 PASS되던 구멍 차단. trade=0 전략 발견 시 → FAIL (dead wiring 의심)
-> **#13 결과 파일**: shadow-tester(Minji)가 반드시 JSON 파일로 결과 기록. Assembly Verifier(C-Step 0.5) + Karina Go/No-Go가 이 파일을 검증.
+> **#13 결과 파일**: shadow-tester(Minji)가 반드시 JSON 파일로 결과 기록. Assembly Verifier(C-Step 1) + Karina Go/No-Go가 이 파일을 검증.
 
 **활성 팀**: NewJeans(테스트, 최대 5명) + ITZY(퀀트 수식검증, 해당 시)
 
@@ -323,7 +323,7 @@ Type W는 fix loop 없이 즉시 L2 에스컬레이션.
 > Stage C의 핵심: "이 코드가 좋은가?" + "이 Phase가 완료되었는가?" + 릴리스.
 > 리뷰어가 Shadow 결과를 참조 → 코드 품질 + 런타임 동작 교차 평가 가능.
 
-#### C-Step 0.5: Assembly Verification — 조립 검증 (코드리뷰 전 필수)
+#### C-Step 1: Assembly Verification — 조립 검증 (코드리뷰 전 필수)
 
 > **"부품이 아니라, 조립된 완성품이 제대로 동작하는가?"**
 > 이 단계 없이 코드리뷰 진행 금지. TF QF "단계 3.5"를 매 Phase에 상시 적용.
@@ -362,13 +362,13 @@ Agent(subagent_type="oh-my-claudecode:verifier", name="assembly-verifier", model
 ```
 
 > Assembly FAIL → Stage B-Step 1 fix 루프 복귀. 코드리뷰 진입 금지.
-> Assembly PASS → C-Step 1.5 멀티모델 감사 진행.
+> Assembly PASS → C-Step 5 멀티모델 감사 진행.
 
-#### C-Step 1.5: 멀티모델 독립 감사 (Assembly PASS 후, 코드리뷰 전)
+#### C-Step 5: 멀티모델 독립 감사 (Assembly PASS 후, 코드리뷰 전)
 
 > **목적**: 자기 코드의 리뷰자가 되는 Claude의 **확증 편향(confirmation bias) 제거**.
 >
-> **설계 이유**: Stage B에서 Claude(IVE팀)가 코드를 구현했음. Claude가 자신의 코드를 먼저 리뷰하면 "원래 이렇게 설계했으므로 맞다"는 합리화가 발생 → 맹점 방치. 따라서 **프로젝트 컨텍스트 없는 신선한 눈(3개 외부 모델)이 먼저 봄**. Claude는 외부 모델 결과를 받아본 후 C-Step 1에서 informed하게 심층 리뷰.
+> **설계 이유**: Stage B에서 Claude(IVE팀)가 코드를 구현했음. Claude가 자신의 코드를 먼저 리뷰하면 "원래 이렇게 설계했으므로 맞다"는 합리화가 발생 → 맹점 방치. 따라서 **프로젝트 컨텍스트 없는 신선한 눈(3개 외부 모델)이 먼저 봄**. Claude는 외부 모델 결과를 받아본 후 C-Step 6에서 informed하게 심층 리뷰.
 >
 > **인라인 실행** (AskUserQuestion 없음, TeamCreate 없음 — leviathan 자동 흐름 보장)
 
@@ -394,15 +394,15 @@ Agent(name="qwen-code-reviewer",
 - Agent(subagent_type="oh-my-claudecode:security-reviewer") 직접 수행 (외부 CLI 불필요)
 
 **4단계: 결과 주입**
-- quorum 합의 결과를 Jennie(C-Step 1) 코드리뷰 컨텍스트에 주입
+- quorum 합의 결과를 Jennie(C-Step 6) 코드리뷰 컨텍스트에 주입
 - "멀티모델 감사에서 N개 모델이 지적한 MUST FIX 이슈: [목록]" 형태로 전달
 
-> MUST FIX 이슈 0건 → C-Step 1 코드리뷰 진행.
+> MUST FIX 이슈 0건 → C-Step 6 코드리뷰 진행.
 > MUST FIX 이슈 1건 이상 → Stage B-Step 1 fix 루프 복귀.
 >
-> **Claude의 역할은?** C-Step 1(Jennie/코드리뷰)과 C-Step 2(Karina/최종 판단)에서 외부 모델 결과를 참고하여 정보를 갖춘 심층 리뷰 수행. C-Step 1.5에서 제외된 것은 **기계적 결함이 아니라 편향 제거의 의도적 설계**.
+> **Claude의 역할은?** C-Step 6(Jennie/코드리뷰)과 C-Step 5(Karina/최종 판단)에서 외부 모델 결과를 참고하여 정보를 갖춘 심층 리뷰 수행. C-Step 5에서 제외된 것은 **기계적 결함이 아니라 편향 제거의 의도적 설계**.
 
-#### C-Step 1: 코드리뷰 + 보안리뷰 (병렬 Sub-agents)
+#### C-Step 6: 코드리뷰 + 보안리뷰 (병렬 Sub-agents)
 
 ```
 Agent(subagent_type="oh-my-claudecode:code-reviewer", name="jennie", model="opus",
@@ -428,7 +428,7 @@ Agent(subagent_type="oh-my-claudecode:security-reviewer", name="jisoo",
               **반환 3K 토큰 이내 요약.**")
 ```
 
-**조건부 추가 에이전트 (C-Step 1과 병렬):**
+**조건부 추가 에이전트 (C-Step 6과 병렬):**
 
 **퀀트 검증 — 전략/수식 변경 시에만:**
 ```
@@ -443,9 +443,9 @@ Agent(subagent_type="browser-verifier", name="haerin",
 ```
 
 > 리뷰 결과 수집 → CRITICAL/HIGH 이슈 발견 시 Stage B-Step 1 fix 루프 복귀.
-> 결과 수신 즉시 C-Step 1.8 tool call 발행. 상태 요약/보고 금지.
+> 결과 수신 즉시 C-Step 7 tool call 발행. 상태 요약/보고 금지.
 
-#### C-Step 1.8: Phase 완료 멀티모델 토론 (Go/No-Go 판단 보조)
+#### C-Step 7: Phase 완료 멀티모델 토론 (Go/No-Go 판단 보조)
 
 > **목적**: Karina의 Go/No-Go 판단 전에 "이 Phase가 상용급인가?"를 3개 외부 모델이 적대적으로 평가.
 > Karina가 Claude이므로 자기 코드에 관대할 수 있음 → 외부 모델의 냉혹한 비판을 사전 주입.
@@ -465,11 +465,11 @@ Agent(name="qwen-gonogo",
 
 - 3개 결과 수집 → 과반수(2+) Go → Go 판정, 아니면 No-Go
 - 결과를 `.omc/artifacts/consensus-gonogo-{phase}.md`에 저장
-- Karina(C-Step 2) Go/No-Go 컨텍스트에 주입: "외부 모델 Go/No-Go = [판정], 근거: [목록]"
+- Karina(C-Step 5) Go/No-Go 컨텍스트에 주입: "외부 모델 Go/No-Go = [판정], 근거: [목록]"
 
-> 결과 수집 즉시 C-Step 2 tool call 발행.
+> 결과 수집 즉시 C-Step 5 tool call 발행.
 
-#### C-Step 2: Phase 완료 리뷰 — Karina (PM + Architect)
+#### C-Step 5: Phase 완료 리뷰 — Karina (PM + Architect)
 
 **이것이 Phase 최종 리뷰. 모든 산출물을 종합하여 Go/No-Go 결정.**
 
@@ -499,9 +499,9 @@ Agent(subagent_type="oh-my-claudecode:architect", name="karina", model="opus",
 
 > **Agent Teams 불필요**: Karina가 PLAN.md + REVIEW.md + Shadow 결과 + prd.json을 직접 읽으면,
 > Jennie/Minji를 소환해서 "회의"하는 것과 정보 품질이 동일. 비용만 3-7x 차이.
-> 결과 수신 즉시 C-Step 3 tool call 발행. 상태 요약/보고 금지.
+> 결과 수신 즉시 C-Step 6 tool call 발행. 상태 요약/보고 금지.
 
-#### C-Step 3: SSOT + Git + 텔레그램 — Sakura (Go 시에만)
+#### C-Step 6: SSOT + Git + 텔레그램 — Sakura (Go 시에만)
 
 ```
 Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
@@ -527,7 +527,7 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 - 모든 검사 OK 확인 후 git push 진행
 - 실행: `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) checkpoint save --trigger "phase_complete"`
 
-#### C-Step 4: 텔레그램 알림 + 사장님 승인 대기
+#### C-Step 7: 텔레그램 알림 + 사장님 승인 대기
 
 - `WORKFLOW_TELEGRAM_BOT_TOKEN`으로 사장님에게 Phase 완료 알림 전송
 - 알림 내용: Phase X 완료, 테스트 수, Shadow 결과 (PnL/WR/DD), 변경 파일 수

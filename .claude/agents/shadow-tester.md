@@ -54,7 +54,7 @@ cd engine && timeout 600 python -m src.main
 ## 결과 파일 기록 (필수 — Assembly Verifier + Karina 검증용)
 
 **반드시 Shadow 실행 완료 후 아래 JSON을 `.omc/state/shadow-result-latest.json`에 기록할 것.**
-이 파일이 없으면 Assembly Verifier(C-Step 0.5)가 FAIL 판정 + Karina Go/No-Go에서 차단.
+이 파일이 없으면 Assembly Verifier(C-Step 6)가 FAIL 판정 + Karina Go/No-Go에서 차단.
 
 ```json
 {

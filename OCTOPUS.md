@@ -60,7 +60,7 @@ Gemini 주장	실제	판정
 추천 방안: 2-Track A/B 테스트
 Track A: OMC CCG 구조적 통합 (비용 0, 즉시 가능)
 변경: leviathan.md Stage C에 CCG 멀티모델 리뷰 단계 추가
-Stage C-Step 1.5 (NEW): CCG 멀티모델 검증
+Stage C-Step 5 (NEW): CCG 멀티모델 검증
 1. /ccg "다음 변경사항의 로직 오류, 누락된 엣지케이스, 수학적 정확성을 검증하라: [변경 파일 목록]"
    - Codex: 구현 깊이 (패턴 분석, 아키텍처)
    - Gemini: 생태계 넓이 (보안, 대안, 베스트 프랙티스)
@@ -82,7 +82,7 @@ claude plugin install octo@nyldn-plugins
 A/B 비교 실행 계획
 대상: Phase S15 (CRITICAL 버그 + ML 연결, ~17 US)
 단계	Track A (CCG)	Track B (Octopus)
-설정	leviathan.md에 Stage C-Step 1.5 추가	Octopus 설치 + /octo:setup
+설정	leviathan.md에 Stage C-Step 5 추가	Octopus 설치 + /octo:setup
 감사 대상	engine/src/strategies/ 전체	동일
 실행 방법	/ccg "전략 감사"	/octo:debate "전략 감사"
 측정 지표	발견 이슈 수, 심각도, 실제 유효율	동일
@@ -94,7 +94,7 @@ A/B 비교 실행 계획
 
 5. 변경 대상 파일
 즉시 적용 (Track A):
-* .claude/commands/leviathan.md — Stage C-Step 1.5 CCG 멀티모델 검증 추가
+* .claude/commands/leviathan.md — Stage C-Step 5 CCG 멀티모델 검증 추가
 * .claude/CLAUDE.md — "Stage C에서 CCG 필수" 규칙 추가
 선택 적용 (Track B):
 * Octopus 플러그인 설치 (외부 — 레포 변경 없음)

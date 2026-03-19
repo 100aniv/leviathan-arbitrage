@@ -1,0 +1,7 @@
+{
+  "cross_exchange": {
+    "min_spread_bps": 5.0,
+    "status": "READY",
+    "wfe": 1.2
+  }
+}

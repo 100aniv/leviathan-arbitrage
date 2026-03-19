@@ -433,7 +433,7 @@ cd engine && timeout 600 python -m src.main
 
 ---
 
-## 9. Assembly Gate 체크리스트 (C-Step 0.5)
+## 9. Assembly Gate 체크리스트 (C-Step 6)
 
 > Phase 완료 후 코드리뷰(BLACKPINK) 전 필수 검증
 
