@@ -94,7 +94,7 @@ A/B 비교 실행 계획
 
 5. 변경 대상 파일
 즉시 적용 (Track A):
-* .claude/commands/leviathan.md — Stage C-Step 5 CCG 멀티모델 검증 추가
+* .claude/commands/leviathan.md — Stage C-Step 2 멀티모델 감사 추가
 * .claude/CLAUDE.md — "Stage C에서 CCG 필수" 규칙 추가
 선택 적용 (Track B):
 * Octopus 플러그인 설치 (외부 — 레포 변경 없음)
