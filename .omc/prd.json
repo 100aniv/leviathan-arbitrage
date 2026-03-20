@@ -4972,7 +4972,7 @@
       "title": "portfolio_risk.py 신규 생성",
       "phase": "S18",
       "priority": 277,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/portfolio_risk.py"
       ],
@@ -4991,7 +4991,7 @@
       "title": "포트폴리오 MDD 관리",
       "phase": "S18",
       "priority": 278,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/portfolio_risk.py",
         "engine/src/main.py"
@@ -5010,7 +5010,7 @@
       "title": "Regime-Aware 자본 배분",
       "phase": "S18",
       "priority": 279,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/portfolio_risk.py",
         "engine/src/core/regime_detector.py"
@@ -5031,7 +5031,7 @@
       "title": "LiveGate Enforcer 상시화",
       "phase": "S18",
       "priority": 280,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/live_gate.py",
         "engine/src/main.py"
@@ -5050,7 +5050,7 @@
       "title": "Sharpe/Calmar/Sortino + Consistency 실시간 계산",
       "phase": "S18",
       "priority": 281,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py",
         "engine/src/core/portfolio_risk.py"
@@ -5070,7 +5070,7 @@
       "title": "전략별 Attribution 분석",
       "phase": "S18",
       "priority": 282,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/attribution.py"
       ],
@@ -5089,7 +5089,7 @@
       "title": "Slippage Feedback Loop",
       "phase": "S18",
       "priority": 283,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/friction/slippage_feedback.py",
         "engine/src/friction/cost_calculator.py",
@@ -5109,7 +5109,7 @@
       "title": "Market Impact Cost 모델",
       "phase": "S18",
       "priority": 284,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/market_impact.py",
         "engine/src/friction/cost_calculator.py"
@@ -5129,7 +5129,7 @@
       "title": "CapitalAllocator(Kelly) 연결",
       "phase": "S18",
       "priority": 284.1,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/capital_allocator.py",
         "engine/src/main.py"
@@ -5148,7 +5148,7 @@
       "title": "Attribution context 연결",
       "phase": "S18",
       "priority": 284.2,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/main.py",
         "engine/src/core/attribution.py"
@@ -5167,7 +5167,7 @@
       "title": "S18 통합 Shadow 10min 검증",
       "phase": "S18",
       "priority": 285,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py",
         "engine/src/core/portfolio_risk.py"

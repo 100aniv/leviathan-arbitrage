@@ -27,7 +27,7 @@ import structlog
 
 from src.infra.metrics import RISK_REJECTIONS_TOTAL
 from src.risk.circuit_breaker import CircuitBreaker
-from src.risk.kill_switch import is_halted
+from src.risk.kill_switch import halt_local, is_halted
 
 if TYPE_CHECKING:
     from src.risk.correlation_monitor import CorrelationMonitor
@@ -137,6 +137,10 @@ class RiskGuardian:
                 )
         # US-118: optional correlation monitor — set externally after construction
         self.correlation_monitor: CorrelationMonitor | None = None
+        # US-278: optional portfolio risk manager — set externally after construction
+        self.portfolio_risk: Any | None = None
+        # US-280: emergency halt flag (set by emergency_pause, read by check #0 via is_halted)
+        self._halted: bool = False
 
     def check(self, proposal: TradeProposal, portfolio: PortfolioState) -> RiskCheckResult:
         """
@@ -398,6 +402,25 @@ class RiskGuardian:
                     reason=f"Strategy CB blocked: {proposal.strategy_id} state={cb_state}",
                 )
 
+        # US-278: Portfolio MDD advisory check (non-blocking — log only)
+        if self.portfolio_risk is not None:
+            try:
+                mdd_result = self.portfolio_risk.check_mdd_breach()
+                if mdd_result.get("portfolio_breach"):
+                    logger.warning(
+                        "risk_mdd_portfolio_breach: mdd_pct=%.2f%% strategy=%s",
+                        mdd_result["portfolio_mdd_pct"] * 100,
+                        proposal.strategy_id,
+                    )
+                for breach in mdd_result.get("strategy_breaches", []):
+                    logger.warning(
+                        "risk_mdd_strategy_breach: strategy=%s mdd_pct=%.2f%%",
+                        breach["strategy_id"],
+                        breach["mdd_pct"] * 100,
+                    )
+            except Exception as _exc:
+                logger.debug("portfolio_risk.check_mdd_breach error: %s", _exc)
+
         logger.debug(
             "risk_check_approved",
             strategy=proposal.strategy_id,
@@ -406,3 +429,9 @@ class RiskGuardian:
             size=str(proposal.size),
         )
         return RiskCheckResult(approved=True)
+
+    async def emergency_pause(self) -> None:
+        """LiveGate continuous monitor FAIL 시 호출 — kill switch 활성화."""
+        logger.critical("RiskGuardian.emergency_pause: LiveGate FAIL → kill switch halt")
+        halt_local()
+        self._halted = True

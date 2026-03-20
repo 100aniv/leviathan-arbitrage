@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
@@ -20,6 +21,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 from src.core.models import OrderSide, OrderType, Signal, Trade
+from src.core.ou_process import OUProcess
 from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeRequest
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,10 @@ class FundingRateConfig(BaseModel):
     settlement_window_minutes: float = Field(default=0.0, ge=0.0)
     # US-239: Settlement hours (UTC)
     settlement_hours: list[int] = Field(default_factory=lambda: [0, 8, 16])
+    # US-268: OU Process filter
+    enable_ou_filter: bool = Field(default=bool(os.environ.get("ENABLE_OU_FILTER", "true").lower() != "false"))
+    ou_min_halflife_s: float = Field(default=float(os.environ.get("FUNDING_OU_MIN_HALFLIFE_S", "300.0")))
+    ou_window: int = Field(default=360)
 
 
 class FundingRateStrategy(BaseStrategy):
@@ -70,6 +76,8 @@ class FundingRateStrategy(BaseStrategy):
         # US-262: Rolling funding rate history for z-score dynamic threshold
         from collections import deque
         self._funding_diff_history: deque[float] = deque(maxlen=360)  # ~8H at 80s intervals
+        # US-268: OU Process for mean-reversion analysis
+        self._ou = OUProcess(window=self.config.ou_window)
 
     def _minutes_to_next_settlement(self, now_utc: datetime | None = None) -> float:
         """Return minutes until next funding settlement (UTC 00/08/16).
@@ -131,6 +139,18 @@ class FundingRateStrategy(BaseStrategy):
         funding_rate_buy = Decimal(str(signal.metadata.get("funding_rate_buy", "0")))
         funding_diff = funding_rate_sell - funding_rate_buy
         funding_diff_bps = funding_diff * Decimal("10000")
+
+        # US-268: OU Process mean-reversion filter
+        self._ou.update(float(funding_diff_bps), time.monotonic())
+        if self.config.enable_ou_filter and self._ou.is_mean_reverting:
+            if self._ou.half_life < self.config.ou_min_halflife_s:
+                self._metrics.signals_filtered += 1
+                logger.info(
+                    "OU filter: half_life=%.1fs < min=%.1fs, skipping signal",
+                    self._ou.half_life,
+                    self.config.ou_min_halflife_s,
+                )
+                return None
 
         # US-262: Z-score dynamic threshold for funding rate
         self._funding_diff_history.append(float(funding_diff_bps))

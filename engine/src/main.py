@@ -137,6 +137,11 @@ class Engine:
         # US-250: PositionRecovery + PositionReconciler
         self._position_recovery: Any = None
         self._position_reconciler: Any = None
+        # US-284-b/a: Attribution + CapitalAllocator (wired in _populate_context)
+        self._attribution: Any = None
+        self._capital_allocator: Any = None
+        # US-277/278: PortfolioRiskManager
+        self._portfolio_risk: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -508,6 +513,26 @@ class Engine:
                 await self._attribution.load_from_db(self._db_pool.pool)
             except Exception as exc:
                 logger.warning("PerformanceAttribution init failed (non-fatal): %s", exc)
+
+            # US-284-a: CapitalAllocator init
+            import os as _os
+            if _os.getenv("CAPITAL_ALLOCATOR_ENABLED", "true").lower() != "false":
+                try:
+                    from src.core.capital_allocator import CapitalAllocator
+                    _max_pos = float(_os.getenv("MAX_POSITION_USD", "10000"))
+                    self._capital_allocator = CapitalAllocator(total_capital=_max_pos * 10)
+                    logger.info("CapitalAllocator initialized: total_capital=%.0f", _max_pos * 10)
+                except Exception as exc:
+                    logger.warning("CapitalAllocator init failed (non-fatal): %s", exc)
+
+            # US-277/278: PortfolioRiskManager init
+            if _os.getenv("PORTFOLIO_RISK_ENABLED", "true").lower() != "false":
+                try:
+                    from src.core.portfolio_risk import PortfolioRiskManager
+                    self._portfolio_risk = PortfolioRiskManager()
+                    logger.info("PortfolioRiskManager initialized")
+                except Exception as exc:
+                    logger.warning("PortfolioRiskManager init failed (non-fatal): %s", exc)
         except Exception as exc:
             logger.warning("TimescaleDB init failed (non-fatal, paper mode ok): %s", exc)
 
@@ -794,6 +819,15 @@ class Engine:
         except Exception as exc:
             logger.warning("AdaptiveThreshold init failed (non-fatal): %s", exc)
 
+        # US-283: SlippageFeedbackCollector — per-exchange/pair slippage adjustment
+        _slippage_fb_collector = None
+        try:
+            from src.friction.slippage_feedback import SlippageFeedbackCollector
+            _slippage_fb_collector = SlippageFeedbackCollector()
+            logger.info("SlippageFeedbackCollector initialized")
+        except Exception as exc:
+            logger.warning("SlippageFeedbackCollector init failed (non-fatal): %s", exc)
+
         self._signal_generator = SignalGenerator(
             price_hub=self._price_hub,
             cost_calculator=self._cost_calculator,
@@ -805,6 +839,7 @@ class Engine:
             ml_feature_pipeline=ml_feature_pipeline,
             ml_canary=ml_canary,
             adaptive_threshold=self._adaptive_threshold,
+            slippage_feedback=_slippage_fb_collector,
         )
 
         # US-170: TriangularScanner
@@ -1060,6 +1095,10 @@ class Engine:
             logger.info("CorrelationMonitor initialized (window=30, threshold=0.7)")
         except Exception as exc:
             logger.warning("CorrelationMonitor init failed (non-fatal): %s", exc)
+
+        # US-278: Wire PortfolioRiskManager into RiskGuardian
+        if self._portfolio_risk is not None and self._risk_guardian is not None:
+            self._risk_guardian.portfolio_risk = self._portfolio_risk
 
         # US-175: ExposureTracker
         try:
@@ -1505,6 +1544,11 @@ class Engine:
         self.context.position_manager = self._position_manager
         self.context.trade_consumer = self._trade_consumer
         self.context.engine = self
+        # US-284-b/a: Attribution + CapitalAllocator
+        self.context.attribution = self._attribution
+        self.context.capital_allocator = self._capital_allocator
+        # US-277/278: PortfolioRiskManager
+        self.context.portfolio_risk = self._portfolio_risk
         # Wave 3 modules
         self.context.correlation_monitor = self._correlation_monitor
         self.context.slippage_feedback = self._slippage_feedback
@@ -1662,6 +1706,20 @@ class Engine:
         tasks.append(asyncio.create_task(
             self._xgb_training_loop(), name="xgb_training"
         ))
+
+        # US-280: LiveGate continuous monitor (all modes)
+        if self._live_gate is not None:
+            import os as _os
+            if _os.getenv("LIVE_GATE_CONTINUOUS_ENABLED", "true").lower() != "false":
+                _lg_interval = int(_os.getenv("LIVE_GATE_MONITOR_INTERVAL_S", "60"))
+                tasks.append(asyncio.create_task(
+                    self._live_gate.start_continuous_monitor(
+                        interval_s=_lg_interval,
+                        risk_guardian=self._risk_guardian,
+                    ),
+                    name="live_gate_monitor",
+                ))
+                logger.info("LiveGate continuous monitor started (interval=%ds)", _lg_interval)
 
         self.state.background_tasks.extend(tasks)
         logger.info("Started %d background tasks", len(tasks))

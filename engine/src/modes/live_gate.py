@@ -52,6 +52,11 @@ class LiveGateResult:
     block_reasons: list[str] = field(default_factory=list)
     evaluation_duration_ms: float = 0.0
 
+    @property
+    def passed(self) -> bool:
+        """Alias for eligible (used by continuous monitor)."""
+        return self.eligible
+
 
 class LiveGate:
     """Performance-based gate for live trading authorization.
@@ -315,6 +320,69 @@ class LiveGate:
         if self._latest_result is None:
             return False
         return self._latest_result.eligible
+
+    async def start_continuous_monitor(
+        self,
+        interval_s: int = 60,
+        risk_guardian: object | None = None,
+    ) -> None:
+        """모든 모드에서 주기적 LiveGate 평가.
+
+        US-280: Runs indefinitely; exceptions are caught and logged.
+        Enabled via LIVE_GATE_CONTINUOUS_ENABLED env var (default True).
+        """
+        import os
+        if os.getenv("LIVE_GATE_CONTINUOUS_ENABLED", "true").lower() == "false":
+            logger.info("live_gate.continuous_monitor disabled via env")
+            return
+
+        consecutive_failures = 0
+        try:
+            _raw = int(os.getenv("LIVE_GATE_PAUSE_THRESHOLD", "3"))
+            pause_threshold = max(1, min(_raw, 10))
+        except (ValueError, TypeError):
+            pause_threshold = 3
+
+        while True:
+            try:
+                result = await self.evaluate()
+                logger.info(
+                    "live_gate.continuous_check: pass=%s, checks=%s",
+                    result.passed,
+                    {c.name: c.passed for c in result.checks},
+                )
+                if not result.passed:
+                    consecutive_failures += 1
+                    if consecutive_failures >= pause_threshold and risk_guardian is not None:
+                        logger.warning(
+                            "live_gate.continuous_check: %d consecutive FAILs — triggering emergency pause",
+                            consecutive_failures,
+                        )
+                        try:
+                            pause_fn = getattr(risk_guardian, "emergency_pause", None)
+                            if pause_fn is not None:
+                                await pause_fn()
+                        except Exception as exc:
+                            logger.warning("live_gate.continuous_check: emergency_pause error: %s", exc)
+                    else:
+                        logger.info(
+                            "live_gate.continuous_check: FAIL %d/%d (backoff, no halt yet)",
+                            consecutive_failures, pause_threshold,
+                        )
+                else:
+                    if consecutive_failures > 0:
+                        logger.info("live_gate.continuous_check: recovered after %d failures", consecutive_failures)
+                    consecutive_failures = 0
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.error("live_gate.continuous_monitor_error: %s", exc, exc_info=True)
+
+            backoff = min(300, interval_s * (2 ** min(consecutive_failures, 3)))
+            try:
+                await asyncio.sleep(backoff)
+            except asyncio.CancelledError:
+                raise
 
     async def enforce_or_fallback(self) -> bool:
         """Evaluate LiveGate 6-check. Return True if live-eligible, False to fallback.

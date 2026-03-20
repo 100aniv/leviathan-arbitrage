@@ -24,8 +24,9 @@ def make_signal(
     sell_price: Decimal = Decimal("50100"),
     volume: Decimal = Decimal("0.5"),
     margin_available: Decimal | None = None,
+    book_age_ms: float = 0,
 ) -> Signal:
-    metadata = {}
+    metadata: dict = {"book_age_ms": book_age_ms}  # US-273: stale guard requires this field
     if margin_available is not None:
         metadata["margin_available"] = str(margin_available)
     return Signal(

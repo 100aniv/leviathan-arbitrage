@@ -84,12 +84,14 @@ class PaperExecutor:
         partial_fill_rate: Decimal = Decimal("0.0"),
         rejection_rate: Decimal = Decimal("0.0"),
         on_trade: Callable[[SimulatedTrade], None] | None = None,
+        slippage_feedback: object | None = None,  # US-283: SlippageFeedbackCollector
     ) -> None:
         self.slippage_model = slippage_model or SlippageModel()
         self.fee_rate = fee_rate
         self.partial_fill_rate = partial_fill_rate
         self.rejection_rate = rejection_rate
         self.on_trade = on_trade
+        self._slippage_feedback = slippage_feedback  # US-283
         self._history: deque[SimulatedTrade] = deque(maxlen=10_000)
 
     @property
@@ -151,6 +153,20 @@ class PaperExecutor:
 
         if self.on_trade:
             self.on_trade(record)
+
+        # US-283: record slippage feedback (predicted=base, actual=realized)
+        if self._slippage_feedback is not None:
+            try:
+                predicted_bps = float(self.slippage_model.base_slippage_pct) * 10_000
+                actual_bps = float(slippage_pct) * 10_000
+                self._slippage_feedback.record(
+                    exchange=order.exchange_id,
+                    pair=order.symbol,
+                    predicted_bps=predicted_bps,
+                    actual_bps=actual_bps,
+                )
+            except Exception:
+                pass  # non-fatal
 
         return trade
 

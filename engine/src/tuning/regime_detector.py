@@ -275,6 +275,30 @@ class HMMRegimeDetector:
 
         return regime
 
+    def detect(self, returns: list[float], spread_std: float = 0.0) -> MarketRegime:
+        """Shadow mode 호환 — RegimeDetector.detect() 시그니처 맞춤.
+
+        HMM이 학습된 상태면 predict 사용, 아니면 변동성 기반 fallback.
+        """
+        if not returns:
+            return self.current_regime
+
+        if self._fitted and self._model is not None:
+            arr = np.asarray(returns).reshape(-1, 1)
+            try:
+                return self.predict(arr)
+            except Exception:
+                pass  # fallback to vol-based
+
+        vol = float(np.std(returns))
+        if vol >= 0.05:
+            self.current_regime = MarketRegime.CRISIS
+        elif vol >= 0.02:
+            self.current_regime = MarketRegime.VOLATILE
+        else:
+            self.current_regime = MarketRegime.NORMAL
+        return self.current_regime
+
     def set_feature_pipeline(self, pipeline: Any) -> None:
         """피처 파이프라인 연결 (US-082)."""
         self._feature_pipeline = pipeline

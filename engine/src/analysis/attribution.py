@@ -184,6 +184,31 @@ class PerformanceAttribution:
             ],
         }
 
+    def get_report(self) -> dict:
+        """Return attribution breakdown by strategy, exchange, and pair.
+
+        US-282: Called by /api/v1/attribution route.
+        """
+        if not self._trades:
+            return {"by_strategy": {}, "by_exchange": {}, "by_pair": {}}
+
+        def _to_dict(breakdowns: list) -> dict:
+            return {
+                b.key: {
+                    "total_pnl": round(b.total_pnl, 6),
+                    "trade_count": b.trade_count,
+                    "win_rate": round(b.win_rate, 4),
+                    "avg_pnl": round(b.avg_pnl, 6),
+                }
+                for b in breakdowns
+            }
+
+        return {
+            "by_strategy": _to_dict(self.by_strategy()),
+            "by_exchange": _to_dict(self.by_exchange()),
+            "by_pair": _to_dict(self.by_pair()),
+        }
+
     @staticmethod
     def migration_sql() -> str:
         """TimescaleDB aggregate views DDL."""

@@ -153,3 +153,45 @@ class CapitalAllocator:
             if a.strategy_id == strategy_id:
                 return a.allocated_pct * self.total_capital
         return 0.0
+
+    # US-279: Regime-Aware capital allocation
+    REGIME_KELLY_MULTIPLIER: dict[str, float] = {
+        "bull": 1.0,
+        "neutral": 0.7,
+        "bear": 0.4,
+        "crisis": 0.1,
+    }
+
+    def allocate_with_regime(
+        self,
+        strategy_stats: dict[str, dict],
+        regime: str = "neutral",
+    ) -> list[StrategyAllocation]:
+        """Kelly allocation scaled by market regime.
+
+        Multiplier: bull=1.0, neutral=0.7, bear=0.4, crisis=0.1.
+        After scaling, re-normalizes so total <= 100%.
+        """
+        import os as _os
+        if _os.getenv("REGIME_AWARE_ALLOCATION_ENABLED", "true").lower() == "false":
+            return self.compute_allocations(strategy_stats)
+
+        mult = self.REGIME_KELLY_MULTIPLIER.get(regime, 0.7)
+        allocations = self.compute_allocations(strategy_stats)
+        for a in allocations:
+            a.allocated_pct *= mult
+
+        # Re-normalize so total <= 100%
+        total = sum(a.allocated_pct for a in allocations)
+        if total > 1.0 and allocations:
+            scale = 1.0 / total
+            for a in allocations:
+                a.allocated_pct *= scale
+
+        logger.info(
+            "capital_allocator.regime: regime=%s mult=%.1f strategies=%d",
+            regime,
+            mult,
+            len(allocations),
+        )
+        return allocations

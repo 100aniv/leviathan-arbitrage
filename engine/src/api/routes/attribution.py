@@ -51,11 +51,26 @@ def _build_trade_record(trade: dict[str, Any]) -> TradeRecord | None:
 async def get_attribution(request: Request) -> JSONResponse:
     """Return PnL attribution breakdown across all dimensions."""
     ctx = request.app.state.engine_context
-    attribution = PerformanceAttribution()
 
-    for trade in ctx.trade_history:
-        record = _build_trade_record(trade)
-        if record is not None:
-            attribution.add_trade(record)
+    # US-284-b: prefer live attribution instance from EngineContext
+    attribution = getattr(ctx, "attribution", None)
+    if attribution is None:
+        # No live instance — build ephemeral from trade_history (no duplicate risk)
+        attribution = PerformanceAttribution()
+        for trade in ctx.trade_history:
+            record = _build_trade_record(trade)
+            if record is not None:
+                attribution.add_trade(record)
+    # Live instance already accumulates on_fill — do NOT re-add from trade_history
 
-    return JSONResponse(attribution.summary())
+    # US-282: use get_report() with backward-compatible top-level fields
+    try:
+        report = attribution.get_report()
+        # Backward compat: ensure top-level total_trades/total_pnl exist
+        summary = attribution.summary()
+        report.setdefault("total_trades", summary.get("total_trades", 0))
+        report.setdefault("total_pnl", summary.get("total_pnl", 0.0))
+        report.setdefault("win_rate", summary.get("win_rate", 0.0))
+        return JSONResponse(report)
+    except AttributeError:
+        return JSONResponse(attribution.summary())

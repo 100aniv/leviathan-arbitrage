@@ -267,56 +267,22 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 9H 중단 → **Phase S15~S16 완료** → **Phase S17~S21** → TF QF → TF SF → TF Final → Live
-- **Tests**: 4,962 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (255+42개 US, 255 passes:true / 42 passes:false)
-- **Docker 필수**: Shadow 실행 전 `docker compose up -d` — DB 없으면 데이터 미저장
-- **다음 작업**: Phase S17 (전략별 고급 기능 + 실행 안전장치) → S18~S21 → TF QF → TF SF → TF Final → Live
-- **Phase S16**: ✅ 완료 (2026-03-20) — 12 US: S15 이월 6개 + 동적 임계치 6개, Shadow 11min +$379.44, 22 new tests
-- **TF SF 9H 중단**: CRITICAL 6건 + 수학 오류 3건 발견 → Phase S15~S21 회귀 (2026-03-19)
-- **회귀 사유**: profit_factor 계산 버그, LiveGate 차단 미동작, ML 미연결, 전략 평가 기준 위반
+- **Phase 순서**: A~M✅ → S1~S18✅ → **S19 진행 예정** → S20~S21 → TF QF → TF SF → TF Final → Live
+- **Tests**: 5,080 passed, 0 failed, 12 skipped
+- **PRD**: `.omc/prd.json` (297개 US, 278 passes:true / 19 passes:false)
+- **다음 작업**: Phase S19 → S20~S21 → TF QF → TF SF → TF Final → Live
 - **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
-- **Phase S13**: ✅ 완료 (2026-03-18) — 22 US (US-221~233, US-235~243): 기관급 전략 완전체 + 7개 전략 로직 개선 + 1H Shadow PnL +$1,674 (9,338 trades, WR 76.2%)
-- **Phase S14**: ✅ 완료 (2026-03-18) — 1 US (US-234): Auto-tuner Shadow 통합 + Optuna 미니 튜너
-- **Phase S13~S14 플랜**: `.claude/plans/snuggly-chasing-spark.md` (15 Part, 5라운드 검증, 9명 전문가 리뷰)
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%
-- **GAP 분석**: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합 분석)
 
-## 워크플로우 강화 (2026-03-19 적용)
+## 워크플로우 핵심 (상세 → leviathan.md)
 
-> 워크플로우 구조 분석 결과 반영. 근본 원인: "누가 통합 연결을 검증하는가?" — 아무도 안 했음.
-> 학술 근거: MAST (NeurIPS 2025, 1642 트레이스 분석), Google/MIT 팀 규모 연구
-
-- **Assembly Gate (C-Step 1)**: 코드리뷰 전 조립 검증 (init chain + signal flow + dead wiring + config audit). TF QF 단계 3.5를 매 Phase에 상시화
-- **Shadow 13항목 복합지표**: 시드 무관 절대 지표(MDD%, Profit Factor, Sharpe, Calmar) + 통합 검증(전략별 trade>=1, 방어 레이어 활성)
+- **3-Stage Sequential**: A(기획)→B(구현+Shadow)→C(Assembly→멀티모델감사→코드리뷰→Go/No-Go→SSOT+git)→다음Phase
+- **Assembly Gate (C-Step 1)**: 코드리뷰 전 조립 검증 (init chain + signal flow + dead wiring + config audit)
+- **Shadow 13항목 복합지표**: MDD%, PF, 전략별 trade>=1, 방어 레이어 활성
 - **WIRING AC 필수**: 새 컴포넌트 US에 `⚡ WIRING:` AC 3개 (생성→주입→호출)
-- **Jennie 통합 추적**: 코드리뷰에서 새 클래스의 생성→주입→호출 경로 추적 (CRITICAL 우선순위)
-- **Fix Loop 유형 분류**: Type W(Wiring→즉시 L2) / Type P(Parameter→3회) / Type B(Bug→3회)
-- **검증 유틸리티**: `.claude/hooks/assembly-gate.sh` + `shadow-evidence-gate.sh` (에이전트 수동 호출용, 자동 Stop hook 아님)
-- **Shadow 결과 파일**: `.omc/state/shadow-result-latest.json` 필수 기록 (Assembly Verifier + Karina 검증용)
-- **멀티모델 독립 감사 (C-Step 2)**: Assembly Gate 후, 코드리뷰 전에 3개 외부 모델(Codex+Gemini+Qwen) 인라인 병렬 호출 → quorum 합의. Claude 편향 구조적 제거 목적. 과반수 이슈 지적 시 MUST FIX.
-
-## 멀티모델 감사 (2026-03-19 도입)
-
-> 근본 원인: "클로드가 자기 프로젝트의 맹점을 못 본다" — CCG는 Claude가 최종 종합하므로 편향 제거 불가.
-> 해결: 3개 외부 CLI(Codex+Gemini+Qwen)를 Agent()로 직접 병렬 호출. Claude 편향 구조적 제거.
-
-- **자동 실행 (leviathan 내)**: Agent()로 CLI 직접 호출 → AskUserQuestion 0개, TeamCreate 0개 → 멈추지 않음
-  - Stage A: 3개 모델 PLAN.md 병렬 리뷰 → quorum 합의
-  - C-Step 2: 3개 모델 코드 병렬 감사 → quorum 합의 (MUST FIX 판정)
-  - C-Step 4: 3개 모델 Go/No-Go 병렬 토론 → 과반수 판정
-- **수동 실행 (직접 호출)**: `/consensus-code-review`, `/consensus-plan-review`, `/octo-security`, `/octo-debate` — 대화형 (TeamCreate + AskUserQuestion 포함)
-- **CLI**: Codex(`codex exec`), Gemini(`gemini -p`), Qwen(`qwen -p`) — 3개 인증 완료. Kimi는 `kimi-cli login` 후 추가 가능
-- **Stage C 워크플로우**: Assembly Gate(1) → **멀티모델 감사(2)** → 코드리뷰(3) → **멀티모델 토론(4)** → Go/No-Go(5) → SSOT+git(6) → 즉시 다음 Phase
-
-## 실행 워크플로우 (ralph autopilot)
-
-**3-Stage Sequential 연속 실행** (leviathan.md 참조):
-1. **Stage A** (기획): [Entry Gate(karina) 순차 → NingNing+Winter+Giselle 병렬] → PLAN.md + WIRING AC → QUANT GATE → **즉시 Stage B**
-2. **Stage B** (구현+검증): TeamCreate(IVE) → pytest PASS → TeamDelete → Shadow 13항목 복합지표(NewJeans) → **즉시 Stage C**
-3. **Stage C** (리뷰+릴리스): [**C-Step 1 Assembly Gate(조립검증)**] → [**C-Step 2 멀티모델 인라인 감사(3CLI 병렬→quorum)**] → [**C-Step 3 코드리뷰**(Jennie+Jisoo 통합추적)] → [**C-Step 4 멀티모델 Go/No-Go 토론(3CLI 병렬)**] → [**C-Step 5 최종리뷰**(Karina 7항목+Go/No-Go)] → [**C-Step 6 SSOT+git**(Sakura)] → 즉시 다음 Phase
-
-**세션 관리**: Stage A→B→C 연속 실행 (세션 초기화 없음, ralph 루프 유지).
-**`/compact` 절대 금지**. 컨텍스트 60% 시 텔레그램 알림 → `/clear` 시도 → 성공/실패 모두 텔레그램 알림.
-**체크포인트 복구**: `.omc/state/leviathan-progress.json` — 세션 크래시 시 `/leviathan` 재호출로 자동 재개.
-**에스컬레이션**: L0(팀 내) → L1(fix 루프) → L2(Stage A 재기획) → L3(SSOT 수정) → L4(Phase 재편) → **L5(텔레그램→사장님)**
+- **멀티모델 감사**: 3개 외부 CLI(Codex/Gemini/Qwen) 인라인 병렬 → quorum 합의 (Claude 편향 제거)
+- **Fix Loop 유형**: Type W(Wiring→L2) / Type P(Parameter→3회) / Type B(Bug→3회)
+- **CLI**: Codex(`codex exec`), Gemini(`gemini -p`), Qwen(`qwen -p`) — 수동: `/consensus-code-review`, `/octo-debate`
+- **세션**: ralph 루프 연속. `/compact` 금지. checkpoint → `/clear` → 자동 재개.
+- **에스컬레이션**: L0(팀 내) → L1(fix) → L2(Stage A) → L3(SSOT) → L4(Phase) → **L5(텔레그램→사장님)**
+- **TF**: leviathan-tf.md 참조 (QF→SF→Final 3-Round)

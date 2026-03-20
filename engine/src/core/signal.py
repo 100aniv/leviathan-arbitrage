@@ -88,7 +88,10 @@ class SignalGenerator:
         ml_feature_pipeline: Any | None = None,  # US-253: MLFeaturePipeline
         ml_canary: Any | None = None,  # US-253: MLCanary staged rollout
         adaptive_threshold: Any | None = None,  # US-255: PerStrategyAdaptiveThreshold
+        slippage_feedback: Any | None = None,  # US-283: SlippageFeedbackCollector
+        market_impact_enabled: bool | None = None,  # US-284: toggle (default from env)
     ) -> None:
+        import os as _os
         self._hub = price_hub
         self._calc = cost_calculator
         self._config = config or SignalConfig()
@@ -101,6 +104,13 @@ class SignalGenerator:
         self._ml_feature_pipeline = ml_feature_pipeline  # US-253
         self._ml_canary = ml_canary  # US-253
         self._adaptive_threshold = adaptive_threshold  # US-255: per-strategy threshold
+        self._slippage_feedback = slippage_feedback  # US-283
+        self._market_impact_enabled = (
+            market_impact_enabled
+            if market_impact_enabled is not None
+            else _os.getenv("MARKET_IMPACT_ETA", "") != ""
+            or _os.getenv("MARKET_IMPACT_ENABLED", "true").lower() != "false"
+        )  # US-284
         self._crisis_start_time: float | None = None  # US-173: CRISIS timeout tracking
         self._price_history: dict[str, list[Decimal]] = {}  # US-248: mid-price cache per symbol
         self._adv: Decimal = self._config.default_adv  # US-248: last computed dynamic ADV
@@ -326,6 +336,14 @@ class SignalGenerator:
         notional = buy_price * trade_size
         net_edge = friction.net_profit / notional if notional > 0 else Decimal("0")
 
+        # US-283: slippage feedback correction — reduce net_edge by historical over/under-estimate
+        if self._slippage_feedback is not None:
+            try:
+                adj_bps = self._slippage_feedback.get_adjustment_bps(buy_exchange, symbol)
+                net_edge = net_edge - Decimal(str(adj_bps)) / Decimal("10000")
+            except Exception:
+                pass
+
         # Min edge gate — US-084 / US-173 / US-255: regime-adaptive + per-strategy threshold
         # US-255: read per-strategy adaptive edge (strategy_type = config.strategy_id)
         if self._adaptive_threshold is not None:
@@ -358,6 +376,27 @@ class SignalGenerator:
         # Max rollback cost gate
         if friction.rollback_cost_expected > self._config.max_rollback_cost_usd:
             return None
+
+        # US-284: market impact check — filter if impact exceeds edge (signal filter only)
+        # Only applies when reliable volume data is available (adv_usd >= 1000)
+        if self._market_impact_enabled:
+            try:
+                from src.core.market_impact import estimate_market_impact
+                size_usd_f = float(notional)
+                buy_vol = getattr(books.get(buy_exchange), "volume_24h_usd", None)
+                adv_usd = float(buy_vol) if buy_vol is not None else 0.0
+                _min_adv = float(os.getenv("MARKET_IMPACT_MIN_ADV", "1000"))
+                if adv_usd >= _min_adv:
+                    impact_bps = estimate_market_impact(size_usd_f, adv_usd)
+                    edge_bps = float(net_edge) * 10_000
+                    if impact_bps > edge_bps:
+                        logger.debug(
+                            "market_impact_rejected symbol=%s impact_bps=%.2f edge_bps=%.2f",
+                            symbol, impact_bps, edge_bps,
+                        )
+                        return None
+            except Exception:
+                pass  # non-fatal
 
         # US-172: ML scorer filter — soft filter (reject with log), confidence update
         ml_score: float = 0.5  # neutral default when scorer unavailable

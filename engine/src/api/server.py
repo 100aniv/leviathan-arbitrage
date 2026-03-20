@@ -46,6 +46,7 @@ class EngineContext:
     funding_rates: dict[str, Any] = field(default_factory=dict)
     exchange_status: dict[str, Any] = field(default_factory=dict)
     shadow_mode: Any = None
+    rolling_metrics: Any = None  # US-281: RollingMetricsCalculator
     # Real subsystem references (set during engine init)
     engine: Any = None
     strategy_manager: Any = None
@@ -55,6 +56,9 @@ class EngineContext:
     # Wave 3 (US-114/115/118)
     correlation_monitor: Any = None
     slippage_feedback: Any = None
+    attribution: Any = None  # US-284-b
+    capital_allocator: Any = None  # US-284-a
+    portfolio_risk: Any = None  # US-277/278
     dynamic_sizer: Any = None
     tca_analyzer: Any = None  # US-116
     rebalancer: Any = None  # US-120

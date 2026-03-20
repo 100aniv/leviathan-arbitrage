@@ -277,3 +277,66 @@ class MetricsCollector:
         if std == 0:
             return 0.0
         return (mean_r / std) * math.sqrt(periods_per_year)
+
+
+class RollingMetricsCalculator:
+    """Rolling Sharpe, Sortino, Calmar, and consistency over a sliding window.
+
+    US-281: Real-time risk-adjusted metrics for shadow/live mode monitoring.
+    """
+
+    def __init__(self, window_size: int = 500) -> None:
+        from collections import deque
+        self._returns: "deque[float]" = deque(maxlen=window_size)
+
+    def add_return(self, r: float, ts: float | None = None) -> None:
+        """Add a return observation (ts unused, kept for API compatibility)."""
+        self._returns.append(r)
+
+    def sharpe(self, annualization: float = 8760) -> float:
+        """Annualized Sharpe ratio (hourly→annual via sqrt(8760))."""
+        if len(self._returns) < 2:
+            return 0.0
+        n = len(self._returns)
+        mean_r = sum(self._returns) / n
+        variance = sum((r - mean_r) ** 2 for r in self._returns) / n
+        std = math.sqrt(variance)
+        if std == 0.0:
+            return 0.0
+        return (mean_r / std) * math.sqrt(annualization)
+
+    def sortino(self, annualization: float = 8760) -> float:
+        """Annualized Sortino ratio using downside deviation only."""
+        if len(self._returns) < 2:
+            return 0.0
+        n = len(self._returns)
+        mean_r = sum(self._returns) / n
+        downside_sq = [r ** 2 for r in self._returns if r < 0]
+        if not downside_sq:
+            return 0.0
+        downside_std = math.sqrt(sum(downside_sq) / n)
+        if downside_std == 0.0:
+            return 0.0
+        return (mean_r / downside_std) * math.sqrt(annualization)
+
+    def calmar(self, annualized_return: float, max_dd: float) -> float:
+        """Calmar ratio = annualized_return / max_drawdown."""
+        if max_dd == 0.0:
+            return 0.0
+        return annualized_return / max_dd
+
+    def consistency(self) -> float:
+        """Fraction of return observations that are positive."""
+        if not self._returns:
+            return 0.0
+        wins = sum(1 for r in self._returns if r > 0)
+        return wins / len(self._returns)
+
+    def to_dict(self) -> dict:
+        """Serialize current metrics snapshot."""
+        return {
+            "sharpe": round(self.sharpe(), 4),
+            "sortino": round(self.sortino(), 4),
+            "consistency": round(self.consistency(), 4),
+            "sample_count": len(self._returns),
+        }

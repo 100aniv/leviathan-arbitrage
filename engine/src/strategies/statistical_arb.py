@@ -63,6 +63,10 @@ class StatArbConfig(BaseModel):
     max_holding_bars: int = Field(default=60, ge=1)
     # Set False to skip cointegration test (useful for low-sample / constant-price tests)
     enable_cointegration: bool = Field(default=True)
+    # US-274: Cost gate — block entry when round-trip cost > expected spread profit
+    enable_cost_gate: bool = Field(
+        default_factory=lambda: os.environ.get("ENABLE_COST_GATE", "true").lower() != "false"
+    )
     # US-231: z-score hardstop (force-exit if |z| exceeds this while in position)
     zscore_hardstop: float = Field(default=3.5, ge=0.0)
     # US-231: Kalman stale guard — skip z-score if last update was > this many seconds ago
@@ -494,6 +498,26 @@ class StatisticalArbStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
+        # US-274: Expected spread profit estimate + cost gate
+        _std = _zscore_std(list(ps.spreads))
+        _notional_approx = float(self.config.max_position_size) * mid_b
+        expected_spread_profit = (
+            Decimal(str(abs(zscore) * _std * _notional_approx)) if _std > 0 else Decimal("0")
+        )
+        if self.config.enable_cost_gate and self._cost_calculator is not None:
+            _sa = Decimal(str(_notional_approx / mid_a)) if mid_a > 0 else self.config.max_position_size
+            _sb = self.config.max_position_size
+            _pa, _pb = Decimal(str(mid_a)), Decimal(str(mid_b))
+            round_trip_cost = (
+                self._cost_calculator.estimate_cost(exchange, symbol_a, OrderSide.BUY, _sa, _pa)
+                + self._cost_calculator.estimate_cost(exchange, symbol_a, OrderSide.SELL, _sa, _pa)
+                + self._cost_calculator.estimate_cost(exchange, symbol_b, OrderSide.BUY, _sb, _pb)
+                + self._cost_calculator.estimate_cost(exchange, symbol_b, OrderSide.SELL, _sb, _pb)
+            )
+            if round_trip_cost > expected_spread_profit:
+                self._metrics.signals_filtered += 1
+                return None
+
         # US-240: Hedge-ratio adjusted sizes for dollar-neutral cross-asset position.
         # Without adjustment, BTC($90K) vs ETH($3.5K) creates 25x notional imbalance.
         # size_a * mid_a ≈ size_b * mid_b (dollar-neutral)
@@ -557,7 +581,7 @@ class StatisticalArbStrategy(BaseStrategy):
         return TradeRequest(
             strategy_id=self.strategy_id,
             legs=legs,
-            expected_profit_usdt=Decimal("0"),
+            expected_profit_usdt=expected_spread_profit,
             confidence=confidence,
             metadata={
                 "zscore": str(zscore),

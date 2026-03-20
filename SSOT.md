@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-20 (Phase S16 완료 — 동적 임계치 + S15 이월 6 US, 12 US VERIFIED) | PRD: `.omc/prd.json` (255+42개 US, 297 total)
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (255 passes:true / 42 passes:false)
-> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S17 완료** → **Phase S18~S21 회귀** → TF QF → TF SF → TF Final → Live
+> 마지막 업데이트: 2026-03-21 (Phase S18 완료 — 포트폴리오 리스크 + 평가 체계 + Slippage Feedback, 11 US VERIFIED) | PRD: `.omc/prd.json` (255+42개 US, 297 total)
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (278 passes:true / 19 passes:false)
+> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S18 ✅** → **S19 진행 예정** → S20~S21 → TF QF → TF SF → TF Final → Live
 
 ---
 
@@ -31,11 +31,11 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S17 진행 중 (2026-03-20) — MUST FIX 5건 완료 + 코드리뷰/보안리뷰 PASS, Stage C 완료
-**Tests**: 4,991 passed / 0 failed / 12 skipped
+**Phase**: S18 완료 (2026-03-21) — 포트폴리오 리스크 + 평가 체계 + Slippage Feedback
+**Tests**: 5,080 passed / 0 failed / 12 skipped
 **Coverage**: 82%
-**TF Status**: TF SF 9H 중단 → S15~S16 완료 → **S17 Stage C PASS** → S18~S21 → TF QF → TF SF → TF Final → Live
-**Next**: Phase S17 SSOT 반영 완료 → git push → Phase S18 진입
+**TF Status**: TF SF 9H 중단 → S15~S18 완료 → **S19 진행 예정** → S20~S21 → TF QF → TF SF → TF Final → Live
+**Next**: Phase S19 (US-286~290-a, 6 US) — 데이터 품질 통합 DataQualityManager
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
@@ -371,7 +371,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 297개 User Stories, 255개 완료, 42개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 297개 User Stories, 267개 완료, 30개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -452,17 +452,17 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **진입 조건**: Phase S17 완료
 > **플랜**: `.claude/plans/parallel-finding-sparrow.md`
 
-- [ ] US-277: portfolio_risk.py 신규 생성 (← 전략간 PnL 상관 행렬 30min rolling, 상관>0.7 합산 포지션 제한, 포트폴리오 VaR)
-- [ ] US-278: 포트폴리오 MDD 관리 (← 전체 MDD 3% → 신규 진입 차단, 5% → 전체 청산)
-- [ ] US-279: Regime-Aware 자본 배분 (← CALM→공격적, VOLATILE→보수적, CRISIS→방어적, 전략별 max_position 동적 조정)
-- [ ] US-280: LiveGate Enforcer 상시화 (← 모든 Shadow/TF에서 6-check 자동 계산+로깅, 미달 시 자동 FAIL, 24H 주기 재평가)
-- [ ] US-281: Sharpe/Calmar/Sortino + Consistency 실시간 계산 (← 1분 PnL → 1H/1D/7D 롤링, 수익 일관성=양수 PnL 비율, 이상치 필터링)
-- [ ] US-282: 전략별 Attribution 분석 (← 수익 기여도, 드로다운 기여도, 신호 품질 분해)
-- [ ] US-283: Slippage Feedback Loop (← 실제 체결가 vs 주문 시점 Orderbook 차이 DB 기록 → CostCalculator 실시간 피드백)
-- [ ] US-284: Market Impact Cost 모델 (← 주문 크기 대비 호가 잠식, Temporary+Permanent impact 분리, 대형 주문 분할 실행)
-- [ ] US-284-a: CapitalAllocator(Kelly) 연결 (← core/capital_allocator.py 미사용 → 전략별 edge/WR 기반 자본 배분, 거래 이력 30+ 후 활성화)
-- [ ] US-284-b: Attribution context 연결 (← main.py:502 생성하지만 EngineContext 미설정, API 매 요청마다 새 인스턴스 생성 문제 수정)
-- [ ] US-285: S18 통합 Shadow 10min 검증 (← MDD 관리, 상관관계 제한, Slippage feedback, CapitalAllocator 동작 확인)
+- [x] US-277: portfolio_risk.py 신규 생성 (← 전략간 PnL 상관 행렬 30min rolling, 상관>0.7 합산 포지션 제한, 포트폴리오 VaR) ✅
+- [x] US-278: 포트폴리오 MDD 관리 (← 전체 MDD 3% → 신규 진입 차단, 5% → 전체 청산) ✅
+- [x] US-279: Regime-Aware 자본 배분 (← CALM→공격적, VOLATILE→보수적, CRISIS→방어적, 전략별 max_position 동적 조정) ✅
+- [x] US-280: LiveGate Enforcer 상시화 (← 모든 Shadow/TF에서 6-check 자동 계산+로깅, 미달 시 자동 FAIL, 24H 주기 재평가) ✅
+- [x] US-281: Sharpe/Calmar/Sortino + Consistency 실시간 계산 (← 1분 PnL → 1H/1D/7D 롤링, 수익 일관성=양수 PnL 비율, 이상치 필터링) ✅
+- [x] US-282: 전략별 Attribution 분석 (← 수익 기여도, 드로다운 기여도, 신호 품질 분해) ✅
+- [x] US-283: Slippage Feedback Loop (← 실제 체결가 vs 주문 시점 Orderbook 차이 DB 기록 → CostCalculator 실시간 피드백) ✅
+- [x] US-284: Market Impact Cost 모델 (← 주문 크기 대비 호가 잠식, Temporary+Permanent impact 분리, 대형 주문 분할 실행) ✅
+- [x] US-284-a: CapitalAllocator(Kelly) 연결 (← core/capital_allocator.py 미사용 → 전략별 edge/WR 기반 자본 배분, 거래 이력 30+ 후 활성화) ✅
+- [x] US-284-b: Attribution context 연결 (← main.py:502 생성하지만 EngineContext 미설정, API 매 요청마다 새 인스턴스 생성 문제 수정) ✅
+- [x] US-285: S18 통합 Shadow 10min 검증 (← MDD 관리, 상관관계 제한, Slippage feedback, CapitalAllocator 동작 확인) ✅
 
 #### Phase S19: 데이터 품질 통합 — DataQualityManager — US-286~290-a
 
