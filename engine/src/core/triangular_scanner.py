@@ -16,11 +16,17 @@ Algorithm:
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from src.core.order_book import OrderBook
+
+if TYPE_CHECKING:
+    from src.strategies.base import CostCalculator
+
+_ENABLE_TRIANGULAR_COST = os.environ.get("ENABLE_TRIANGULAR_COST", "false").lower() == "true"
 
 
 @dataclass
@@ -55,8 +61,15 @@ class TriangularScanner:
         cycles = scanner.on_orderbook_update(exchange_id, symbol, book)
     """
 
-    def __init__(self, min_profit_bps: Decimal = Decimal("10")) -> None:
+    def __init__(
+        self,
+        min_profit_bps: Decimal = Decimal("10"),
+        cost_calculator: Optional["CostCalculator"] = None,
+        min_volume_usdt: Decimal = Decimal("0"),
+    ) -> None:
         self._min_profit_bps = min_profit_bps
+        self._cost_calculator = cost_calculator
+        self._min_volume_usdt = min_volume_usdt
         # exchange_id → symbol → OrderBook
         self._books: dict[str, dict[str, OrderBook]] = {}
 
@@ -104,6 +117,9 @@ class TriangularScanner:
         weights: _Weights = {}
         info: _EdgeInfo = {}
 
+        _ref_notional = Decimal("100")  # reference USDT notional for fee estimation
+        _max_levels = 5
+
         for symbol, book in books.items():
             # Strip futures suffix: "BTC/USDT:USDT" → "BTC/USDT"
             clean = symbol.split(":")[0]
@@ -121,16 +137,77 @@ class TriangularScanner:
 
             bid_f = float(bid)
             ask_f = float(ask)
+            if bid_f <= 0.0 or ask_f <= 0.0:
+                continue  # guard against Decimal→float underflow
 
-            # Sell BASE → QUOTE: rate = bid, weight = -log(bid)
-            weights[(base, quote)] = -math.log(bid_f)
-            info[(base, quote)] = (symbol, "sell")
+            # Hard prune: check depth for sell side (BASE→QUOTE)
+            sell_depth_usdt = self._edge_depth_usdt(book, "sell", bid, _max_levels)
+            if self._min_volume_usdt > 0 and sell_depth_usdt < self._min_volume_usdt:
+                pass  # prune sell edge — don't add
+            else:
+                # Sell BASE → QUOTE: weight = -log(bid) + log(1 + fee_rate)
+                fee_rate_sell = self._estimate_fee_rate(
+                    exchange_id, symbol, "sell", bid, _ref_notional
+                )
+                weights[(base, quote)] = -math.log(bid_f) - math.log(1.0 - fee_rate_sell) if fee_rate_sell < 1.0 else -math.log(bid_f)
+                info[(base, quote)] = (symbol, "sell")
 
-            # Buy BASE with QUOTE: rate = 1/ask, weight = log(ask)
-            weights[(quote, base)] = math.log(ask_f)
-            info[(quote, base)] = (symbol, "buy")
+            # Hard prune: check depth for buy side (QUOTE→BASE)
+            buy_depth_usdt = self._edge_depth_usdt(book, "buy", ask, _max_levels)
+            if self._min_volume_usdt > 0 and buy_depth_usdt < self._min_volume_usdt:
+                pass  # prune buy edge — don't add
+            else:
+                # Buy BASE with QUOTE: weight = log(ask) - log(1 - fee_rate)
+                fee_rate_buy = self._estimate_fee_rate(
+                    exchange_id, symbol, "buy", ask, _ref_notional
+                )
+                weights[(quote, base)] = math.log(ask_f) + (-math.log(1.0 - fee_rate_buy) if fee_rate_buy < 1.0 else 0.0)
+                info[(quote, base)] = (symbol, "buy")
 
         return weights, info
+
+    def _edge_depth_usdt(
+        self,
+        book: OrderBook,
+        side: str,
+        price: Decimal,
+        max_levels: int,
+    ) -> Decimal:
+        """Return available depth in USDT for a single edge."""
+        total_qty = Decimal("0")
+        if side == "sell":
+            for p in sorted(book.bids.keys(), reverse=True)[:max_levels]:
+                total_qty += book.bids[p]
+        else:
+            for p in sorted(book.asks.keys())[:max_levels]:
+                total_qty += book.asks[p]
+        return total_qty * price if total_qty > 0 else Decimal("0")
+
+    def _estimate_fee_rate(
+        self,
+        exchange_id: str,
+        symbol: str,
+        side: str,
+        price: Decimal,
+        ref_notional: Decimal,
+    ) -> float:
+        """Return fee as a fraction of notional. 0.0 if cost_calculator absent or disabled."""
+        if not _ENABLE_TRIANGULAR_COST or self._cost_calculator is None:
+            return 0.0
+        from src.core.models import OrderSide
+        order_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
+        size = ref_notional / price if price > 0 else Decimal("1")
+        try:
+            cost = self._cost_calculator.estimate_cost(
+                exchange_id=exchange_id,
+                symbol=symbol,
+                side=order_side,
+                size=size,
+                price=price,
+            )
+            return float(cost / ref_notional) if ref_notional > 0 else 0.0
+        except Exception:
+            return 0.0
 
     # ------------------------------------------------------------------
     # Negative cycle detection (Bellman-Ford enumeration of 3-hop paths)

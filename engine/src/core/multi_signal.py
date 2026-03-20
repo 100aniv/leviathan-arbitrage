@@ -17,6 +17,7 @@ Strategy 7 (CexDex) needs a DEX adapter (not yet implemented).
 from __future__ import annotations
 
 import logging
+import os
 import random
 import time
 from dataclasses import dataclass, field
@@ -29,6 +30,13 @@ from src.core.models import Signal
 from src.core.order_book import OrderBook
 
 logger = logging.getLogger(__name__)
+
+# US-269: Settlement period per exchange (hours); used to normalize rates to 8H equivalent
+SETTLEMENT_HOURS: dict[str, float] = {
+    "binance_futures": 8.0,
+    "bybit_futures": 8.0,
+    "okx_futures": 8.0,
+}
 
 
 @dataclass
@@ -55,6 +63,20 @@ class MultiSignalConfig:
     # Trade sizing: fixed USD notional for all multi-strategy signals
     # volume = notional / price (e.g., $500 / $90,000 BTC = 0.0056 BTC)
     default_notional_usd: Decimal = Decimal("500")
+
+    # US-269: Multi-exchange funding scanner
+    enable_multi_funding_scanner: bool = field(
+        default_factory=lambda: os.environ.get("ENABLE_MULTI_FUNDING_SCANNER", "true").lower() != "false"
+    )
+    funding_scanner_exchanges: list[str] = field(
+        default_factory=lambda: [
+            e.strip()
+            for e in os.environ.get(
+                "FUNDING_SCANNER_EXCHANGES", "binance_futures,bybit_futures,okx_futures"
+            ).split(",")
+            if e.strip()
+        ]
+    )
 
 
 class MultiStrategySignalProducer:
@@ -123,6 +145,51 @@ class MultiStrategySignalProducer:
     ) -> None:
         """Alias for on_orderbook(). Matches SignalGenerator's method name for symmetry."""
         self.on_orderbook(exchange_id, symbol, book)
+
+    def update_funding_rate(self, exchange_id: str, symbol: str, rate: float) -> None:
+        """Store funding rate normalized to 8H equivalent.
+
+        US-269: rate_8h = rate * (8 / settlement_hours)
+        """
+        settlement_h = SETTLEMENT_HOURS.get(exchange_id, 8.0)
+        rate_8h = rate * (8.0 / settlement_h)
+        if exchange_id not in self._funding_rates:
+            self._funding_rates[exchange_id] = {}
+        self._funding_rates[exchange_id][symbol] = rate_8h
+
+    async def produce_multi_funding_signal(
+        self, symbol: str, price: Decimal
+    ) -> Optional[Signal]:
+        """US-269: Scan N exchanges for max funding rate diff and emit signal.
+
+        Picks (max_rate_exchange, min_rate_exchange) pair across scanner exchanges.
+        Skips if scanner disabled or fewer than 2 exchanges have data for the symbol.
+        """
+        if not self._config.enable_multi_funding_scanner:
+            return None
+
+        rates: dict[str, float] = {}
+        for ex in self._config.funding_scanner_exchanges:
+            rate = self._funding_rates.get(ex, {}).get(symbol)
+            if rate is not None:
+                rates[ex] = rate
+
+        if len(rates) < 2:
+            return None
+
+        max_ex = max(rates, key=lambda e: rates[e])
+        min_ex = min(rates, key=lambda e: rates[e])
+        if max_ex == min_ex:
+            return None
+
+        return await self.produce_funding_rate_signal(
+            symbol=symbol,
+            high_rate_exchange=max_ex,
+            low_rate_exchange=min_ex,
+            high_rate=rates[max_ex],
+            low_rate=rates[min_ex],
+            price=price,
+        )
 
     async def produce_spot_futures_signal(
         self,
@@ -247,6 +314,7 @@ class MultiStrategySignalProducer:
                 "sides": sides,
                 "prices": [str(p) for p in prices],
                 "exchange_id": exchange_id,
+                "signal_timestamp_ms": str(time.time() * 1000),
             },
         )
         await self._publish(signal)
@@ -373,6 +441,11 @@ class MultiStrategySignalProducer:
             return None
         self._mark_emitted(key)
 
+        # US-272: Look up funding diff for this symbol across exchanges
+        buy_funding = self._funding_rates.get(buy_exchange, {}).get(symbol, 0.0)
+        sell_funding = self._funding_rates.get(sell_exchange, {}).get(symbol, 0.0)
+        funding_diff_bps = Decimal(str((sell_funding - buy_funding) * 10000))
+
         signal = Signal(
             strategy_id="futures_futures_spread",
             symbol=symbol,
@@ -388,6 +461,7 @@ class MultiStrategySignalProducer:
                 "spread_bps": str(spread_bps),
                 "buy_futures_exchange": buy_exchange,
                 "sell_futures_exchange": sell_exchange,
+                "funding_diff_bps": str(funding_diff_bps),
             },
         )
         await self._publish(signal)

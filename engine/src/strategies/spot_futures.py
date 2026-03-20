@@ -8,13 +8,29 @@ on the SAME exchange. Both legs execute atomically on one exchange.
 """
 from __future__ import annotations
 
+import os
+import time
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
 from src.core.models import OrderSide, OrderType, Signal, Trade
+from src.core.ou_process import OUProcess
 from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeRequest
+
+
+@dataclass
+class OpenPosition:
+    symbol: str
+    entry_time: float
+    entry_price: Decimal
+    size: Decimal
+    side: str  # "contango" or "backwardation"
+    exchange_id: str
+    futures_symbol: str = ""
+    futures_exchange: str = ""
 
 
 class SpotFuturesConfig(BaseModel):
@@ -24,6 +40,8 @@ class SpotFuturesConfig(BaseModel):
     max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
     max_holding_hours: float = Field(default=8.0, gt=0.0)
     funding_rate_threshold: Decimal = Field(default=Decimal("0.001"), ge=Decimal("0"))
+    enable_basis_ou_filter: bool = Field(default=True)
+    max_basis_halflife_h: float = Field(default=24.0)
 
 
 class SpotFuturesStrategy(BaseStrategy):
@@ -64,6 +82,13 @@ class SpotFuturesStrategy(BaseStrategy):
         except ImportError:
             self._adaptive_threshold = None
 
+        # US-270: OU basis modeling
+        self._ou_basis = OUProcess(window=1440)
+
+        # US-271: Open position tracking for holding timeout
+        self._open_positions: dict[str, OpenPosition] = {}
+        self._holding_timeout_enabled = os.environ.get("ENABLE_HOLDING_TIMEOUT", "").lower() == "true"
+
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1
 
@@ -71,6 +96,50 @@ class SpotFuturesStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
+        # US-271: Expire stale positions by max_holding_hours — close BOTH legs
+        if self._holding_timeout_enabled:
+            now = time.monotonic()
+            max_hold_s = self.config.max_holding_hours * 3600.0
+            expired = [
+                sym for sym, pos in self._open_positions.items()
+                if now - pos.entry_time >= max_hold_s
+            ]
+            for sym in expired:
+                pos = self._open_positions.pop(sym)
+                # Contango: we bought spot + sold futures → close by selling spot + buying futures
+                # Backwardation: we sold spot + bought futures → close by buying spot + selling futures
+                spot_close_side = OrderSide.SELL if pos.side == "contango" else OrderSide.BUY
+                futures_close_side = OrderSide.BUY if pos.side == "contango" else OrderSide.SELL
+                futures_sym = pos.futures_symbol or sym
+                futures_ex = pos.futures_exchange or pos.exchange_id
+                self._metrics.trade_requests_generated += 1
+                # Emit closing request with BOTH legs (spot + futures)
+                return TradeRequest(
+                    strategy_id=self.strategy_id,
+                    legs=[
+                        TradeLeg(
+                            exchange_id=pos.exchange_id,
+                            symbol=sym,
+                            side=spot_close_side,
+                            size=pos.size,
+                            order_type=OrderType.MARKET,
+                            price=pos.entry_price,
+                            metadata={"leg_type": "timeout_close_spot"},
+                        ),
+                        TradeLeg(
+                            exchange_id=futures_ex,
+                            symbol=futures_sym,
+                            side=futures_close_side,
+                            size=pos.size,
+                            order_type=OrderType.MARKET,
+                            price=pos.entry_price,
+                            metadata={"leg_type": "timeout_close_futures"},
+                        ),
+                    ],
+                    expected_profit_usdt=Decimal("0"),
+                    confidence=0.0,
+                    metadata={"reason": "holding_timeout"},
+                )
 
         # US-254: Regime check — block new entries in CRISIS mode
         if self._regime_detector is not None:
@@ -104,6 +173,15 @@ class SpotFuturesStrategy(BaseStrategy):
         if abs_basis_bps < _min_basis:
             self._metrics.signals_filtered += 1
             return None
+
+        # US-270: OU basis modeling — update with raw (signed) basis_bps, no abs()
+        self._ou_basis.update(float(basis_bps), time.monotonic())
+
+        # US-270: Filter if basis is not mean-reverting within max_basis_halflife_h
+        if self.config.enable_basis_ou_filter and self._ou_basis.is_mean_reverting:
+            if self._ou_basis.half_life > self.config.max_basis_halflife_h * 3600:
+                self._metrics.signals_filtered += 1
+                return None
 
         # Skip if funding rate direction is ADVERSE to our position.
         # Contango (basis > 0): we sell futures (short) → positive funding = good (shorts receive).
@@ -164,6 +242,28 @@ class SpotFuturesStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
+        # US-270: Confidence boost via OU predict — closer to mu → higher confidence
+        ou_confidence = signal.confidence
+        if self._ou_basis.is_mean_reverting:
+            predicted = self._ou_basis.predict(horizon_s=3600.0)
+            if abs(float(basis_bps)) > 0:
+                reversion_ratio = min(1.0, abs(float(basis_bps) - predicted) / abs(float(basis_bps)))
+                ou_confidence = min(1.0, signal.confidence * (1.0 + 0.2 * reversion_ratio))
+
+        # US-271: Track new open position
+        pos_side = "contango" if basis_bps > 0 else "backwardation"
+        if self._holding_timeout_enabled:
+            self._open_positions[spot_symbol] = OpenPosition(
+                symbol=spot_symbol,
+                entry_time=time.monotonic(),
+                entry_price=spot_price,
+                size=size,
+                side=pos_side,
+                exchange_id=exchange_id,
+                futures_symbol=futures_symbol,
+                futures_exchange=exchange_id,
+            )
+
         self._metrics.trade_requests_generated += 1
         return TradeRequest(
             strategy_id=self.strategy_id,
@@ -188,7 +288,7 @@ class SpotFuturesStrategy(BaseStrategy):
                 ),
             ],
             expected_profit_usdt=net_profit,
-            confidence=signal.confidence,
+            confidence=ou_confidence,
             metadata={
                 "basis_bps": str(basis_bps),
                 "gross_profit": str(gross_profit),
@@ -198,3 +298,8 @@ class SpotFuturesStrategy(BaseStrategy):
 
     async def on_fill(self, trade: Trade) -> None:
         await super().on_fill(trade)
+        # US-271: Remove closed position on exit fill
+        if self._holding_timeout_enabled:
+            meta = getattr(trade, "metadata", {}) or {}
+            if meta.get("leg_type", "").startswith("timeout_close"):
+                self._open_positions.pop(trade.symbol, None)

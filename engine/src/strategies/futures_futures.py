@@ -7,9 +7,12 @@ US-233: Tighter parameters — min_spread_bps=15, min_book_depth_usd=500, max_no
 """
 from __future__ import annotations
 
+import logging
 import os
 from decimal import Decimal
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +29,12 @@ class FuturesFuturesConfig(BaseModel):
     margin_safety_pct: Decimal = Field(default=Decimal("0.20"), ge=Decimal("0"))
     max_notional_usd: Decimal | None = Field(default=Decimal("200"))  # US-233: hard notional cap
     min_book_depth_usd: Decimal = Field(default=Decimal("500"), ge=Decimal("0"))  # US-233
+    # US-272: Funding convergence combined signal
+    funding_convergence_weight: Decimal = Field(default=Decimal("0.3"), ge=Decimal("0"), le=Decimal("1"))
+    enable_funding_convergence: bool = Field(default=True)
+    # US-273: Stale guard
+    max_book_age_seconds: float = Field(default=5.0, gt=0)
+    enable_stale_guard: bool = Field(default=False)
 
 
 class FuturesFuturesStrategy(BaseStrategy):
@@ -55,6 +64,10 @@ class FuturesFuturesStrategy(BaseStrategy):
                 min_spread_bps=Decimal(os.environ.get("FUTURES_MIN_SPREAD_BPS", "15")),
                 min_book_depth_usd=Decimal(os.environ.get("FUTURES_MIN_BOOK_DEPTH_USD", "500")),
                 max_notional_usd=Decimal(os.environ.get("FUTURES_MAX_NOTIONAL_USD", "200")),
+                funding_convergence_weight=Decimal(os.environ.get("FUNDING_CONVERGENCE_WEIGHT", "0.3")),
+                enable_funding_convergence=os.environ.get("ENABLE_FUNDING_CONVERGENCE", "true").lower() == "true",
+                max_book_age_seconds=float(os.environ.get("FUTURES_MAX_BOOK_AGE_S", "5.0")),
+                enable_stale_guard=os.environ.get("ENABLE_STALE_GUARD", "false").lower() == "true",
             )
         self.config = config
 
@@ -78,6 +91,17 @@ class FuturesFuturesStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
+        # US-273: Stale Guard — fail closed if book_age_ms missing or stale
+        if self.config.enable_stale_guard:
+            raw_book_age = signal.metadata.get("book_age_ms")
+            if raw_book_age is None:
+                logger.warning("missing book_age_ms, filtering signal")
+                self._metrics.signals_filtered += 1
+                return None
+            book_age_ms = float(raw_book_age)
+            if book_age_ms / 1000 > self.config.max_book_age_seconds:
+                self._metrics.signals_filtered += 1
+                return None
 
         # US-254: Regime check — block new entries in CRISIS mode
         if self._regime_detector is not None:
@@ -93,13 +117,26 @@ class FuturesFuturesStrategy(BaseStrategy):
         if self._adaptive_threshold is not None:
             self._adaptive_threshold.update(_spread_bps)
 
-        # US-260: dynamic threshold when ready, static fallback
+        # US-260: dynamic threshold when ready, static fallback (in bps)
         if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
             _entry_bps, _ = self._adaptive_threshold.thresholds
-            min_spread = Decimal(str(_entry_bps)) / Decimal("10000")
+            min_spread_bps_effective = Decimal(str(_entry_bps))
         else:
-            min_spread = self.config.min_spread_bps / Decimal("10000")
-        if signal.spread_pct < min_spread:
+            min_spread_bps_effective = self.config.min_spread_bps
+
+        # US-272: Funding convergence combined score
+        try:
+            funding_diff_bps = Decimal(str(signal.metadata.get("funding_diff_bps", 0)))
+        except Exception:
+            funding_diff_bps = Decimal("0")
+        # Clamp to ±500 bps — anything beyond is anomalous
+        funding_diff_bps = max(Decimal("-500"), min(funding_diff_bps, Decimal("500")))
+        if self.config.enable_funding_convergence:
+            combined_score = Decimal(str(_spread_bps)) + self.config.funding_convergence_weight * funding_diff_bps
+        else:
+            combined_score = Decimal(str(_spread_bps))
+
+        if combined_score < min_spread_bps_effective:
             self._metrics.signals_filtered += 1
             return None
 

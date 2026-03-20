@@ -14,6 +14,8 @@ Signal metadata schema:
 from __future__ import annotations
 
 import logging
+import os
+import time
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -25,12 +27,17 @@ from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeReq
 logger = logging.getLogger(__name__)
 
 
+_ENABLE_LATENCY_BUDGET = os.environ.get("ENABLE_LATENCY_BUDGET", "false").lower() == "true"
+_TRIANGULAR_MAX_LATENCY_MS = float(os.environ.get("TRIANGULAR_MAX_LATENCY_MS", "500"))
+
+
 class TriangularConfig(BaseModel):
     """Configuration for TriangularStrategy."""
 
     # US-241: Reduced from 10 to 8 bps (3x Coinone fee = 6bps, 8 > 6)
     min_profit_bps: Decimal = Field(default=Decimal("8"), ge=Decimal("0"))
     max_position_usdt: Decimal = Field(default=Decimal("1000"), gt=Decimal("0"))
+    max_latency_ms: float = Field(default=_TRIANGULAR_MAX_LATENCY_MS, gt=0)
 
 
 class TriangularStrategy(BaseStrategy):
@@ -70,6 +77,22 @@ class TriangularStrategy(BaseStrategy):
                     return None
             except Exception:
                 pass  # graceful fallback
+
+        # US-267: Latency budget — reject stale signals
+        if _ENABLE_LATENCY_BUDGET:
+            meta_pre = signal.metadata
+            signal_ts_ms = meta_pre.get("signal_timestamp_ms")
+            if signal_ts_ms is not None:
+                now_ms = time.time() * 1000
+                elapsed_ms = now_ms - float(signal_ts_ms)
+                if elapsed_ms > self.config.max_latency_ms:
+                    logger.debug(
+                        "triangular.latency_budget_exceeded elapsed_ms=%.1f max_ms=%.1f",
+                        elapsed_ms,
+                        self.config.max_latency_ms,
+                    )
+                    self._metrics.signals_filtered += 1
+                    return None
 
         # Validate triangle metadata
         meta = signal.metadata

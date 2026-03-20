@@ -3,7 +3,7 @@
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-20 (Phase S16 완료 — 동적 임계치 + S15 이월 6 US, 12 US VERIFIED) | PRD: `.omc/prd.json` (255+42개 US, 297 total)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (255 passes:true / 42 passes:false)
-> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → **TF SF 중단 (9H)** → **Phase S15~S16 완료** → **Phase S17~S21 회귀** → TF QF → TF SF → TF Final → Live
+> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S17 완료** → **Phase S18~S21 회귀** → TF QF → TF SF → TF Final → Live
 
 ---
 
@@ -31,11 +31,11 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S16 완료 (2026-03-20) — 동적 임계치 + 적응형 파라미터 + S15 이월 6 US, 12 US VERIFIED
-**Tests**: 4,962 passed / 0 failed / 12 skipped
+**Phase**: S17 진행 중 (2026-03-20) — MUST FIX 5건 완료 + 코드리뷰/보안리뷰 PASS, Stage C 완료
+**Tests**: 4,991 passed / 0 failed / 12 skipped
 **Coverage**: 82%
-**TF Status**: TF SF 9H 중단 → Phase S15 완료 → Phase S16 완료 (12 US VERIFIED) → Phase S17 진행 예정
-**Next**: Phase S17 (전략별 고급 기능 + 실행 안전장치) → S18~S21 → TF QF → TF SF → TF Final → Live
+**TF Status**: TF SF 9H 중단 → S15~S16 완료 → **S17 Stage C PASS** → S18~S21 → TF QF → TF SF → TF Final → Live
+**Next**: Phase S17 SSOT 반영 완료 → git push → Phase S18 진입
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
@@ -433,18 +433,18 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **진입 조건**: Phase S16 완료
 > **플랜**: `.claude/plans/parallel-finding-sparrow.md`
 
-- [ ] US-266: Bellman-Ford + 비용 통합 (triangular) (← log 변환에 Gas Cost + Orderbook Depth 잠식 포함)
-- [ ] US-267: 삼각 차익 Latency Budget 500ms (triangular) (← 3 leg 총 500ms 초과 시 자동 취소)
-- [ ] US-268: OU Process Funding Rate 예측 (funding_rate) (← OU 파라미터 추정, 다음 funding 예측 사전 진입, Half-life < Execution Latency 시 차단)
-- [ ] US-269: Funding Rate 다중 거래소 스캐너 (funding_rate) (← 2개 → 4개 거래소 동시 스캔, 최적 쌍 선택)
-- [ ] US-270: spot_futures OU Basis Modeling (← OU half-life 적용, Half-life < Execution Latency 시 차단)
-- [ ] US-271: spot_futures max_holding_hours 강제 (← spot_futures.py:25 선언 필드 → 실제 타이머 기반 강제 청산)
-- [ ] US-272: futures_futures Funding Convergence (← spread + funding rate diff 합산 수익 계산)
-- [ ] US-273: futures_futures Stale Guard (← max_book_age_seconds 체크 추가)
-- [ ] US-274: stat_arb Z-score 거래비용 조정 (← z-score 진입에 왕복 비용 반영, 비용 > 예상수익 시 스킵)
-- [ ] US-275: Atomic Fallback (Partial Fill 대응) (← 한쪽 leg만 체결 시 수치 기준 손절, 델타 불균형 X초 이상 또는 Y% 이상 시 시장가 청산)
-- [ ] US-275-a: DepthAnalyzer 주문 사이징 연결 (← core/depth_analyzer.py VWAP/유동성 미사용 → AtomicExecutor 대형 주문 depth 기반 사이징)
-- [ ] US-276: S17 통합 Shadow 10min 검증 (← 각 전략 독립 5min + 통합 10min, Bellman-Ford 비용 로그)
+- [x] US-266: Bellman-Ford + 비용 통합 (triangular) (← fee weight 수식 `-log(1-fee)` 수정, float underflow guard) — VERIFIED
+- [x] US-267: 삼각 차익 Latency Budget 500ms (triangular) (← signal_timestamp_ms 메타데이터 주입 + 소비자 검증) — VERIFIED
+- [x] US-268: OU Process Funding Rate 예측 (funding_rate) (← OU 파라미터 추정, 다음 funding 예측 사전 진입, Half-life < Execution Latency 시 차단) — VERIFIED
+- [x] US-269: Funding Rate 다중 거래소 스캐너 (funding_rate) (← 3거래소 스캔, settlement 정규화, 최적 쌍 선택) — VERIFIED
+- [x] US-270: spot_futures OU Basis Modeling (← OU half-life 적용, signed basis_bps, predict horizon=3600s) — VERIFIED
+- [x] US-271: spot_futures max_holding_hours 강제 (← 양레그 동시 청산, futures_symbol/exchange 추적, on_fill startswith 매칭) — VERIFIED
+- [x] US-272: futures_futures Funding Convergence (← funding_diff_bps 메타데이터 주입 + ±500bps 클램핑) — VERIFIED
+- [x] US-273: futures_futures Stale Guard (← enable_stale_guard default=False, book_age_ms float 변환) — VERIFIED
+- [x] US-274: stat_arb Z-score 거래비용 조정 (← z-score 진입에 왕복 비용 반영, 비용 > 예상수익 시 스킵) — VERIFIED
+- [x] US-275: Atomic Fallback (Partial Fill 대응) (← 한쪽 leg만 체결 시 수치 기준 손절, 델타 불균형 X초 이상 또는 Y% 이상 시 시장가 청산) — VERIFIED
+- [x] US-275-a: DepthAnalyzer 주문 사이징 연결 (← core/depth_analyzer.py VWAP/유동성 미사용 → AtomicExecutor 대형 주문 depth 기반 사이징) — VERIFIED
+- [x] US-276: S17 통합 Shadow 10min 검증 (← 멀티모델 감사 Quorum MUST FIX 5건 해결, 4991 tests PASS) — VERIFIED
 
 #### Phase S18: 포트폴리오 리스크 + 평가 체계 + Slippage Feedback — US-277~285
 
