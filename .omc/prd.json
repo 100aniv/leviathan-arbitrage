@@ -4736,7 +4736,7 @@
       "title": "Bellman-Ford + 비용 통합 (triangular)",
       "phase": "S17",
       "priority": 266,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/triangular.py",
         "engine/src/core/triangular_scanner.py"
@@ -4755,7 +4755,7 @@
       "title": "삼각 차익 Latency Budget 500ms",
       "phase": "S17",
       "priority": 267,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/triangular.py",
         "engine/src/execution/atomic.py"
@@ -4774,7 +4774,7 @@
       "title": "OU Process Funding Rate 예측",
       "phase": "S17",
       "priority": 268,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/funding_rate.py",
         "engine/src/strategies/statistical_arb.py"
@@ -4793,7 +4793,7 @@
       "title": "Funding Rate 다중 거래소 스캐너",
       "phase": "S17",
       "priority": 269,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/funding_rate.py",
         "engine/src/collectors/binance_futures_collector.py"
@@ -4812,7 +4812,7 @@
       "title": "spot_futures OU Basis Modeling",
       "phase": "S17",
       "priority": 270,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/spot_futures.py",
         "engine/src/strategies/statistical_arb.py"
@@ -4831,7 +4831,7 @@
       "title": "spot_futures max_holding_hours 강제",
       "phase": "S17",
       "priority": 271,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/spot_futures.py",
         "engine/src/execution/atomic.py"
@@ -4850,7 +4850,7 @@
       "title": "futures_futures Funding Convergence",
       "phase": "S17",
       "priority": 272,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/futures_futures.py"
       ],
@@ -4868,7 +4868,7 @@
       "title": "futures_futures Stale Guard",
       "phase": "S17",
       "priority": 273,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/futures_futures.py"
       ],
@@ -4886,7 +4886,7 @@
       "title": "stat_arb Z-score 거래비용 조정",
       "phase": "S17",
       "priority": 274,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/statistical_arb.py",
         "engine/src/friction/cost_calculator.py"
@@ -4905,7 +4905,7 @@
       "title": "Atomic Fallback (Partial Fill 대응)",
       "phase": "S17",
       "priority": 275,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/execution/atomic.py",
         "engine/src/core/position_reconciler.py"
@@ -4924,7 +4924,7 @@
       "title": "DepthAnalyzer 주문 사이징 연결",
       "phase": "S17",
       "priority": 275.1,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/depth_analyzer.py",
         "engine/src/execution/atomic.py"
@@ -4943,7 +4943,7 @@
       "title": "S17 통합 Shadow 10min 검증",
       "phase": "S17",
       "priority": 276,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py"
       ],
