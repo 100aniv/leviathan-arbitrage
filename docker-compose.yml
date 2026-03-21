@@ -242,10 +242,12 @@ services:
       - /bin/sh
       - -c
       - |
-        # envsubst not available in Alpine — use sed for token replacement
+        # envsubst not available in Alpine — use sed for 3-bot token replacement
         sed \
-          -e "s|WORKFLOW_TELEGRAM_BOT_TOKEN_PLACEHOLDER|$${WORKFLOW_TELEGRAM_BOT_TOKEN}|g" \
-          -e "s|chat_id: 0|chat_id: $${WORKFLOW_TELEGRAM_CHAT_ID}|g" \
+          -e "s|INFRA_TELEGRAM_BOT_TOKEN_PLACEHOLDER|$${INFRA_TELEGRAM_BOT_TOKEN}|g" \
+          -e "s|TRADE_TELEGRAM_BOT_TOKEN_PLACEHOLDER|$${TRADE_TELEGRAM_BOT_TOKEN}|g" \
+          -e "s|DEV_TELEGRAM_BOT_TOKEN_PLACEHOLDER|$${DEV_TELEGRAM_BOT_TOKEN}|g" \
+          -e "s|chat_id: 0|chat_id: $${INFRA_TELEGRAM_CHAT_ID}|g" \
           /etc/alertmanager/alertmanager.template.yml > /tmp/alertmanager.yml
         exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager
     ports:
@@ -296,36 +298,48 @@ services:
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
-  # Monitor Daemon — 5분 주기 인프라 헬스체크
+  # Bot Gateway — DevBot + InfraBot + MonitorDaemon 독립 실행 (Phase S20-C)
   # ---------------------------------------------------------------------------
-  monitoring:
+  bot-gateway:
     image: leviathan-engine:latest
-    container_name: leviathan-monitoring
+    build:
+      context: .
+      dockerfile: docker/engine.Dockerfile
+    container_name: leviathan-bot-gateway
     restart: unless-stopped
+    command: ["python", "-m", "src.bot_gateway"]
     env_file: .env
     environment:
+      # DevBot
+      DEV_TELEGRAM_BOT_TOKEN: ${DEV_TELEGRAM_BOT_TOKEN}
+      DEV_TELEGRAM_CHAT_ID: ${DEV_TELEGRAM_CHAT_ID}
+      DEV_TELEGRAM_ENABLED: ${DEV_TELEGRAM_ENABLED:-true}
+      # InfraBot
+      INFRA_TELEGRAM_BOT_TOKEN: ${INFRA_TELEGRAM_BOT_TOKEN}
+      INFRA_TELEGRAM_CHAT_ID: ${INFRA_TELEGRAM_CHAT_ID}
+      INFRA_TELEGRAM_ENABLED: ${INFRA_TELEGRAM_ENABLED:-true}
+      # TradeBot disabled (runs inside engine)
+      TRADE_TELEGRAM_ENABLED: "false"
+      # Engine URL for InfraBot /health
+      ENGINE_URL: http://engine:8000
+      # MonitorDaemon (integrated into bot-gateway)
+      MONITOR_INTERVAL_SEC: "300"
       DB_HOST: timescaledb
       REDIS_HOST: redis
       REDIS_URL: redis://redis:6379/0
       DATABASE_URL: postgresql+asyncpg://leviathan:leviathan@timescaledb:5432/leviathan
-      ENGINE_URL: http://engine:8000
-      MONITOR_INTERVAL_SEC: "300"
-    command: ["python", "-m", "src.infra.monitor_daemon"]
+    volumes:
+      - .:/app:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - leviathan
-    depends_on:
-      redis:
-        condition: service_healthy
-      timescaledb:
-        condition: service_healthy
-      engine:
-        condition: service_healthy
+    # No depends_on — runs independently of engine!
     healthcheck:
-      test: ["CMD", "python", "-c", "import src.infra.monitor_daemon; print('ok')"]
+      test: ["CMD", "python", "-c", "import src.bot_gateway; print('ok')"]
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 10s
     logging: *default-logging
 
   # ---------------------------------------------------------------------------

@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-21 (Phase S19 완료 — 데이터 품질 통합 DataQualityManager, 6 US VERIFIED) | PRD: `.omc/prd.json` (255+42개 US, 297 total)
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (302 passes:true / 6 passes:false)
-> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S20 ✅** → **S21 진행 예정** → TF QF → TF SF → TF Final → Live
+> 마지막 업데이트: 2026-03-21 (Phase S20-C 완료 — 3-Bot 역할 재정의 + MonitorDaemon 통합) | PRD: `.omc/prd.json` (255+42+7개 US, 315 total)
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (309 passes:true / 6 passes:false)
+> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S20-C ✅** → **S21 진행 예정** → TF QF → TF SF → TF Final → Live
 
 ---
 
@@ -31,11 +31,11 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S20 완료 (2026-03-21) — 모니터링 전면 재설계 + 3-Bot 텔레그램 분리 (18 US VERIFIED)
+**Phase**: S20-C 완료 (2026-03-21) — 3-Bot 역할 재정의 + MonitorDaemon bot-gateway 통합 + /engine InfraBot 이동
 **Tests**: 5,183 passed / 0 failed / 12 skipped
-**Coverage**: 82%
-**TF Status**: TF SF 9H 중단 → S15~S20 완료 → **S21 진행 예정** → TF QF → TF SF → TF Final → Live
-**Next**: Phase S21 — 사장님과 텔레그램 봇 실 동작 테스트 후 진행
+**Coverage**: 78%
+**TF Status**: TF SF 9H 중단 → S15~S20-C 완료 → **S21 진행 예정** → TF QF → TF SF → TF Final → Live
+**Next**: Phase S21 — 전략 포트폴리오 최적화 + Live 준비
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
@@ -139,6 +139,7 @@ Engine.run()
   ├── _init_risk()             # Guardian, CircuitBreaker, KillSwitch
   ├── _init_execution()        # AtomicExecutor, TradeRequestConsumer
   ├── _start_background_tasks()# Health, Reconcile, Heartbeat, Shadow, LiveGate
+  │   └── 3-Bot Telegram      # TradeBot(20cmd) + InfraBot(7cmd) + DevBot(15cmd) poll_loop
   └── await shutdown signal
 ```
 
@@ -470,12 +471,12 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **진입 조건**: Phase S15 완료 (S16/S17/S18과 병렬 가능)
 > **플랜**: `.claude/plans/parallel-finding-sparrow.md`
 
-- [ ] US-286: DataQualityManager 중앙 관리 객체 (← StaleOrderbookDetector + HealthChecker 단일 통합, update_orderbook()/get_health_scores()/is_blacklisted()/cleanup(), RiskGuardian/LiveGate 주입, 블랙리스트 TTL 관리)
-- [ ] US-287: 전략별/거래소별 차등 Freshness Threshold (← CEX-CEX: 500ms, Korean: 1s, 기본: 2s, DataQualityManager 설정 관리)
-- [ ] US-288: Exchange Health Score 실시간 계산 (← DataQualityManager.get_health_scores() 통합, WS+메시지빈도+지연 → 0-100점, <80 비활성)
-- [ ] US-289: Anomaly Detection (← 30초 롤링 평균 대비 ±5% → 3초 격리 후 재확인, DataQualityManager 레이어)
-- [ ] US-290: Bithumb 증분 Orderbook Stale 특화 (← 소형코인 2-10x 가격 오차 패턴 탐지 → fake spread 거부)
-- [ ] US-290-a: S19 통합 Shadow 10min 검증 (← DataQualityManager 동작, stale 거부 건수, health score 모니터링)
+- [x] US-286: DataQualityManager 중앙 관리 객체 (← StaleOrderbookDetector + HealthChecker 단일 통합, update_orderbook()/get_health_scores()/is_blacklisted()/cleanup(), RiskGuardian/LiveGate 주입, 블랙리스트 TTL 관리) ✅
+- [x] US-287: 전략별/거래소별 차등 Freshness Threshold (← CEX-CEX: 500ms, Korean: 1s, 기본: 2s, DataQualityManager 설정 관리) ✅
+- [x] US-288: Exchange Health Score 실시간 계산 (← DataQualityManager.get_health_scores() 통합, WS+메시지빈도+지연 → 0-100점, <80 비활성) ✅
+- [x] US-289: Anomaly Detection (← 30초 롤링 평균 대비 ±5% → 3초 격리 후 재확인, DataQualityManager 레이어) ✅
+- [x] US-290: Bithumb 증분 Orderbook Stale 특화 (← 소형코인 2-10x 가격 오차 패턴 탐지 → fake spread 거부) ✅
+- [x] US-290-a: S19 통합 Shadow 10min 검증 (← DataQualityManager 동작, stale 거부 건수, health score 모니터링) ✅
 
 #### Phase S20: 사용자 편의성 + 모니터링 — US-291~296
 
@@ -483,13 +484,27 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **진입 조건**: Phase S15 완료 (S16/S17/S18과 병렬 가능)
 > **플랜**: `.claude/plans/parallel-finding-sparrow.md`
 
-- [ ] US-291: Prometheus 계측 완성 (← 전략별 trades/signals/latency, 포트폴리오 PnL/MDD, 거래소 health, 신호→체결 Execution Latency)
-- [ ] US-292: Grafana 대시보드 4개 (← Overview/전략별상세/거래소상태/ML모델성능, 개인 사용자 빠른 상태 파악)
-- [ ] US-293: Alertmanager → 텔레그램 알림 강화 + Kill Switch 버튼 (← MDD>3% WARNING, MDD>5% CRITICAL, 텔레그램 한국어+인라인 버튼 Kill Switch)
-- [ ] US-294: 원클릭 시작/중지 CLI (← python -m src.main start/stop/status, .env 자동 검증)
-- [ ] US-295: 일일 요약 리포트 (텔레그램) (← 매일 09:00 KST 전일 PnL+전략별 성과+Sharpe+MDD+주요 이벤트 자동 발송)
-- [ ] US-295-a: MonitorDaemon 백그라운드 시작 (← infra/monitor_daemon.py 5분 주기 Redis/DB/API 헬스체크, main.py 백그라운드 태스크 연결)
-- [ ] US-296: S20 통합 Shadow 10min 검증 (← Grafana 실시간 확인, 텔레그램 알림 트리거, CLI 동작, MonitorDaemon 테스트)
+- [x] US-291: Prometheus 계측 완성 (← 전략별 trades/signals/latency, 포트폴리오 PnL/MDD, 거래소 health, 신호→체결 Execution Latency) ✅
+- [x] US-292: Grafana 대시보드 4개 (← Overview/전략별상세/거래소상태/ML모델성능, 개인 사용자 빠른 상태 파악) ✅
+- [x] US-293: Alertmanager → 텔레그램 알림 강화 + Kill Switch 버튼 (← MDD>3% WARNING, MDD>5% CRITICAL, 텔레그램 한국어+인라인 버튼 Kill Switch) ✅
+- [x] US-294: 원클릭 시작/중지 CLI (← python -m src.main start/stop/status, .env 자동 검증) ✅
+- [x] US-295: 일일 요약 리포트 (텔레그램) (← 매일 09:00 KST 전일 PnL+전략별 성과+Sharpe+MDD+주요 이벤트 자동 발송) ✅
+- [x] US-295-a: MonitorDaemon 백그라운드 시작 (← infra/monitor_daemon.py 5분 주기 Redis/DB/API 헬스체크, main.py 백그라운드 태스크 연결) ✅
+- [x] US-296: S20 통합 Shadow 10min 검증 (← Grafana 실시간 확인, 텔레그램 알림 트리거, CLI 동작, MonitorDaemon 테스트) ✅
+
+#### Phase S20-B: 3-Bot 버그 수정 + 원격 제어 강화 — US-302~308
+
+> **목표**: TradeBot 무응답 수정, Docker monitoring 통합, DevBot 원격 제어 15개, TradeBot 기관급 20개, InfraBot 리소스 모니터링
+> **진입 조건**: Phase S20 완료
+> **플랜**: `.claude/plans/effervescent-whistling-bird.md`
+
+- [x] US-302: TelegramBotBase HTML fallback + 에러 응답 (← send_message() HTML 실패 시 plain text fallback, _handle_message() 에러 시 사용자 응답) ✅
+- [x] US-303: Docker monitoring INFRA 토큰 전환 + MonitorDaemon Engine 분리 (← docker-compose.yml INFRA_TELEGRAM_BOT_TOKEN 매핑, main.py MonitorDaemon run() 제거) ✅
+- [x] US-304: Alertmanager 3봇 토큰 sed 치환 (← INFRA/TRADE/DEV 토큰 + chat_id sed 치환, alertmanager.yml placeholder 매칭) ✅
+- [x] US-305: DevBot 원격 제어 확장 4→15 (← /session /cmd /test /shadow /git /deploy /logs /approve /reject /progress /env, /cmd 화이트리스트, /deploy 2단계 확인) ✅
+- [x] US-306: TradeBot 기관급 기능 12→20 (← /positions /fills /strategy on|off /exchanges /whitelist /blacklist /params /report, send_fill_enhanced() 기관급 체결 알림) ✅
+- [x] US-307: InfraBot 시스템 리소스 4→7 (← /resources psutil CPU/메모리/디스크/네트워크/Top프로세스, /metrics Prometheus, /restart 2단계 확인) ✅
+- [x] US-308: S20-B SSOT/prd.json/CLAUDE.md 동기화 + Stage C 검증 ✅
 
 #### Phase S21: 전략 포트폴리오 최적화 + Live 준비 — US-297~300
 
