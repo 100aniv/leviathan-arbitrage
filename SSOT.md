@@ -3,7 +3,7 @@
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-21 (Phase S20-C 완료 — 3-Bot 역할 재정의 + MonitorDaemon 통합) | PRD: `.omc/prd.json` (255+42+7개 US, 315 total)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (309 passes:true / 6 passes:false)
-> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S21 ✅** → TF QF → TF SF → TF PF → TF Final → Live
+> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S21 ✅** → **TF QF 8차 진행중** → TF SF → TF PF → TF Final → Live
 
 ---
 
@@ -31,11 +31,12 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S21 완료 (2026-03-22) — stat_arb DISABLED + 실데이터 WFE + strategy_filter + PortfolioRisk 와이어링
+**Phase**: TF QF 진행중 (2026-03-22) — S21 완료 후 TF QF 8차 교차검증 중
 **Tests**: 5,242 passed / 0 failed / 12 skipped
 **Coverage**: 77%
-**TF Status**: TF SF 9H 중단 → S15~S21 완료 → **TF QF 재실행 예정** → TF SF → TF PF → TF Final → Live
-**Next**: TF QF 재실행 (전 US passes:true 확인 후)
+**PRD**: 313/315 passes:true (US-055/056 Phase F Live전환 = TF Final 후)
+**TF Status**: S15~S21 ✅ → **TF QF 8차 진행중** → TF SF → TF PF → TF Final → Live
+**Next**: TF QF PASS → TF SF 24H Shadow
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)

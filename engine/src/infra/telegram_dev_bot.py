@@ -222,18 +222,33 @@ class DevTelegramBot(TelegramBotBase):
         cmd_str = parts[1].strip()
 
         # Security: check whitelist
-        allowed = False
-        for prefix in _CMD_PREFIX_WHITELIST:
-            if cmd_str.startswith(prefix):
-                allowed = True
+        # Security H-1: Use exact whitelist matching + subprocess_exec (no shell)
+        import shlex
+        _CMD_EXACT_MAP: dict[str, list[str]] = {
+            "git status": ["git", "status", "-s"],
+            "git log": ["git", "log", "--oneline", "-10"],
+            "git diff": ["git", "diff", "--stat"],
+            "docker compose ps": ["docker", "compose", "ps"],
+            "docker compose logs": ["docker", "compose", "logs", "--tail=50"],
+        }
+        matched_cmd = None
+        for key, argv in _CMD_EXACT_MAP.items():
+            if cmd_str.strip() == key or cmd_str.strip().startswith(key + " "):
+                matched_cmd = argv
                 break
 
-        if not allowed:
+        # Fallback: exact match against _CMD_WHITELIST
+        if matched_cmd is None:
+            parts = shlex.split(cmd_str)
+            if parts in _CMD_WHITELIST:
+                matched_cmd = parts
+
+        if matched_cmd is None:
             return "🚫 허용되지 않은 명령어입니다.\n/cmd 로 허용 목록을 확인하세요."
 
         try:
-            proc = await asyncio.create_subprocess_shell(
-                cmd_str,
+            proc = await asyncio.create_subprocess_exec(
+                *matched_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(_REPO_ROOT),
@@ -705,12 +720,24 @@ class DevTelegramBot(TelegramBotBase):
             f"📉 MDD: {mdd*100:.2f}%"
         )
 
+    # Security H-2: Fixed allowed messages for /go (no arbitrary input to tmux)
+    _GO_ALLOWED_MSGS: list[str] = [
+        "멈추지 말고 계속 진행해. Stage 전환 즉시 실행.",
+        "계속 진행해.",
+        "다음 Stage로 넘어가.",
+    ]
+
     async def _cmd_go(self, text: str, chat_id: int, message: dict) -> str:
-        """텔레그램에서 Claude CLI 수동 재개 (/go 또는 /go 메시지)."""
+        """텔레그램에서 Claude CLI 수동 재개 (/go). 고정 메시지만 허용."""
         import subprocess
 
         parts = text.strip().split(maxsplit=1)
-        resume_msg = parts[1] if len(parts) > 1 else "멈추지 말고 계속 진행해. Stage 전환 즉시 실행."
+        # Only allow pre-defined messages (prevent tmux injection)
+        if len(parts) > 1:
+            idx = int(parts[1]) - 1 if parts[1].isdigit() else 0
+        else:
+            idx = 0
+        resume_msg = self._GO_ALLOWED_MSGS[min(idx, len(self._GO_ALLOWED_MSGS) - 1)]
 
         tmux_session = os.getenv("WATCHDOG_TMUX_SESSION", "leviathan")
         tmux_pane = f"{tmux_session}:0.0"
