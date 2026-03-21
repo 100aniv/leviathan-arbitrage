@@ -108,12 +108,8 @@ class Engine:
         self._slippage_feedback: Any = None
         self._dynamic_sizer: Any = None
         self._telegram_cmd_handler: Any = None
-        # US-291: Phase S20 3-Bot Telegram
+        # US-291: Phase S20 TradeBot (InfraBot/DevBot → bot-gateway)
         self._trade_bot: Any = None
-        self._infra_bot: Any = None
-        self._dev_bot: Any = None
-        self._monitor_daemon: Any = None
-        self._startup_checker: Any = None
         self._tca_analyzer: Any = None  # US-116
         self._rebalancer: Any = None  # US-120
         self._balance_tracker: Any = None  # US-120
@@ -271,19 +267,13 @@ class Engine:
                 await self._telegram.close()
             except Exception as exc:
                 logger.warning("Telegram close error: %s", exc)
-        if hasattr(self, '_telegram_cmd_handler') and self._telegram_cmd_handler:
+        # Phase S21: TelegramCommandHandler removed
+        # Close TradeBot (InfraBot/DevBot → bot-gateway)
+        if hasattr(self, '_trade_bot') and self._trade_bot:
             try:
-                await self._telegram_cmd_handler.close()
+                await self._trade_bot.close()
             except Exception as exc:
-                logger.warning("TelegramCommandHandler close error: %s", exc)
-        # Phase S20: Close 3-Bot system
-        for bot_name, bot_attr in [("TradeBot", "_trade_bot"), ("InfraBot", "_infra_bot"), ("DevBot", "_dev_bot")]:
-            bot = getattr(self, bot_attr, None)
-            if bot:
-                try:
-                    await bot.close()
-                except Exception as exc:
-                    logger.warning("%s close error: %s", bot_name, exc)
+                logger.warning("TradeBot close error: %s", exc)
 
         # Stop ScheduledTuner
         if self._scheduled_tuner:
@@ -553,33 +543,17 @@ class Engine:
             logger.warning("TimescaleDB init failed (non-fatal, paper mode ok): %s", exc)
 
     def _init_telegram(self) -> None:
-        """Initialize Telegram alerter + 3-Bot system from environment variables."""
-        # Legacy TelegramAlerter (backward compatible — self._telegram stays)
-        try:
-            from src.infra.telegram import get_telegram_alerter
-            self._telegram = get_telegram_alerter()
-            if self._telegram._enabled:
-                logger.info("Telegram alerter enabled")
-                # US-213: Wrap with SmartTelegramAlerter for dedup + INFO batching
-                try:
-                    from src.infra.telegram_smart import SmartTelegramAlerter
-                    self._smart_telegram = SmartTelegramAlerter(
-                        alerter=self._telegram,
-                        redis_client=getattr(self, "_redis_client", None),
-                    )
-                    logger.info("SmartTelegramAlerter enabled (dedup + batching)")
-                except Exception as exc:
-                    self._smart_telegram = None
-                    logger.warning("SmartTelegramAlerter init failed (non-fatal): %s", exc)
-            else:
-                logger.info("Telegram alerter disabled (set TELEGRAM_ENABLED=true to enable)")
-        except Exception as exc:
-            logger.warning("Telegram alerter init failed (non-fatal): %s", exc)
+        """Initialize 3-Bot Telegram system (Trade/Infra/Dev) from environment variables.
 
-        # Phase S20: 3-Bot Telegram system (additive, does not replace self._telegram)
+        Phase S21: Legacy TelegramAlerter/SmartTelegramAlerter/TelegramCommandHandler removed.
+        All alerting goes through the 3-Bot system.
+        """
+        # Trade봇: 거래 알림 + Kill Switch + 포지션/체결/전략 제어
         try:
             from src.infra.telegram_trade_bot import TradeTelegramBot
             self._trade_bot = TradeTelegramBot(engine_context=self)
+            # Backward compat: self._telegram points to trade_bot for legacy callers
+            self._telegram = self._trade_bot
             if self._trade_bot.enabled:
                 logger.info("TradeTelegramBot enabled")
             else:
@@ -587,33 +561,9 @@ class Engine:
         except Exception as exc:
             logger.warning("TradeTelegramBot init failed (non-fatal): %s", exc)
 
-        try:
-            from src.infra.telegram_infra_bot import InfraTelegramBot
-            self._infra_bot = InfraTelegramBot()
-            if self._infra_bot.enabled:
-                logger.info("InfraTelegramBot enabled")
-                # Integrate MonitorDaemon with InfraBot
-                try:
-                    from src.infra.monitor_daemon import MonitorDaemon
-                    self._monitor_daemon = MonitorDaemon(infra_bot=self._infra_bot)
-                    self._infra_bot.set_monitor_daemon(self._monitor_daemon)
-                    logger.info("MonitorDaemon connected to InfraBot")
-                except Exception as exc:
-                    logger.warning("MonitorDaemon+InfraBot init failed (non-fatal): %s", exc)
-            else:
-                logger.info("InfraTelegramBot disabled")
-        except Exception as exc:
-            logger.warning("InfraTelegramBot init failed (non-fatal): %s", exc)
-
-        try:
-            from src.infra.telegram_dev_bot import DevTelegramBot
-            self._dev_bot = DevTelegramBot()
-            if self._dev_bot.enabled:
-                logger.info("DevTelegramBot enabled")
-            else:
-                logger.info("DevTelegramBot disabled")
-        except Exception as exc:
-            logger.warning("DevTelegramBot init failed (non-fatal): %s", exc)
+        # Infra봇 + Dev봇: bot-gateway 독립 프로세스
+        # See: python -m src.bot_gateway / docker compose up bot-gateway
+        logger.info("InfraBot/DevBot → bot-gateway (독립 프로세스)")
 
     def _init_rust_bridge(self) -> None:
         """Log Rust PyO3 feature flag status."""
@@ -1704,63 +1654,11 @@ class Engine:
                 )
             logger.info("Data mode: %s", self._data_mode)
 
-        # US-117: TelegramCommandHandler — bidirectional bot commands
-        if self._telegram and self._telegram.enabled:
-            try:
-                from src.infra.telegram_bot import TelegramCommandHandler
-                from src.risk.kill_switch import halt_local
-
-                async def _kill_fn() -> str:
-                    halt_local()
-                    # Send kill switch event notification back via Telegram
-                    try:
-                        import time as _time
-                        from src.risk.kill_switch import KillSwitchEvent
-                        event = KillSwitchEvent(trigger_ts=_time.perf_counter())
-                        await self._telegram.send_kill_switch_event(event)
-                    except Exception:
-                        pass  # Best-effort notification
-                    return "KillSwitch activated via Telegram"
-
-                async def _mode_fn() -> str:
-                    return f"Current mode: DATA_MODE={self._data_mode}"
-
-                self._telegram_cmd_handler = TelegramCommandHandler(
-                    alerter=self._telegram,
-                    kill_fn=_kill_fn,
-                    mode_fn=_mode_fn,
-                )
-                tasks.append(
-                    asyncio.create_task(self._telegram_cmd_handler.poll_loop(), name="telegram_cmd")
-                )
-                logger.info("TelegramCommandHandler started (5 commands)")
-            except Exception as exc:
-                logger.warning("TelegramCommandHandler init failed (non-fatal): %s", exc)
-
-        # Phase S20: 3-Bot poll loops + MonitorDaemon + StartupChecker
-        for bot_attr, task_name in [("_trade_bot", "trade_bot"), ("_infra_bot", "infra_bot"), ("_dev_bot", "dev_bot")]:
-            bot = getattr(self, bot_attr, None)
-            if bot and bot.enabled:
-                tasks.append(asyncio.create_task(bot.poll_loop(), name=task_name))
-                logger.info("%s poll_loop started", task_name)
-
-        if self._monitor_daemon is not None:
-            tasks.append(asyncio.create_task(self._monitor_daemon.run(), name="monitor_daemon"))
-            logger.info("MonitorDaemon background task started")
-
-        # StartupChecker: run once at startup, send to InfraBot
-        if self._infra_bot and self._infra_bot.enabled:
-            async def _run_startup_check() -> None:
-                try:
-                    from src.infra.startup_checker import StartupChecker
-                    checker = StartupChecker()
-                    await checker.check_all()
-                    checklist_text = checker.format_checklist()
-                    await self._infra_bot.send_message(checklist_text)
-                    logger.info("StartupChecker sent to InfraBot: all_passed=%s", checker.all_passed)
-                except Exception as exc:
-                    logger.warning("StartupChecker failed (non-fatal): %s", exc)
-            tasks.append(asyncio.create_task(_run_startup_check(), name="startup_checker"))
+        # Phase S21: TelegramCommandHandler removed (Dev봇에 통합됨)
+        # TradeBot poll loop (InfraBot/DevBot → bot-gateway)
+        if self._trade_bot and self._trade_bot.enabled:
+            tasks.append(asyncio.create_task(self._trade_bot.poll_loop(), name="trade_bot"))
+            logger.info("trade_bot poll_loop started")
 
         # TradeTelegramBot daily report scheduler
         if self._trade_bot and self._trade_bot.enabled:
@@ -1776,11 +1674,7 @@ class Engine:
                 self._rebalancer_loop(), name="rebalancer"
             ))
 
-        # US-213: SmartTelegramAlerter flush loop (QF 3.5 fix)
-        if getattr(self, "_smart_telegram", None) is not None:
-            tasks.append(asyncio.create_task(
-                self._smart_telegram.start_flush_loop(), name="smart_telegram_flush"
-            ))
+        # Phase S21: SmartTelegramAlerter removed (Trade봇에 통합)
 
         # US-173: RegimeDetector background task (60s periodic)
         if self._regime_detector is not None:

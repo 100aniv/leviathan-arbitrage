@@ -242,12 +242,14 @@ class TestEngineInitDatabase:
 
 class TestEngineInitTelegramSuccess:
     def test_init_telegram_enabled(self):
+        """Phase S21: 3-Bot system — TradeTelegramBot replaces legacy."""
         engine = _make_engine()
-        mock_alerter = MagicMock()
-        mock_alerter._enabled = True
-        with patch("src.infra.telegram.get_telegram_alerter", return_value=mock_alerter):
+        mock_trade_bot = MagicMock()
+        mock_trade_bot.enabled = True
+        with patch("src.infra.telegram_trade_bot.TradeTelegramBot", return_value=mock_trade_bot):
             engine._init_telegram()
-        assert engine._telegram is mock_alerter
+        assert engine._trade_bot is mock_trade_bot
+        assert engine._telegram is mock_trade_bot
 
     def test_init_rust_bridge_success(self):
         engine = _make_engine()

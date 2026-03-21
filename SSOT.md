@@ -3,7 +3,7 @@
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-21 (Phase S20-C 완료 — 3-Bot 역할 재정의 + MonitorDaemon 통합) | PRD: `.omc/prd.json` (255+42+7개 US, 315 total)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (309 passes:true / 6 passes:false)
-> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S20-C ✅** → **S21 진행 예정** → TF QF → TF SF → TF Final → Live
+> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S20-C ✅** → **S21 진행중** → TF QF → TF SF → TF PF → TF Final → Live
 
 ---
 
@@ -31,11 +31,11 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S20-C 완료 (2026-03-21) — 3-Bot 역할 재정의 + MonitorDaemon bot-gateway 통합 + /engine InfraBot 이동
+**Phase**: S21 진행중 (2026-03-21) — 전략 포트폴리오 최적화 + Live 준비 (S20-C 완료 후)
 **Tests**: 5,183 passed / 0 failed / 12 skipped
 **Coverage**: 78%
-**TF Status**: TF SF 9H 중단 → S15~S20-C 완료 → **S21 진행 예정** → TF QF → TF SF → TF Final → Live
-**Next**: Phase S21 — 전략 포트폴리오 최적화 + Live 준비
+**TF Status**: TF SF 9H 중단 → S15~S20-C 완료 → **S21 진행중** → TF QF → TF SF → TF PF → TF Final → Live
+**Next**: US-297~US-300 완료 → TF QF 재실행
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
@@ -671,10 +671,27 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] Kill Switch → 알림 → 거래 중단 < 5초
 - [ ] Alertmanager 규칙 → 라우팅 → 수신
 
+### TF Pre-Final (PF): Code Structure — 미시작
+
+> **핵심 질문**: "상용급 코드 구조인가? 기능 변경 없이 구조를 개선할 수 있는가?"
+> **진입 가드**: TF SF 24H ALL PASS
+> **PASS 기준**: Shadow baseline 동일 + pytest 0 fail + Assembly 4-check + 멀티모델 "기능 변경 0" 합의
+> **회귀**: git rollback (prd.json 비관여). 최대 2회 재시도. 실패 시 PF 스킵 → Final.
+
+**[PF-1]** Baseline 확보 (pytest + Shadow 10min + git tag pf-baseline)
+**[PF-2]** Settings 통합 (35개 env → EngineConfig dataclass)
+**[PF-3]** Init Chain 모듈화 (_init_*() 11개 → EngineBootstrap)
+**[PF-4]** Loop Manager 추출 (13개 루프 → LoopManager)
+**[PF-5]** 타입 강화 (Any → Protocol/TypeVar)
+**[PF-6]** 멀티모델 리팩토링 감사 (기능 변경 0 검증)
+**[PF-7]** 재검증 (baseline vs post 비교)
+
+> 상세 절차: `leviathan-tf.md` §PF 참조
+
 ### TF Final (F): Operations Readiness — 미시작
 
 > **핵심 질문**: "문제가 생기면 대응할 수 있는가? 실제 돈을 안전하게 운용할 준비가 되었는가?"
-> **진입 가드**: TF SF 전 단계 PASS + 24H Shadow ALL PASS
+> **진입 가드**: TF PF PASS (또는 PF 스킵) + 24H Shadow ALL PASS
 > **PASS 기준**: ORR 완비 + DR 9/9 PASS (DR-1~6 인프라 + DR-7~9 전략) + Canary 7일 P&L>0 + 튜너 효과 판정 완료
 
 **[단계 1] Operations Readiness Review (ORR)**

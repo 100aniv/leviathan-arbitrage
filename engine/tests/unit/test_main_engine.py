@@ -149,16 +149,19 @@ class TestEngineInitHelpers:
 
     def test_init_telegram_exception_nonfatal(self):
         engine = Engine()
-        with patch("src.infra.telegram.get_telegram_alerter", side_effect=Exception("tg error")):
+        with patch("src.infra.telegram_trade_bot.TradeTelegramBot", side_effect=Exception("tg error")):
             engine._init_telegram()  # must not raise
 
     def test_init_telegram_disabled_logs_info(self):
+        """Phase S21: 3-Bot system — TradeTelegramBot replaces legacy TelegramAlerter."""
         engine = Engine()
-        mock_alerter = MagicMock()
-        mock_alerter._enabled = False
-        with patch("src.infra.telegram.get_telegram_alerter", return_value=mock_alerter):
+        mock_trade_bot = MagicMock()
+        mock_trade_bot.enabled = False
+        with patch("src.infra.telegram_trade_bot.TradeTelegramBot", return_value=mock_trade_bot):
             engine._init_telegram()
-        assert engine._telegram is mock_alerter
+        assert engine._trade_bot is mock_trade_bot
+        # self._telegram points to trade_bot for backward compat
+        assert engine._telegram is mock_trade_bot
 
 
 # ---------------------------------------------------------------------------

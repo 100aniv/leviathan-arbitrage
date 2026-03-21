@@ -162,7 +162,12 @@ class TelegramBotBase:
         if reply_markup:
             payload["reply_markup"] = reply_markup
 
-        return await self._post(url, payload)
+        result = await self._post(url, payload)
+        if result is None and parse_mode == "HTML":
+            # HTML parse failure fallback — retry without parse_mode
+            payload.pop("parse_mode", None)
+            result = await self._post(url, payload)
+        return result
 
     async def edit_message(
         self,
@@ -311,6 +316,11 @@ class TelegramBotBase:
                 await self.send_message(result, chat_id=str(chat_id))
         except Exception:
             logger.error("telegram_command_error", bot=self._bot_name, cmd=cmd, exc_info=True)
+            await self.send_message(
+                f"오류가 발생했습니다: {cmd}\n잠시 후 다시 시도하세요.",
+                chat_id=str(chat_id),
+                parse_mode="",
+            )
 
     async def _handle_callback(self, callback_query: dict) -> None:
         """Route callback query to registered callback handler."""

@@ -114,15 +114,18 @@ class TelegramAlerter:
             enabled:   Whether alerting is active. Falls back to TELEGRAM_ENABLED env var.
                        Pass ``False`` explicitly to force-disable regardless of env.
         """
-        self._bot_token: str | None = bot_token or os.getenv("TELEGRAM_BOT_TOKEN")
-        self._chat_id: str | None = chat_id or os.getenv("TELEGRAM_CHAT_ID")
+        self._bot_token: str | None = bot_token or os.getenv("TRADE_TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
+        self._chat_id: str | None = chat_id or os.getenv("TRADE_TELEGRAM_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID")
 
         # If caller explicitly passed True/False, respect it.
         # Only fall back to env var when enabled is None (not provided).
         if enabled is not None:
             self._enabled = enabled
         else:
-            self._enabled = os.getenv("TELEGRAM_ENABLED", "false").lower() == "true"
+            self._enabled = (
+                os.getenv("TRADE_TELEGRAM_ENABLED")
+                or os.getenv("TELEGRAM_ENABLED", "false")
+            ).lower() == "true"
 
         # Sliding-window rate limiter: stores timestamps of recent sends.
         self._send_times: deque[float] = deque()
@@ -568,22 +571,14 @@ class TelegramAlerter:
 
 
 # ---------------------------------------------------------------------------
-# Workflow Alerter (WORKFLOW_TELEGRAM_BOT_TOKEN — separated from trading alerts)
+# Phase S21: WorkflowTelegramAlerter → DevTelegramBot (telegram_dev_bot.py)
+# Kept as backward-compat alias for callers that import WorkflowTelegramAlerter
 # ---------------------------------------------------------------------------
 
+class _WorkflowTelegramAlerterCompat(TelegramAlerter):
+    """DEPRECATED: Original WorkflowTelegramAlerter methods kept for reference.
 
-class WorkflowTelegramAlerter(TelegramAlerter):
-    """Workflow-specific Telegram alerter for LEVIATHAN Stage-Gate notifications.
-
-    Uses WORKFLOW_TELEGRAM_BOT_TOKEN / WORKFLOW_TELEGRAM_CHAT_ID env vars,
-    completely separated from the trading alert bot (TELEGRAM_BOT_TOKEN).
-
-    Alert types:
-        - Phase completion (Stage E): summary + CEO approval request
-        - L5 escalation: same Phase failed 3+ times
-        - Context 60% warning: /clear 시도 예고
-        - Context clear success: 자동 재개 알림
-        - Context clear failed: needs manual intervention
+    Use DevTelegramBot for all workflow notifications.
     """
 
     def __init__(
@@ -592,12 +587,13 @@ class WorkflowTelegramAlerter(TelegramAlerter):
         chat_id: str | None = None,
         enabled: bool | None = None,
     ) -> None:
+        _enabled = enabled if enabled is not None else (
+            (os.getenv("DEV_TELEGRAM_ENABLED") or os.getenv("WORKFLOW_TELEGRAM_ENABLED", "false")).lower() == "true"
+        )
         super().__init__(
-            bot_token=bot_token or os.getenv("WORKFLOW_TELEGRAM_BOT_TOKEN"),
-            chat_id=chat_id or os.getenv("WORKFLOW_TELEGRAM_CHAT_ID"),
-            enabled=enabled if enabled is not None else (
-                os.getenv("WORKFLOW_TELEGRAM_ENABLED", "false").lower() == "true"
-            ),
+            bot_token=bot_token or os.getenv("DEV_TELEGRAM_BOT_TOKEN") or os.getenv("WORKFLOW_TELEGRAM_BOT_TOKEN"),
+            chat_id=chat_id or os.getenv("DEV_TELEGRAM_CHAT_ID") or os.getenv("WORKFLOW_TELEGRAM_CHAT_ID"),
+            enabled=_enabled,
         )
 
     async def send_phase_complete(self, data: dict[str, Any]) -> bool:
@@ -728,6 +724,10 @@ class WorkflowTelegramAlerter(TelegramAlerter):
         return await self._send("\n".join(lines))
 
 
+# Backward compat alias — callers that import WorkflowTelegramAlerter still work
+WorkflowTelegramAlerter = _WorkflowTelegramAlerterCompat
+
+
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
@@ -736,19 +736,13 @@ class WorkflowTelegramAlerter(TelegramAlerter):
 def get_telegram_alerter() -> TelegramAlerter:
     """Create a TelegramAlerter from environment variables.
 
-    Reads:
-        TELEGRAM_BOT_TOKEN  — bot token from @BotFather
-        TELEGRAM_CHAT_ID    — target chat/group ID
-        TELEGRAM_ENABLED    — "true" to enable (default "false")
+    Phase S21: Reads TRADE_TELEGRAM_BOT_TOKEN first (3-Bot system),
+    falls back to legacy TELEGRAM_BOT_TOKEN for backward compat.
 
     Returns:
         Configured TelegramAlerter instance.
     """
-    return TelegramAlerter(
-        bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
-        chat_id=os.getenv("TELEGRAM_CHAT_ID"),
-        enabled=os.getenv("TELEGRAM_ENABLED", "false").lower() == "true",
-    )
+    return TelegramAlerter()
 
 
 # ---------------------------------------------------------------------------
@@ -873,15 +867,14 @@ def start_weekly_report_scheduler(
     return scheduler
 
 
-def get_workflow_alerter() -> WorkflowTelegramAlerter:
-    """Create a WorkflowTelegramAlerter from environment variables.
+def get_workflow_alerter() -> TelegramAlerter:
+    """DEPRECATED: Use DevTelegramBot instead.
 
-    Reads:
-        WORKFLOW_TELEGRAM_BOT_TOKEN  — workflow bot token from @BotFather
-        WORKFLOW_TELEGRAM_CHAT_ID    — CEO chat ID
-        WORKFLOW_TELEGRAM_ENABLED    — "true" to enable (default "false")
-
-    Returns:
-        Configured WorkflowTelegramAlerter instance.
+    Phase S21: WorkflowTelegramAlerter removed. Returns a basic TelegramAlerter
+    configured with DEV_TELEGRAM_BOT_TOKEN for backward compatibility.
     """
-    return WorkflowTelegramAlerter()
+    return TelegramAlerter(
+        bot_token=os.getenv("DEV_TELEGRAM_BOT_TOKEN") or os.getenv("WORKFLOW_TELEGRAM_BOT_TOKEN"),
+        chat_id=os.getenv("DEV_TELEGRAM_CHAT_ID") or os.getenv("WORKFLOW_TELEGRAM_CHAT_ID"),
+        enabled=(os.getenv("DEV_TELEGRAM_ENABLED") or os.getenv("WORKFLOW_TELEGRAM_ENABLED", "false")).lower() == "true",
+    )

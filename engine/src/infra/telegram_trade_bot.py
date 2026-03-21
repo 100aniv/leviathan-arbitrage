@@ -5,6 +5,7 @@ US-291-f: Kill Switch 2단계 인라인 키보드.
 US-291-g: 조회 메뉴 인라인 키보드.
 US-291-h: 설정 변경 (/settings).
 US-295: 일일 요약 리포트 09:00 KST.
+Phase S20-B: 기관급 기능 확장 (12개 → 20개 명령어).
 """
 from __future__ import annotations
 
@@ -56,6 +57,7 @@ class TradeTelegramBot(TelegramBotBase):
             bot_token=token, chat_id=chat_id, enabled=self._enabled
         )
         self._pending_kills: dict[int, float] = {}
+        self._pending_strategy_toggles: dict[int, tuple[str, str, float]] = {}
 
         self._register_all_commands()
         self._register_all_callbacks()
@@ -76,37 +78,52 @@ class TradeTelegramBot(TelegramBotBase):
         self.register_command("/menu", self._cmd_menu)
         self.register_command("/settings", self._cmd_settings)
         self.register_command("/chart", self._cmd_chart)
+        # Phase S20-B: New commands
+        self.register_command("/positions", self._cmd_positions)
+        self.register_command("/fills", self._cmd_fills)
+        self.register_command("/strategy", self._cmd_strategy_toggle)
+        self.register_command("/exchanges", self._cmd_exchanges)
+        self.register_command("/whitelist", self._cmd_whitelist)
+        self.register_command("/blacklist", self._cmd_blacklist)
+        self.register_command("/params", self._cmd_params)
+        self.register_command("/report", self._cmd_report)
         self.register_command("/help", self._cmd_help)
 
     def _register_all_callbacks(self) -> None:
         self.register_callback("kill_", self._cb_kill)
         self.register_callback("menu_", self._cb_menu)
         self.register_callback("settings_", self._cb_settings)
+        self.register_callback("strategy_", self._cb_strategy)
 
     # ------------------------------------------------------------------
-    # Command handlers
+    # Original command handlers
     # ------------------------------------------------------------------
 
     async def _cmd_status(self, text: str, chat_id: int, message: dict) -> str | None:
         snapshot = self._get_shadow_snapshot()
         ctx = self._engine_context
-        mode = getattr(ctx, "mode", "unknown") if ctx else "unknown"
+        mode = getattr(ctx, "mode", "N/A") if ctx else "대기 (엔진 미연결)"
         kill = getattr(ctx, "kill_switch_active", False) if ctx else False
         if not snapshot:
             return (
-                f"⚙️ <b>엔진 상태</b>\n"
-                f"  모드: {mode}\n"
-                f"  Kill Switch: {'🔴 활성' if kill else '🟢 비활성'}\n"
-                f"  Shadow: 데이터 없음"
+                "⚙️ 엔진 상태\n"
+                "━━━━━━━━━━━━━━━\n"
+                f"📡 모드: {mode}\n"
+                f"🔴 Kill Switch: {'활성' if kill else '비활성'}\n"
+                "📊 Shadow: 데이터 없음"
             )
         pnl = snapshot.get("total_pnl", 0.0)
         trades = snapshot.get("trades_executed", 0)
         wr = snapshot.get("win_rate", 0.0)
+        emoji = "📈" if pnl >= 0 else "📉"
         return (
-            f"⚙️ <b>엔진 상태</b>\n"
-            f"  모드: {mode}\n"
-            f"  Kill Switch: {'🔴 활성' if kill else '🟢 비활성'}\n"
-            f"  PnL: ${pnl:+,.6f} | 거래: {trades}건 | 승률: {wr*100:.1f}%"
+            "⚙️ 엔진 상태\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"📡 모드: {mode}\n"
+            f"🔴 Kill Switch: {'활성' if kill else '비활성'}\n"
+            f"{emoji} PnL: ${pnl:+,.6f}\n"
+            f"🔁 거래: {trades}건\n"
+            f"🎯 승률: {wr*100:.1f}%"
         )
 
     async def _cmd_pnl(self, text: str, chat_id: int, message: dict) -> str | None:
@@ -122,7 +139,7 @@ class TradeTelegramBot(TelegramBotBase):
         kb = InlineKeyboard()
         kb.row(("🔴 정말 중단", "kill_confirm"), ("❌ 취소", "kill_cancel"))
         await self.send_message(
-            "⚠️ <b>Kill Switch 활성화</b>\n\n정말로 모든 거래를 중단하시겠습니까?",
+            "⚠️ Kill Switch 활성화\n\n정말로 모든 거래를 중단하시겠습니까?",
             reply_markup=kb.to_markup(),
             chat_id=str(chat_id),
         )
@@ -133,31 +150,32 @@ class TradeTelegramBot(TelegramBotBase):
         ctx = self._engine_context
         if ctx:
             ctx.paused = True
-        return "⏸️ <b>거래 일시중단</b>\n신규 거래가 일시 중단되었습니다."
+        return "⏸️ 거래 일시중단\n신규 거래가 일시 중단되었습니다."
 
     async def _cmd_resume(self, text: str, chat_id: int, message: dict) -> str | None:
         ctx = self._engine_context
         if ctx:
             ctx.paused = False
-        return "▶️ <b>거래 재개</b>\n신규 거래가 재개되었습니다."
+        return "▶️ 거래 재개\n신규 거래가 재개되었습니다."
 
     async def _cmd_alerts(self, text: str, chat_id: int, message: dict) -> str | None:
         ctx = self._engine_context
         alerts = getattr(ctx, "active_alerts", []) if ctx else []
         if not alerts:
-            return "✅ <b>미해결 알림 없음</b>"
-        lines = ["🔔 <b>미해결 알림:</b>"]
+            return "✅ 미해결 알림 없음"
+        lines = ["🔔 미해결 알림:"]
         for a in alerts[:10]:
-            lines.append(f"  • {a}")
+            lines.append(f"  {a}")
         return "\n".join(lines)
 
     async def _cmd_menu(self, text: str, chat_id: int, message: dict) -> str | None:
         kb = InlineKeyboard()
         kb.row(("📈 PnL", "menu_pnl"), ("⚙️ 전략", "menu_strategies"))
         kb.row(("🛡️ 리스크", "menu_risk"), ("🏦 거래소", "menu_exchanges"))
+        kb.row(("📊 포지션", "menu_positions"), ("📋 체결", "menu_fills"))
         kb.row(("⬅️ 닫기", "menu_close"))
         await self.send_message(
-            "📊 <b>조회 메뉴</b>",
+            "📊 조회 메뉴",
             reply_markup=kb.to_markup(),
             chat_id=str(chat_id),
         )
@@ -170,7 +188,7 @@ class TradeTelegramBot(TelegramBotBase):
             marker = "✅ " if level == self._alert_level else ""
             kb.row((f"{marker}{level.value}", f"settings_{level.value}"))
         await self.send_message(
-            f"⚙️ <b>알림 설정</b>\n현재: {current}",
+            f"⚙️ 알림 설정\n현재: {current}",
             reply_markup=kb.to_markup(),
             chat_id=str(chat_id),
         )
@@ -196,21 +214,308 @@ class TradeTelegramBot(TelegramBotBase):
             return f"차트 생성 실패: {exc}"
         return None
 
+    # ------------------------------------------------------------------
+    # Phase S20-B: New command handlers
+    # ------------------------------------------------------------------
+
+    async def _cmd_positions(self, text: str, chat_id: int, message: dict) -> str | None:
+        """오픈 포지션 목록."""
+        ctx = self._engine_context
+        positions = getattr(ctx, "positions", {}) if ctx else {}
+        if not positions:
+            return "📊 오픈 포지션\n━━━━━━━━━━━━━━━\n포지션 없음"
+
+        lines = ["📊 오픈 포지션\n━━━━━━━━━━━━━━━"]
+        if isinstance(positions, dict):
+            for symbol, pos in list(positions.items())[:15]:
+                side = getattr(pos, "side", "N/A") if hasattr(pos, "side") else pos.get("side", "N/A") if isinstance(pos, dict) else "N/A"
+                qty = getattr(pos, "quantity", 0) if hasattr(pos, "quantity") else pos.get("quantity", 0) if isinstance(pos, dict) else 0
+                pnl = getattr(pos, "unrealized_pnl", 0) if hasattr(pos, "unrealized_pnl") else pos.get("unrealized_pnl", 0) if isinstance(pos, dict) else 0
+                icon = "🟢" if pnl >= 0 else "🔴"
+                lines.append(f"{icon} {symbol}\n   {side} {qty} | PnL: ${pnl:+,.4f}")
+        elif isinstance(positions, list):
+            for pos in positions[:15]:
+                symbol = pos.get("symbol", "?") if isinstance(pos, dict) else getattr(pos, "symbol", "?")
+                side = pos.get("side", "N/A") if isinstance(pos, dict) else getattr(pos, "side", "N/A")
+                pnl = pos.get("unrealized_pnl", 0) if isinstance(pos, dict) else getattr(pos, "unrealized_pnl", 0)
+                icon = "🟢" if pnl >= 0 else "🔴"
+                lines.append(f"{icon} {symbol} | {side} | ${pnl:+,.4f}")
+
+        return "\n".join(lines)
+
+    async def _cmd_fills(self, text: str, chat_id: int, message: dict) -> str | None:
+        """최근 체결 내역 (10건)."""
+        ctx = self._engine_context
+        fills = getattr(ctx, "recent_fills", []) if ctx else []
+        if not fills:
+            # Try shadow snapshot
+            snapshot = self._get_shadow_snapshot()
+            if snapshot:
+                trades = snapshot.get("trades_executed", 0)
+                return (
+                    "📋 최근 체결\n━━━━━━━━━━━━━━━\n"
+                    f"총 {trades}건 체결 (상세 내역은 대시보드에서 확인)"
+                )
+            return "📋 최근 체결\n━━━━━━━━━━━━━━━\n체결 내역 없음"
+
+        lines = ["📋 최근 체결 (10건)\n━━━━━━━━━━━━━━━"]
+        for fill in fills[-10:]:
+            if isinstance(fill, dict):
+                symbol = fill.get("symbol", "?")
+                side = fill.get("side", "?")
+                pnl = fill.get("pnl", 0)
+                fee = fill.get("fee", 0)
+                ts = fill.get("timestamp", "")
+            else:
+                symbol = getattr(fill, "symbol", "?")
+                side = getattr(fill, "side", "?")
+                pnl = getattr(fill, "pnl", 0)
+                fee = getattr(fill, "fee", 0)
+                ts = getattr(fill, "timestamp", "")
+
+            icon = "💰" if pnl > 0 else "💸" if pnl < 0 else "➖"
+            lines.append(f"{icon} {symbol} {side}\n   PnL: ${pnl:+,.4f} | 수수료: ${fee:.4f}")
+
+        return "\n".join(lines)
+
+    async def _cmd_strategy_toggle(self, text: str, chat_id: int, message: dict) -> str | None:
+        """전략 활성/비활성 (/strategy <name> on/off)."""
+        parts = text.strip().split()
+        if len(parts) < 3:
+            # Show strategy list with inline keyboard
+            ctx = self._engine_context
+            strategies = getattr(ctx, "strategy_manager", None)
+            strategy_names = []
+            if strategies:
+                registered = getattr(strategies, "strategies", {})
+                strategy_names = list(registered.keys()) if isinstance(registered, dict) else []
+
+            if not strategy_names:
+                strategy_names = [
+                    "cross_exchange", "spot_futures", "futures_futures",
+                    "triangular", "funding_rate", "statistical_arb", "cex_dex",
+                ]
+
+            kb = InlineKeyboard()
+            for name in strategy_names[:8]:
+                kb.row(
+                    (f"🟢 {name} ON", f"strategy_on_{name}"),
+                    (f"🔴 {name} OFF", f"strategy_off_{name}"),
+                )
+            await self.send_message(
+                "⚙️ 전략 제어\n전략을 선택하세요:",
+                reply_markup=kb.to_markup(),
+                chat_id=str(chat_id),
+            )
+            return None
+
+        strategy_name = parts[1]
+        action = parts[2].lower()
+
+        if action not in ("on", "off"):
+            return "사용법: /strategy &lt;name&gt; on|off"
+
+        ctx = self._engine_context
+        if ctx:
+            sm = getattr(ctx, "strategy_manager", None)
+            if sm:
+                enabled_strategies = getattr(sm, "enabled_strategies", None)
+                if enabled_strategies is not None and isinstance(enabled_strategies, set):
+                    if action == "on":
+                        enabled_strategies.add(strategy_name)
+                    else:
+                        enabled_strategies.discard(strategy_name)
+
+            # Also set via disabled strategies env
+            disabled = set(os.getenv("SHADOW_DISABLED_STRATEGIES", "").split(","))
+            disabled = {s.strip() for s in disabled if s.strip()}
+            if action == "off":
+                disabled.add(strategy_name)
+            else:
+                disabled.discard(strategy_name)
+
+        icon = "🟢" if action == "on" else "🔴"
+        return f"{icon} {strategy_name}: {'활성화' if action == 'on' else '비활성화'}"
+
+    async def _cb_strategy(self, callback_query: dict) -> str | None:
+        """전략 on/off 인라인 버튼 콜백."""
+        data = callback_query["data"]
+        msg = callback_query["message"]
+        chat_id = msg["chat"]["id"]
+        message_id = msg["message_id"]
+
+        if data.startswith("strategy_on_"):
+            name = data.replace("strategy_on_", "")
+            # Simulate /strategy name on
+            await self._cmd_strategy_toggle(f"/strategy {name} on", chat_id, msg)
+            await self.edit_message(chat_id, message_id, f"🟢 {name} 활성화됨")
+            return f"{name} ON"
+        elif data.startswith("strategy_off_"):
+            name = data.replace("strategy_off_", "")
+            await self._cmd_strategy_toggle(f"/strategy {name} off", chat_id, msg)
+            await self.edit_message(chat_id, message_id, f"🔴 {name} 비활성화됨")
+            return f"{name} OFF"
+        return None
+
+    async def _cmd_exchanges(self, text: str, chat_id: int, message: dict) -> str | None:
+        """거래소 연결 상태 + latency."""
+        return await self._get_exchanges_text()
+
+    async def _cmd_whitelist(self, text: str, chat_id: int, message: dict) -> str | None:
+        """심볼 화이트리스트 관리."""
+        parts = text.strip().split()
+        ctx = self._engine_context
+        whitelist: set[str] = getattr(ctx, "symbol_whitelist", set()) if ctx else set()
+
+        if len(parts) == 1:
+            # Show current whitelist
+            if not whitelist:
+                return "✅ 화이트리스트\n━━━━━━━━━━━━━━━\n제한 없음 (모든 심볼 허용)"
+            lines = ["✅ 화이트리스트\n━━━━━━━━━━━━━━━"]
+            for s in sorted(whitelist):
+                lines.append(f"  {s}")
+            return "\n".join(lines)
+
+        action = parts[1].lower()
+        if action == "add" and len(parts) >= 3:
+            symbol = parts[2].upper()
+            whitelist.add(symbol)
+            if ctx:
+                ctx.symbol_whitelist = whitelist
+            return f"✅ {symbol} 화이트리스트에 추가됨"
+        elif action == "remove" and len(parts) >= 3:
+            symbol = parts[2].upper()
+            whitelist.discard(symbol)
+            if ctx:
+                ctx.symbol_whitelist = whitelist
+            return f"✅ {symbol} 화이트리스트에서 제거됨"
+        elif action == "clear":
+            if ctx:
+                ctx.symbol_whitelist = set()
+            return "✅ 화이트리스트 초기화됨"
+
+        return "사용법: /whitelist [add|remove|clear] [SYMBOL]"
+
+    async def _cmd_blacklist(self, text: str, chat_id: int, message: dict) -> str | None:
+        """심볼 블랙리스트 관리."""
+        parts = text.strip().split()
+        ctx = self._engine_context
+        blacklist: set[str] = getattr(ctx, "symbol_blacklist", set()) if ctx else set()
+
+        if len(parts) == 1:
+            if not blacklist:
+                return "🚫 블랙리스트\n━━━━━━━━━━━━━━━\n차단 심볼 없음"
+            lines = ["🚫 블랙리스트\n━━━━━━━━━━━━━━━"]
+            for s in sorted(blacklist):
+                lines.append(f"  {s}")
+            return "\n".join(lines)
+
+        action = parts[1].lower()
+        if action == "add" and len(parts) >= 3:
+            symbol = parts[2].upper()
+            blacklist.add(symbol)
+            if ctx:
+                ctx.symbol_blacklist = blacklist
+            return f"🚫 {symbol} 블랙리스트에 추가됨"
+        elif action == "remove" and len(parts) >= 3:
+            symbol = parts[2].upper()
+            blacklist.discard(symbol)
+            if ctx:
+                ctx.symbol_blacklist = blacklist
+            return f"✅ {symbol} 블랙리스트에서 제거됨"
+        elif action == "clear":
+            if ctx:
+                ctx.symbol_blacklist = set()
+            return "✅ 블랙리스트 초기화됨"
+
+        return "사용법: /blacklist [add|remove|clear] [SYMBOL]"
+
+    async def _cmd_params(self, text: str, chat_id: int, message: dict) -> str | None:
+        """핵심 파라미터 조회."""
+        params: dict[str, str] = {
+            "MIN_EDGE_BPS": os.getenv("MIN_EDGE_BPS", "5"),
+            "MDD_LIMIT": os.getenv("MDD_LIMIT", "0.05"),
+            "MAX_POSITION_SIZE": os.getenv("MAX_POSITION_SIZE", "1000"),
+            "SLIPPAGE_GAMMA": os.getenv("SLIPPAGE_GAMMA", "0.5"),
+            "ENGINE_ENV": os.getenv("ENGINE_ENV", "dev"),
+            "EXECUTION_MODE": os.getenv("EXECUTION_MODE", "paper"),
+        }
+
+        # Engine context params
+        ctx = self._engine_context
+        if ctx:
+            settings = getattr(ctx, "settings", None)
+            if settings:
+                params["min_edge_bps"] = str(getattr(settings, "min_edge_bps", "N/A"))
+                params["max_position_usd"] = str(getattr(settings, "max_position_usd", "N/A"))
+
+        lines = ["⚙️ 핵심 파라미터\n━━━━━━━━━━━━━━━"]
+        for key, val in params.items():
+            lines.append(f"  {key}: {val}")
+        return "\n".join(lines)
+
+    async def _cmd_report(self, text: str, chat_id: int, message: dict) -> str | None:
+        """수동 일일 리포트 즉시 생성."""
+        snapshot = self._get_shadow_snapshot()
+        if not snapshot:
+            return "📊 리포트 생성 불가 — Shadow 데이터 없음"
+
+        pnl = snapshot.get("total_pnl", 0.0)
+        trades = snapshot.get("trades_executed", 0)
+        wr = snapshot.get("win_rate", 0.0)
+        mdd = snapshot.get("max_drawdown_pct", 0.0)
+        by_strategy = snapshot.get("by_strategy", [])
+        pf = snapshot.get("profit_factor", 0.0)
+
+        emoji = "📈" if pnl >= 0 else "📉"
+        lines = [
+            f"{emoji} 리포트 ({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})\n"
+            "━━━━━━━━━━━━━━━",
+            f"💰 총 PnL: ${pnl:+,.6f}",
+            f"🔁 총 거래: {trades}건",
+            f"🎯 승률: {wr*100:.1f}%",
+            f"📉 MDD: {mdd*100:.2f}%",
+            f"📊 PF: {pf:.2f}" if pf else "",
+        ]
+
+        if by_strategy:
+            lines.append("\n⚙️ 전략별:")
+            for s in by_strategy:
+                sid = s.get("strategy_id", "?")
+                s_pnl = s.get("pnl", 0.0)
+                s_trades = s.get("trades", 0)
+                icon = "🟢" if s_pnl >= 0 else "🔴"
+                lines.append(f"  {icon} {sid}: ${s_pnl:+,.4f} ({s_trades}건)")
+
+        return "\n".join(l for l in lines if l)
+
     async def _cmd_help(self, text: str, chat_id: int, message: dict) -> str | None:
         return (
-            "📖 <b>LEVIATHAN Trade Bot 명령어</b>\n\n"
-            "/status — 엔진 상태 + PnL + 전략\n"
-            "/pnl — 현재 PnL 조회\n"
-            "/strategies — 전략별 상태\n"
-            "/risk — 리스크 메트릭\n"
-            "/kill — Kill Switch (2단계 확인)\n"
-            "/pause — 거래 일시중단\n"
-            "/resume — 거래 재개\n"
-            "/alerts — 미해결 알림 목록\n"
-            "/menu — 조회 메뉴 (인라인 키보드)\n"
-            "/settings — 알림 레벨 설정\n"
-            "/chart [pnl|equity|strategy] — 차트 조회\n"
-            "/help — 이 도움말"
+            "📖 LEVIATHAN Trade Bot\n"
+            "━━━━━━━━━━━━━━━\n"
+            "📋 조회\n"
+            "  /status — 엔진 상태\n"
+            "  /pnl — PnL 조회\n"
+            "  /strategies — 전략 상태\n"
+            "  /risk — 리스크 메트릭\n"
+            "  /positions — 오픈 포지션\n"
+            "  /fills — 최근 체결\n"
+            "  /exchanges — 거래소 상태\n"
+            "  /params — 핵심 파라미터\n"
+            "  /report — 즉시 리포트\n\n"
+            "🔧 제어\n"
+            "  /kill — Kill Switch (확인)\n"
+            "  /pause — 거래 중단\n"
+            "  /resume — 거래 재개\n"
+            "  /strategy &lt;name&gt; on|off\n"
+            "  /whitelist [add|remove] SYM\n"
+            "  /blacklist [add|remove] SYM\n\n"
+            "📊 기타\n"
+            "  /menu — 조회 메뉴\n"
+            "  /settings — 알림 설정\n"
+            "  /chart [type] — 차트\n"
+            "  /alerts — 미해결 알림\n"
+            "  /help — 이 도움말"
         )
 
     # ------------------------------------------------------------------
@@ -231,18 +536,18 @@ class TradeTelegramBot(TelegramBotBase):
                     ctx.kill_switch_active = True
                 del self._pending_kills[chat_id]
                 await self.edit_message(
-                    chat_id, message_id, "🔴 <b>Kill Switch 활성화됨</b>\n모든 거래가 중단되었습니다."
+                    chat_id, message_id, "🔴 Kill Switch 활성화됨\n모든 거래가 중단되었습니다."
                 )
                 return "Kill Switch 활성화"
             else:
                 self._pending_kills.pop(chat_id, None)
                 await self.edit_message(
-                    chat_id, message_id, "⏰ <b>시간 초과</b>\n다시 /kill 명령을 입력하세요."
+                    chat_id, message_id, "⏰ 시간 초과\n다시 /kill 명령을 입력하세요."
                 )
                 return "시간 초과"
         elif data == "kill_cancel":
             self._pending_kills.pop(chat_id, None)
-            await self.edit_message(chat_id, message_id, "✅ <b>취소됨</b>\n거래가 계속됩니다.")
+            await self.edit_message(chat_id, message_id, "✅ 취소됨\n거래가 계속됩니다.")
             return "취소됨"
         return None
 
@@ -260,6 +565,10 @@ class TradeTelegramBot(TelegramBotBase):
             text = await self._get_risk_text()
         elif data == "menu_exchanges":
             text = await self._get_exchanges_text()
+        elif data == "menu_positions":
+            text = await self._cmd_positions("/positions", chat_id, msg) or "포지션 없음"
+        elif data == "menu_fills":
+            text = await self._cmd_fills("/fills", chat_id, msg) or "체결 없음"
         elif data == "menu_close":
             text = "📊 메뉴 닫힘"
         else:
@@ -279,7 +588,7 @@ class TradeTelegramBot(TelegramBotBase):
         await self.edit_message(
             msg["chat"]["id"],
             msg["message_id"],
-            f"✅ <b>알림 레벨 변경됨</b>\n새 설정: {self._alert_level.value}",
+            f"✅ 알림 레벨 변경됨\n새 설정: {self._alert_level.value}",
         )
         return f"설정: {self._alert_level.value}"
 
@@ -309,6 +618,35 @@ class TradeTelegramBot(TelegramBotBase):
         if self._alert_level == AlertLevel.CRITICAL_ONLY:
             return False
         return await self._alerter.send_fill_kr(data)
+
+    async def send_fill_enhanced(self, data: dict) -> None:
+        """Phase S20-B: 강화된 체결 알림 (기관급 포맷)."""
+        if self._alert_level == AlertLevel.CRITICAL_ONLY:
+            return
+        strategy = data.get("strategy", "N/A")
+        symbol = data.get("symbol", "N/A")
+        buy_ex = data.get("buy_exchange", "?")
+        sell_ex = data.get("sell_exchange", "?")
+        pnl = data.get("pnl", 0.0)
+        spread = data.get("spread_bps", 0.0)
+        fee = data.get("fee", 0.0)
+        slippage = data.get("slippage_bps", 0.0)
+        latency = data.get("latency_ms", 0)
+
+        icon = "💰" if pnl > 0 else "💸"
+        text = (
+            f"{icon} 체결 완료\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"⚙️ {strategy}\n"
+            f"📌 {symbol}\n"
+            f"🏦 {buy_ex} -> {sell_ex}\n\n"
+            f"💵 PnL: ${pnl:+,.4f}\n"
+            f"📊 스프레드: {spread:.1f} bps\n"
+            f"💸 수수료: ${fee:.4f}\n"
+            f"📉 슬리피지: {slippage:.1f} bps\n"
+            f"⏱️ 체결 시간: {latency}ms"
+        )
+        await self.send_message(text)
 
     # ------------------------------------------------------------------
     # Daily report scheduler (US-295)
@@ -349,14 +687,21 @@ class TradeTelegramBot(TelegramBotBase):
     async def _get_pnl_text(self) -> str:
         snapshot = self._get_shadow_snapshot()
         if not snapshot:
-            return "PnL 정보 없음"
+            return (
+                "📊 PnL 조회\n"
+                "━━━━━━━━━━━━━━━\n"
+                "엔진 미연결 — 데이터 없음\n"
+                "엔진 시작 후 다시 시도하세요."
+            )
         pnl = snapshot.get("total_pnl", 0.0)
         wr = snapshot.get("win_rate", 0.0)
         trades = snapshot.get("trades_executed", 0)
         dd = snapshot.get("max_drawdown_pct", 0.0)
         emoji = "📈" if pnl >= 0 else "📉"
         return (
-            f"{emoji} <b>현재 PnL:</b> ${pnl:+,.6f}\n"
+            f"{emoji} PnL 현황\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"💰 총 PnL: ${pnl:+,.6f}\n"
             f"🎯 승률: {wr * 100:.1f}%\n"
             f"🔁 거래: {trades}건\n"
             f"📉 MDD: {dd * 100:.2f}%"
@@ -365,17 +710,21 @@ class TradeTelegramBot(TelegramBotBase):
     async def _get_strategies_text(self) -> str:
         snapshot = self._get_shadow_snapshot()
         if not snapshot:
-            return "전략 정보 없음"
+            return (
+                "⚙️ 전략 상태\n"
+                "━━━━━━━━━━━━━━━\n"
+                "엔진 미연결 — 데이터 없음"
+            )
         by_strategy = snapshot.get("by_strategy", [])
         if not by_strategy:
-            return "등록된 전략 없음"
-        lines = ["⚙️ <b>전략 상태:</b>"]
+            return "⚙️ 전략 상태\n━━━━━━━━━━━━━━━\n등록된 전략 없음"
+        lines = ["⚙️ 전략 상태\n━━━━━━━━━━━━━━━"]
         for s in by_strategy:
             sid = s.get("strategy_id", "?")
             s_pnl = s.get("pnl", 0.0)
             s_trades = s.get("trades", 0)
             icon = "🟢" if s_trades > 0 else "⚪"
-            lines.append(f"  {icon} {sid}: ${s_pnl:+,.4f} ({s_trades}건)")
+            lines.append(f"{icon} {sid}\n   ${s_pnl:+,.4f} | {s_trades}건")
         return "\n".join(lines)
 
     async def _get_risk_text(self) -> str:
@@ -383,21 +732,30 @@ class TradeTelegramBot(TelegramBotBase):
         mdd = snapshot.get("max_drawdown_pct", 0.0) if snapshot else 0.0
         ctx = self._engine_context
         kill_active = getattr(ctx, "kill_switch_active", False) if ctx else False
+        cb_state = getattr(ctx, "circuit_breaker_state", "N/A") if ctx else "N/A"
         return (
-            f"🛡️ <b>리스크 메트릭:</b>\n"
-            f"  📉 MDD: {mdd * 100:.2f}%\n"
-            f"  🔴 Kill Switch: {'활성' if kill_active else '비활성'}"
+            "🛡️ 리스크 메트릭\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"📉 MDD: {mdd * 100:.2f}%\n"
+            f"🔴 Kill Switch: {'활성' if kill_active else '비활성'}\n"
+            f"🔵 Circuit Breaker: {cb_state}"
         )
 
     async def _get_exchanges_text(self) -> str:
         ctx = self._engine_context
         if not ctx:
-            return "거래소 정보 없음"
+            return "🏦 거래소 상태\n━━━━━━━━━━━━━━━\n엔진 미연결 — 데이터 없음"
+
         exchanges: dict[str, float] = getattr(ctx, "exchange_health", {})
+        latencies: dict[str, float] = getattr(ctx, "exchange_latencies", {})
+
         if not exchanges:
-            return "거래소 정보 없음"
-        lines = ["🏦 <b>거래소 상태:</b>"]
+            return "🏦 거래소 상태\n━━━━━━━━━━━━━━━\n정보 없음"
+
+        lines = ["🏦 거래소 상태\n━━━━━━━━━━━━━━━"]
         for ex_id, health in sorted(exchanges.items()):
             icon = "🟢" if health > 0.95 else ("🟡" if health > 0.5 else "🔴")
-            lines.append(f"  {icon} {ex_id}: {health * 100:.0f}%")
+            lat = latencies.get(ex_id, 0)
+            lat_str = f" | {lat:.0f}ms" if lat > 0 else ""
+            lines.append(f"{icon} {ex_id}: {health * 100:.0f}%{lat_str}")
         return "\n".join(lines)

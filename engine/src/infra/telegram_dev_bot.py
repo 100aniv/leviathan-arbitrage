@@ -83,6 +83,7 @@ class DevTelegramBot(TelegramBotBase):
         self.register_command("/progress", self._cmd_progress)
         self.register_command("/env", self._cmd_env)
         self.register_command("/engine", self._cmd_engine_stub)
+        self.register_command("/go", self._cmd_go)
         self.register_command("/help", self._cmd_help)
 
         # Register callbacks
@@ -591,7 +592,8 @@ class DevTelegramBot(TelegramBotBase):
             "  /cmd &lt;명령&gt; — 원격 명령\n"
             "  /git — Git 상태\n"
             "  /logs — 최근 로그\n"
-            "  /deploy — Git Push (확인)\n\n"
+            "  /deploy — Git Push (확인)\n"
+            "  /go [메시지] — Claude CLI 수동 재개\n\n"
             "✅ 승인\n"
             "  /approve [phase] — 승인\n"
             "  /reject [사유] — 거부\n\n"
@@ -703,6 +705,36 @@ class DevTelegramBot(TelegramBotBase):
             f"📉 MDD: {mdd*100:.2f}%"
         )
 
+    async def _cmd_go(self, text: str, chat_id: int, message: dict) -> str:
+        """텔레그램에서 Claude CLI 수동 재개 (/go 또는 /go 메시지)."""
+        import subprocess
+
+        parts = text.strip().split(maxsplit=1)
+        resume_msg = parts[1] if len(parts) > 1 else "멈추지 말고 계속 진행해. Stage 전환 즉시 실행."
+
+        tmux_session = os.getenv("WATCHDOG_TMUX_SESSION", "leviathan")
+        tmux_pane = f"{tmux_session}:0.0"
+
+        try:
+            # Check if tmux session exists
+            result = subprocess.run(
+                ["tmux", "has-session", "-t", tmux_session],
+                capture_output=True, timeout=5,
+            )
+            if result.returncode != 0:
+                return f"tmux session '{tmux_session}' not found"
+
+            # Send keys to tmux
+            subprocess.run(
+                ["tmux", "send-keys", "-t", tmux_pane, resume_msg, "Enter"],
+                capture_output=True, timeout=5,
+            )
+            logger.info("telegram_go_command", session=tmux_session, msg=resume_msg[:50])
+            return f"Sent to {tmux_session}: {resume_msg[:100]}"
+        except Exception as exc:
+            logger.error("telegram_go_failed", error=str(exc))
+            return f"Failed: {exc}"
+
     async def send_git_push_complete(self, commit_hash: str, message: str) -> None:
         """git push 완료 알림."""
         await self.send_message(f"✅ Push 완료: {commit_hash}\n{message[:200]}")
@@ -710,6 +742,89 @@ class DevTelegramBot(TelegramBotBase):
     # ------------------------------------------------------------------
     # WorkflowTelegramAlerter adapter
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Watchdog — tmux 멈춤 감지 + 자동 재개 (핵심 기능)
+    # ------------------------------------------------------------------
+
+    _STALL_PATTERNS = re.compile(
+        r"Worked for|Baked for|Churned for|Crunched for|Sautéed for"
+    )
+    _STAGE_PATTERNS = re.compile(
+        r"Stage [ABC] 완료|Phase .+ 완료|PASS|pytest.*passed"
+    )
+
+    async def watchdog_loop(
+        self,
+        tmux_session: str = "leviathan",
+        check_interval: float = 5.0,
+        cooldown: float = 30.0,
+        resume_delay: float = 2.0,
+        resume_msg: str = "멈추지 말고 계속 진행해. Stage 전환 즉시 실행.",
+    ) -> None:
+        """tmux 세션 모니터링: 멈춤 감지 → 알림 → 자동 재개.
+
+        `python -m src.infra.telegram_dev_bot` 실행 시 poll_loop와 병렬.
+        """
+        import subprocess
+
+        tmux_pane = f"{tmux_session}:0.0"
+        last_stall = 0.0
+        stall_count = 0
+        last_output = ""
+
+        logger.info("watchdog_started", session=tmux_session, interval=check_interval)
+        await self.send_message(
+            f"🐕 Watchdog 시작\nSession: <code>{tmux_session}</code>\n"
+            f"Check: {check_interval}s | Cooldown: {cooldown}s"
+        )
+
+        while True:
+            await asyncio.sleep(check_interval)
+            try:
+                # Check if tmux session exists
+                result = subprocess.run(
+                    ["tmux", "has-session", "-t", tmux_session],
+                    capture_output=True, timeout=5,
+                )
+                if result.returncode != 0:
+                    continue  # session not found, wait
+
+                # Capture last 5 lines of tmux pane
+                result = subprocess.run(
+                    ["tmux", "capture-pane", "-t", tmux_pane, "-p", "-S", "-5"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                output = result.stdout.strip()
+                if not output or output == last_output:
+                    continue
+                last_output = output
+
+                # Check for stall patterns
+                if self._STALL_PATTERNS.search(output):
+                    now = time.monotonic()
+                    if now - last_stall < cooldown:
+                        continue  # cooldown active
+                    last_stall = now
+                    stall_count += 1
+                    logger.warning("watchdog_stall_detected", count=stall_count)
+                    await self.send_message(
+                        f"🔴 <b>Claude CLI 멈춤 감지</b> (#{stall_count})\n"
+                        f"Action: {resume_delay}s 후 자동 재개"
+                    )
+                    await asyncio.sleep(resume_delay)
+                    subprocess.run(
+                        ["tmux", "send-keys", "-t", tmux_pane, resume_msg, "Enter"],
+                        capture_output=True, timeout=5,
+                    )
+                    logger.info("watchdog_resume_sent", msg=resume_msg[:50])
+
+                # Check for stage completion
+                for match in self._STAGE_PATTERNS.finditer(output):
+                    await self.send_message(f"📋 <b>Progress</b>: {match.group()}")
+
+            except Exception as exc:
+                logger.warning("watchdog_error", error=str(exc))
 
     async def send_phase_complete(self, phase: str, result: dict) -> None:
         """WorkflowTelegramAlerter.send_phase_complete() 대체."""
@@ -719,3 +834,60 @@ class DevTelegramBot(TelegramBotBase):
             await self.send_phase_complete_with_approval(phase, details)
         else:
             await self.send_phase_notification(phase, status, details)
+
+
+# ======================================================================
+# Standalone entry point: python -m src.infra.telegram_dev_bot
+# Runs poll_loop (텔레그램 명령) + watchdog_loop (tmux 멈춤 감지) 병렬
+# ======================================================================
+
+async def _main() -> None:
+    """Dev봇 독립 프로세스 — watchdog + 텔레그램 polling 동시 실행."""
+    import signal as _signal
+
+    bot = DevTelegramBot()
+    if not bot.enabled:
+        logger.error("DevTelegramBot disabled — set DEV_TELEGRAM_ENABLED=true")
+        return
+
+    tmux_session = os.getenv("WATCHDOG_TMUX_SESSION", "leviathan")
+    check_interval = float(os.getenv("WATCHDOG_INTERVAL", "5"))
+    cooldown = float(os.getenv("WATCHDOG_COOLDOWN", "30"))
+    resume_delay = float(os.getenv("WATCHDOG_RESUME_DELAY", "2"))
+
+    logger.info(
+        "dev_bot_standalone_start",
+        tmux=tmux_session,
+        interval=check_interval,
+    )
+
+    loop = asyncio.get_event_loop()
+    stop = asyncio.Event()
+
+    def _shutdown(*_: object) -> None:
+        logger.info("dev_bot_shutdown_signal")
+        stop.set()
+
+    for sig in (_signal.SIGINT, _signal.SIGTERM):
+        loop.add_signal_handler(sig, _shutdown)
+
+    poll_task = asyncio.create_task(bot.poll_loop(), name="dev_poll")
+    watchdog_task = asyncio.create_task(
+        bot.watchdog_loop(
+            tmux_session=tmux_session,
+            check_interval=check_interval,
+            cooldown=cooldown,
+            resume_delay=resume_delay,
+        ),
+        name="dev_watchdog",
+    )
+
+    await stop.wait()
+    poll_task.cancel()
+    watchdog_task.cancel()
+    await bot.close()
+    logger.info("dev_bot_stopped")
+
+
+if __name__ == "__main__":
+    asyncio.run(_main())

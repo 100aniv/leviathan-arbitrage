@@ -215,7 +215,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 | ⑤ LE SSERAFIM (릴리스) | C-Step 5~6 | Karina(architect/opus), Sakura(ssot-keeper/sonnet) | Phase완료리뷰(7항목)+Go/No-Go, SSOT+git push |
 | ⑥ ITZY (퀀트) | A+B | Yeji(quant-validator/opus), Ryujin(scientist), Lia(ml-pipeline), Chaeryeong(dex-specialist), Yuna(analyst) | 수학 검증, ML, DEX |
 | ⑦ Fix 루프 | L1+ | Joy(debugger), Irene(build-fixer), Wendy(code-simplifier/opus) | 에스컬레이션 시 활성화 |
-| TF TWICE | QF/SF/Final | Nayeon(TF리더), Karina, Jeongyeon, Momo, Sana, Mina, Dahyun, Chaeyoung, Tzuyu (9명+Jisoo차출) | 상용화 최종 검증 (3-Round) |
+| TF TWICE | QF/SF/PF/Final | Nayeon(TF리더), Karina, Jeongyeon, Momo, Sana, Mina, Dahyun, Chaeyoung, Tzuyu (9명+Jisoo차출) | 상용화 최종 검증 (4-Round) |
 
 **사이클**: Stage A(기획)→B(구현+검증)→C(리뷰+릴리스+사장님승인)→다음Phase
 
@@ -239,12 +239,14 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`
 - **슬리피지**: CEXOrderbookSlippage만 활성 (PowerLaw k=0.0 비활성)
 - **설정**: `engine/.env` (엔진용) + 루트 `.env` (Docker용) — **두 파일 반드시 동기화**
-- **텔레그램 3-Bot**: `engine/src/infra/telegram_*_bot.py` — TradeBot(20cmd), DevBot(15cmd), InfraBot(7cmd)
-  - **TradeBot**: `TRADE_TELEGRAM_BOT_TOKEN` (fallback: `TELEGRAM_BOT_TOKEN`) — 거래 알림 + Kill Switch + 포지션/체결/전략 제어
-  - **DevBot**: `DEV_TELEGRAM_BOT_TOKEN` (fallback: `WORKFLOW_TELEGRAM_BOT_TOKEN`) — 원격 개발 제어 (/cmd 화이트리스트, /deploy 2단계 확인, /test, /shadow)
-  - **InfraBot**: `INFRA_TELEGRAM_BOT_TOKEN` — 인프라 모니터링 (/health, /resources psutil, /metrics, /restart 2단계 확인)
-  - **Docker monitoring**: INFRA_TELEGRAM_BOT_TOKEN 사용 (docker-compose.yml에서 매핑), Engine MonitorDaemon은 on-demand만
+- **텔레그램 3-Bot** (S21 레거시 제거 완료): `engine/src/infra/telegram_*_bot.py` — TradeBot(20cmd), DevBot(16cmd+/go), InfraBot(7cmd)
+  - **TradeBot**: `TRADE_TELEGRAM_BOT_TOKEN` — 거래 알림 + Kill Switch + 포지션/체결/전략 제어
+  - **DevBot**: `DEV_TELEGRAM_BOT_TOKEN` — 원격 개발 제어 + Watchdog `/go` 수동 재개
+  - **InfraBot**: `INFRA_TELEGRAM_BOT_TOKEN` — 인프라 모니터링 (/health, /resources psutil, /metrics, /restart)
+  - **Watchdog**: Dev봇 자체가 watchdog (`python -m src.infra.telegram_dev_bot` 또는 `bash scripts/watchdog.sh`)
+  - **Docker monitoring**: INFRA_TELEGRAM_BOT_TOKEN 사용 (docker-compose.yml에서 매핑)
   - **Alertmanager**: 3봇 토큰 sed 치환 (INFRA/TRADE/DEV placeholder)
+  - **레거시 제거**: SmartTelegramAlerter/TelegramCommandHandler 삭제, main.py 3봇 직접 초기화
 - **워크플로우 자동화**: 순수 Python (sqlite3 + jsonschema + TypedDict) — `engine/src/workflow/`
   - 체크포인트: `.omc/state/checkpoints.db` (SQLite, 워크플로우 전용 — TimescaleDB 거래 데이터와 분리)
   - 일관성 검사: `cd engine && python -m src.workflow.cli check_all`
@@ -272,10 +274,10 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S20-C✅ → **S21 진행 예정** → TF QF → TF SF → TF Final → Live
+- **Phase 순서**: A~M✅ → S1~S20-C✅ → **S21 진행 예정** → TF QF → TF SF → TF PF → TF Final → Live
 - **Tests**: 5,183 passed, 0 failed, 12 skipped
 - **PRD**: `.omc/prd.json` (315개 US, 309 passes:true / 6 passes:false)
-- **다음 작업**: Phase S21 → TF QF → TF SF → TF Final → Live
+- **다음 작업**: Phase S21 → TF QF → TF SF → TF PF → TF Final → Live
 - **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%
 
@@ -290,4 +292,4 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **CLI**: Codex(`codex exec`), Gemini(`gemini -p`), Qwen(`qwen -p`) — 수동: `/consensus-code-review`, `/octo-debate`
 - **세션**: ralph 루프 연속. `/compact` 금지. checkpoint → `/clear` → 자동 재개.
 - **에스컬레이션**: L0(팀 내) → L1(fix) → L2(Stage A) → L3(SSOT) → L4(Phase) → **L5(텔레그램→사장님)**
-- **TF**: leviathan-tf.md 참조 (QF→SF→Final 3-Round)
+- **TF**: leviathan.md §7 자동 진입 (전 US passes:true 시) → leviathan-tf.md 절차 (QF→SF→PF→Final 4-Round)

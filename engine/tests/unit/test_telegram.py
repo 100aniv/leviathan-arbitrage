@@ -90,6 +90,10 @@ class TestTelegramAlerterInit:
         assert alerter._enabled is True
 
     def test_init_without_args_reads_env_vars(self, monkeypatch):
+        # Phase S21: TelegramAlerter reads TRADE_ env vars first, fallback to legacy
+        monkeypatch.delenv("TRADE_TELEGRAM_BOT_TOKEN", raising=False)
+        monkeypatch.delenv("TRADE_TELEGRAM_CHAT_ID", raising=False)
+        monkeypatch.delenv("TRADE_TELEGRAM_ENABLED", raising=False)
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "env_token")
         monkeypatch.setenv("TELEGRAM_CHAT_ID", "env_chat")
         monkeypatch.setenv("TELEGRAM_ENABLED", "true")
@@ -99,6 +103,7 @@ class TestTelegramAlerterInit:
         assert alerter._enabled is True
 
     def test_init_defaults_to_disabled_when_env_not_set(self, monkeypatch):
+        monkeypatch.delenv("TRADE_TELEGRAM_ENABLED", raising=False)
         monkeypatch.delenv("TELEGRAM_ENABLED", raising=False)
         alerter = TelegramAlerter()
         assert alerter._enabled is False
@@ -108,6 +113,10 @@ class TestTelegramAlerterInit:
         assert len(alerter._send_times) == 0
 
     def test_get_telegram_alerter_factory_reads_env(self, monkeypatch):
+        # Phase S21: clear TRADE_ vars so legacy fallback is tested
+        monkeypatch.delenv("TRADE_TELEGRAM_BOT_TOKEN", raising=False)
+        monkeypatch.delenv("TRADE_TELEGRAM_CHAT_ID", raising=False)
+        monkeypatch.delenv("TRADE_TELEGRAM_ENABLED", raising=False)
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "factory_tok")
         monkeypatch.setenv("TELEGRAM_CHAT_ID", "factory_chat")
         monkeypatch.setenv("TELEGRAM_ENABLED", "true")
