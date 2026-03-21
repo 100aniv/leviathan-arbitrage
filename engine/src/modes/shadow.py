@@ -263,6 +263,8 @@ class StrategyStats:
     pnl: float = 0.0
     rejections: int = 0
     partial_fills: int = 0
+    # US-299: per-trade PnL history for Sharpe/MDD calculation
+    pnl_history: list = field(default_factory=list)
 
 
 class ShadowRateLimiter:
@@ -394,6 +396,8 @@ class ShadowMode:
         adaptive_threshold: Any | None = None,
         db_pool: Any | None = None,
         data_quality_manager: Any | None = None,
+        strategy_filter: list[str] | None = None,
+        portfolio_risk: Any | None = None,
     ) -> None:
         """Initialise the shadow mode orchestrator.
 
@@ -417,6 +421,13 @@ class ShadowMode:
                                are also routed to registered strategies and their
                                TradeRequests are paper-executed (N-leg support).
             data_quality_manager: Optional DataQualityManager for US-286 quality checks.
+            strategy_filter:   Optional allowlist of strategy_id strings. When set,
+                               only signals whose strategy_id matches an entry are
+                               processed; all others are skipped. None = no filter
+                               (existing behaviour preserved).
+            portfolio_risk:    Optional PortfolioRiskManager for US-300 portfolio-level
+                               metrics (correlation, VaR, MDD). None = no-op (backward
+                               compatible).
         """
         self._signal_generator = signal_generator
         self._multi_signal_producer = multi_signal_producer
@@ -426,6 +437,12 @@ class ShadowMode:
         self._adaptive_threshold = adaptive_threshold
         self._db_pool = db_pool  # US-256: peak_equity persistence
         self._data_quality_manager = data_quality_manager  # US-286
+        # US-299: per-strategy filter allowlist (None = all strategies pass)
+        self._strategy_filter: frozenset[str] | None = (
+            frozenset(strategy_filter) if strategy_filter else None
+        )
+        # US-300: PortfolioRiskManager for portfolio-level metrics
+        self._portfolio_risk = portfolio_risk
         # Shadow-local min_edge multiplier (CRISIS 레짐 시 2배 상향, log-only 모드)
         self._shadow_min_edge_factor: float = 1.0
 
@@ -1317,6 +1334,11 @@ class ShadowMode:
             logger.debug("shadow_mode.strategy_disabled", strategy=sid_check)
             return
 
+        # US-299: strategy_filter allowlist — skip signals not in the filter
+        if self._strategy_filter is not None and sid_check not in self._strategy_filter:
+            logger.debug("shadow_mode.strategy_filtered", strategy=sid_check)
+            return
+
         # US-164: Temporary strategy disable check (10-min cooldown after single large loss)
         disable_until = self._strategy_disable_until.get(sid_check)
         if disable_until is not None and time.monotonic() < disable_until:
@@ -1483,6 +1505,7 @@ class ShadowMode:
         ss.signals += 1
         ss.trades += 1
         ss.pnl += net_pnl_float
+        ss.pnl_history.append(net_pnl_float)  # US-299: for Sharpe/MDD
 
         if net_pnl_float > 0:
             self._stats.trades_won += 1
@@ -1497,6 +1520,13 @@ class ShadowMode:
 
         self._stats.total_pnl += net_pnl_float
         self._compute_drawdown()
+
+        # US-300: update PortfolioRiskManager with per-strategy PnL
+        if self._portfolio_risk is not None:
+            try:
+                self._portfolio_risk.update_returns(sid, net_pnl_float)
+            except Exception as _prm_exc:
+                logger.debug("shadow_mode.portfolio_risk_update_failed", error=str(_prm_exc))
 
         # Record to TimescaleDB
         if self._market_recorder is not None:
@@ -1621,6 +1651,11 @@ class ShadowMode:
         # Strategy blacklist check (US-066)
         if sid in self._disabled_strategies:
             logger.debug("shadow_mode.strategy_disabled", strategy=sid)
+            return
+
+        # US-299: strategy_filter allowlist
+        if self._strategy_filter is not None and sid not in self._strategy_filter:
+            logger.debug("shadow_mode.strategy_filtered", strategy=sid)
             return
 
         try:
@@ -1779,6 +1814,7 @@ class ShadowMode:
         ss.signals += 1
         ss.trades += 1
         ss.pnl += net_pnl_float
+        ss.pnl_history.append(net_pnl_float)  # US-299: for Sharpe/MDD
 
         if net_pnl_float > 0:
             self._stats.trades_won += 1
@@ -1793,6 +1829,13 @@ class ShadowMode:
 
         self._stats.total_pnl += net_pnl_float
         self._compute_drawdown()
+
+        # US-300: PortfolioRiskManager update (multi-leg path)
+        if self._portfolio_risk is not None:
+            try:
+                self._portfolio_risk.update_returns(sid, net_pnl_float)
+            except Exception as exc:
+                logger.warning("portfolio_risk_update_failed_multileg", error=str(exc))
 
         # Prometheus metrics
         strategy_label = sid
@@ -2188,6 +2231,22 @@ class ShadowMode:
                 "wins": ss.wins, "losses": ss.losses,
                 "win_rate": round(s_wr, 4), "pnl": round(ss.pnl, 6),
             })
+        # US-300: portfolio-level metrics from PortfolioRiskManager
+        portfolio_metrics: dict[str, Any] = {}
+        if self._portfolio_risk is not None:
+            try:
+                _var = self._portfolio_risk.get_var()
+                _vol = self._portfolio_risk.get_portfolio_volatility()
+                _mdd_info = self._portfolio_risk.check_mdd_breach()
+                portfolio_metrics = {
+                    "portfolio_var_95": round(_var, 6) if _var is not None else None,
+                    "portfolio_volatility": round(_vol, 6) if _vol is not None else None,
+                    "portfolio_mdd_pct": _mdd_info.get("portfolio_mdd_pct"),
+                    "portfolio_mdd_breach": _mdd_info.get("portfolio_breach", False),
+                }
+            except Exception as _prm_snap_exc:
+                logger.debug("shadow_mode.portfolio_risk_snapshot_failed", error=str(_prm_snap_exc))
+
         return {
             "active": self._running, "uptime_seconds": round(uptime_s, 1),
             "signals_detected": stats.signals_detected,
@@ -2202,6 +2261,7 @@ class ShadowMode:
             "trades_partial_fill": stats.trades_partial_fill,
             "trades_rate_limited": stats.trades_rate_limited,
             "by_strategy": by_strategy,
+            **portfolio_metrics,
         }
 
     def reset_stats(self) -> None:
@@ -2225,15 +2285,49 @@ class ShadowMode:
         logger.info("shadow_mode.disabled_strategies_updated", disabled=list(disabled))
 
     def get_strategy_report(self) -> dict:
-        """Return serializable per-strategy metrics dict."""
+        """Return serializable per-strategy metrics dict (US-299: adds Sharpe/MDD/pass)."""
+        import math
+
         report = {}
         for strategy_id, ss in self._stats.by_strategy.items():
+            win_rate = float(ss.wins / ss.trades) if ss.trades > 0 else 0.0
+
+            # Sharpe ratio from per-trade PnL history (annualised trade-count basis)
+            sharpe = 0.0
+            history = getattr(ss, "pnl_history", [])
+            if len(history) >= 2:
+                n = len(history)
+                mean = sum(history) / n
+                variance = sum((x - mean) ** 2 for x in history) / (n - 1)
+                std = math.sqrt(variance) if variance > 0 else 0.0
+                sharpe = round(mean / std, 4) if std > 0 else 0.0
+
+            # Maximum drawdown from cumulative PnL curve
+            mdd = 0.0
+            if history:
+                peak = 0.0
+                cumulative = 0.0
+                for pnl in history:
+                    cumulative += pnl
+                    if cumulative > peak:
+                        peak = cumulative
+                    dd = peak - cumulative
+                    if dd > mdd:
+                        mdd = dd
+                mdd = round(mdd, 6)
+
+            # PASS: min_trades >= 1 AND total PnL >= 0 (30-min validation criteria)
+            passed = ss.trades >= 1 and ss.pnl >= 0.0
+
             report[strategy_id] = {
                 "trades": ss.trades,
                 "wins": ss.wins,
                 "losses": ss.losses,
-                "pnl": float(ss.pnl),
-                "win_rate": float(ss.wins / ss.trades) if ss.trades > 0 else 0.0,
+                "pnl": round(float(ss.pnl), 6),
+                "win_rate": round(win_rate, 4),
+                "sharpe": sharpe,
+                "max_drawdown": mdd,
+                "pass": passed,
             }
         return report
 

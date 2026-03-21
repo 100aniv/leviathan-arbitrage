@@ -2,9 +2,9 @@
   "project": "LEVIATHAN Arbitrage Engine",
   "version": "2.0",
   "created": "2026-03-08",
-  "updated": "2026-03-19",
+  "updated": "2026-03-21",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 297,
+  "total_stories": 315,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -5681,7 +5681,7 @@
       "title": "stat_arb WFE 음수 해결",
       "phase": "S21",
       "priority": 297,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/strategies/statistical_arb.py",
         "engine/config/strategy_params.json"
@@ -5702,7 +5702,7 @@
       "title": "실데이터 WFE 백테스트",
       "phase": "S21",
       "priority": 298,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/tuning/scheduled_tuner.py",
         "engine/config/strategy_params.json"
@@ -5724,7 +5724,7 @@
       "title": "전략별 독립 Shadow 30min",
       "phase": "S21",
       "priority": 299,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py"
       ],
@@ -5743,7 +5743,7 @@
       "title": "포트폴리오 통합 Shadow 1H",
       "phase": "S21",
       "priority": 300,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py",
         "engine/src/core/portfolio_risk.py"
@@ -5757,6 +5757,92 @@
         "포트폴리오 MDD < 3% 목표",
         "LiveGate 6-check 전부 PASS",
         "TF QF 재시작 승인 조건 달성"
+      ]
+    },
+    {
+      "id": "US-302",
+      "title": "TelegramBotBase HTML fallback + 에러 응답",
+      "phase": "S20-B",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "send_message() HTML parse 실패 시 plain text fallback 재전송",
+        "_handle_message() 에러 시 사용자에게 오류 발생 응답 전송",
+        "기존 테스트 전체 PASS"
+      ]
+    },
+    {
+      "id": "US-303",
+      "title": "Docker monitoring INFRA 토큰 전환 + MonitorDaemon Engine 분리",
+      "phase": "S20-B",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "docker-compose.yml monitoring 서비스에 INFRA_TELEGRAM_BOT_TOKEN 매핑",
+        "main.py MonitorDaemon run() 백그라운드 태스크 제거 (Docker 컨테이너 담당)",
+        "InfraBot /health 명령어에서 MonitorDaemon.check_all() on-demand 사용 유지"
+      ]
+    },
+    {
+      "id": "US-304",
+      "title": "Alertmanager 3봇 토큰 sed 치환",
+      "phase": "S20-B",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "docker-compose.yml alertmanager entrypoint에 INFRA/TRADE/DEV 3봇 토큰 sed 치환",
+        "alertmanager.yml placeholder 변수명 매칭 (INFRA_TELEGRAM_BOT_TOKEN_PLACEHOLDER 등)"
+      ]
+    },
+    {
+      "id": "US-305",
+      "title": "DevBot 원격 제어 확장 (4→15 명령어)",
+      "phase": "S20-B",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "/session /cmd /test /shadow /git /deploy /logs /approve /reject /progress /env 11개 신규 명령어",
+        "/cmd 화이트리스트 보안 제한 (git, pytest, docker compose 만 허용)",
+        "/deploy 2단계 인라인 키보드 확인",
+        "Phase 완료 시 Go/No-Go 인라인 버튼 알림",
+        "L5 에스컬레이션 확인 버튼 알림"
+      ]
+    },
+    {
+      "id": "US-306",
+      "title": "TradeBot 기관급 기능 (12→20 명령어)",
+      "phase": "S20-B",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "/positions /fills /strategy /exchanges /whitelist /blacklist /params /report 8개 신규 명령어",
+        "/strategy <name> on|off 인라인 키보드 지원",
+        "send_fill_enhanced() 기관급 체결 알림 (전략/심볼/거래소/PnL/스프레드/수수료/슬리피지/체결시간)",
+        "/menu에 포지션/체결 버튼 추가"
+      ]
+    },
+    {
+      "id": "US-307",
+      "title": "InfraBot 시스템 리소스 (4→7 명령어)",
+      "phase": "S20-B",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "/resources psutil 기반 CPU/메모리/디스크/네트워크/Load/Top프로세스 통합 조회",
+        "/metrics Prometheus 핵심 메트릭 스냅샷",
+        "/restart <service> 2단계 인라인 키보드 확인 후 docker compose restart"
+      ]
+    },
+    {
+      "id": "US-308",
+      "title": "S20-B SSOT/prd.json/CLAUDE.md 동기화",
+      "phase": "S20-B",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "SSOT.md S19/S20 US 체크 + S20-B 섹션 추가 + 헤더 업데이트",
+        "prd.json US-302~308 추가 (7건, passes:true)",
+        "CLAUDE.md 3-Bot 명령어/환경변수 정보 추가"
       ]
     }
   ]

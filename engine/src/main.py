@@ -981,8 +981,12 @@ class Engine:
                                regime_detector=self._regime_detector),
             FundingRateStrategy("funding_rate_v1", cost_calc, config=fr_config,
                                 regime_detector=self._regime_detector),
-            StatisticalArbStrategy("statistical_arb_v1", cost_calc,
-                                   regime_detector=self._regime_detector),
+            *(
+                [StatisticalArbStrategy("statistical_arb_v1", cost_calc,
+                                        regime_detector=self._regime_detector)]
+                if tuned.get("statistical_arb", {}).get("status") in ("READY", "MONITOR")
+                else []
+            ),
         ]
 
         # CexDex requires a DEXAdapter — register only if configured
@@ -2330,6 +2334,13 @@ class Engine:
         from src.risk.kill_switch import KillSwitch as _KillSwitch
         _shadow_kill_switch = _KillSwitch()
 
+        # US-299: optional per-strategy filter from env var (comma-separated signal IDs)
+        _shadow_strategy_filter_raw = os.environ.get("SHADOW_STRATEGY_FILTER", "").strip()
+        _shadow_strategy_filter = (
+            [s.strip() for s in _shadow_strategy_filter_raw.split(",") if s.strip()]
+            if _shadow_strategy_filter_raw else None
+        )
+
         self._shadow_mode = ShadowMode(
             signal_generator=self._signal_generator,
             paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
@@ -2346,6 +2357,8 @@ class Engine:
             adaptive_threshold=self._adaptive_threshold,
             db_pool=self._db_pool,  # US-256
             data_quality_manager=self._data_quality_manager,  # US-286
+            strategy_filter=_shadow_strategy_filter,  # US-299
+            portfolio_risk=self._portfolio_risk,  # US-300
         )
 
         # Set all registered strategies to shadow mode and start them
@@ -2430,6 +2443,10 @@ class Engine:
             http_client=getattr(self, "_http_client", None),
         )
 
+        # US-299: optional per-strategy filter from env var (comma-separated signal IDs)
+        _sf_raw = os.environ.get("SHADOW_STRATEGY_FILTER", "").strip()
+        _sf = [s.strip() for s in _sf_raw.split(",") if s.strip()] if _sf_raw else None
+
         shadow = ShadowMode(
             signal_generator=self._signal_generator,
             paper_executor=None,
@@ -2445,6 +2462,8 @@ class Engine:
             adaptive_threshold=self._adaptive_threshold,
             db_pool=self._db_pool,  # US-256
             data_quality_manager=self._data_quality_manager,  # US-286
+            strategy_filter=_sf,  # US-299
+            portfolio_risk=self._portfolio_risk,  # US-300
         )
 
         if self._strategy_manager is not None:
@@ -2505,6 +2524,10 @@ class Engine:
             http_client=getattr(self, "_http_client", None),
         )
 
+        # US-299: optional per-strategy filter from env var (comma-separated signal IDs)
+        _sf2_raw = os.environ.get("SHADOW_STRATEGY_FILTER", "").strip()
+        _sf2 = [s.strip() for s in _sf2_raw.split(",") if s.strip()] if _sf2_raw else None
+
         self._shadow_mode = ShadowMode(
             signal_generator=self._signal_generator,
             paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
@@ -2520,6 +2543,8 @@ class Engine:
             adaptive_threshold=self._adaptive_threshold,
             db_pool=self._db_pool,  # US-256
             data_quality_manager=self._data_quality_manager,  # US-286
+            strategy_filter=_sf2,  # US-299
+            portfolio_risk=self._portfolio_risk,  # US-300
         )
 
         # Set all registered strategies to shadow mode

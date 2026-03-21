@@ -47,6 +47,10 @@ logger = logging.getLogger(__name__)
 EXCLUDED = {"cex_dex"}
 
 
+class InsufficientDataError(RuntimeError):
+    """Raised when TimescaleDB has fewer rows than the minimum required for WFE."""
+
+
 class ScheduledTuner:
     """매주 자동 파라미터 최적화 스케줄러."""
 
@@ -141,6 +145,20 @@ class ScheduledTuner:
         config = TunerConfig(n_trials=self.n_trials)
         optimizer = WalkForwardOptimizer(config=config, strategy_type=strategy)
 
+        # Pre-flight data sufficiency check for timescaledb path (min 3 days = 72 rows)
+        if self.data_source == "timescaledb":
+            try:
+                self._check_sufficient_real_data(optimizer, strategy)
+            except InsufficientDataError as exc:
+                logger.warning(
+                    "Skipping real-data WFE for %s: %s", strategy, exc
+                )
+                return {
+                    "status": "INSUFFICIENT_DATA",
+                    "error": str(exc),
+                    "data_type": "real_timescaledb",
+                }
+
         study = optuna.create_study(
             direction="maximize",
             sampler=TPESampler(seed=42),
@@ -175,6 +193,7 @@ class ScheduledTuner:
         return {
             "best_params": study.best_params,
             "best_value": study.best_value,
+            "data_type": "real_timescaledb" if self.data_source == "timescaledb" else "synthetic_gbm",
         }
 
     def _run_with_timescaledb(
@@ -215,13 +234,53 @@ class ScheduledTuner:
             logger.error("TimescaleDB loader failed: %s, falling back to synthetic", exc)
             return optimizer._engine.run_with_synthetic_data(params)
 
+    def _check_sufficient_real_data(
+        self, optimizer: WalkForwardOptimizer, strategy: str
+    ) -> None:
+        """Pre-flight check: raises InsufficientDataError if TimescaleDB has < MIN_ROWS.
+
+        Called before the Optuna study so that the study aborts immediately rather
+        than pruning every single trial.  Does NOT fall back to synthetic.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        dsn = os.environ.get("DATABASE_URL", "")
+        if not dsn:
+            raise InsufficientDataError("DATABASE_URL not set")
+
+        MIN_ROWS = int(os.environ.get("TUNER_MIN_REAL_DATA_ROWS", "72"))
+
+        def _load_sync():
+            import asyncio as _aio
+            loop = _aio.new_event_loop()
+            try:
+                async def _do():
+                    async with DataLoader(dsn=dsn) as loader:
+                        return await loader.load_execution_log_as_ohlcv(days=30)
+                return loop.run_until_complete(_do())
+            finally:
+                loop.close()
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            ohlcv = pool.submit(_load_sync).result(timeout=60)
+
+        if ohlcv.length < MIN_ROWS:
+            raise InsufficientDataError(
+                f"Only {ohlcv.length} hourly rows available; need at least {MIN_ROWS} (3 days)"
+            )
+
     async def _write_params(self, results: dict) -> None:
         """최적화 결과를 config/strategy_params.json에 원자적으로 쓰기 (US-179)."""
         ready_strategies = {
             s: d for s, d in results.items()
             if "error" not in d and d.get("best_params") and d.get("status") == "READY"
         }
-        if not ready_strategies:
+        # Collect real-data WFE results (READY or INSUFFICIENT_DATA) for _real_wfe section
+        real_wfe_results = {
+            s: d for s, d in results.items()
+            if d.get("data_type") == "real_timescaledb"
+        }
+        if not ready_strategies and not real_wfe_results:
             return
 
         # Load existing params to merge
@@ -236,7 +295,27 @@ class ScheduledTuner:
             entry = dict(data["best_params"])
             entry["status"] = "READY"
             entry["wfe"] = data.get("best_value", 0.0)
+            entry["data_type"] = data.get("data_type", "synthetic_gbm")
             existing[strategy] = entry
+
+        # Record real-data WFE results into _real_wfe section
+        if real_wfe_results:
+            real_wfe_section = existing.get("_real_wfe", {})
+            for strategy, data in real_wfe_results.items():
+                if data.get("status") == "INSUFFICIENT_DATA":
+                    real_wfe_section[strategy] = {
+                        "status": "INSUFFICIENT_DATA",
+                        "error": data.get("error", ""),
+                        "data_type": "real_timescaledb",
+                    }
+                else:
+                    real_wfe_section[strategy] = {
+                        "status": "READY",
+                        "wfe": data.get("best_value", 0.0),
+                        "best_params": data.get("best_params", {}),
+                        "data_type": "real_timescaledb",
+                    }
+            existing["_real_wfe"] = real_wfe_section
 
         # JSON schema validation: all values must be JSON-serialisable numbers/strings
         try:

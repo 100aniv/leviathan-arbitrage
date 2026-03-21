@@ -403,7 +403,7 @@ class TestShadowModeNewMethods:
 
         shadow = make_real_shadow()
 
-        mock_stats = SimpleNamespace(wins=7, losses=3, trades=10, pnl=5.0)
+        mock_stats = SimpleNamespace(wins=7, losses=3, trades=10, pnl=5.0, pnl_history=[1.0, -0.5, 2.0, 0.5, 1.0, -0.2, 0.8, 0.3, 0.6, 0.5])
         shadow._stats.by_strategy["cross_exchange_v1"] = mock_stats
 
         report = shadow.get_strategy_report()

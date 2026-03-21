@@ -3,7 +3,12 @@
     "source": "Phase 6 Walk-Forward Optuna 100 trials tuning",
     "date": "2026-03-07",
     "data_type": "synthetic_gbm",
-    "note": "max_position_size_usdt values from tuning. Convert to BTC at runtime via reference price."
+    "note": "max_position_size_usdt values from tuning. Convert to BTC at runtime via reference price.",
+    "real_wfe_path": "_real_wfe",
+    "real_wfe_note": "Populated by ScheduledTuner when TUNER_DATA_SOURCE=timescaledb and >= 72 hourly rows (3 days) available"
+  },
+  "_real_wfe": {
+    "_note": "Real-data WFE results from TimescaleDB. Written by ScheduledTuner (TUNER_DATA_SOURCE=timescaledb). Status INSUFFICIENT_DATA means < 72 hourly rows (3 days) were available."
   },
   "spot_futures": {
     "status": "READY",
@@ -44,7 +49,8 @@
   "cross_exchange": {
     "min_spread_bps": 5.0,
     "status": "READY",
-    "wfe": 1.2
+    "wfe": 1.2,
+    "data_type": "synthetic_gbm"
   },
   "futures_futures": {
     "status": "MONITOR",
@@ -56,13 +62,13 @@
     "stop_loss_pct": 0.005
   },
   "statistical_arb": {
-    "status": "MONITOR",
+    "status": "DISABLED",
     "wfe": -1.03,
     "max_position_size_usdt": 4706,
     "entry_threshold": 0.000188,
     "exit_threshold": 0.00089,
     "stop_loss_pct": 0.005,
-    "note": "WFE negative, 9/97 folds positive only. Use defaults until redesigned."
+    "note": "WFE=-1.03, disabled per S21 analysis. 9/97 folds positive only. Requires redesign before reactivation."
   },
   "latency_arb": {
     "status": "MONITOR",
