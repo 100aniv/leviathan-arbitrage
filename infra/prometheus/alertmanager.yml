@@ -2,7 +2,7 @@ global:
   resolve_timeout: 5m
 
 route:
-  receiver: 'telegram'
+  receiver: 'telegram-infra'
   group_by: ['alertname', 'severity']
   group_wait: 30s
   group_interval: 5m
@@ -10,13 +10,45 @@ route:
   routes:
     - match:
         severity: critical
-      receiver: 'telegram'
+      receiver: 'telegram-infra'
       repeat_interval: 1h
+    - match_re:
+        alertname: '.*trade.*|.*pnl.*|.*strategy.*'
+      match:
+        severity: warning
+      receiver: 'telegram-trade'
+      repeat_interval: 2h
+    - match_re:
+        alertname: '.*deploy.*|.*build.*'
+      receiver: 'telegram-dev'
+      repeat_interval: 4h
 
 receivers:
-  - name: 'telegram'
+  - name: 'telegram-infra'
     telegram_configs:
-      - bot_token: 'WORKFLOW_TELEGRAM_BOT_TOKEN_PLACEHOLDER'
+      - bot_token: 'INFRA_TELEGRAM_BOT_TOKEN_PLACEHOLDER'
+        chat_id: 0
+        parse_mode: 'HTML'
+        message: |
+          {{ range .Alerts }}
+          <b>{{ .Labels.severity | toUpper }}</b>: {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end }}
+
+  - name: 'telegram-trade'
+    telegram_configs:
+      - bot_token: 'TRADE_TELEGRAM_BOT_TOKEN_PLACEHOLDER'
+        chat_id: 0
+        parse_mode: 'HTML'
+        message: |
+          {{ range .Alerts }}
+          <b>{{ .Labels.severity | toUpper }}</b>: {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end }}
+
+  - name: 'telegram-dev'
+    telegram_configs:
+      - bot_token: 'DEV_TELEGRAM_BOT_TOKEN_PLACEHOLDER'
         chat_id: 0
         parse_mode: 'HTML'
         message: |

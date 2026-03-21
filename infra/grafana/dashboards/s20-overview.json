@@ -1,0 +1,84 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+  ],
+  "annotations": { "list": [{ "builtIn": 1, "datasource": { "type": "grafana", "uid": "-- Grafana --" }, "enable": true, "hide": true, "iconColor": "rgba(0,211,255,1)", "name": "Annotations & Alerts", "type": "dashboard" }] },
+  "description": "LEVIATHAN S20 Overview: PnL/MDD/Sharpe summary",
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "tags": ["leviathan", "s20"],
+  "title": "S20 Overview",
+  "uid": "s20-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] }, "unit": "currencyUSD" } },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Total PnL",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" }, "expr": "leviathan_portfolio_pnl_usd", "legendFormat": "PnL" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "green", "value": 0.65 }] }, "unit": "percentunit", "max": 1, "min": 0 } },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Win Rate",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" }, "expr": "leviathan_portfolio_win_rate", "legendFormat": "Win Rate" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.05 }, { "color": "red", "value": 0.1 }] }, "unit": "percentunit" } },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Current MDD",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" }, "expr": "leviathan_portfolio_mdd_pct", "legendFormat": "MDD" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "green", "value": 1.0 }] }, "unit": "none" } },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Sharpe Ratio",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" }, "expr": "leviathan_portfolio_sharpe_ratio", "legendFormat": "Sharpe" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineInterpolation": "linear", "showPoints": "never" }, "unit": "currencyUSD" } },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "title": "PnL Over Time",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" }, "expr": "leviathan_portfolio_pnl_usd", "legendFormat": "Portfolio PnL" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" }, "custom": { "lineInterpolation": "linear", "showPoints": "never" }, "unit": "percentunit" } },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "title": "MDD Over Time",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" }, "expr": "leviathan_portfolio_mdd_pct", "legendFormat": "MDD %" }]
+    }
+  ],
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "refresh": "30s"
+}

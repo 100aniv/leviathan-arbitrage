@@ -108,6 +108,12 @@ class Engine:
         self._slippage_feedback: Any = None
         self._dynamic_sizer: Any = None
         self._telegram_cmd_handler: Any = None
+        # US-291: Phase S20 3-Bot Telegram
+        self._trade_bot: Any = None
+        self._infra_bot: Any = None
+        self._dev_bot: Any = None
+        self._monitor_daemon: Any = None
+        self._startup_checker: Any = None
         self._tca_analyzer: Any = None  # US-116
         self._rebalancer: Any = None  # US-120
         self._balance_tracker: Any = None  # US-120
@@ -270,6 +276,14 @@ class Engine:
                 await self._telegram_cmd_handler.close()
             except Exception as exc:
                 logger.warning("TelegramCommandHandler close error: %s", exc)
+        # Phase S20: Close 3-Bot system
+        for bot_name, bot_attr in [("TradeBot", "_trade_bot"), ("InfraBot", "_infra_bot"), ("DevBot", "_dev_bot")]:
+            bot = getattr(self, bot_attr, None)
+            if bot:
+                try:
+                    await bot.close()
+                except Exception as exc:
+                    logger.warning("%s close error: %s", bot_name, exc)
 
         # Stop ScheduledTuner
         if self._scheduled_tuner:
@@ -539,7 +553,8 @@ class Engine:
             logger.warning("TimescaleDB init failed (non-fatal, paper mode ok): %s", exc)
 
     def _init_telegram(self) -> None:
-        """Initialize Telegram alerter from environment variables."""
+        """Initialize Telegram alerter + 3-Bot system from environment variables."""
+        # Legacy TelegramAlerter (backward compatible — self._telegram stays)
         try:
             from src.infra.telegram import get_telegram_alerter
             self._telegram = get_telegram_alerter()
@@ -560,6 +575,45 @@ class Engine:
                 logger.info("Telegram alerter disabled (set TELEGRAM_ENABLED=true to enable)")
         except Exception as exc:
             logger.warning("Telegram alerter init failed (non-fatal): %s", exc)
+
+        # Phase S20: 3-Bot Telegram system (additive, does not replace self._telegram)
+        try:
+            from src.infra.telegram_trade_bot import TradeTelegramBot
+            self._trade_bot = TradeTelegramBot(engine_context=self)
+            if self._trade_bot.enabled:
+                logger.info("TradeTelegramBot enabled")
+            else:
+                logger.info("TradeTelegramBot disabled")
+        except Exception as exc:
+            logger.warning("TradeTelegramBot init failed (non-fatal): %s", exc)
+
+        try:
+            from src.infra.telegram_infra_bot import InfraTelegramBot
+            self._infra_bot = InfraTelegramBot()
+            if self._infra_bot.enabled:
+                logger.info("InfraTelegramBot enabled")
+                # Integrate MonitorDaemon with InfraBot
+                try:
+                    from src.infra.monitor_daemon import MonitorDaemon
+                    self._monitor_daemon = MonitorDaemon(infra_bot=self._infra_bot)
+                    self._infra_bot.set_monitor_daemon(self._monitor_daemon)
+                    logger.info("MonitorDaemon connected to InfraBot")
+                except Exception as exc:
+                    logger.warning("MonitorDaemon+InfraBot init failed (non-fatal): %s", exc)
+            else:
+                logger.info("InfraTelegramBot disabled")
+        except Exception as exc:
+            logger.warning("InfraTelegramBot init failed (non-fatal): %s", exc)
+
+        try:
+            from src.infra.telegram_dev_bot import DevTelegramBot
+            self._dev_bot = DevTelegramBot()
+            if self._dev_bot.enabled:
+                logger.info("DevTelegramBot enabled")
+            else:
+                logger.info("DevTelegramBot disabled")
+        except Exception as exc:
+            logger.warning("DevTelegramBot init failed (non-fatal): %s", exc)
 
     def _init_rust_bridge(self) -> None:
         """Log Rust PyO3 feature flag status."""
@@ -1682,6 +1736,39 @@ class Engine:
                 logger.info("TelegramCommandHandler started (5 commands)")
             except Exception as exc:
                 logger.warning("TelegramCommandHandler init failed (non-fatal): %s", exc)
+
+        # Phase S20: 3-Bot poll loops + MonitorDaemon + StartupChecker
+        for bot_attr, task_name in [("_trade_bot", "trade_bot"), ("_infra_bot", "infra_bot"), ("_dev_bot", "dev_bot")]:
+            bot = getattr(self, bot_attr, None)
+            if bot and bot.enabled:
+                tasks.append(asyncio.create_task(bot.poll_loop(), name=task_name))
+                logger.info("%s poll_loop started", task_name)
+
+        if self._monitor_daemon is not None:
+            tasks.append(asyncio.create_task(self._monitor_daemon.run(), name="monitor_daemon"))
+            logger.info("MonitorDaemon background task started")
+
+        # StartupChecker: run once at startup, send to InfraBot
+        if self._infra_bot and self._infra_bot.enabled:
+            async def _run_startup_check() -> None:
+                try:
+                    from src.infra.startup_checker import StartupChecker
+                    checker = StartupChecker()
+                    await checker.check_all()
+                    checklist_text = checker.format_checklist()
+                    await self._infra_bot.send_message(checklist_text)
+                    logger.info("StartupChecker sent to InfraBot: all_passed=%s", checker.all_passed)
+                except Exception as exc:
+                    logger.warning("StartupChecker failed (non-fatal): %s", exc)
+            tasks.append(asyncio.create_task(_run_startup_check(), name="startup_checker"))
+
+        # TradeTelegramBot daily report scheduler
+        if self._trade_bot and self._trade_bot.enabled:
+            try:
+                tasks.append(asyncio.create_task(self._trade_bot.schedule_daily_report(), name="daily_report"))
+                logger.info("Daily report scheduler started (09:00 KST)")
+            except Exception as exc:
+                logger.warning("Daily report scheduler failed (non-fatal): %s", exc)
 
         # US-120: Inventory rebalancer background loop
         if self._rebalancer is not None:

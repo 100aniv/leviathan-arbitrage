@@ -1,0 +1,76 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+  ],
+  "annotations": { "list": [{ "builtIn": 1, "datasource": { "type": "grafana", "uid": "-- Grafana --" }, "enable": true, "hide": true, "iconColor": "rgba(0,211,255,1)", "name": "Annotations & Alerts", "type": "dashboard" }] },
+  "description": "LEVIATHAN S20 Strategy Detail: per-strategy trades, PnL, signals",
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "tags": ["leviathan", "s20"],
+  "title": "S20 Strategy Detail",
+  "uid": "s20-strategy-detail",
+  "schemaVersion": 38,
+  "version": 1,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "displayMode": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "PnL" }, "properties": [{ "id": "unit", "value": "currencyUSD" }, { "id": "custom.displayMode", "value": "color-background" }] },
+          { "matcher": { "id": "byName", "options": "Trades" }, "properties": [{ "id": "unit", "value": "short" }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "showHeader": true },
+      "title": "Strategy Summary Table",
+      "type": "table",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+          "expr": "leviathan_strategy_trades_total",
+          "legendFormat": "{{strategy}}",
+          "instant": true,
+          "refId": "Trades"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+          "expr": "leviathan_pnl_total_usd",
+          "legendFormat": "{{strategy}}",
+          "instant": true,
+          "refId": "PnL"
+        }
+      ],
+      "transformations": [{ "id": "merge", "options": {} }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineInterpolation": "linear", "showPoints": "never" }, "unit": "short" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "Trades by Strategy",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" }, "expr": "rate(leviathan_strategy_trades_total[5m])", "legendFormat": "{{strategy}}" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineInterpolation": "linear", "showPoints": "never" }, "unit": "currencyUSD" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "PnL by Strategy",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-leviathan" }, "expr": "leviathan_pnl_total_usd", "legendFormat": "{{strategy}}" }]
+    }
+  ],
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "refresh": "30s"
+}

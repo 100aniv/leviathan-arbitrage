@@ -212,6 +212,82 @@ IOC_VS_MARKET = Histogram(
 )
 
 
+# ---------------------------------------------------------------------------
+# Phase S20: Enhanced monitoring metrics
+# ---------------------------------------------------------------------------
+
+# Strategy-level metrics
+STRATEGY_TRADES_TOTAL = Counter(
+    "leviathan_strategy_trades_total",
+    "Total trades per strategy",
+    ["strategy", "result"],
+)
+
+STRATEGY_SIGNALS_TOTAL = Counter(
+    "leviathan_strategy_signals_total",
+    "Total signals per strategy",
+    ["strategy", "decision"],
+)
+
+STRATEGY_LATENCY = Histogram(
+    "leviathan_strategy_latency_seconds",
+    "Per-strategy signal-to-execution latency",
+    ["strategy"],
+    buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0],
+)
+
+# Portfolio-level metrics
+PORTFOLIO_PNL = Gauge(
+    "leviathan_portfolio_pnl_usd",
+    "Total portfolio PnL in USD",
+)
+
+PORTFOLIO_MDD = Gauge(
+    "leviathan_portfolio_mdd_pct",
+    "Portfolio maximum drawdown percentage",
+)
+
+PORTFOLIO_SHARPE = Gauge(
+    "leviathan_portfolio_sharpe_ratio",
+    "Portfolio Sharpe ratio (rolling)",
+)
+
+# Exchange health metrics
+EXCHANGE_LATENCY = Histogram(
+    "leviathan_exchange_api_latency_seconds",
+    "Exchange API response latency",
+    ["exchange", "endpoint"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0],
+)
+
+EXCHANGE_WS_RECONNECTS = Counter(
+    "leviathan_exchange_ws_reconnects_total",
+    "WebSocket reconnection count",
+    ["exchange"],
+)
+
+# Execution latency (signal → fill)
+EXECUTION_LATENCY = Histogram(
+    "leviathan_execution_latency_seconds",
+    "Signal detection to fill confirmation latency",
+    ["strategy", "exchange"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0],
+)
+
+# Data quality metrics (Phase S19 integration)
+DATA_QUALITY_SCORE = Gauge(
+    "leviathan_data_quality_score",
+    "Data quality score per exchange (0-1)",
+    ["exchange"],
+)
+
+STALE_DATA_EVENTS = Counter(
+    "leviathan_stale_data_events_total",
+    "Stale data detection events",
+    ["exchange", "symbol"],
+)
+
+
 def start_metrics_server(port: int = 8000) -> None:
     """Start Prometheus metrics HTTP server on the given port."""
     start_http_server(port)

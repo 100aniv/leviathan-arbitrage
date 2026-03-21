@@ -36,11 +36,22 @@ logger = structlog.get_logger(__name__)
 class MonitorDaemon:
     """5분 주기 인프라 헬스체크 데몬."""
 
-    def __init__(self, interval_sec: int = 300, failure_threshold: int = 3) -> None:
+    def __init__(
+        self,
+        interval_sec: int = 300,
+        failure_threshold: int = 3,
+        infra_bot: object | None = None,
+    ) -> None:
         self.interval = interval_sec
         self.threshold = failure_threshold
-        self.alerter = TelegramAlerter()
+        self._infra_bot = infra_bot
+        self.alerter = TelegramAlerter() if infra_bot is None else None
         self.failure_counts: dict[str, int] = {}
+
+    @classmethod
+    def create_from_bot(cls, infra_bot: object, interval_sec: int = 300, failure_threshold: int = 3) -> "MonitorDaemon":
+        """InfraTelegramBot 인스턴스로 MonitorDaemon 생성."""
+        return cls(interval_sec=interval_sec, failure_threshold=failure_threshold, infra_bot=infra_bot)
 
     async def run(self) -> None:
         """메인 루프 — interval마다 check_all() 호출."""
@@ -144,18 +155,20 @@ class MonitorDaemon:
         count = self.failure_counts[service]
         logger.warning("service_failure", service=service, count=count, error=error)
         if count == self.threshold:
-            await self.alerter.send_alert(
-                f"🔴 {service} DOWN: {error}\n연속 {count}회 실패",
-                level="CRITICAL",
-            )
+            msg = f"🔴 {service} DOWN: {error}\n연속 {count}회 실패"
+            if self._infra_bot is not None:
+                await self._infra_bot.send_message(msg)
+            elif self.alerter is not None:
+                await self.alerter.send_alert(msg, level="CRITICAL")
 
     async def _handle_recovery(self, service: str) -> None:
         """이전 실패 후 복구 시 알림."""
         if self.failure_counts.get(service, 0) >= self.threshold:
-            await self.alerter.send_alert(
-                f"🟢 {service} RECOVERED",
-                level="INFO",
-            )
+            msg = f"🟢 {service} RECOVERED"
+            if self._infra_bot is not None:
+                await self._infra_bot.send_message(msg)
+            elif self.alerter is not None:
+                await self.alerter.send_alert(msg, level="INFO")
         self.failure_counts[service] = 0
 
 

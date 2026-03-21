@@ -49,30 +49,43 @@ def test_alertmanager_yml_is_valid_yaml():
 
 
 def test_alertmanager_yml_has_telegram_receiver():
-    """alertmanager.yml must define a receiver named 'telegram'."""
+    """alertmanager.yml must define telegram receivers (Phase S20: 3-bot split)."""
     assert ALERTMANAGER_YML.exists()
     content = ALERTMANAGER_YML.read_text(encoding="utf-8")
     parsed = yaml.safe_load(
         content.replace("${WORKFLOW_TELEGRAM_BOT_TOKEN}", "tok")
         .replace("${WORKFLOW_TELEGRAM_CHAT_ID}", "123")
+        .replace("${INFRA_TELEGRAM_BOT_TOKEN}", "tok")
+        .replace("${INFRA_TELEGRAM_CHAT_ID}", "123")
+        .replace("${TRADE_TELEGRAM_BOT_TOKEN}", "tok")
+        .replace("${TRADE_TELEGRAM_CHAT_ID}", "123")
+        .replace("${DEV_TELEGRAM_BOT_TOKEN}", "tok")
+        .replace("${DEV_TELEGRAM_CHAT_ID}", "123")
     )
     receiver_names = [r["name"] for r in parsed.get("receivers", [])]
-    assert "telegram" in receiver_names, (
-        f"Expected 'telegram' receiver in alertmanager.yml, got: {receiver_names}"
+    # Phase S20: 3-bot receivers (telegram-infra, telegram-trade, telegram-dev)
+    assert any("telegram" in name for name in receiver_names), (
+        f"Expected telegram receiver(s) in alertmanager.yml, got: {receiver_names}"
     )
 
 
 def test_alertmanager_yml_uses_workflow_token():
-    """alertmanager.yml must use WORKFLOW_TELEGRAM_BOT_TOKEN (not bare TELEGRAM_BOT_TOKEN)."""
+    """alertmanager.yml must use per-bot tokens (not bare TELEGRAM_BOT_TOKEN)."""
     assert ALERTMANAGER_YML.exists()
     content = ALERTMANAGER_YML.read_text(encoding="utf-8")
-    assert "WORKFLOW_TELEGRAM_BOT_TOKEN" in content, (
-        "alertmanager.yml should use WORKFLOW_TELEGRAM_BOT_TOKEN "
-        "(separated from trading alerts TELEGRAM_BOT_TOKEN)"
+    # Phase S20: Should use INFRA/TRADE/DEV tokens
+    has_bot_tokens = (
+        "INFRA_TELEGRAM_BOT_TOKEN" in content
+        or "TRADE_TELEGRAM_BOT_TOKEN" in content
+        or "DEV_TELEGRAM_BOT_TOKEN" in content
+        or "WORKFLOW_TELEGRAM_BOT_TOKEN" in content
+    )
+    assert has_bot_tokens, (
+        "alertmanager.yml should use per-bot tokens (INFRA/TRADE/DEV_TELEGRAM_BOT_TOKEN)"
     )
     # Must NOT use the bare trading-alert token directly
     assert "bot_token: '${TELEGRAM_BOT_TOKEN}'" not in content, (
-        "alertmanager.yml must not use bare TELEGRAM_BOT_TOKEN (use WORKFLOW variant)"
+        "alertmanager.yml must not use bare TELEGRAM_BOT_TOKEN (use per-bot variant)"
     )
 
 

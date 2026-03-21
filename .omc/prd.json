@@ -53,6 +53,44 @@
   "gap_dependency_order": "GAP9 -> GAP10 -> (GAP5,GAP6,GAP7 parallel) -> GAP3 -> GAP1,GAP2 -> GAP4",
   "stories": [
     {
+      "id": "US-152",
+      "title": "API 키 로테이션 + .gitignore 강화 + pre-commit hook",
+      "phase": "S1",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "모든 거래소 API 키 로테이션 (Binance, Upbit, Bithumb, Coinone)",
+        "Telegram/GitHub/Exa 토큰 로테이션",
+        "engine/.env 명시적 .gitignore 추가",
+        "pre-commit hook: .env 파일 커밋 시 차단",
+        "git log에 API 키 이력 없음 확인"
+      ],
+      "files": [
+        ".gitignore",
+        ".env",
+        "engine/.env"
+      ],
+      "source": "Nayeon+Chaeyoung MISSED CRITICAL: API key management"
+    },
+    {
+      "id": "US-153",
+      "title": "주문 레벨 중복 방지 (Idempotency Key)",
+      "phase": "S2",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "AtomicOrderExecutor에 idempotency key (exchange+symbol+signal_id+timestamp)",
+        "동일 signal_id 재처리 시 중복 주문 차단",
+        "네트워크 재시도 시 기존 주문 상태 확인 후 스킵",
+        "단위 테스트: 동일 신호 2회 전송 → 1건만 실행"
+      ],
+      "files": [
+        "engine/src/execution/atomic.py",
+        "engine/src/core/signal.py"
+      ],
+      "source": "Chaeyoung MISSED CRITICAL: No order-level idempotency"
+    },
+    {
       "id": "US-001",
       "title": "OMC State 초기화 + project-memory 수정",
       "phase": "A",
@@ -63,6 +101,426 @@
         "project-memory.json에 Python 3.12+ 기록",
         "notepad.md에 현재 Phase 기록"
       ]
+    },
+    {
+      "id": "US-123",
+      "title": "전 엔드포인트 JWT 인증 강제",
+      "phase": "S1",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "/kill POST → 401 without token",
+        "/strategies GET → 401 without token",
+        "/strategies/{id}/toggle POST → 401 without token",
+        "/strategies/{id}/config POST → 401 without token",
+        "/mode GET → 401 without token",
+        "/risk/metrics GET → 401 without token",
+        "/status GET → 401 without token",
+        "/metrics GET → 401 without token",
+        "pytest tests/unit/test_api_auth.py 전부 PASS"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/api/routes/strategies.py",
+        "engine/src/api/routes/risk.py",
+        "engine/src/api/routes/trading.py"
+      ],
+      "source": "Security CRITICAL #2, HIGH #6, #7"
+    },
+    {
+      "id": "US-129",
+      "title": "RiskGuardian PortfolioState 실제 값 주입",
+      "phase": "S2",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "_build_risk_check_fn()이 실제 used_capital, current_drawdown_pct 전달",
+        "RiskGuardian 9개 체크 중 capital/drawdown/exposure 체크가 실제 동작 확인",
+        "과도한 포지션 시 REJECT 반환 테스트"
+      ],
+      "files": [
+        "engine/src/main.py",
+        "engine/src/risk/guardian.py"
+      ],
+      "source": "Engine HIGH: PortfolioState always zero"
+    },
+    {
+      "id": "US-135",
+      "title": "DB 스키마 통합 + 자동 마이그레이션",
+      "phase": "S3",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "docker/init.sql = engine migration_sql() = 실DB 스키마 일치",
+        "docker compose up 시 자동 마이그레이션 적용",
+        "materialized views (strategy_daily_pnl 등) 실DB에 생성 확인"
+      ],
+      "files": [
+        "docker/init.sql",
+        "engine/src/infra/db/timescale.py",
+        "docker-compose.yml"
+      ],
+      "source": "Infra CRITICAL #3, Data PARTIAL #7"
+    },
+    {
+      "id": "US-140",
+      "title": "API prefix 통일 + SWR key 수정",
+      "phase": "S4",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "lib/api.ts: /kill→/api/v1/kill, /strategies→/api/v1/strategies 통일",
+        "PnLChart SWR key /trading/pnl→/api/v1/pnl 수정",
+        "전 API 호출에서 prefix 일관성 확인"
+      ],
+      "files": [
+        "dashboard/src/lib/api.ts",
+        "dashboard/src/components/PnLChart.tsx"
+      ],
+      "source": "UI/UX FAIL #2, #3"
+    },
+    {
+      "id": "US-145",
+      "title": "Auto-Tuner TimescaleDB async loader 구현",
+      "phase": "S5",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "_run_with_timescaledb()의 NotImplementedError 제거",
+        "asyncpg로 execution_log 조회 → Optuna 입력 데이터 변환",
+        "TUNER_DATA_SOURCE=timescaledb 설정 시 실데이터 기반 최적화 동작"
+      ],
+      "files": [
+        "engine/src/tuning/scheduled_tuner.py"
+      ],
+      "source": "Data CRITICAL: NotImplementedError"
+    },
+    {
+      "id": "US-149",
+      "title": "prd.json 23개 파일 경로 수정",
+      "phase": "S6",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "prd.json의 모든 files 경로가 실제 파일 경로와 일치",
+        "검증 스크립트: 모든 files 항목이 os.path.exists() True"
+      ],
+      "files": [
+        ".omc/prd.json"
+      ],
+      "source": "Alignment: 23 path mismatches"
+    },
+    {
+      "id": "US-154",
+      "title": "RiskGuardian max_concurrent_positions 체크 추가",
+      "phase": "S2",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "RiskGuardian에 동시 포지션 수 체크 추가 (기본 max=20)",
+        "175 심볼 동시 진입 시도 시 20개 초과분 REJECT",
+        "config/환경변수로 max 조정 가능"
+      ],
+      "files": [
+        "engine/src/risk/guardian.py"
+      ],
+      "source": "Chaeyoung MISSED HIGH: No concurrent position count check"
+    },
+    {
+      "id": "US-156",
+      "title": "Shadow 손실 전략 비활성화 — SHADOW_DISABLED_STRATEGIES .env 설정",
+      "phase": "S5",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "engine/.env에 SHADOW_DISABLED_STRATEGIES=statistical_arb_v1,spot_futures_v1,latency_arb_v1 설정",
+        "root .env에도 동일 설정 동기화",
+        "Shadow 10min 실행 시 stat_arb/spot_futures/latency_arb 거래 0건",
+        "Shadow PnL > 0 (손실 전략 제외 후)",
+        "docker-compose.yml에 SHADOW_DISABLED_STRATEGIES 환경변수 전달 확인"
+      ],
+      "files": [
+        "engine/.env",
+        ".env",
+        "docker-compose.yml"
+      ],
+      "dependencies": [],
+      "source": "Phase S4 Stage D Shadow PnL=-7.86 USDT: stat_arb_v1 6거래 -7.61 손실. 메커니즘(US-066) 구현됨 but .env 미설정. TF Semi-Final도 미감지. SSOT §9 HIGH 등록."
+    },
+    {
+      "id": "US-157",
+      "title": "Config 아키텍처 분리 — .env 시크릿만, 비즈니스 설정 JSON",
+      "phase": "S7",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "engine/config/trading.json",
+        "engine/src/core/config.py",
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "engine/config/trading.json 파일 존재 (active_exchanges, risk, slippage, execution, phase_gates, symbol_discovery 섹션)",
+        "config.py에서 JSON 로딩 + env 우선 fallback 구현",
+        "main.py _init_config()에서 trading.json 로드",
+        ".env에서 TRADING_ACTIVE_EXCHANGES, MIN_EDGE_BPS, SLIPPAGE_*, LEG_TIMEOUT_MS 등 비민감 항목 제거 또는 주석 처리",
+        ".env 없이 trading.json만으로 엔진 기동 가능",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "사장님 지시: .env는 민감정보 위주, 비즈니스 설정은 config 파일로 분리"
+    },
+    {
+      "id": "US-163",
+      "title": "Dashboard 로그인 수정",
+      "phase": "S7",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "dashboard/.env.local",
+        "dashboard/src/app/login/page.tsx",
+        "dashboard/src/middleware.ts",
+        "engine/src/api/auth.py"
+      ],
+      "acceptanceCriteria": [
+        "dashboard/.env.local에 NEXT_PUBLIC_ENGINE_URL 설정 확인",
+        "POST /api/auth/login 정상 응답 (200 + token)",
+        "로그인 후 Overview 페이지 접근 가능",
+        "CORS_ORIGINS에 대시보드 URL 포함",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "사장님 보고: 어느순간부터 웹 UIUX 로그인이 안됨"
+    },
+    {
+      "id": "US-166",
+      "title": "모니터링 가이드 문서 작성",
+      "phase": "S7",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "docs/operations/monitoring-guide.md"
+      ],
+      "acceptanceCriteria": [
+        "docs/operations/monitoring-guide.md 존재",
+        "Grafana 접속법 + 주요 패널 설명 포함",
+        "Engine API 엔드포인트 목록 (/health, /shadow/stats, /shadow/recent-trades)",
+        "Dashboard 4페이지 설명 포함",
+        "CLI 모니터링 명령어 (docker logs, curl, watch) 포함",
+        "Telegram 알림 설정법 포함"
+      ],
+      "dependencies": [],
+      "source": "사장님 요청: 2H+ Shadow 중 사용자가 확인할 수 있는 방법 친절하게 알려달라"
+    },
+    {
+      "id": "US-169",
+      "title": "MultiStrategySignalProducer LIVE 모드 연결 (GAP 3 해소)",
+      "phase": "S8",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "LIVE 모드에서 MultiStrategySignalProducer 초기화",
+        "8개 전략 모두 신호 수신 확인",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: LIVE 모드에서 5/8 전략 신호 0건 (Paper/Shadow만 동작)"
+    },
+    {
+      "id": "US-170",
+      "title": "Triangular Scanner 구현 (GAP 7 해소)",
+      "phase": "S8",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "engine/src/core/triangle_scanner.py",
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "3-leg cycle 탐지 로직 구현",
+        "수익성 계산 → Signal 메타데이터 생성",
+        "합성 오더북 E2E 테스트 PASS"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: TriangularStrategy 코드 존재하나 신호 생성 Scanner 부재"
+    },
+    {
+      "id": "US-171",
+      "title": "KRW Staleness → KillSwitch 연결",
+      "phase": "S8",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/risk/kill_switch.py"
+      ],
+      "acceptanceCriteria": [
+        "_krw_stale=True 시 KRW soft-block 활성화 (거래 신호 필터링)",
+        "Telegram 알림 발송",
+        "KillSwitch TIER-1 발동 테스트 PASS"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: KRW 환율 120초 stale 시 경고만, 거래 중단 안 됨"
+    },
+    {
+      "id": "US-181",
+      "title": "RealDataSignalProducer에 statistical_arb evaluator 구현",
+      "phase": "S9",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/strategies/statistical_arb.py"
+      ],
+      "acceptanceCriteria": [
+        "RealDataSignalProducer._evaluate_statistical_arb() 메서드 존재",
+        "on_orderbook_update()에서 _evaluate_statistical_arb() 호출",
+        "Shadow 10min 실행 시 statistical_arb_zscore 시그널 1건 이상 생산",
+        "단위 테스트 5건 이상 추가"
+      ],
+      "dependencies": [],
+      "source": "← statistical_arb_v1 시그널 생산 파이프라인 미구현 (TF QF CRITICAL-2)"
+    },
+    {
+      "id": "US-187",
+      "title": "_CROSS_EXCHANGE_CONSUMERS 제거 + 신호 흐름 검증",
+      "phase": "S10",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "engine/src/strategies/manager.py"
+      ],
+      "acceptanceCriteria": [
+        "_CROSS_EXCHANGE_CONSUMERS frozenset 삭제 또는 빈 집합으로 변경",
+        "_should_route()에서 cross_exchange 신호를 stat_arb/latency_arb에 라우팅하는 분기 제거",
+        "각 전략이 자체 evaluator 전용 신호만 수신하는 단위테스트 통과",
+        "기존 cross_exchange 라우팅 테스트 통과"
+      ],
+      "dependencies": [],
+      "source": "TF SF Stage 2 FAIL: 전략 신호 중복 라우팅"
+    },
+    {
+      "id": "US-188",
+      "title": "stat_arb cross-asset pair 재설계 (BTC-ETH/ETH-SOL/BTC-BNB)",
+      "phase": "S10",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "engine/src/strategies/statistical_arb.py",
+        "engine/src/core/real_signal_producer.py",
+        "engine/config/trading.json"
+      ],
+      "acceptanceCriteria": [
+        "_evaluate_statistical_arb가 cross-asset 쌍(BTC-ETH, ETH-SOL, BTC-SOL)으로 신호 생성",
+        "Signal.metadata에 symbol2 필드 포함",
+        "동일 심볼 교차거래소 비교 코드 제거됨",
+        "cointegration 검정 실패 시 False 반환 (fail-closed)",
+        "cross-asset 신호 생성 단위테스트 3개 이상"
+      ],
+      "dependencies": [],
+      "source": "TF SF Stage 2 FAIL: stat_arb = cross_exchange 동일 영역"
+    },
+    {
+      "id": "US-194",
+      "title": "latency_arb → cross_exchange 병합 (전략 8→7개)",
+      "phase": "S10",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "engine/src/strategies/cross_exchange.py",
+        "engine/src/strategies/latency_arb.py",
+        "engine/src/strategies/manager.py"
+      ],
+      "acceptanceCriteria": [
+        "cross_exchange.py에 latency_boost 모드 추가 (LatencyTracker 통합)",
+        "latency_arb.py deprecated 또는 삭제",
+        "manager.py 전략 등록에서 latency_arb 제거 (8→7 전략)",
+        "strategy_backtest.py STRATEGY_TYPES에서 latency_arb 제거",
+        "기존 latency_arb 테스트가 cross_exchange latency_boost 테스트로 마이그레이션",
+        "pytest 전체 통과"
+      ],
+      "dependencies": [
+        "US-187"
+      ],
+      "source": "latency_arb = cross_exchange + latency gate (동일 영역)"
+    },
+    {
+      "id": "US-201",
+      "title": "AdaptiveThreshold 복합 지표 전환 (Expected Edge + Profit Factor)",
+      "phase": "S10",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "engine/src/tuning/adaptive_threshold.py",
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "adjust() 시그니처에 expected_edge_bps, profit_factor 파라미터 추가",
+        "복합 지표 로직: edge<0→상향, PF<1.0→상향, edge>5bps AND PF>1.5→하향",
+        "WR은 보조 로그만 (의사결정에 미사용)",
+        "main.py에서 adjust() 호출 시 edge/PF 전달",
+        "단위테스트 4개 이상 (각 조건별 threshold 변동 확인)"
+      ],
+      "dependencies": [],
+      "source": "WR 93.8%인데 손실 → WR은 잘못된 지표"
+    },
+    {
+      "id": "US-203",
+      "title": "MissionControlStrip 상시 상태바",
+      "phase": "S11",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "dashboard/src/components/MissionControlStrip.tsx"
+      ],
+      "acceptanceCriteria": [
+        "40px 고정 상태바 전 페이지 표시",
+        "EQUITY/PnL/WIN%/ACTIVE/MODE/KILL SWITCH 표시",
+        "WebSocket 실시간 갱신",
+        "모바일 반응형"
+      ],
+      "dependencies": [
+        "US-210"
+      ],
+      "source": "3초 규칙 — 전 페이지 상태 표시"
+    },
+    {
+      "id": "US-204",
+      "title": "Overview 페이지 재설계",
+      "phase": "S11",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "dashboard/src/app/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "3초 규칙 정보 계층",
+        "기존 컴포넌트 재배치",
+        "npm run build 성공"
+      ],
+      "dependencies": [],
+      "source": "정보 계층 재구성"
+    },
+    {
+      "id": "US-206",
+      "title": "System/Operations 페이지 Kill Switch + 인프라",
+      "phase": "S11",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "dashboard/src/app/system/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "2-click Kill Switch (3초 카운트다운)",
+        "Docker/DB/Redis 상태 표시",
+        "거래소 레이턴시"
+      ],
+      "dependencies": [
+        "US-211"
+      ],
+      "source": "2-click Kill Switch + Docker/DB/Redis 상태"
     },
     {
       "id": "US-002",
@@ -77,6 +535,480 @@
       ]
     },
     {
+      "id": "US-124",
+      "title": "JWT 시크릿 강화 + prod fail-fast",
+      "phase": "S1",
+      "priority": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "ENGINE_ENV=prod + 기본 JWT_SECRET → RuntimeError",
+        "ENGINE_ENV=prod + DASHBOARD_PASSWORD 미설정 → RuntimeError",
+        "ENGINE_ENV=prod + bcrypt 미설치 → RuntimeError",
+        "main.py 기본값 제거, .env 필수화"
+      ],
+      "files": [
+        "engine/src/api/auth.py"
+      ],
+      "source": "Security CRITICAL #3, MEDIUM #8, #9"
+    },
+    {
+      "id": "US-130",
+      "title": "DynamicSizer 실행 경로 연결",
+      "phase": "S2",
+      "priority": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "SignalGenerator 또는 ExecutionManager에서 compute_dynamic_size() 호출",
+        "edge_bps/regime/bid_depth에 따라 포지션 크기 변동 확인",
+        "단위 테스트에서 sigmoid(5bps)→~0.38, sigmoid(50bps)→~0.98 검증"
+      ],
+      "files": [
+        "engine/src/execution/sizer.py",
+        "engine/src/core/signal.py",
+        "engine/src/main.py"
+      ],
+      "source": "Engine MEDIUM + Data FAIL: DynamicSizer disconnected"
+    },
+    {
+      "id": "US-136",
+      "title": ".env 동기화 + MIN_EDGE_BPS preflight",
+      "phase": "S3",
+      "priority": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "root .env와 engine/.env의 MIN_EDGE_BPS 일치 (5)",
+        "main.py MIN_EDGE_BPS 기본값 40→5 변경",
+        "PowerLawSlippage 기본 k=5.0→0.0 변경",
+        "preflight 체크: 두 .env 파일 불일치 시 WARNING 로그"
+      ],
+      "files": [
+        ".env",
+        "engine/.env",
+        "engine/src/main.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Infra CRITICAL #4, Quant HIGH #1, #8"
+    },
+    {
+      "id": "US-141",
+      "title": "System 페이지 실데이터 연동",
+      "phase": "S4",
+      "priority": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "MOCK_CONTAINERS 제거, /api/v1/system/containers 실 API 연동",
+        "Resource Usage: Prometheus 쿼리 또는 /api/v1/system/resources 연동",
+        "하드코딩 숫자(29.4%, 1.3GB) 제거"
+      ],
+      "files": [
+        "dashboard/src/app/system/page.tsx"
+      ],
+      "source": "UI/UX PARTIAL: System page mockup"
+    },
+    {
+      "id": "US-146",
+      "title": "ScheduledTuner main.py 연결",
+      "phase": "S5",
+      "priority": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "main.py에서 ScheduledTuner import + start_scheduler() 호출",
+        "엔진 시작 시 'Scheduled tuner started' 로그 확인",
+        "매주 일요일 02:00 UTC에 최적화 실행 로그 확인 (테스트에서 cron 트리거)"
+      ],
+      "files": [
+        "engine/src/main.py",
+        "engine/src/tuning/scheduled_tuner.py"
+      ],
+      "source": "Data FAIL: ScheduledTuner not wired"
+    },
+    {
+      "id": "US-150",
+      "title": "CLAUDE.md 현행화",
+      "phase": "S6",
+      "priority": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "테스트 수 현행화 (3,747→실제 수)",
+        "Phase 순서 현행화 (S1~S6 추가)",
+        "다음 작업 현행화",
+        "Upbit 수수료 표기 수정 (Maker 0.05% 명시)"
+      ],
+      "files": [
+        ".claude/CLAUDE.md"
+      ],
+      "source": "Alignment: 3 stale items + Quant MEDIUM #2"
+    },
+    {
+      "id": "US-155",
+      "title": "Graceful shutdown 시 오픈 포지션 정리",
+      "phase": "S2",
+      "priority": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Engine.stop()에서 SIGTERM 수신 시 오픈 주문 취소",
+        "Live 모드: 미체결 주문 전량 취소 후 셧다운",
+        "취소 실패 시 Telegram 알림 + 로그",
+        "shutdown 후 pending_orders == 0 확인"
+      ],
+      "files": [
+        "engine/src/main.py",
+        "engine/src/execution/atomic.py"
+      ],
+      "source": "Chaeyoung MISSED HIGH: No position closure on shutdown"
+    },
+    {
+      "id": "US-158",
+      "title": "okx_futures + bybit_futures 활성 거래소 추가",
+      "phase": "S7",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/config/trading.json"
+      ],
+      "acceptanceCriteria": [
+        "trading.json active_exchanges에 okx_futures, bybit_futures 포함 (총 10개)",
+        "Shadow 실행 시 10개 거래소 전부 연결 확인 (로그에 10 collectors initialized)",
+        "pytest 0 failures"
+      ],
+      "dependencies": [
+        "US-157"
+      ],
+      "source": "TF Final NOTE#1: .env TRADING_ACTIVE_EXCHANGES에 okx_futures, bybit_futures 누락"
+    },
+    {
+      "id": "US-164",
+      "title": "Shadow PnL 단일 손실 방어 (max_single_loss)",
+      "phase": "S7",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/config/trading.json"
+      ],
+      "acceptanceCriteria": [
+        "trading.json에 max_single_loss_usd 파라미터 (기본 50)",
+        "단일 거래 손실 > threshold 시 해당 심볼 30분 쿨다운",
+        "쿨다운 시 로그 WARNING + Telegram 알림",
+        "테스트에서 max_single_loss 초과 → 쿨다운 → 복구 시퀀스 확인",
+        "pytest 0 failures"
+      ],
+      "dependencies": [
+        "US-157"
+      ],
+      "source": "TF Final Shadow Stage1: AVAX 단일 손실 -0.2370 USDT 방어 필요"
+    },
+    {
+      "id": "US-172",
+      "title": "ONNX ML Scorer 신호 필터링 연결",
+      "phase": "S8",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/core/signal.py",
+        "engine/src/ml/onnx_runtime.py"
+      ],
+      "acceptanceCriteria": [
+        "signal.py에서 ml_scorer.predict_signal() 호출",
+        "ML 신뢰도 기반 confidence 반영",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: ONNXSignalScorer 로드만 하고 호출 안 함"
+    },
+    {
+      "id": "US-173",
+      "title": "HMM RegimeDetector 신호 파이프라인 연결",
+      "phase": "S8",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/core/signal.py",
+        "engine/src/tuning/regime_detector.py"
+      ],
+      "acceptanceCriteria": [
+        "on_orderbook_update()에서 regime_detector.predict() 호출",
+        "레짐별 min_edge 동적 조절",
+        "CRISIS 레짐 DynamicSizer 0.25x 확인"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: 초기화만, predict() 미호출 → 레짐 항상 NORMAL"
+    },
+    {
+      "id": "US-174",
+      "title": "AdaptiveThreshold 엔진 연결",
+      "phase": "S8",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/tuning/adaptive_threshold.py"
+      ],
+      "acceptanceCriteria": [
+        "main.py에서 AdaptiveThreshold 인스턴스화",
+        "1시간 주기 adjust() 태스크 등록",
+        "승률 기반 MIN_EDGE 동적 조절 테스트 PASS"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: 94줄 완전 구현이나 main.py 미인스턴스화"
+    },
+    {
+      "id": "US-175",
+      "title": "ExposureTracker 인스턴스화 + RiskGuardian 연결",
+      "phase": "S8",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/risk/exposure_tracker.py"
+      ],
+      "acceptanceCriteria": [
+        "_init_risk()에서 ExposureTracker 생성",
+        "RiskGuardian Check #4e 연결",
+        "거래 체결 시 update_exposure() 호출"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: 코드 존재하나 main.py에서 미생성"
+    },
+    {
+      "id": "US-176",
+      "title": "CorrelationMonitor → DynamicSizer 포지션 축소 연결",
+      "phase": "S8",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/risk/guardian.py",
+        "engine/src/execution/sizer.py"
+      ],
+      "acceptanceCriteria": [
+        "PositionScaleEvent → DynamicSizer 연결",
+        "상관계수 >0.7 시 포지션 자동 축소",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: Check #9 로그만, DynamicSizer 미연결"
+    },
+    {
+      "id": "US-182",
+      "title": "RealDataSignalProducer에 latency_arb evaluator 구현",
+      "phase": "S9",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/strategies/latency_arb.py",
+        "engine/src/core/latency_tracker.py"
+      ],
+      "acceptanceCriteria": [
+        "RealDataSignalProducer._evaluate_latency_arb() 메서드 존재",
+        "on_orderbook_update()에서 _evaluate_latency_arb() 호출",
+        "LatencyTracker EMA 차이 > threshold 시 시그널 생산",
+        "StaleOrderbookDetector 교차검증 적용으로 Korean stale data 방어",
+        "단위 테스트 5건 이상 추가"
+      ],
+      "dependencies": [],
+      "source": "← latency_arb_v1 시그널 생산 파이프라인 미구현 (TF QF CRITICAL-2)"
+    },
+    {
+      "id": "US-189",
+      "title": "cross_exchange min_spread_bps 확인 + latency_boost 5bps 허용",
+      "phase": "S10",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/.env",
+        "engine/src/strategies/cross_exchange.py"
+      ],
+      "acceptanceCriteria": [
+        "cross_exchange min_spread_bps 기본값 10bps 확인 (코드+config+env 전경로)",
+        "trading.json cross_exchange 설정에서 5bps 오버라이드 없음 확인",
+        "latency_boost=true 모드에서만 5bps 허용 (US-194 병합 후)"
+      ],
+      "dependencies": [],
+      "source": "cross_exchange 93.8% WR but -$9.35 PnL"
+    },
+    {
+      "id": "US-195",
+      "title": "전략 간 포지션 충돌 방지",
+      "phase": "S10",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/execution/trade_consumer.py"
+      ],
+      "acceptanceCriteria": [
+        "(symbol, exchange_pair) 10초 윈도우 중복 체크 구현",
+        "중복 감지 시 두 번째 요청 거부 + 경고 로그",
+        "단위테스트: 동일 쌍 10초 내 2회 제출 시 1건만 실행",
+        "다른 symbol 쌍은 동시 실행 허용 테스트"
+      ],
+      "dependencies": [],
+      "source": "2개 전략 동일 symbol 동시 거래 방지"
+    },
+    {
+      "id": "US-196",
+      "title": "전략별 자본 할당 (capital_allocation_pct)",
+      "phase": "S10",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/config/trading.json",
+        "engine/src/risk/guardian.py"
+      ],
+      "acceptanceCriteria": [
+        "trading.json에 전략별 capital_allocation_pct 필드 존재",
+        "RiskGuardian check #11: 전략 자본 할당 초과 시 거부",
+        "할당 초과 시 Prometheus counter increment + 경고 로그",
+        "전체 allocation 합 <= 100% 검증",
+        "단위테스트: 할당 초과 거래 거부 확인"
+      ],
+      "dependencies": [],
+      "source": "per-strategy capital limit 부재"
+    },
+    {
+      "id": "US-197",
+      "title": "stat_arb ScheduledTuner EXCLUDED 제거",
+      "phase": "S10",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/tuning/scheduled_tuner.py"
+      ],
+      "acceptanceCriteria": [
+        "EXCLUDED set에서 statistical_arb 제거됨",
+        "ScheduledTuner.strategies에 stat_arb 포함 확인 테스트",
+        "cex_dex는 EXCLUDED 유지 (DEX_RPC_URL 미설정 시)"
+      ],
+      "dependencies": [
+        "US-188"
+      ],
+      "source": "EXCLUDED에 statistical_arb 영구 제외됨"
+    },
+    {
+      "id": "US-199",
+      "title": "전략 overlap 감지 메트릭 (Prometheus)",
+      "phase": "S10",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/execution/trade_consumer.py",
+        "engine/src/infra/metrics.py"
+      ],
+      "acceptanceCriteria": [
+        "leviathan_strategy_overlap_total Prometheus counter 정의",
+        "(symbol, exchange_pair) 윈도우 감지 로직 구현",
+        "overlap 감지 시 counter increment + 경고 로그",
+        "단위테스트: overlap 발생 시 counter 증가 확인"
+      ],
+      "dependencies": [],
+      "source": "overlap=0 측정 불가 해소"
+    },
+    {
+      "id": "US-205",
+      "title": "Strategies 페이지 Health Score 카드",
+      "phase": "S11",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "dashboard/src/app/strategies/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "전략별 0-100 Health Score 카드",
+        "7개 전략 각각 카드 표시",
+        "활성/비활성 상태"
+      ],
+      "dependencies": [
+        "US-211"
+      ],
+      "source": "전략별 0-100 건강 점수"
+    },
+    {
+      "id": "US-207",
+      "title": "텔레그램 한국어 템플릿 (인프라봇)",
+      "phase": "S11",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram.py"
+      ],
+      "acceptanceCriteria": [
+        "가동 리포트 한국어 양식",
+        "장애 경보 한국어 양식",
+        "단위테스트 통과"
+      ],
+      "dependencies": [],
+      "source": "가동 리포트, 장애 경보 한국어"
+    },
+    {
+      "id": "US-208",
+      "title": "텔레그램 한국어 템플릿 (거래봇)",
+      "phase": "S11",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram.py"
+      ],
+      "acceptanceCriteria": [
+        "체결 알림 한국어 양식",
+        "일일 정산 리포트 한국어 양식",
+        "단위테스트 통과"
+      ],
+      "dependencies": [],
+      "source": "체결 알림, 일일 정산 한국어"
+    },
+    {
+      "id": "US-209",
+      "title": "텔레그램 심각도 필터링",
+      "phase": "S11",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram.py"
+      ],
+      "acceptanceCriteria": [
+        "EMERGENCY=즉시 CRITICAL=1분 WARNING=5분 INFO=30분배치",
+        "심각도별 rate limiting",
+        "단위테스트 통과"
+      ],
+      "dependencies": [],
+      "source": "알림 피로 방지"
+    },
+    {
+      "id": "US-211",
+      "title": "9개 신규 API 엔드포인트",
+      "phase": "S11",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/api/server.py"
+      ],
+      "acceptanceCriteria": [
+        "9개 엔드포인트 구현 (positions, daily-returns, logs, db-metrics, redis-metrics, alerts/ack, alerts/resolve, test-alert, exchanges/reconnect)",
+        "JWT 인증",
+        "단위테스트"
+      ],
+      "dependencies": [],
+      "source": "portfolio/positions, system/logs, alerts/acknowledge 등"
+    },
+    {
+      "id": "US-213",
+      "title": "SmartTelegramAlerter (Redis 중복제거 + 배치)",
+      "phase": "S12",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram_smart.py"
+      ],
+      "acceptanceCriteria": [
+        "Redis SET 기반 중복 알림 제거 (TTL 5분)",
+        "배치 전송: INFO 30분 모아서 1건",
+        "SeverityFilter 통합",
+        "단위테스트"
+      ],
+      "dependencies": [],
+      "source": "알림 피로 근본 해결"
+    },
+    {
       "id": "US-003",
       "title": "커스텀 에이전트 정의 파일 생성",
       "phase": "A",
@@ -89,6 +1021,387 @@
       ]
     },
     {
+      "id": "US-125",
+      "title": "Nginx IP whitelist + X-Forwarded-For 프록시 신뢰",
+      "phase": "S1",
+      "priority": 3,
+      "passes": true,
+      "acceptanceCriteria": [
+        "ip-whitelist.conf에서 allow all 제거, RFC-1918 + 명시 IP만 허용",
+        "middleware.py _get_client_ip()가 TRUSTED_PROXIES에서만 X-Forwarded-For 신뢰",
+        "스푸핑 테스트: 외부 IP + X-Forwarded-For: 127.0.0.1 → 차단 확인"
+      ],
+      "files": [
+        "infra/nginx/ip-whitelist.conf",
+        "engine/src/api/middleware.py"
+      ],
+      "source": "Security HIGH #4, #5"
+    },
+    {
+      "id": "US-131",
+      "title": "RegimeDetector + ONNX Scorer main.py 주입",
+      "phase": "S2",
+      "priority": 3,
+      "passes": true,
+      "acceptanceCriteria": [
+        "main.py에서 HMMRegimeDetector를 SignalGenerator에 전달",
+        "main.py에서 ONNXSignalScorer를 SignalGenerator에 전달",
+        "레짐별 MIN_EDGE 동적 변경 로그 확인",
+        "ONNX 없을 때 graceful fallback (에러 아님)"
+      ],
+      "files": [
+        "engine/src/main.py",
+        "engine/src/core/signal.py"
+      ],
+      "source": "Engine MEDIUM: RegimeDetector/ONNX not wired"
+    },
+    {
+      "id": "US-137",
+      "title": "Nginx WS 포트 + 백업 자동재시작",
+      "phase": "S3",
+      "priority": 3,
+      "passes": true,
+      "acceptanceCriteria": [
+        "nginx.conf WebSocket proxy_pass 포트 8000→8001 수정 (또는 엔진 WS 포트 확인)",
+        "db-backup, wal-backup에 restart: unless-stopped 설정",
+        "docker compose up 후 백업 컨테이너 healthy"
+      ],
+      "files": [
+        "infra/nginx/nginx.conf",
+        "docker-compose.yml"
+      ],
+      "source": "Infra HIGH #1, #2"
+    },
+    {
+      "id": "US-142",
+      "title": "Heatmap/OrderbookView 실데이터 + 심볼 연동",
+      "phase": "S4",
+      "priority": 3,
+      "passes": true,
+      "acceptanceCriteria": [
+        "GlobalHeatmap: genMockGrid() 제거, WS market_data 또는 REST spread API 연동",
+        "OrderbookView: FALLBACK_SYMBOLS 5개→API /api/v1/symbols 동적 로드 (175개)",
+        "mock 데이터 0건 (랜덤 생성 코드 제거)"
+      ],
+      "files": [
+        "dashboard/src/components/GlobalHeatmap.tsx",
+        "dashboard/src/components/OrderbookView.tsx"
+      ],
+      "source": "UI/UX PARTIAL: mock data"
+    },
+    {
+      "id": "US-147",
+      "title": "Attribution TimescaleDB 연동 + materialized views",
+      "phase": "S5",
+      "priority": 3,
+      "passes": true,
+      "acceptanceCriteria": [
+        "PerformanceAttribution이 TimescaleDB execution_log 조회",
+        "엔진 재시작 후에도 과거 거래 이력 조회 가능",
+        "materialized views DDL이 init.sql에 포함, DB에 실제 생성"
+      ],
+      "files": [
+        "engine/src/analysis/attribution.py",
+        "docker/init.sql"
+      ],
+      "source": "Data PARTIAL: in-memory only"
+    },
+    {
+      "id": "US-151",
+      "title": "SSOT.md 수식/체크 항목 코드 동기화",
+      "phase": "S6",
+      "priority": 3,
+      "passes": true,
+      "acceptanceCriteria": [
+        "SSOT §4.3 RiskGuardian 9-check 목록을 실제 코드와 동기화",
+        "SSOT KillSwitch Tier 설명을 코드의 실행 단계 기반으로 수정",
+        "SSOT CircuitBreaker: 지수 백오프→고정 300s cooldown으로 수정 (또는 코드 구현)",
+        "SSOT ETH 네트워크 비용: $5.60→L2 최저경로 기준 명시"
+      ],
+      "files": [
+        "SSOT.md"
+      ],
+      "source": "Quant MEDIUM #3,#5,#6, LOW #4,#5"
+    },
+    {
+      "id": "US-159",
+      "title": "_reconcile_loop 실제 구현",
+      "phase": "S7",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "main.py _reconcile_loop()가 실제 포지션 reconciliation 수행 (stub 아님)",
+        "Redis recovery state와 VirtualBalanceTracker 잔고 비교",
+        "불일치 시 로그 WARNING + Telegram 알림",
+        "테스트 파일에 reconcile 로직 단위 테스트 존재",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "TF Final NOTE#2: main.py:1768-1776 stub — 로그만 출력, 실제 reconciliation 미구현"
+    },
+    {
+      "id": "US-177",
+      "title": "DEX 실연결 (GAP 8 해소)",
+      "phase": "S8",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/main.py",
+        "engine/.env",
+        "engine/src/infra/dex/uniswap_v3.py"
+      ],
+      "acceptanceCriteria": [
+        ".env DEX_RPC_URL + DEX_POOL_ADDRESS 설정",
+        "CexDex 전략 자동 등록",
+        "DEX 가격 조회 + 가스 추정 E2E 테스트"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: _build_dex_adapter() 항상 None"
+    },
+    {
+      "id": "US-178",
+      "title": "IOC Limit Order 주요 거래소 구현",
+      "phase": "S8",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/execution/atomic.py",
+        "engine/src/infra/exchange/native_adapter.py"
+      ],
+      "acceptanceCriteria": [
+        "Binance/Bybit/OKX native adapter place_ioc_limit() 구현",
+        "IOC 주문 생성→즉시체결/미체결 취소 테스트",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: AtomicOrderExecutor.place_ioc_limit() 데드코드"
+    },
+    {
+      "id": "US-179",
+      "title": "ScheduledTuner 핫리로드 + 기본 활성화",
+      "phase": "S8",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/tuning/scheduled_tuner.py",
+        "engine/.env"
+      ],
+      "acceptanceCriteria": [
+        ".env ENABLE_INLINE_TUNER=true 기본 설정",
+        "strategy_params.json 핫리로드 (재시작 불필요)",
+        "파라미터 변경→적용 테스트"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: ENABLE_INLINE_TUNER 미설정 → 비활성"
+    },
+    {
+      "id": "US-180",
+      "title": "InMemoryEventBus 큐 크기 제한 강화",
+      "phase": "S8",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/infra/redis/memory_bus.py"
+      ],
+      "acceptanceCriteria": [
+        "asyncio.Queue(maxsize=10000) 강제",
+        "오버플로우 시 oldest 드롭 + 경고 로그",
+        "큐 포화 graceful degradation 테스트"
+      ],
+      "dependencies": [],
+      "source": "Phase S8 심층 조사: Redis 버전은 maxsize=10000이나 InMemory 무제한"
+    },
+    {
+      "id": "US-183",
+      "title": "spot_futures 전략: 동일 거래소(non-Korean) 경로 활성화",
+      "phase": "S9",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/strategies/spot_futures.py",
+        "engine/config/trading.json"
+      ],
+      "acceptanceCriteria": [
+        "Binance spot vs Binance Futures 간 basis 시그널 생산 확인",
+        "Korean exchanges는 spot-futures에서 계속 제외",
+        "trading.json disabled_strategies에서 spot_futures_v1 제거",
+        "Shadow 10min: spot_futures_basis 시그널 1건 이상, PnL >= 0",
+        "단위 테스트 3건 이상 추가"
+      ],
+      "dependencies": [],
+      "source": "← spot_futures_v1 Korean stale data로 전면 비활성화 (TF QF CRITICAL-1)"
+    },
+    {
+      "id": "US-190",
+      "title": "ScheduledTuner 작동 확인 + 수동 트리거",
+      "phase": "S10",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/tuning/scheduled_tuner.py",
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "optuna/apscheduler import 에러 시 graceful 로그 + 기능 비활성화",
+        "ENABLE_INLINE_TUNER=true 시 ScheduledTuner 시작 로그 출력",
+        "수동 트리거 CLI 또는 --run-once 플래그 동작",
+        "pytest에서 ScheduledTuner 초기화 테스트 통과"
+      ],
+      "dependencies": [
+        "US-197"
+      ],
+      "source": "Auto-tuner 로그 미관찰"
+    },
+    {
+      "id": "US-191",
+      "title": "ML/Tuning 컴포넌트 작동 로그",
+      "phase": "S10",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/tuning/adaptive_threshold.py",
+        "engine/src/tuning/regime_detector.py",
+        "engine/src/ml/onnx_runtime.py"
+      ],
+      "acceptanceCriteria": [
+        "AdaptiveThreshold adjust() 호출 시 INFO 로그 (edge_bps, profit_factor 포함)",
+        "RegimeDetector 레짐 전환 시 INFO 로그",
+        "ONNX predict_signal() 호출 카운터 Prometheus 노출 또는 주기적 INFO 로그",
+        "10min Shadow에서 각 컴포넌트 작동 로그 1회 이상 관찰"
+      ],
+      "dependencies": [
+        "US-201"
+      ],
+      "source": "AdaptiveThreshold/RegimeDetector/ONNX 작동 미확인"
+    },
+    {
+      "id": "US-192",
+      "title": "ExposureTracker Redis 연결 확인",
+      "phase": "S10",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/risk/exposure_tracker.py"
+      ],
+      "acceptanceCriteria": [
+        "main.py에서 ExposureTracker에 Redis 클라이언트 주입 확인",
+        "Redis healthy 시 Redis-backed 모드 로그 출력",
+        "Redis 미연결 시 in-memory fallback + 경고 로그",
+        "get_net_exposure() 호출 테스트 통과"
+      ],
+      "dependencies": [],
+      "source": "Redis 키 미존재 확인 필요"
+    },
+    {
+      "id": "US-198",
+      "title": "Korean exchange 필터 보강",
+      "phase": "S10",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/strategies/cross_exchange.py"
+      ],
+      "acceptanceCriteria": [
+        "cross_exchange latency_boost 모드에서 Korean 거래소 제외",
+        "stat_arb cross-asset에서 Korean 거래소 이미 제외 확인",
+        "Korean 필터 단위테스트 통과"
+      ],
+      "dependencies": [
+        "US-194",
+        "US-188"
+      ],
+      "source": "latency_boost Korean exchange stale data"
+    },
+    {
+      "id": "US-210",
+      "title": "WebSocket payload 확장",
+      "phase": "S11",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/api/websocket.py"
+      ],
+      "acceptanceCriteria": [
+        "state_update에 total_equity/win_rate/active_strategy_count 추가",
+        "하위호환",
+        "단위테스트 통과"
+      ],
+      "dependencies": [],
+      "source": "total_equity, win_rate, active_strategy_count"
+    },
+    {
+      "id": "US-214",
+      "title": "Analytics 페이지",
+      "phase": "S12",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "dashboard/src/app/analytics/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "전략별 Sharpe 순위 차트",
+        "시간대별 PnL 히트맵",
+        "npm run build 성공"
+      ],
+      "dependencies": [],
+      "source": "Sharpe 순위, 시간대별 히트맵"
+    },
+    {
+      "id": "US-215",
+      "title": "Alerts 페이지 인시던트 lifecycle",
+      "phase": "S12",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "dashboard/src/app/alerts/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "인시던트 목록 표시",
+        "acknowledge/resolve 버튼",
+        "심각도 필터"
+      ],
+      "dependencies": [],
+      "source": "acknowledge/resolve"
+    },
+    {
+      "id": "US-216",
+      "title": "Portfolio Drawdown 차트 + Exposure Heatmap",
+      "phase": "S12",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "dashboard/src/app/portfolio/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "Drawdown 시계열 차트",
+        "전략x거래소 Exposure 히트맵"
+      ],
+      "dependencies": [],
+      "source": "리스크 시각화"
+    },
+    {
+      "id": "US-219",
+      "title": "Telegram Bot 커맨드",
+      "phase": "S12",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram_bot.py"
+      ],
+      "acceptanceCriteria": [
+        "/pnl /strategies /risk /pause /resume /alerts 명령 구현",
+        "단위테스트"
+      ],
+      "dependencies": [],
+      "source": "/pnl, /strategies, /risk, /pause, /resume"
+    },
+    {
       "id": "US-004",
       "title": "settings.local.json 권한 완화",
       "phase": "A",
@@ -98,6 +1411,223 @@
         "와일드카드 패턴 적용 (cd engine && python * 등)",
         "56개 하드코딩 → 패턴 기반으로 변경"
       ]
+    },
+    {
+      "id": "US-126",
+      "title": "Redis 인증 + dangerous commands 비활성화",
+      "phase": "S1",
+      "priority": 4,
+      "passes": true,
+      "acceptanceCriteria": [
+        "redis.conf에 requirepass 설정",
+        "docker-compose.yml에 REDIS_PASSWORD 환경변수",
+        "엔진 Redis 클라이언트에 password 파라미터 전달",
+        "CONFIG/FLUSHALL/FLUSHDB rename-command 비활성화"
+      ],
+      "files": [
+        "docker-compose.yml",
+        "infra/redis/redis.conf",
+        "engine/src/infra/redis/client.py"
+      ],
+      "source": "Infra CRITICAL #2, MEDIUM #10"
+    },
+    {
+      "id": "US-132",
+      "title": "SlippageFeedbackLoop LegResult 필드 수정",
+      "phase": "S2",
+      "priority": 4,
+      "passes": true,
+      "acceptanceCriteria": [
+        "LegResult에 expected_price, fill_price 필드 추가",
+        "PaperExecutor가 fill 시 expected_price/fill_price 기록",
+        "SlippageFeedbackLoop.record()이 EMA 업데이트 확인",
+        "get_adjusted_slippage() 반환값이 거래 후 변동"
+      ],
+      "files": [
+        "engine/src/execution/paper.py",
+        "engine/src/risk/slippage.py"
+      ],
+      "source": "Engine MEDIUM: SlippageFeedbackLoop dead wiring"
+    },
+    {
+      "id": "US-138",
+      "title": "Alertmanager 연결 + Grafana datasource 정리",
+      "phase": "S3",
+      "priority": 4,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Prometheus alerting_rules.yml → Alertmanager 전달 확인",
+        "Telegram/Slack receiver 설정",
+        "Grafana datasource 중복 제거, 단일 Prometheus 소스"
+      ],
+      "files": [
+        "infra/prometheus/alertmanager.yml",
+        "infra/grafana/provisioning/datasources.yml",
+        "docker-compose.yml"
+      ],
+      "source": "Infra HIGH #3, LOW #11"
+    },
+    {
+      "id": "US-143",
+      "title": "Strategy/Portfolio/EquityCurve 완성",
+      "phase": "S4",
+      "priority": 4,
+      "passes": true,
+      "acceptanceCriteria": [
+        "StrategyPanel: MOCK_STRATEGIES 제거, API 0개 시 빈 상태 UI",
+        "Portfolio Daily Returns: placeholder→실 차트 또는 명시적 미지원 표기",
+        "EquityCurve: Sharpe/MDD/Calmar 지표 포함 (SSOT §3.4 spec 일치)"
+      ],
+      "files": [
+        "dashboard/src/components/StrategyPanel.tsx",
+        "dashboard/src/app/portfolio/page.tsx",
+        "dashboard/src/components/EquityCurve.tsx"
+      ],
+      "source": "UI/UX PARTIAL: mock + spec mismatch"
+    },
+    {
+      "id": "US-148",
+      "title": "Shadow MDD 비율 계산 + InventoryRebalancer balance feed",
+      "phase": "S5",
+      "priority": 4,
+      "passes": true,
+      "acceptanceCriteria": [
+        "shadow.py _compute_drawdown()에서 비율 기반 MDD도 추적 (mdd_pct 필드)",
+        "ShadowStats.max_drawdown_pct 추가 (0~1 범위)",
+        "InventoryRebalancer에 BalanceTracker 실잔고 피드 연결 (Live 모드 시)"
+      ],
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/core/inventory_rebalancer.py"
+      ],
+      "source": "Quant HIGH #7, Data WARN: balance feed"
+    },
+    {
+      "id": "US-160",
+      "title": "InMemoryEventBus 큐 크기 제한",
+      "phase": "S7",
+      "priority": 4,
+      "passes": true,
+      "files": [
+        "engine/src/core/event_bus.py"
+      ],
+      "acceptanceCriteria": [
+        "asyncio.Queue(maxsize=10000) 적용",
+        "큐 full 시 oldest 이벤트 drop + WARNING 로그",
+        "테스트에서 maxsize 초과 시 drop 동작 확인",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "TF Final 압박면접 RISK#1: asyncio.Queue unbounded (Paper/Shadow 한정이지만 방어 필요)"
+    },
+    {
+      "id": "US-184",
+      "title": "futures_futures 전략: stale spread 방어 + 재활성화",
+      "phase": "S9",
+      "priority": 4,
+      "passes": true,
+      "files": [
+        "engine/src/core/real_signal_producer.py",
+        "engine/src/strategies/futures_futures.py",
+        "engine/src/core/stale_detector.py"
+      ],
+      "acceptanceCriteria": [
+        "futures_futures evaluator에 StaleOrderbookDetector 교차검증 적용",
+        "spread < min_spread_bps 필터 + 이상치(>500bps) 자동 거부",
+        "SHADOW_DISABLED_STRATEGIES에서 futures_futures_v1 제거",
+        "Shadow 10min: futures_futures 순손실 없음",
+        "단위 테스트 5건 이상 추가"
+      ],
+      "dependencies": [],
+      "source": "← futures_futures_v1 stale spread 손실로 비활성화 (TF QF 중 발견)"
+    },
+    {
+      "id": "US-193",
+      "title": "SSOT §9 RESOLVED 이슈 → SSOT_COMPLETE.md 이관 + prd.json 총 US 수 정합",
+      "phase": "S10",
+      "priority": 4,
+      "passes": true,
+      "files": [
+        "SSOT.md",
+        "SSOT_COMPLETE.md"
+      ],
+      "acceptanceCriteria": [
+        "SSOT.md §9 RESOLVED 항목이 SSOT_COMPLETE.md로 이동됨",
+        "prd.json 실측 US 수와 SSOT.md/CLAUDE.md 기재 수 일치 (211개 또는 누락 US 복원 후 220개)",
+        "SSOT.md §2 및 §7의 pass/pending 카운트가 prd.json 실측과 일치"
+      ],
+      "dependencies": [],
+      "source": "§9 RESOLVED 항목 정리 + 9개 US 누락 정합 (구조적 이슈)"
+    },
+    {
+      "id": "US-200",
+      "title": "오토튜너 백테스트 리플레이 A/B 인프라",
+      "phase": "S10",
+      "priority": 4,
+      "passes": true,
+      "files": [
+        "engine/src/tuning/ab_replay.py"
+      ],
+      "acceptanceCriteria": [
+        "tuning/ab_replay.py 파일 생성",
+        "event-level 데이터(시그널+fill) 저장 인터페이스 정의",
+        "deterministic replay 실행 함수 구현",
+        "A/B 비교 결과(PnL diff, WR diff) 반환",
+        "단위테스트: 동일 이벤트 리플레이 시 동일 결과"
+      ],
+      "dependencies": [],
+      "source": "튜너 효과 오프라인 검증"
+    },
+    {
+      "id": "US-217",
+      "title": "Settings Danger Zone",
+      "phase": "S12",
+      "priority": 4,
+      "passes": true,
+      "files": [
+        "dashboard/src/app/settings/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "적색 Danger Zone 섹션",
+        "Emergency Stop + Reset Defaults 버튼",
+        "확인 다이얼로그"
+      ],
+      "dependencies": [],
+      "source": "Emergency Stop, Reset Defaults"
+    },
+    {
+      "id": "US-218",
+      "title": "사이드바 재구성 (3그룹)",
+      "phase": "S12",
+      "priority": 4,
+      "passes": true,
+      "files": [
+        "dashboard/src/components/Sidebar.tsx"
+      ],
+      "acceptanceCriteria": [
+        "MONITOR/ANALYZE/MANAGE 3그룹",
+        "그룹 헤더 라벨",
+        "현재 페이지 하이라이트"
+      ],
+      "dependencies": [],
+      "source": "MONITOR/ANALYZE/MANAGE"
+    },
+    {
+      "id": "US-220",
+      "title": "주간 자동 리포트",
+      "phase": "S12",
+      "priority": 4,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram.py"
+      ],
+      "acceptanceCriteria": [
+        "일요일 23:59 KST 자동 발송",
+        "주간 PnL/WR/Sharpe 요약",
+        "APScheduler 스케줄"
+      ],
+      "dependencies": [],
+      "source": "일요일 23:59 KST"
     },
     {
       "id": "US-005",
@@ -113,6 +1643,172 @@
       ]
     },
     {
+      "id": "US-127",
+      "title": "CSP 헤더 강화 (Nginx + Next.js)",
+      "phase": "S1",
+      "priority": 5,
+      "passes": true,
+      "acceptanceCriteria": [
+        "nginx.conf CSP에서 unsafe-inline/unsafe-eval 제거, nonce 기반",
+        "dashboard next.config.js에 CSP headers() 설정",
+        "Chrome DevTools에서 CSP violation 0건 확인"
+      ],
+      "files": [
+        "infra/nginx/nginx.conf",
+        "dashboard/next.config.js"
+      ],
+      "source": "Security MEDIUM #10, UI/UX FAIL #1"
+    },
+    {
+      "id": "US-133",
+      "title": "AtomicOrderExecutor(IOC) main.py 연결",
+      "phase": "S2",
+      "priority": 5,
+      "passes": true,
+      "acceptanceCriteria": [
+        "main.py에서 AtomicOrderExecutor 인스턴스화",
+        "Live 모드에서 IOC 주문 전송 경로 확인",
+        "Paper/Shadow에서는 기존 PaperExecutor 유지"
+      ],
+      "files": [
+        "engine/src/main.py",
+        "engine/src/execution/atomic.py"
+      ],
+      "source": "Engine MEDIUM: IOC not wired"
+    },
+    {
+      "id": "US-139",
+      "title": "Docker 리소스 제한 + 모니터링 healthcheck",
+      "phase": "S3",
+      "priority": 5,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Redis, TimescaleDB에 mem_limit 설정",
+        "Promtail healthcheck 추가",
+        "auto-tuner/monitoring 재시작 원인 수정, healthy 상태 유지"
+      ],
+      "files": [
+        "docker-compose.yml"
+      ],
+      "source": "Infra MEDIUM #9, LOW #12, #13"
+    },
+    {
+      "id": "US-144",
+      "title": "대시보드 테스트 수정 + 모바일 최적화",
+      "phase": "S4",
+      "priority": 5,
+      "passes": true,
+      "acceptanceCriteria": [
+        "SWR v2 mock에 isValidating 추가, TS 에러 40개→0개",
+        "TradeDetail 패널 모바일: w-80→full-screen 처리",
+        "npx tsc --noEmit 0 errors (테스트 포함)"
+      ],
+      "files": [
+        "dashboard/src/__tests__/"
+      ],
+      "source": "UI/UX PARTIAL: 40 TS errors + mobile"
+    },
+    {
+      "id": "US-161",
+      "title": "KRW stale rate 거래 중단 로직",
+      "phase": "S7",
+      "priority": 5,
+      "passes": true,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/core/signal.py"
+      ],
+      "acceptanceCriteria": [
+        "KRW 환율 120s stale 감지 시 KRW 심볼 신호 필터링 (거래 중단)",
+        "환율 갱신 복구 시 자동 거래 재개",
+        "stale 감지 시 WARNING 로그 + 메트릭 카운터",
+        "테스트에서 stale rate → 신호 차단 → 복구 → 신호 허용 시퀀스 확인",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "TF Final 압박면접 RISK#4: 120s stale 감지하지만 경고만, 거래 중단 로직 부재"
+    },
+    {
+      "id": "US-185",
+      "title": "StrategyValidationOrchestrator 검증 duration 현실화",
+      "phase": "S9",
+      "priority": 5,
+      "passes": true,
+      "files": [
+        "engine/src/modes/strategy_validation.py",
+        "engine/config/strategy_activation.json"
+      ],
+      "acceptanceCriteria": [
+        "STRATEGY_VALIDATION_DURATION_S 기본값 60초 이상",
+        "insufficient_data 결과 시 disabled가 아닌 unverified로 분류",
+        "unverified 전략은 ScheduledTuner에서 비활성화하지 않음",
+        "단위 테스트 3건 이상 추가"
+      ],
+      "dependencies": [],
+      "source": "← strategy_activation.json 7/7 disabled (TF QF CRITICAL-3, 5초 검증 부족)"
+    },
+    {
+      "id": "US-202",
+      "title": "7개 전략 전체 Shadow 10min+ 재검증",
+      "phase": "S10",
+      "priority": 5,
+      "passes": true,
+      "files": [
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "7개 전략 전체 Shadow 10min+ 실행",
+        "총합 PnL >= $0",
+        "개별 전략 PnL >= -$5",
+        "overlap 감지 메트릭 = 0",
+        "crash = 0",
+        "Auto-tuner/ML 로그 관찰됨"
+      ],
+      "dependencies": [
+        "US-187",
+        "US-188",
+        "US-189",
+        "US-190",
+        "US-191",
+        "US-192",
+        "US-193",
+        "US-194",
+        "US-195",
+        "US-196",
+        "US-197",
+        "US-198",
+        "US-199",
+        "US-200",
+        "US-201"
+      ],
+      "source": "S10 통합 검증"
+    },
+    {
+      "id": "US-212",
+      "title": "대시보드 백엔드 연동 검증",
+      "phase": "S11",
+      "priority": 5,
+      "passes": true,
+      "files": [
+        "dashboard/src/app/"
+      ],
+      "acceptanceCriteria": [
+        "모든 페이지 실데이터 표시",
+        "콘솔 에러 0건",
+        "npm run build 성공",
+        "모바일 375px/768px"
+      ],
+      "dependencies": [
+        "US-203",
+        "US-204",
+        "US-205",
+        "US-206",
+        "US-210",
+        "US-211"
+      ],
+      "source": "모든 페이지 실데이터 + 콘솔 에러 0건"
+    },
+    {
       "id": "US-006",
       "title": "prd.json 생성",
       "phase": "A",
@@ -125,6 +1821,86 @@
       ]
     },
     {
+      "id": "US-128",
+      "title": "pytest backoff 테스트 수정",
+      "phase": "S1",
+      "priority": 6,
+      "passes": true,
+      "acceptanceCriteria": [
+        "test_backoff_doubles_delay_each_call이 jitter(±25%) 허용하도록 수정",
+        "pytest 0 failures (현재 1 failure 해결)"
+      ],
+      "files": [
+        "engine/tests/unit/test_base_collector.py"
+      ],
+      "source": "Smoke Test 1 failure"
+    },
+    {
+      "id": "US-134",
+      "title": "TCA/Correlation ExecutionResult 필드 통일",
+      "phase": "S2",
+      "priority": 6,
+      "passes": true,
+      "acceptanceCriteria": [
+        "ExecutionResult/LegResult에 TCA가 참조하는 필드 모두 존재",
+        "CorrelationMonitor가 사용하는 필드 일치 확인",
+        "record_execution() 호출 시 KeyError 0건"
+      ],
+      "files": [
+        "engine/src/analysis/tca.py",
+        "engine/src/risk/correlation_monitor.py",
+        "engine/src/execution/paper.py"
+      ],
+      "source": "Engine LOW: nonexistent fields"
+    },
+    {
+      "id": "US-162",
+      "title": "Auto-discovery 거래량 필터",
+      "phase": "S7",
+      "priority": 6,
+      "passes": true,
+      "files": [
+        "engine/src/collectors/symbol_discovery.py",
+        "engine/config/trading.json"
+      ],
+      "acceptanceCriteria": [
+        "discover_common_symbols()에 min_volume_usd 파라미터 추가 (기본 100000)",
+        "24h 거래량 < min_volume_usd 심볼 자동 필터링",
+        "trading.json symbol_discovery.min_volume_usd에서 설정 가능",
+        "테스트에서 저거래량 심볼 필터링 확인",
+        "pytest 0 failures"
+      ],
+      "dependencies": [
+        "US-157"
+      ],
+      "source": "TF Final 압박면접 RISK#5: volume 필터 없음, min_price_usd=0.10만 존재"
+    },
+    {
+      "id": "US-186",
+      "title": "8개 전략 전체 Shadow 30min 통합 검증",
+      "phase": "S9",
+      "priority": 6,
+      "passes": true,
+      "files": [
+        "engine/.env"
+      ],
+      "acceptanceCriteria": [
+        "SHADOW_DISABLED_STRATEGIES='' 빈값으로 전략 비활성화 없음",
+        "8개 전략 모두 시그널 1건 이상 생산",
+        "전략별 PnL 기록: 7/8 이상 PnL >= 0",
+        "총합 PnL > 0",
+        "crash=0, 30분 완주"
+      ],
+      "dependencies": [
+        "US-181",
+        "US-182",
+        "US-183",
+        "US-184",
+        "US-185"
+      ],
+      "source": "← 사장님 지적: 전체 8개 전략 활성화 + 검증 필수"
+    },
+    {
       "id": "US-007",
       "title": "notepad.md 생성",
       "phase": "A",
@@ -134,6 +1910,23 @@
         "notepad_read로 Priority 섹션 읽기 가능",
         "현재 Phase 및 핵심 결정사항 기록"
       ]
+    },
+    {
+      "id": "US-165",
+      "title": "Redis 연결 명시적 close",
+      "phase": "S7",
+      "priority": 7,
+      "passes": true,
+      "files": [
+        "engine/src/main.py"
+      ],
+      "acceptanceCriteria": [
+        "graceful shutdown 시퀀스에 Redis 연결 close 추가",
+        "close 호출 후 Redis 연결 pool 상태 확인 로그",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "TF Final NOTE#3: Redis 연결 명시적 close 미호출 (LOW)"
     },
     {
       "id": "US-008",
@@ -148,6 +1941,24 @@
       ]
     },
     {
+      "id": "US-167",
+      "title": "Docker 리소스 제한 (Redis/TimescaleDB deploy limits)",
+      "phase": "S7",
+      "priority": 8,
+      "passes": true,
+      "files": [
+        "docker-compose.yml"
+      ],
+      "acceptanceCriteria": [
+        "docker-compose.yml에 Redis deploy.resources.limits 설정 (memory: 512M, cpus: '0.5')",
+        "docker-compose.yml에 TimescaleDB deploy.resources.limits 설정 (memory: 2G, cpus: '1.0')",
+        "docker compose up -d 정상 기동",
+        "docker stats로 제한 적용 확인"
+      ],
+      "dependencies": [],
+      "source": "TF Semi-Final MEDIUM: 리소스 제한 엔진만 적용, Redis/TimescaleDB 무제한"
+    },
+    {
       "id": "US-009",
       "title": "Phase A 통합 검증",
       "phase": "A",
@@ -159,6 +1970,24 @@
         "NOM/SXP 등 허위 스프레드 제거 확인",
         "Shadow 10분 실행 시 Bithumb 데이터 정상"
       ]
+    },
+    {
+      "id": "US-168",
+      "title": "httpx AsyncClient 재사용 (connection pooling)",
+      "phase": "S7",
+      "priority": 9,
+      "passes": true,
+      "files": [
+        "engine/src/collectors/symbol_discovery.py",
+        "engine/src/core/krw_rate.py"
+      ],
+      "acceptanceCriteria": [
+        "httpx.AsyncClient를 모듈/클래스 레벨에서 재사용 (매 요청 재생성 금지)",
+        "클라이언트 생명주기 관리 (startup에서 생성, shutdown에서 close)",
+        "pytest 0 failures"
+      ],
+      "dependencies": [],
+      "source": "TF Semi-Final MEDIUM + SSOT §9: 매 요청마다 httpx.AsyncClient 재생성 → 성능 이슈"
     },
     {
       "id": "US-010",
@@ -830,99 +2659,6 @@
       ]
     },
     {
-      "id": "US-051",
-      "title": "Performance Attribution Engine",
-      "phase": "E-3",
-      "priority": 64,
-      "passes": true,
-      "notes": "Phase E-3: 4-dimension PnL decomposition (strategy/exchange/pair/hour) + TimescaleDB materialized views. 13 tests PASS, 3460 total.",
-      "files": [
-        "engine/src/analysis/attribution.py"
-      ],
-      "acceptanceCriteria": [
-        "engine/src/analysis/attribution.py 생성",
-        "by_strategy, by_exchange, by_pair, by_hour 차원별 PnL 분해",
-        "TimescaleDB 집계 뷰: strategy_daily_pnl, exchange_daily_pnl, pair_daily_pnl"
-      ]
-    },
-    {
-      "id": "US-052",
-      "title": "TimescaleDB 자동 백업 + Position Recovery",
-      "phase": "E-3",
-      "priority": 63,
-      "passes": true,
-      "notes": "Phase E-3: backup_db.sh (pg_dump, 7-day retention) + docker-compose backup service + PositionRecovery (Redis WAL, stale detection). 12 tests PASS, 3472 total.",
-      "files": [
-        "scripts/backup_db.sh",
-        "engine/src/execution/position_recovery.py"
-      ],
-      "acceptanceCriteria": [
-        "scripts/backup_db.sh: 일 1회 pg_dump, 7일 보관",
-        "docker-compose.yml에 backup 서비스 추가",
-        "position_recovery.py: 비정상 종료 후 오픈 포지션 조회 + 정리",
-        "Redis WAL 패턴으로 진행 중 거래 상태 저장"
-      ]
-    },
-    {
-      "id": "US-053",
-      "title": "Dashboard Attribution 페이지",
-      "phase": "E-3",
-      "priority": 64.5,
-      "passes": true,
-      "notes": "Attribution page with Waterfall+Heatmap, /api/v1/attribution endpoint, npm build PASS",
-      "files": [
-        "dashboard/src/app/attribution/page.tsx"
-      ],
-      "acceptanceCriteria": [
-        "전략/거래소/페어별 수익 귀속 차트",
-        "Waterfall chart + Heatmap (페어 × 거래소)",
-        "npm run build 성공"
-      ]
-    },
-    {
-      "id": "US-063",
-      "title": "대시보드 Chrome 브라우저 검증 — 핵심 4페이지 (Overview, Trades, Strategies, Exchanges)",
-      "phase": "D-verify",
-      "priority": 63,
-      "passes": true,
-      "acceptanceCriteria": [
-        "Chrome 브라우저에서 dev server 실행 (npm run dev)",
-        "Overview 페이지: 실시간 WebSocket 데이터 렌더링 확인",
-        "Trade History 페이지: 거래 목록 표시 + 필터링 동작",
-        "Strategies 페이지: 전략별 상태/메트릭 표시",
-        "Exchanges 페이지: 거래소 연결 상태 표시",
-        "JWT 로그인/로그아웃 정상 동작",
-        "API 엔드포인트 연동 확인 (200 응답)"
-      ],
-      "files": [
-        "dashboard/src/app/page.tsx",
-        "dashboard/src/app/trades/page.tsx",
-        "dashboard/src/app/strategies/page.tsx",
-        "dashboard/src/app/exchanges/page.tsx"
-      ],
-      "notes": "Phase D US-037~041이 npm run build만으로 passes:true 처리됨. 실제 브라우저 렌더링 검증 필요."
-    },
-    {
-      "id": "US-064",
-      "title": "대시보드 모바일 반응형 + Settings/Alerts 페이지 검증",
-      "phase": "D-verify",
-      "priority": 64,
-      "passes": true,
-      "acceptanceCriteria": [
-        "Chrome DevTools 모바일 뷰포트(375x812)에서 전 페이지 레이아웃 정상",
-        "Settings 페이지: 전략 활성/비활성 토글 동작",
-        "Alerts 페이지: 알림 이력 표시",
-        "Attribution 페이지: 전략/거래소별 수익 차트 렌더링",
-        "Tailwind breakpoint 적용 확인 (sm/md/lg)"
-      ],
-      "files": [
-        "dashboard/src/app/settings/page.tsx",
-        "dashboard/src/app/alerts/page.tsx",
-        "dashboard/src/app/attribution/page.tsx"
-      ],
-      "notes": "모바일 반응형은 이전에 검증되지 않음. Chrome DevTools Device Mode 사용."
-    },
-    {
       "id": "US-058",
       "title": "Shadow 부분체결(5%) + 주문거부(2%) 활성화",
       "phase": "SR",
@@ -1012,6 +2748,99 @@
         "engine/src/modes/shadow.py"
       ],
       "gap": "SG-6"
+    },
+    {
+      "id": "US-052",
+      "title": "TimescaleDB 자동 백업 + Position Recovery",
+      "phase": "E-3",
+      "priority": 63,
+      "passes": true,
+      "notes": "Phase E-3: backup_db.sh (pg_dump, 7-day retention) + docker-compose backup service + PositionRecovery (Redis WAL, stale detection). 12 tests PASS, 3472 total.",
+      "files": [
+        "scripts/backup_db.sh",
+        "engine/src/execution/position_recovery.py"
+      ],
+      "acceptanceCriteria": [
+        "scripts/backup_db.sh: 일 1회 pg_dump, 7일 보관",
+        "docker-compose.yml에 backup 서비스 추가",
+        "position_recovery.py: 비정상 종료 후 오픈 포지션 조회 + 정리",
+        "Redis WAL 패턴으로 진행 중 거래 상태 저장"
+      ]
+    },
+    {
+      "id": "US-063",
+      "title": "대시보드 Chrome 브라우저 검증 — 핵심 4페이지 (Overview, Trades, Strategies, Exchanges)",
+      "phase": "D-verify",
+      "priority": 63,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Chrome 브라우저에서 dev server 실행 (npm run dev)",
+        "Overview 페이지: 실시간 WebSocket 데이터 렌더링 확인",
+        "Trade History 페이지: 거래 목록 표시 + 필터링 동작",
+        "Strategies 페이지: 전략별 상태/메트릭 표시",
+        "Exchanges 페이지: 거래소 연결 상태 표시",
+        "JWT 로그인/로그아웃 정상 동작",
+        "API 엔드포인트 연동 확인 (200 응답)"
+      ],
+      "files": [
+        "dashboard/src/app/page.tsx",
+        "dashboard/src/app/trades/page.tsx",
+        "dashboard/src/app/strategies/page.tsx",
+        "dashboard/src/app/exchanges/page.tsx"
+      ],
+      "notes": "Phase D US-037~041이 npm run build만으로 passes:true 처리됨. 실제 브라우저 렌더링 검증 필요."
+    },
+    {
+      "id": "US-051",
+      "title": "Performance Attribution Engine",
+      "phase": "E-3",
+      "priority": 64,
+      "passes": true,
+      "notes": "Phase E-3: 4-dimension PnL decomposition (strategy/exchange/pair/hour) + TimescaleDB materialized views. 13 tests PASS, 3460 total.",
+      "files": [
+        "engine/src/analysis/attribution.py"
+      ],
+      "acceptanceCriteria": [
+        "engine/src/analysis/attribution.py 생성",
+        "by_strategy, by_exchange, by_pair, by_hour 차원별 PnL 분해",
+        "TimescaleDB 집계 뷰: strategy_daily_pnl, exchange_daily_pnl, pair_daily_pnl"
+      ]
+    },
+    {
+      "id": "US-064",
+      "title": "대시보드 모바일 반응형 + Settings/Alerts 페이지 검증",
+      "phase": "D-verify",
+      "priority": 64,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Chrome DevTools 모바일 뷰포트(375x812)에서 전 페이지 레이아웃 정상",
+        "Settings 페이지: 전략 활성/비활성 토글 동작",
+        "Alerts 페이지: 알림 이력 표시",
+        "Attribution 페이지: 전략/거래소별 수익 차트 렌더링",
+        "Tailwind breakpoint 적용 확인 (sm/md/lg)"
+      ],
+      "files": [
+        "dashboard/src/app/settings/page.tsx",
+        "dashboard/src/app/alerts/page.tsx",
+        "dashboard/src/app/attribution/page.tsx"
+      ],
+      "notes": "모바일 반응형은 이전에 검증되지 않음. Chrome DevTools Device Mode 사용."
+    },
+    {
+      "id": "US-053",
+      "title": "Dashboard Attribution 페이지",
+      "phase": "E-3",
+      "priority": 64.5,
+      "passes": true,
+      "notes": "Attribution page with Waterfall+Heatmap, /api/v1/attribution endpoint, npm build PASS",
+      "files": [
+        "dashboard/src/app/attribution/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "전략/거래소/페어별 수익 귀속 차트",
+        "Waterfall chart + Heatmap (페어 × 거래소)",
+        "npm run build 성공"
+      ]
     },
     {
       "id": "US-054",
@@ -1965,1835 +3794,6 @@
         "주간 복원 검증 스크립트 (wal-backup.sh)",
         "pg_dump 일1회 + WAL 연속 백업 병행"
       ]
-    },
-    {
-      "id": "US-123",
-      "title": "전 엔드포인트 JWT 인증 강제",
-      "phase": "S1",
-      "priority": 1,
-      "passes": true,
-      "acceptanceCriteria": [
-        "/kill POST → 401 without token",
-        "/strategies GET → 401 without token",
-        "/strategies/{id}/toggle POST → 401 without token",
-        "/strategies/{id}/config POST → 401 without token",
-        "/mode GET → 401 without token",
-        "/risk/metrics GET → 401 without token",
-        "/status GET → 401 without token",
-        "/metrics GET → 401 without token",
-        "pytest tests/unit/test_api_auth.py 전부 PASS"
-      ],
-      "files": [
-        "engine/src/api/server.py",
-        "engine/src/api/routes/strategies.py",
-        "engine/src/api/routes/risk.py",
-        "engine/src/api/routes/trading.py"
-      ],
-      "source": "Security CRITICAL #2, HIGH #6, #7"
-    },
-    {
-      "id": "US-124",
-      "title": "JWT 시크릿 강화 + prod fail-fast",
-      "phase": "S1",
-      "priority": 2,
-      "passes": true,
-      "acceptanceCriteria": [
-        "ENGINE_ENV=prod + 기본 JWT_SECRET → RuntimeError",
-        "ENGINE_ENV=prod + DASHBOARD_PASSWORD 미설정 → RuntimeError",
-        "ENGINE_ENV=prod + bcrypt 미설치 → RuntimeError",
-        "main.py 기본값 제거, .env 필수화"
-      ],
-      "files": [
-        "engine/src/api/auth.py"
-      ],
-      "source": "Security CRITICAL #3, MEDIUM #8, #9"
-    },
-    {
-      "id": "US-125",
-      "title": "Nginx IP whitelist + X-Forwarded-For 프록시 신뢰",
-      "phase": "S1",
-      "priority": 3,
-      "passes": true,
-      "acceptanceCriteria": [
-        "ip-whitelist.conf에서 allow all 제거, RFC-1918 + 명시 IP만 허용",
-        "middleware.py _get_client_ip()가 TRUSTED_PROXIES에서만 X-Forwarded-For 신뢰",
-        "스푸핑 테스트: 외부 IP + X-Forwarded-For: 127.0.0.1 → 차단 확인"
-      ],
-      "files": [
-        "infra/nginx/ip-whitelist.conf",
-        "engine/src/api/middleware.py"
-      ],
-      "source": "Security HIGH #4, #5"
-    },
-    {
-      "id": "US-126",
-      "title": "Redis 인증 + dangerous commands 비활성화",
-      "phase": "S1",
-      "priority": 4,
-      "passes": true,
-      "acceptanceCriteria": [
-        "redis.conf에 requirepass 설정",
-        "docker-compose.yml에 REDIS_PASSWORD 환경변수",
-        "엔진 Redis 클라이언트에 password 파라미터 전달",
-        "CONFIG/FLUSHALL/FLUSHDB rename-command 비활성화"
-      ],
-      "files": [
-        "docker-compose.yml",
-        "infra/redis/redis.conf",
-        "engine/src/infra/redis/client.py"
-      ],
-      "source": "Infra CRITICAL #2, MEDIUM #10"
-    },
-    {
-      "id": "US-127",
-      "title": "CSP 헤더 강화 (Nginx + Next.js)",
-      "phase": "S1",
-      "priority": 5,
-      "passes": true,
-      "acceptanceCriteria": [
-        "nginx.conf CSP에서 unsafe-inline/unsafe-eval 제거, nonce 기반",
-        "dashboard next.config.js에 CSP headers() 설정",
-        "Chrome DevTools에서 CSP violation 0건 확인"
-      ],
-      "files": [
-        "infra/nginx/nginx.conf",
-        "dashboard/next.config.js"
-      ],
-      "source": "Security MEDIUM #10, UI/UX FAIL #1"
-    },
-    {
-      "id": "US-128",
-      "title": "pytest backoff 테스트 수정",
-      "phase": "S1",
-      "priority": 6,
-      "passes": true,
-      "acceptanceCriteria": [
-        "test_backoff_doubles_delay_each_call이 jitter(±25%) 허용하도록 수정",
-        "pytest 0 failures (현재 1 failure 해결)"
-      ],
-      "files": [
-        "engine/tests/unit/test_base_collector.py"
-      ],
-      "source": "Smoke Test 1 failure"
-    },
-    {
-      "id": "US-129",
-      "title": "RiskGuardian PortfolioState 실제 값 주입",
-      "phase": "S2",
-      "priority": 1,
-      "passes": true,
-      "acceptanceCriteria": [
-        "_build_risk_check_fn()이 실제 used_capital, current_drawdown_pct 전달",
-        "RiskGuardian 9개 체크 중 capital/drawdown/exposure 체크가 실제 동작 확인",
-        "과도한 포지션 시 REJECT 반환 테스트"
-      ],
-      "files": [
-        "engine/src/main.py",
-        "engine/src/risk/guardian.py"
-      ],
-      "source": "Engine HIGH: PortfolioState always zero"
-    },
-    {
-      "id": "US-130",
-      "title": "DynamicSizer 실행 경로 연결",
-      "phase": "S2",
-      "priority": 2,
-      "passes": true,
-      "acceptanceCriteria": [
-        "SignalGenerator 또는 ExecutionManager에서 compute_dynamic_size() 호출",
-        "edge_bps/regime/bid_depth에 따라 포지션 크기 변동 확인",
-        "단위 테스트에서 sigmoid(5bps)→~0.38, sigmoid(50bps)→~0.98 검증"
-      ],
-      "files": [
-        "engine/src/execution/sizer.py",
-        "engine/src/core/signal.py",
-        "engine/src/main.py"
-      ],
-      "source": "Engine MEDIUM + Data FAIL: DynamicSizer disconnected"
-    },
-    {
-      "id": "US-131",
-      "title": "RegimeDetector + ONNX Scorer main.py 주입",
-      "phase": "S2",
-      "priority": 3,
-      "passes": true,
-      "acceptanceCriteria": [
-        "main.py에서 HMMRegimeDetector를 SignalGenerator에 전달",
-        "main.py에서 ONNXSignalScorer를 SignalGenerator에 전달",
-        "레짐별 MIN_EDGE 동적 변경 로그 확인",
-        "ONNX 없을 때 graceful fallback (에러 아님)"
-      ],
-      "files": [
-        "engine/src/main.py",
-        "engine/src/core/signal.py"
-      ],
-      "source": "Engine MEDIUM: RegimeDetector/ONNX not wired"
-    },
-    {
-      "id": "US-132",
-      "title": "SlippageFeedbackLoop LegResult 필드 수정",
-      "phase": "S2",
-      "priority": 4,
-      "passes": true,
-      "acceptanceCriteria": [
-        "LegResult에 expected_price, fill_price 필드 추가",
-        "PaperExecutor가 fill 시 expected_price/fill_price 기록",
-        "SlippageFeedbackLoop.record()이 EMA 업데이트 확인",
-        "get_adjusted_slippage() 반환값이 거래 후 변동"
-      ],
-      "files": [
-        "engine/src/execution/paper.py",
-        "engine/src/risk/slippage.py"
-      ],
-      "source": "Engine MEDIUM: SlippageFeedbackLoop dead wiring"
-    },
-    {
-      "id": "US-133",
-      "title": "AtomicOrderExecutor(IOC) main.py 연결",
-      "phase": "S2",
-      "priority": 5,
-      "passes": true,
-      "acceptanceCriteria": [
-        "main.py에서 AtomicOrderExecutor 인스턴스화",
-        "Live 모드에서 IOC 주문 전송 경로 확인",
-        "Paper/Shadow에서는 기존 PaperExecutor 유지"
-      ],
-      "files": [
-        "engine/src/main.py",
-        "engine/src/execution/atomic.py"
-      ],
-      "source": "Engine MEDIUM: IOC not wired"
-    },
-    {
-      "id": "US-134",
-      "title": "TCA/Correlation ExecutionResult 필드 통일",
-      "phase": "S2",
-      "priority": 6,
-      "passes": true,
-      "acceptanceCriteria": [
-        "ExecutionResult/LegResult에 TCA가 참조하는 필드 모두 존재",
-        "CorrelationMonitor가 사용하는 필드 일치 확인",
-        "record_execution() 호출 시 KeyError 0건"
-      ],
-      "files": [
-        "engine/src/analysis/tca.py",
-        "engine/src/risk/correlation_monitor.py",
-        "engine/src/execution/paper.py"
-      ],
-      "source": "Engine LOW: nonexistent fields"
-    },
-    {
-      "id": "US-135",
-      "title": "DB 스키마 통합 + 자동 마이그레이션",
-      "phase": "S3",
-      "priority": 1,
-      "passes": true,
-      "acceptanceCriteria": [
-        "docker/init.sql = engine migration_sql() = 실DB 스키마 일치",
-        "docker compose up 시 자동 마이그레이션 적용",
-        "materialized views (strategy_daily_pnl 등) 실DB에 생성 확인"
-      ],
-      "files": [
-        "docker/init.sql",
-        "engine/src/infra/db/timescale.py",
-        "docker-compose.yml"
-      ],
-      "source": "Infra CRITICAL #3, Data PARTIAL #7"
-    },
-    {
-      "id": "US-136",
-      "title": ".env 동기화 + MIN_EDGE_BPS preflight",
-      "phase": "S3",
-      "priority": 2,
-      "passes": true,
-      "acceptanceCriteria": [
-        "root .env와 engine/.env의 MIN_EDGE_BPS 일치 (5)",
-        "main.py MIN_EDGE_BPS 기본값 40→5 변경",
-        "PowerLawSlippage 기본 k=5.0→0.0 변경",
-        "preflight 체크: 두 .env 파일 불일치 시 WARNING 로그"
-      ],
-      "files": [
-        ".env",
-        "engine/.env",
-        "engine/src/main.py",
-        "engine/src/modes/shadow.py"
-      ],
-      "source": "Infra CRITICAL #4, Quant HIGH #1, #8"
-    },
-    {
-      "id": "US-137",
-      "title": "Nginx WS 포트 + 백업 자동재시작",
-      "phase": "S3",
-      "priority": 3,
-      "passes": true,
-      "acceptanceCriteria": [
-        "nginx.conf WebSocket proxy_pass 포트 8000→8001 수정 (또는 엔진 WS 포트 확인)",
-        "db-backup, wal-backup에 restart: unless-stopped 설정",
-        "docker compose up 후 백업 컨테이너 healthy"
-      ],
-      "files": [
-        "infra/nginx/nginx.conf",
-        "docker-compose.yml"
-      ],
-      "source": "Infra HIGH #1, #2"
-    },
-    {
-      "id": "US-138",
-      "title": "Alertmanager 연결 + Grafana datasource 정리",
-      "phase": "S3",
-      "priority": 4,
-      "passes": true,
-      "acceptanceCriteria": [
-        "Prometheus alerting_rules.yml → Alertmanager 전달 확인",
-        "Telegram/Slack receiver 설정",
-        "Grafana datasource 중복 제거, 단일 Prometheus 소스"
-      ],
-      "files": [
-        "infra/prometheus/alertmanager.yml",
-        "infra/grafana/provisioning/datasources.yml",
-        "docker-compose.yml"
-      ],
-      "source": "Infra HIGH #3, LOW #11"
-    },
-    {
-      "id": "US-139",
-      "title": "Docker 리소스 제한 + 모니터링 healthcheck",
-      "phase": "S3",
-      "priority": 5,
-      "passes": true,
-      "acceptanceCriteria": [
-        "Redis, TimescaleDB에 mem_limit 설정",
-        "Promtail healthcheck 추가",
-        "auto-tuner/monitoring 재시작 원인 수정, healthy 상태 유지"
-      ],
-      "files": [
-        "docker-compose.yml"
-      ],
-      "source": "Infra MEDIUM #9, LOW #12, #13"
-    },
-    {
-      "id": "US-140",
-      "title": "API prefix 통일 + SWR key 수정",
-      "phase": "S4",
-      "priority": 1,
-      "passes": true,
-      "acceptanceCriteria": [
-        "lib/api.ts: /kill→/api/v1/kill, /strategies→/api/v1/strategies 통일",
-        "PnLChart SWR key /trading/pnl→/api/v1/pnl 수정",
-        "전 API 호출에서 prefix 일관성 확인"
-      ],
-      "files": [
-        "dashboard/src/lib/api.ts",
-        "dashboard/src/components/PnLChart.tsx"
-      ],
-      "source": "UI/UX FAIL #2, #3"
-    },
-    {
-      "id": "US-141",
-      "title": "System 페이지 실데이터 연동",
-      "phase": "S4",
-      "priority": 2,
-      "passes": true,
-      "acceptanceCriteria": [
-        "MOCK_CONTAINERS 제거, /api/v1/system/containers 실 API 연동",
-        "Resource Usage: Prometheus 쿼리 또는 /api/v1/system/resources 연동",
-        "하드코딩 숫자(29.4%, 1.3GB) 제거"
-      ],
-      "files": [
-        "dashboard/src/app/system/page.tsx"
-      ],
-      "source": "UI/UX PARTIAL: System page mockup"
-    },
-    {
-      "id": "US-142",
-      "title": "Heatmap/OrderbookView 실데이터 + 심볼 연동",
-      "phase": "S4",
-      "priority": 3,
-      "passes": true,
-      "acceptanceCriteria": [
-        "GlobalHeatmap: genMockGrid() 제거, WS market_data 또는 REST spread API 연동",
-        "OrderbookView: FALLBACK_SYMBOLS 5개→API /api/v1/symbols 동적 로드 (175개)",
-        "mock 데이터 0건 (랜덤 생성 코드 제거)"
-      ],
-      "files": [
-        "dashboard/src/components/GlobalHeatmap.tsx",
-        "dashboard/src/components/OrderbookView.tsx"
-      ],
-      "source": "UI/UX PARTIAL: mock data"
-    },
-    {
-      "id": "US-143",
-      "title": "Strategy/Portfolio/EquityCurve 완성",
-      "phase": "S4",
-      "priority": 4,
-      "passes": true,
-      "acceptanceCriteria": [
-        "StrategyPanel: MOCK_STRATEGIES 제거, API 0개 시 빈 상태 UI",
-        "Portfolio Daily Returns: placeholder→실 차트 또는 명시적 미지원 표기",
-        "EquityCurve: Sharpe/MDD/Calmar 지표 포함 (SSOT §3.4 spec 일치)"
-      ],
-      "files": [
-        "dashboard/src/components/StrategyPanel.tsx",
-        "dashboard/src/app/portfolio/page.tsx",
-        "dashboard/src/components/EquityCurve.tsx"
-      ],
-      "source": "UI/UX PARTIAL: mock + spec mismatch"
-    },
-    {
-      "id": "US-144",
-      "title": "대시보드 테스트 수정 + 모바일 최적화",
-      "phase": "S4",
-      "priority": 5,
-      "passes": true,
-      "acceptanceCriteria": [
-        "SWR v2 mock에 isValidating 추가, TS 에러 40개→0개",
-        "TradeDetail 패널 모바일: w-80→full-screen 처리",
-        "npx tsc --noEmit 0 errors (테스트 포함)"
-      ],
-      "files": [
-        "dashboard/src/__tests__/"
-      ],
-      "source": "UI/UX PARTIAL: 40 TS errors + mobile"
-    },
-    {
-      "id": "US-145",
-      "title": "Auto-Tuner TimescaleDB async loader 구현",
-      "phase": "S5",
-      "priority": 1,
-      "passes": true,
-      "acceptanceCriteria": [
-        "_run_with_timescaledb()의 NotImplementedError 제거",
-        "asyncpg로 execution_log 조회 → Optuna 입력 데이터 변환",
-        "TUNER_DATA_SOURCE=timescaledb 설정 시 실데이터 기반 최적화 동작"
-      ],
-      "files": [
-        "engine/src/tuning/scheduled_tuner.py"
-      ],
-      "source": "Data CRITICAL: NotImplementedError"
-    },
-    {
-      "id": "US-146",
-      "title": "ScheduledTuner main.py 연결",
-      "phase": "S5",
-      "priority": 2,
-      "passes": true,
-      "acceptanceCriteria": [
-        "main.py에서 ScheduledTuner import + start_scheduler() 호출",
-        "엔진 시작 시 'Scheduled tuner started' 로그 확인",
-        "매주 일요일 02:00 UTC에 최적화 실행 로그 확인 (테스트에서 cron 트리거)"
-      ],
-      "files": [
-        "engine/src/main.py",
-        "engine/src/tuning/scheduled_tuner.py"
-      ],
-      "source": "Data FAIL: ScheduledTuner not wired"
-    },
-    {
-      "id": "US-147",
-      "title": "Attribution TimescaleDB 연동 + materialized views",
-      "phase": "S5",
-      "priority": 3,
-      "passes": true,
-      "acceptanceCriteria": [
-        "PerformanceAttribution이 TimescaleDB execution_log 조회",
-        "엔진 재시작 후에도 과거 거래 이력 조회 가능",
-        "materialized views DDL이 init.sql에 포함, DB에 실제 생성"
-      ],
-      "files": [
-        "engine/src/analysis/attribution.py",
-        "docker/init.sql"
-      ],
-      "source": "Data PARTIAL: in-memory only"
-    },
-    {
-      "id": "US-148",
-      "title": "Shadow MDD 비율 계산 + InventoryRebalancer balance feed",
-      "phase": "S5",
-      "priority": 4,
-      "passes": true,
-      "acceptanceCriteria": [
-        "shadow.py _compute_drawdown()에서 비율 기반 MDD도 추적 (mdd_pct 필드)",
-        "ShadowStats.max_drawdown_pct 추가 (0~1 범위)",
-        "InventoryRebalancer에 BalanceTracker 실잔고 피드 연결 (Live 모드 시)"
-      ],
-      "files": [
-        "engine/src/modes/shadow.py",
-        "engine/src/core/inventory_rebalancer.py"
-      ],
-      "source": "Quant HIGH #7, Data WARN: balance feed"
-    },
-    {
-      "id": "US-149",
-      "title": "prd.json 23개 파일 경로 수정",
-      "phase": "S6",
-      "priority": 1,
-      "passes": true,
-      "acceptanceCriteria": [
-        "prd.json의 모든 files 경로가 실제 파일 경로와 일치",
-        "검증 스크립트: 모든 files 항목이 os.path.exists() True"
-      ],
-      "files": [
-        ".omc/prd.json"
-      ],
-      "source": "Alignment: 23 path mismatches"
-    },
-    {
-      "id": "US-150",
-      "title": "CLAUDE.md 현행화",
-      "phase": "S6",
-      "priority": 2,
-      "passes": true,
-      "acceptanceCriteria": [
-        "테스트 수 현행화 (3,747→실제 수)",
-        "Phase 순서 현행화 (S1~S6 추가)",
-        "다음 작업 현행화",
-        "Upbit 수수료 표기 수정 (Maker 0.05% 명시)"
-      ],
-      "files": [
-        ".claude/CLAUDE.md"
-      ],
-      "source": "Alignment: 3 stale items + Quant MEDIUM #2"
-    },
-    {
-      "id": "US-151",
-      "title": "SSOT.md 수식/체크 항목 코드 동기화",
-      "phase": "S6",
-      "priority": 3,
-      "passes": true,
-      "acceptanceCriteria": [
-        "SSOT §4.3 RiskGuardian 9-check 목록을 실제 코드와 동기화",
-        "SSOT KillSwitch Tier 설명을 코드의 실행 단계 기반으로 수정",
-        "SSOT CircuitBreaker: 지수 백오프→고정 300s cooldown으로 수정 (또는 코드 구현)",
-        "SSOT ETH 네트워크 비용: $5.60→L2 최저경로 기준 명시"
-      ],
-      "files": [
-        "SSOT.md"
-      ],
-      "source": "Quant MEDIUM #3,#5,#6, LOW #4,#5"
-    },
-    {
-      "id": "US-152",
-      "title": "API 키 로테이션 + .gitignore 강화 + pre-commit hook",
-      "phase": "S1",
-      "priority": 0,
-      "passes": true,
-      "acceptanceCriteria": [
-        "모든 거래소 API 키 로테이션 (Binance, Upbit, Bithumb, Coinone)",
-        "Telegram/GitHub/Exa 토큰 로테이션",
-        "engine/.env 명시적 .gitignore 추가",
-        "pre-commit hook: .env 파일 커밋 시 차단",
-        "git log에 API 키 이력 없음 확인"
-      ],
-      "files": [
-        ".gitignore",
-        ".env",
-        "engine/.env"
-      ],
-      "source": "Nayeon+Chaeyoung MISSED CRITICAL: API key management"
-    },
-    {
-      "id": "US-153",
-      "title": "주문 레벨 중복 방지 (Idempotency Key)",
-      "phase": "S2",
-      "priority": 0,
-      "passes": true,
-      "acceptanceCriteria": [
-        "AtomicOrderExecutor에 idempotency key (exchange+symbol+signal_id+timestamp)",
-        "동일 signal_id 재처리 시 중복 주문 차단",
-        "네트워크 재시도 시 기존 주문 상태 확인 후 스킵",
-        "단위 테스트: 동일 신호 2회 전송 → 1건만 실행"
-      ],
-      "files": [
-        "engine/src/execution/atomic.py",
-        "engine/src/core/signal.py"
-      ],
-      "source": "Chaeyoung MISSED CRITICAL: No order-level idempotency"
-    },
-    {
-      "id": "US-154",
-      "title": "RiskGuardian max_concurrent_positions 체크 추가",
-      "phase": "S2",
-      "priority": 1,
-      "passes": true,
-      "acceptanceCriteria": [
-        "RiskGuardian에 동시 포지션 수 체크 추가 (기본 max=20)",
-        "175 심볼 동시 진입 시도 시 20개 초과분 REJECT",
-        "config/환경변수로 max 조정 가능"
-      ],
-      "files": [
-        "engine/src/risk/guardian.py"
-      ],
-      "source": "Chaeyoung MISSED HIGH: No concurrent position count check"
-    },
-    {
-      "id": "US-155",
-      "title": "Graceful shutdown 시 오픈 포지션 정리",
-      "phase": "S2",
-      "priority": 2,
-      "passes": true,
-      "acceptanceCriteria": [
-        "Engine.stop()에서 SIGTERM 수신 시 오픈 주문 취소",
-        "Live 모드: 미체결 주문 전량 취소 후 셧다운",
-        "취소 실패 시 Telegram 알림 + 로그",
-        "shutdown 후 pending_orders == 0 확인"
-      ],
-      "files": [
-        "engine/src/main.py",
-        "engine/src/execution/atomic.py"
-      ],
-      "source": "Chaeyoung MISSED HIGH: No position closure on shutdown"
-    },
-    {
-      "id": "US-156",
-      "title": "Shadow 손실 전략 비활성화 — SHADOW_DISABLED_STRATEGIES .env 설정",
-      "phase": "S5",
-      "priority": 1,
-      "passes": true,
-      "acceptanceCriteria": [
-        "engine/.env에 SHADOW_DISABLED_STRATEGIES=statistical_arb_v1,spot_futures_v1,latency_arb_v1 설정",
-        "root .env에도 동일 설정 동기화",
-        "Shadow 10min 실행 시 stat_arb/spot_futures/latency_arb 거래 0건",
-        "Shadow PnL > 0 (손실 전략 제외 후)",
-        "docker-compose.yml에 SHADOW_DISABLED_STRATEGIES 환경변수 전달 확인"
-      ],
-      "files": [
-        "engine/.env",
-        ".env",
-        "docker-compose.yml"
-      ],
-      "dependencies": [],
-      "source": "Phase S4 Stage D Shadow PnL=-7.86 USDT: stat_arb_v1 6거래 -7.61 손실. 메커니즘(US-066) 구현됨 but .env 미설정. TF Semi-Final도 미감지. SSOT §9 HIGH 등록."
-    },
-    {
-      "id": "US-157",
-      "title": "Config 아키텍처 분리 — .env 시크릿만, 비즈니스 설정 JSON",
-      "phase": "S7",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "engine/config/trading.json",
-        "engine/src/core/config.py",
-        "engine/src/main.py"
-      ],
-      "acceptanceCriteria": [
-        "engine/config/trading.json 파일 존재 (active_exchanges, risk, slippage, execution, phase_gates, symbol_discovery 섹션)",
-        "config.py에서 JSON 로딩 + env 우선 fallback 구현",
-        "main.py _init_config()에서 trading.json 로드",
-        ".env에서 TRADING_ACTIVE_EXCHANGES, MIN_EDGE_BPS, SLIPPAGE_*, LEG_TIMEOUT_MS 등 비민감 항목 제거 또는 주석 처리",
-        ".env 없이 trading.json만으로 엔진 기동 가능",
-        "pytest 0 failures"
-      ],
-      "dependencies": [],
-      "source": "사장님 지시: .env는 민감정보 위주, 비즈니스 설정은 config 파일로 분리"
-    },
-    {
-      "id": "US-158",
-      "title": "okx_futures + bybit_futures 활성 거래소 추가",
-      "phase": "S7",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/config/trading.json"
-      ],
-      "acceptanceCriteria": [
-        "trading.json active_exchanges에 okx_futures, bybit_futures 포함 (총 10개)",
-        "Shadow 실행 시 10개 거래소 전부 연결 확인 (로그에 10 collectors initialized)",
-        "pytest 0 failures"
-      ],
-      "dependencies": [
-        "US-157"
-      ],
-      "source": "TF Final NOTE#1: .env TRADING_ACTIVE_EXCHANGES에 okx_futures, bybit_futures 누락"
-    },
-    {
-      "id": "US-159",
-      "title": "_reconcile_loop 실제 구현",
-      "phase": "S7",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/main.py"
-      ],
-      "acceptanceCriteria": [
-        "main.py _reconcile_loop()가 실제 포지션 reconciliation 수행 (stub 아님)",
-        "Redis recovery state와 VirtualBalanceTracker 잔고 비교",
-        "불일치 시 로그 WARNING + Telegram 알림",
-        "테스트 파일에 reconcile 로직 단위 테스트 존재",
-        "pytest 0 failures"
-      ],
-      "dependencies": [],
-      "source": "TF Final NOTE#2: main.py:1768-1776 stub — 로그만 출력, 실제 reconciliation 미구현"
-    },
-    {
-      "id": "US-160",
-      "title": "InMemoryEventBus 큐 크기 제한",
-      "phase": "S7",
-      "priority": 4,
-      "passes": true,
-      "files": [
-        "engine/src/core/event_bus.py"
-      ],
-      "acceptanceCriteria": [
-        "asyncio.Queue(maxsize=10000) 적용",
-        "큐 full 시 oldest 이벤트 drop + WARNING 로그",
-        "테스트에서 maxsize 초과 시 drop 동작 확인",
-        "pytest 0 failures"
-      ],
-      "dependencies": [],
-      "source": "TF Final 압박면접 RISK#1: asyncio.Queue unbounded (Paper/Shadow 한정이지만 방어 필요)"
-    },
-    {
-      "id": "US-161",
-      "title": "KRW stale rate 거래 중단 로직",
-      "phase": "S7",
-      "priority": 5,
-      "passes": true,
-      "files": [
-        "engine/src/modes/shadow.py",
-        "engine/src/core/signal.py"
-      ],
-      "acceptanceCriteria": [
-        "KRW 환율 120s stale 감지 시 KRW 심볼 신호 필터링 (거래 중단)",
-        "환율 갱신 복구 시 자동 거래 재개",
-        "stale 감지 시 WARNING 로그 + 메트릭 카운터",
-        "테스트에서 stale rate → 신호 차단 → 복구 → 신호 허용 시퀀스 확인",
-        "pytest 0 failures"
-      ],
-      "dependencies": [],
-      "source": "TF Final 압박면접 RISK#4: 120s stale 감지하지만 경고만, 거래 중단 로직 부재"
-    },
-    {
-      "id": "US-162",
-      "title": "Auto-discovery 거래량 필터",
-      "phase": "S7",
-      "priority": 6,
-      "passes": true,
-      "files": [
-        "engine/src/collectors/symbol_discovery.py",
-        "engine/config/trading.json"
-      ],
-      "acceptanceCriteria": [
-        "discover_common_symbols()에 min_volume_usd 파라미터 추가 (기본 100000)",
-        "24h 거래량 < min_volume_usd 심볼 자동 필터링",
-        "trading.json symbol_discovery.min_volume_usd에서 설정 가능",
-        "테스트에서 저거래량 심볼 필터링 확인",
-        "pytest 0 failures"
-      ],
-      "dependencies": [
-        "US-157"
-      ],
-      "source": "TF Final 압박면접 RISK#5: volume 필터 없음, min_price_usd=0.10만 존재"
-    },
-    {
-      "id": "US-163",
-      "title": "Dashboard 로그인 수정",
-      "phase": "S7",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "dashboard/.env.local",
-        "dashboard/src/app/login/page.tsx",
-        "dashboard/src/middleware.ts",
-        "engine/src/api/auth.py"
-      ],
-      "acceptanceCriteria": [
-        "dashboard/.env.local에 NEXT_PUBLIC_ENGINE_URL 설정 확인",
-        "POST /api/auth/login 정상 응답 (200 + token)",
-        "로그인 후 Overview 페이지 접근 가능",
-        "CORS_ORIGINS에 대시보드 URL 포함",
-        "pytest 0 failures"
-      ],
-      "dependencies": [],
-      "source": "사장님 보고: 어느순간부터 웹 UIUX 로그인이 안됨"
-    },
-    {
-      "id": "US-164",
-      "title": "Shadow PnL 단일 손실 방어 (max_single_loss)",
-      "phase": "S7",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/modes/shadow.py",
-        "engine/config/trading.json"
-      ],
-      "acceptanceCriteria": [
-        "trading.json에 max_single_loss_usd 파라미터 (기본 50)",
-        "단일 거래 손실 > threshold 시 해당 심볼 30분 쿨다운",
-        "쿨다운 시 로그 WARNING + Telegram 알림",
-        "테스트에서 max_single_loss 초과 → 쿨다운 → 복구 시퀀스 확인",
-        "pytest 0 failures"
-      ],
-      "dependencies": [
-        "US-157"
-      ],
-      "source": "TF Final Shadow Stage1: AVAX 단일 손실 -0.2370 USDT 방어 필요"
-    },
-    {
-      "id": "US-165",
-      "title": "Redis 연결 명시적 close",
-      "phase": "S7",
-      "priority": 7,
-      "passes": true,
-      "files": [
-        "engine/src/main.py"
-      ],
-      "acceptanceCriteria": [
-        "graceful shutdown 시퀀스에 Redis 연결 close 추가",
-        "close 호출 후 Redis 연결 pool 상태 확인 로그",
-        "pytest 0 failures"
-      ],
-      "dependencies": [],
-      "source": "TF Final NOTE#3: Redis 연결 명시적 close 미호출 (LOW)"
-    },
-    {
-      "id": "US-166",
-      "title": "모니터링 가이드 문서 작성",
-      "phase": "S7",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "docs/operations/monitoring-guide.md"
-      ],
-      "acceptanceCriteria": [
-        "docs/operations/monitoring-guide.md 존재",
-        "Grafana 접속법 + 주요 패널 설명 포함",
-        "Engine API 엔드포인트 목록 (/health, /shadow/stats, /shadow/recent-trades)",
-        "Dashboard 4페이지 설명 포함",
-        "CLI 모니터링 명령어 (docker logs, curl, watch) 포함",
-        "Telegram 알림 설정법 포함"
-      ],
-      "dependencies": [],
-      "source": "사장님 요청: 2H+ Shadow 중 사용자가 확인할 수 있는 방법 친절하게 알려달라"
-    },
-    {
-      "id": "US-167",
-      "title": "Docker 리소스 제한 (Redis/TimescaleDB deploy limits)",
-      "phase": "S7",
-      "priority": 8,
-      "passes": true,
-      "files": [
-        "docker-compose.yml"
-      ],
-      "acceptanceCriteria": [
-        "docker-compose.yml에 Redis deploy.resources.limits 설정 (memory: 512M, cpus: '0.5')",
-        "docker-compose.yml에 TimescaleDB deploy.resources.limits 설정 (memory: 2G, cpus: '1.0')",
-        "docker compose up -d 정상 기동",
-        "docker stats로 제한 적용 확인"
-      ],
-      "dependencies": [],
-      "source": "TF Semi-Final MEDIUM: 리소스 제한 엔진만 적용, Redis/TimescaleDB 무제한"
-    },
-    {
-      "id": "US-168",
-      "title": "httpx AsyncClient 재사용 (connection pooling)",
-      "phase": "S7",
-      "priority": 9,
-      "passes": true,
-      "files": [
-        "engine/src/collectors/symbol_discovery.py",
-        "engine/src/core/krw_rate.py"
-      ],
-      "acceptanceCriteria": [
-        "httpx.AsyncClient를 모듈/클래스 레벨에서 재사용 (매 요청 재생성 금지)",
-        "클라이언트 생명주기 관리 (startup에서 생성, shutdown에서 close)",
-        "pytest 0 failures"
-      ],
-      "dependencies": [],
-      "source": "TF Semi-Final MEDIUM + SSOT §9: 매 요청마다 httpx.AsyncClient 재생성 → 성능 이슈"
-    },
-    {
-      "id": "US-169",
-      "title": "MultiStrategySignalProducer LIVE 모드 연결 (GAP 3 해소)",
-      "phase": "S8",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "engine/src/main.py"
-      ],
-      "acceptanceCriteria": [
-        "LIVE 모드에서 MultiStrategySignalProducer 초기화",
-        "8개 전략 모두 신호 수신 확인",
-        "pytest 0 failures"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: LIVE 모드에서 5/8 전략 신호 0건 (Paper/Shadow만 동작)"
-    },
-    {
-      "id": "US-170",
-      "title": "Triangular Scanner 구현 (GAP 7 해소)",
-      "phase": "S8",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "engine/src/core/triangle_scanner.py",
-        "engine/src/main.py"
-      ],
-      "acceptanceCriteria": [
-        "3-leg cycle 탐지 로직 구현",
-        "수익성 계산 → Signal 메타데이터 생성",
-        "합성 오더북 E2E 테스트 PASS"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: TriangularStrategy 코드 존재하나 신호 생성 Scanner 부재"
-    },
-    {
-      "id": "US-171",
-      "title": "KRW Staleness → KillSwitch 연결",
-      "phase": "S8",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "engine/src/modes/shadow.py",
-        "engine/src/risk/kill_switch.py"
-      ],
-      "acceptanceCriteria": [
-        "_krw_stale=True 시 KRW soft-block 활성화 (거래 신호 필터링)",
-        "Telegram 알림 발송",
-        "KillSwitch TIER-1 발동 테스트 PASS"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: KRW 환율 120초 stale 시 경고만, 거래 중단 안 됨"
-    },
-    {
-      "id": "US-172",
-      "title": "ONNX ML Scorer 신호 필터링 연결",
-      "phase": "S8",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/core/signal.py",
-        "engine/src/ml/onnx_runtime.py"
-      ],
-      "acceptanceCriteria": [
-        "signal.py에서 ml_scorer.predict_signal() 호출",
-        "ML 신뢰도 기반 confidence 반영",
-        "pytest 0 failures"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: ONNXSignalScorer 로드만 하고 호출 안 함"
-    },
-    {
-      "id": "US-173",
-      "title": "HMM RegimeDetector 신호 파이프라인 연결",
-      "phase": "S8",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/core/signal.py",
-        "engine/src/tuning/regime_detector.py"
-      ],
-      "acceptanceCriteria": [
-        "on_orderbook_update()에서 regime_detector.predict() 호출",
-        "레짐별 min_edge 동적 조절",
-        "CRISIS 레짐 DynamicSizer 0.25x 확인"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: 초기화만, predict() 미호출 → 레짐 항상 NORMAL"
-    },
-    {
-      "id": "US-174",
-      "title": "AdaptiveThreshold 엔진 연결",
-      "phase": "S8",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/main.py",
-        "engine/src/tuning/adaptive_threshold.py"
-      ],
-      "acceptanceCriteria": [
-        "main.py에서 AdaptiveThreshold 인스턴스화",
-        "1시간 주기 adjust() 태스크 등록",
-        "승률 기반 MIN_EDGE 동적 조절 테스트 PASS"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: 94줄 완전 구현이나 main.py 미인스턴스화"
-    },
-    {
-      "id": "US-175",
-      "title": "ExposureTracker 인스턴스화 + RiskGuardian 연결",
-      "phase": "S8",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/main.py",
-        "engine/src/risk/exposure_tracker.py"
-      ],
-      "acceptanceCriteria": [
-        "_init_risk()에서 ExposureTracker 생성",
-        "RiskGuardian Check #4e 연결",
-        "거래 체결 시 update_exposure() 호출"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: 코드 존재하나 main.py에서 미생성"
-    },
-    {
-      "id": "US-176",
-      "title": "CorrelationMonitor → DynamicSizer 포지션 축소 연결",
-      "phase": "S8",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/risk/guardian.py",
-        "engine/src/execution/sizer.py"
-      ],
-      "acceptanceCriteria": [
-        "PositionScaleEvent → DynamicSizer 연결",
-        "상관계수 >0.7 시 포지션 자동 축소",
-        "pytest 0 failures"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: Check #9 로그만, DynamicSizer 미연결"
-    },
-    {
-      "id": "US-177",
-      "title": "DEX 실연결 (GAP 8 해소)",
-      "phase": "S8",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/main.py",
-        "engine/.env",
-        "engine/src/infra/dex/uniswap_v3.py"
-      ],
-      "acceptanceCriteria": [
-        ".env DEX_RPC_URL + DEX_POOL_ADDRESS 설정",
-        "CexDex 전략 자동 등록",
-        "DEX 가격 조회 + 가스 추정 E2E 테스트"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: _build_dex_adapter() 항상 None"
-    },
-    {
-      "id": "US-178",
-      "title": "IOC Limit Order 주요 거래소 구현",
-      "phase": "S8",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/execution/atomic.py",
-        "engine/src/infra/exchange/native_adapter.py"
-      ],
-      "acceptanceCriteria": [
-        "Binance/Bybit/OKX native adapter place_ioc_limit() 구현",
-        "IOC 주문 생성→즉시체결/미체결 취소 테스트",
-        "pytest 0 failures"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: AtomicOrderExecutor.place_ioc_limit() 데드코드"
-    },
-    {
-      "id": "US-179",
-      "title": "ScheduledTuner 핫리로드 + 기본 활성화",
-      "phase": "S8",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/main.py",
-        "engine/src/tuning/scheduled_tuner.py",
-        "engine/.env"
-      ],
-      "acceptanceCriteria": [
-        ".env ENABLE_INLINE_TUNER=true 기본 설정",
-        "strategy_params.json 핫리로드 (재시작 불필요)",
-        "파라미터 변경→적용 테스트"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: ENABLE_INLINE_TUNER 미설정 → 비활성"
-    },
-    {
-      "id": "US-180",
-      "title": "InMemoryEventBus 큐 크기 제한 강화",
-      "phase": "S8",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/infra/redis/memory_bus.py"
-      ],
-      "acceptanceCriteria": [
-        "asyncio.Queue(maxsize=10000) 강제",
-        "오버플로우 시 oldest 드롭 + 경고 로그",
-        "큐 포화 graceful degradation 테스트"
-      ],
-      "dependencies": [],
-      "source": "Phase S8 심층 조사: Redis 버전은 maxsize=10000이나 InMemory 무제한"
-    },
-    {
-      "id": "US-181",
-      "title": "RealDataSignalProducer에 statistical_arb evaluator 구현",
-      "phase": "S9",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "engine/src/core/real_signal_producer.py",
-        "engine/src/strategies/statistical_arb.py"
-      ],
-      "acceptanceCriteria": [
-        "RealDataSignalProducer._evaluate_statistical_arb() 메서드 존재",
-        "on_orderbook_update()에서 _evaluate_statistical_arb() 호출",
-        "Shadow 10min 실행 시 statistical_arb_zscore 시그널 1건 이상 생산",
-        "단위 테스트 5건 이상 추가"
-      ],
-      "dependencies": [],
-      "source": "← statistical_arb_v1 시그널 생산 파이프라인 미구현 (TF QF CRITICAL-2)"
-    },
-    {
-      "id": "US-182",
-      "title": "RealDataSignalProducer에 latency_arb evaluator 구현",
-      "phase": "S9",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/core/real_signal_producer.py",
-        "engine/src/strategies/latency_arb.py",
-        "engine/src/core/latency_tracker.py"
-      ],
-      "acceptanceCriteria": [
-        "RealDataSignalProducer._evaluate_latency_arb() 메서드 존재",
-        "on_orderbook_update()에서 _evaluate_latency_arb() 호출",
-        "LatencyTracker EMA 차이 > threshold 시 시그널 생산",
-        "StaleOrderbookDetector 교차검증 적용으로 Korean stale data 방어",
-        "단위 테스트 5건 이상 추가"
-      ],
-      "dependencies": [],
-      "source": "← latency_arb_v1 시그널 생산 파이프라인 미구현 (TF QF CRITICAL-2)"
-    },
-    {
-      "id": "US-183",
-      "title": "spot_futures 전략: 동일 거래소(non-Korean) 경로 활성화",
-      "phase": "S9",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/core/real_signal_producer.py",
-        "engine/src/strategies/spot_futures.py",
-        "engine/config/trading.json"
-      ],
-      "acceptanceCriteria": [
-        "Binance spot vs Binance Futures 간 basis 시그널 생산 확인",
-        "Korean exchanges는 spot-futures에서 계속 제외",
-        "trading.json disabled_strategies에서 spot_futures_v1 제거",
-        "Shadow 10min: spot_futures_basis 시그널 1건 이상, PnL >= 0",
-        "단위 테스트 3건 이상 추가"
-      ],
-      "dependencies": [],
-      "source": "← spot_futures_v1 Korean stale data로 전면 비활성화 (TF QF CRITICAL-1)"
-    },
-    {
-      "id": "US-184",
-      "title": "futures_futures 전략: stale spread 방어 + 재활성화",
-      "phase": "S9",
-      "priority": 4,
-      "passes": true,
-      "files": [
-        "engine/src/core/real_signal_producer.py",
-        "engine/src/strategies/futures_futures.py",
-        "engine/src/core/stale_detector.py"
-      ],
-      "acceptanceCriteria": [
-        "futures_futures evaluator에 StaleOrderbookDetector 교차검증 적용",
-        "spread < min_spread_bps 필터 + 이상치(>500bps) 자동 거부",
-        "SHADOW_DISABLED_STRATEGIES에서 futures_futures_v1 제거",
-        "Shadow 10min: futures_futures 순손실 없음",
-        "단위 테스트 5건 이상 추가"
-      ],
-      "dependencies": [],
-      "source": "← futures_futures_v1 stale spread 손실로 비활성화 (TF QF 중 발견)"
-    },
-    {
-      "id": "US-185",
-      "title": "StrategyValidationOrchestrator 검증 duration 현실화",
-      "phase": "S9",
-      "priority": 5,
-      "passes": true,
-      "files": [
-        "engine/src/modes/strategy_validation.py",
-        "engine/config/strategy_activation.json"
-      ],
-      "acceptanceCriteria": [
-        "STRATEGY_VALIDATION_DURATION_S 기본값 60초 이상",
-        "insufficient_data 결과 시 disabled가 아닌 unverified로 분류",
-        "unverified 전략은 ScheduledTuner에서 비활성화하지 않음",
-        "단위 테스트 3건 이상 추가"
-      ],
-      "dependencies": [],
-      "source": "← strategy_activation.json 7/7 disabled (TF QF CRITICAL-3, 5초 검증 부족)"
-    },
-    {
-      "id": "US-186",
-      "title": "8개 전략 전체 Shadow 30min 통합 검증",
-      "phase": "S9",
-      "priority": 6,
-      "passes": true,
-      "files": [
-        "engine/.env"
-      ],
-      "acceptanceCriteria": [
-        "SHADOW_DISABLED_STRATEGIES='' 빈값으로 전략 비활성화 없음",
-        "8개 전략 모두 시그널 1건 이상 생산",
-        "전략별 PnL 기록: 7/8 이상 PnL >= 0",
-        "총합 PnL > 0",
-        "crash=0, 30분 완주"
-      ],
-      "dependencies": [
-        "US-181",
-        "US-182",
-        "US-183",
-        "US-184",
-        "US-185"
-      ],
-      "source": "← 사장님 지적: 전체 8개 전략 활성화 + 검증 필수"
-    },
-    {
-      "id": "US-187",
-      "title": "_CROSS_EXCHANGE_CONSUMERS 제거 + 신호 흐름 검증",
-      "phase": "S10",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "engine/src/strategies/manager.py"
-      ],
-      "acceptanceCriteria": [
-        "_CROSS_EXCHANGE_CONSUMERS frozenset 삭제 또는 빈 집합으로 변경",
-        "_should_route()에서 cross_exchange 신호를 stat_arb/latency_arb에 라우팅하는 분기 제거",
-        "각 전략이 자체 evaluator 전용 신호만 수신하는 단위테스트 통과",
-        "기존 cross_exchange 라우팅 테스트 통과"
-      ],
-      "dependencies": [],
-      "source": "TF SF Stage 2 FAIL: 전략 신호 중복 라우팅"
-    },
-    {
-      "id": "US-188",
-      "title": "stat_arb cross-asset pair 재설계 (BTC-ETH/ETH-SOL/BTC-BNB)",
-      "phase": "S10",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "engine/src/strategies/statistical_arb.py",
-        "engine/src/core/real_signal_producer.py",
-        "engine/config/trading.json"
-      ],
-      "acceptanceCriteria": [
-        "_evaluate_statistical_arb가 cross-asset 쌍(BTC-ETH, ETH-SOL, BTC-SOL)으로 신호 생성",
-        "Signal.metadata에 symbol2 필드 포함",
-        "동일 심볼 교차거래소 비교 코드 제거됨",
-        "cointegration 검정 실패 시 False 반환 (fail-closed)",
-        "cross-asset 신호 생성 단위테스트 3개 이상"
-      ],
-      "dependencies": [],
-      "source": "TF SF Stage 2 FAIL: stat_arb = cross_exchange 동일 영역"
-    },
-    {
-      "id": "US-189",
-      "title": "cross_exchange min_spread_bps 확인 + latency_boost 5bps 허용",
-      "phase": "S10",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/.env",
-        "engine/src/strategies/cross_exchange.py"
-      ],
-      "acceptanceCriteria": [
-        "cross_exchange min_spread_bps 기본값 10bps 확인 (코드+config+env 전경로)",
-        "trading.json cross_exchange 설정에서 5bps 오버라이드 없음 확인",
-        "latency_boost=true 모드에서만 5bps 허용 (US-194 병합 후)"
-      ],
-      "dependencies": [],
-      "source": "cross_exchange 93.8% WR but -$9.35 PnL"
-    },
-    {
-      "id": "US-190",
-      "title": "ScheduledTuner 작동 확인 + 수동 트리거",
-      "phase": "S10",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/tuning/scheduled_tuner.py",
-        "engine/src/main.py"
-      ],
-      "acceptanceCriteria": [
-        "optuna/apscheduler import 에러 시 graceful 로그 + 기능 비활성화",
-        "ENABLE_INLINE_TUNER=true 시 ScheduledTuner 시작 로그 출력",
-        "수동 트리거 CLI 또는 --run-once 플래그 동작",
-        "pytest에서 ScheduledTuner 초기화 테스트 통과"
-      ],
-      "dependencies": [
-        "US-197"
-      ],
-      "source": "Auto-tuner 로그 미관찰"
-    },
-    {
-      "id": "US-191",
-      "title": "ML/Tuning 컴포넌트 작동 로그",
-      "phase": "S10",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/tuning/adaptive_threshold.py",
-        "engine/src/tuning/regime_detector.py",
-        "engine/src/ml/onnx_runtime.py"
-      ],
-      "acceptanceCriteria": [
-        "AdaptiveThreshold adjust() 호출 시 INFO 로그 (edge_bps, profit_factor 포함)",
-        "RegimeDetector 레짐 전환 시 INFO 로그",
-        "ONNX predict_signal() 호출 카운터 Prometheus 노출 또는 주기적 INFO 로그",
-        "10min Shadow에서 각 컴포넌트 작동 로그 1회 이상 관찰"
-      ],
-      "dependencies": [
-        "US-201"
-      ],
-      "source": "AdaptiveThreshold/RegimeDetector/ONNX 작동 미확인"
-    },
-    {
-      "id": "US-192",
-      "title": "ExposureTracker Redis 연결 확인",
-      "phase": "S10",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/main.py",
-        "engine/src/risk/exposure_tracker.py"
-      ],
-      "acceptanceCriteria": [
-        "main.py에서 ExposureTracker에 Redis 클라이언트 주입 확인",
-        "Redis healthy 시 Redis-backed 모드 로그 출력",
-        "Redis 미연결 시 in-memory fallback + 경고 로그",
-        "get_net_exposure() 호출 테스트 통과"
-      ],
-      "dependencies": [],
-      "source": "Redis 키 미존재 확인 필요"
-    },
-    {
-      "id": "US-193",
-      "title": "SSOT §9 RESOLVED 이슈 → SSOT_COMPLETE.md 이관 + prd.json 총 US 수 정합",
-      "phase": "S10",
-      "priority": 4,
-      "passes": true,
-      "files": [
-        "SSOT.md",
-        "SSOT_COMPLETE.md"
-      ],
-      "acceptanceCriteria": [
-        "SSOT.md §9 RESOLVED 항목이 SSOT_COMPLETE.md로 이동됨",
-        "prd.json 실측 US 수와 SSOT.md/CLAUDE.md 기재 수 일치 (211개 또는 누락 US 복원 후 220개)",
-        "SSOT.md §2 및 §7의 pass/pending 카운트가 prd.json 실측과 일치"
-      ],
-      "dependencies": [],
-      "source": "§9 RESOLVED 항목 정리 + 9개 US 누락 정합 (구조적 이슈)"
-    },
-    {
-      "id": "US-194",
-      "title": "latency_arb → cross_exchange 병합 (전략 8→7개)",
-      "phase": "S10",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "engine/src/strategies/cross_exchange.py",
-        "engine/src/strategies/latency_arb.py",
-        "engine/src/strategies/manager.py"
-      ],
-      "acceptanceCriteria": [
-        "cross_exchange.py에 latency_boost 모드 추가 (LatencyTracker 통합)",
-        "latency_arb.py deprecated 또는 삭제",
-        "manager.py 전략 등록에서 latency_arb 제거 (8→7 전략)",
-        "strategy_backtest.py STRATEGY_TYPES에서 latency_arb 제거",
-        "기존 latency_arb 테스트가 cross_exchange latency_boost 테스트로 마이그레이션",
-        "pytest 전체 통과"
-      ],
-      "dependencies": [
-        "US-187"
-      ],
-      "source": "latency_arb = cross_exchange + latency gate (동일 영역)"
-    },
-    {
-      "id": "US-195",
-      "title": "전략 간 포지션 충돌 방지",
-      "phase": "S10",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/execution/trade_consumer.py"
-      ],
-      "acceptanceCriteria": [
-        "(symbol, exchange_pair) 10초 윈도우 중복 체크 구현",
-        "중복 감지 시 두 번째 요청 거부 + 경고 로그",
-        "단위테스트: 동일 쌍 10초 내 2회 제출 시 1건만 실행",
-        "다른 symbol 쌍은 동시 실행 허용 테스트"
-      ],
-      "dependencies": [],
-      "source": "2개 전략 동일 symbol 동시 거래 방지"
-    },
-    {
-      "id": "US-196",
-      "title": "전략별 자본 할당 (capital_allocation_pct)",
-      "phase": "S10",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/config/trading.json",
-        "engine/src/risk/guardian.py"
-      ],
-      "acceptanceCriteria": [
-        "trading.json에 전략별 capital_allocation_pct 필드 존재",
-        "RiskGuardian check #11: 전략 자본 할당 초과 시 거부",
-        "할당 초과 시 Prometheus counter increment + 경고 로그",
-        "전체 allocation 합 <= 100% 검증",
-        "단위테스트: 할당 초과 거래 거부 확인"
-      ],
-      "dependencies": [],
-      "source": "per-strategy capital limit 부재"
-    },
-    {
-      "id": "US-197",
-      "title": "stat_arb ScheduledTuner EXCLUDED 제거",
-      "phase": "S10",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/tuning/scheduled_tuner.py"
-      ],
-      "acceptanceCriteria": [
-        "EXCLUDED set에서 statistical_arb 제거됨",
-        "ScheduledTuner.strategies에 stat_arb 포함 확인 테스트",
-        "cex_dex는 EXCLUDED 유지 (DEX_RPC_URL 미설정 시)"
-      ],
-      "dependencies": [
-        "US-188"
-      ],
-      "source": "EXCLUDED에 statistical_arb 영구 제외됨"
-    },
-    {
-      "id": "US-198",
-      "title": "Korean exchange 필터 보강",
-      "phase": "S10",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/strategies/cross_exchange.py"
-      ],
-      "acceptanceCriteria": [
-        "cross_exchange latency_boost 모드에서 Korean 거래소 제외",
-        "stat_arb cross-asset에서 Korean 거래소 이미 제외 확인",
-        "Korean 필터 단위테스트 통과"
-      ],
-      "dependencies": [
-        "US-194",
-        "US-188"
-      ],
-      "source": "latency_boost Korean exchange stale data"
-    },
-    {
-      "id": "US-199",
-      "title": "전략 overlap 감지 메트릭 (Prometheus)",
-      "phase": "S10",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/execution/trade_consumer.py",
-        "engine/src/infra/metrics.py"
-      ],
-      "acceptanceCriteria": [
-        "leviathan_strategy_overlap_total Prometheus counter 정의",
-        "(symbol, exchange_pair) 윈도우 감지 로직 구현",
-        "overlap 감지 시 counter increment + 경고 로그",
-        "단위테스트: overlap 발생 시 counter 증가 확인"
-      ],
-      "dependencies": [],
-      "source": "overlap=0 측정 불가 해소"
-    },
-    {
-      "id": "US-200",
-      "title": "오토튜너 백테스트 리플레이 A/B 인프라",
-      "phase": "S10",
-      "priority": 4,
-      "passes": true,
-      "files": [
-        "engine/src/tuning/ab_replay.py"
-      ],
-      "acceptanceCriteria": [
-        "tuning/ab_replay.py 파일 생성",
-        "event-level 데이터(시그널+fill) 저장 인터페이스 정의",
-        "deterministic replay 실행 함수 구현",
-        "A/B 비교 결과(PnL diff, WR diff) 반환",
-        "단위테스트: 동일 이벤트 리플레이 시 동일 결과"
-      ],
-      "dependencies": [],
-      "source": "튜너 효과 오프라인 검증"
-    },
-    {
-      "id": "US-201",
-      "title": "AdaptiveThreshold 복합 지표 전환 (Expected Edge + Profit Factor)",
-      "phase": "S10",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "engine/src/tuning/adaptive_threshold.py",
-        "engine/src/main.py"
-      ],
-      "acceptanceCriteria": [
-        "adjust() 시그니처에 expected_edge_bps, profit_factor 파라미터 추가",
-        "복합 지표 로직: edge<0→상향, PF<1.0→상향, edge>5bps AND PF>1.5→하향",
-        "WR은 보조 로그만 (의사결정에 미사용)",
-        "main.py에서 adjust() 호출 시 edge/PF 전달",
-        "단위테스트 4개 이상 (각 조건별 threshold 변동 확인)"
-      ],
-      "dependencies": [],
-      "source": "WR 93.8%인데 손실 → WR은 잘못된 지표"
-    },
-    {
-      "id": "US-202",
-      "title": "7개 전략 전체 Shadow 10min+ 재검증",
-      "phase": "S10",
-      "priority": 5,
-      "passes": true,
-      "files": [
-        "engine/src/main.py"
-      ],
-      "acceptanceCriteria": [
-        "7개 전략 전체 Shadow 10min+ 실행",
-        "총합 PnL >= $0",
-        "개별 전략 PnL >= -$5",
-        "overlap 감지 메트릭 = 0",
-        "crash = 0",
-        "Auto-tuner/ML 로그 관찰됨"
-      ],
-      "dependencies": [
-        "US-187",
-        "US-188",
-        "US-189",
-        "US-190",
-        "US-191",
-        "US-192",
-        "US-193",
-        "US-194",
-        "US-195",
-        "US-196",
-        "US-197",
-        "US-198",
-        "US-199",
-        "US-200",
-        "US-201"
-      ],
-      "source": "S10 통합 검증"
-    },
-    {
-      "id": "US-203",
-      "title": "MissionControlStrip 상시 상태바",
-      "phase": "S11",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "dashboard/src/components/MissionControlStrip.tsx"
-      ],
-      "acceptanceCriteria": [
-        "40px 고정 상태바 전 페이지 표시",
-        "EQUITY/PnL/WIN%/ACTIVE/MODE/KILL SWITCH 표시",
-        "WebSocket 실시간 갱신",
-        "모바일 반응형"
-      ],
-      "dependencies": [
-        "US-210"
-      ],
-      "source": "3초 규칙 — 전 페이지 상태 표시"
-    },
-    {
-      "id": "US-204",
-      "title": "Overview 페이지 재설계",
-      "phase": "S11",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "dashboard/src/app/page.tsx"
-      ],
-      "acceptanceCriteria": [
-        "3초 규칙 정보 계층",
-        "기존 컴포넌트 재배치",
-        "npm run build 성공"
-      ],
-      "dependencies": [],
-      "source": "정보 계층 재구성"
-    },
-    {
-      "id": "US-205",
-      "title": "Strategies 페이지 Health Score 카드",
-      "phase": "S11",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "dashboard/src/app/strategies/page.tsx"
-      ],
-      "acceptanceCriteria": [
-        "전략별 0-100 Health Score 카드",
-        "7개 전략 각각 카드 표시",
-        "활성/비활성 상태"
-      ],
-      "dependencies": [
-        "US-211"
-      ],
-      "source": "전략별 0-100 건강 점수"
-    },
-    {
-      "id": "US-206",
-      "title": "System/Operations 페이지 Kill Switch + 인프라",
-      "phase": "S11",
-      "priority": 1,
-      "passes": true,
-      "files": [
-        "dashboard/src/app/system/page.tsx"
-      ],
-      "acceptanceCriteria": [
-        "2-click Kill Switch (3초 카운트다운)",
-        "Docker/DB/Redis 상태 표시",
-        "거래소 레이턴시"
-      ],
-      "dependencies": [
-        "US-211"
-      ],
-      "source": "2-click Kill Switch + Docker/DB/Redis 상태"
-    },
-    {
-      "id": "US-207",
-      "title": "텔레그램 한국어 템플릿 (인프라봇)",
-      "phase": "S11",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/infra/telegram.py"
-      ],
-      "acceptanceCriteria": [
-        "가동 리포트 한국어 양식",
-        "장애 경보 한국어 양식",
-        "단위테스트 통과"
-      ],
-      "dependencies": [],
-      "source": "가동 리포트, 장애 경보 한국어"
-    },
-    {
-      "id": "US-208",
-      "title": "텔레그램 한국어 템플릿 (거래봇)",
-      "phase": "S11",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/infra/telegram.py"
-      ],
-      "acceptanceCriteria": [
-        "체결 알림 한국어 양식",
-        "일일 정산 리포트 한국어 양식",
-        "단위테스트 통과"
-      ],
-      "dependencies": [],
-      "source": "체결 알림, 일일 정산 한국어"
-    },
-    {
-      "id": "US-209",
-      "title": "텔레그램 심각도 필터링",
-      "phase": "S11",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/infra/telegram.py"
-      ],
-      "acceptanceCriteria": [
-        "EMERGENCY=즉시 CRITICAL=1분 WARNING=5분 INFO=30분배치",
-        "심각도별 rate limiting",
-        "단위테스트 통과"
-      ],
-      "dependencies": [],
-      "source": "알림 피로 방지"
-    },
-    {
-      "id": "US-210",
-      "title": "WebSocket payload 확장",
-      "phase": "S11",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/api/websocket.py"
-      ],
-      "acceptanceCriteria": [
-        "state_update에 total_equity/win_rate/active_strategy_count 추가",
-        "하위호환",
-        "단위테스트 통과"
-      ],
-      "dependencies": [],
-      "source": "total_equity, win_rate, active_strategy_count"
-    },
-    {
-      "id": "US-211",
-      "title": "9개 신규 API 엔드포인트",
-      "phase": "S11",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/api/server.py"
-      ],
-      "acceptanceCriteria": [
-        "9개 엔드포인트 구현 (positions, daily-returns, logs, db-metrics, redis-metrics, alerts/ack, alerts/resolve, test-alert, exchanges/reconnect)",
-        "JWT 인증",
-        "단위테스트"
-      ],
-      "dependencies": [],
-      "source": "portfolio/positions, system/logs, alerts/acknowledge 등"
-    },
-    {
-      "id": "US-212",
-      "title": "대시보드 백엔드 연동 검증",
-      "phase": "S11",
-      "priority": 5,
-      "passes": true,
-      "files": [
-        "dashboard/src/app/"
-      ],
-      "acceptanceCriteria": [
-        "모든 페이지 실데이터 표시",
-        "콘솔 에러 0건",
-        "npm run build 성공",
-        "모바일 375px/768px"
-      ],
-      "dependencies": [
-        "US-203",
-        "US-204",
-        "US-205",
-        "US-206",
-        "US-210",
-        "US-211"
-      ],
-      "source": "모든 페이지 실데이터 + 콘솔 에러 0건"
-    },
-    {
-      "id": "US-213",
-      "title": "SmartTelegramAlerter (Redis 중복제거 + 배치)",
-      "phase": "S12",
-      "priority": 2,
-      "passes": true,
-      "files": [
-        "engine/src/infra/telegram_smart.py"
-      ],
-      "acceptanceCriteria": [
-        "Redis SET 기반 중복 알림 제거 (TTL 5분)",
-        "배치 전송: INFO 30분 모아서 1건",
-        "SeverityFilter 통합",
-        "단위테스트"
-      ],
-      "dependencies": [],
-      "source": "알림 피로 근본 해결"
-    },
-    {
-      "id": "US-214",
-      "title": "Analytics 페이지",
-      "phase": "S12",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "dashboard/src/app/analytics/page.tsx"
-      ],
-      "acceptanceCriteria": [
-        "전략별 Sharpe 순위 차트",
-        "시간대별 PnL 히트맵",
-        "npm run build 성공"
-      ],
-      "dependencies": [],
-      "source": "Sharpe 순위, 시간대별 히트맵"
-    },
-    {
-      "id": "US-215",
-      "title": "Alerts 페이지 인시던트 lifecycle",
-      "phase": "S12",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "dashboard/src/app/alerts/page.tsx"
-      ],
-      "acceptanceCriteria": [
-        "인시던트 목록 표시",
-        "acknowledge/resolve 버튼",
-        "심각도 필터"
-      ],
-      "dependencies": [],
-      "source": "acknowledge/resolve"
-    },
-    {
-      "id": "US-216",
-      "title": "Portfolio Drawdown 차트 + Exposure Heatmap",
-      "phase": "S12",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "dashboard/src/app/portfolio/page.tsx"
-      ],
-      "acceptanceCriteria": [
-        "Drawdown 시계열 차트",
-        "전략x거래소 Exposure 히트맵"
-      ],
-      "dependencies": [],
-      "source": "리스크 시각화"
-    },
-    {
-      "id": "US-217",
-      "title": "Settings Danger Zone",
-      "phase": "S12",
-      "priority": 4,
-      "passes": true,
-      "files": [
-        "dashboard/src/app/settings/page.tsx"
-      ],
-      "acceptanceCriteria": [
-        "적색 Danger Zone 섹션",
-        "Emergency Stop + Reset Defaults 버튼",
-        "확인 다이얼로그"
-      ],
-      "dependencies": [],
-      "source": "Emergency Stop, Reset Defaults"
-    },
-    {
-      "id": "US-218",
-      "title": "사이드바 재구성 (3그룹)",
-      "phase": "S12",
-      "priority": 4,
-      "passes": true,
-      "files": [
-        "dashboard/src/components/Sidebar.tsx"
-      ],
-      "acceptanceCriteria": [
-        "MONITOR/ANALYZE/MANAGE 3그룹",
-        "그룹 헤더 라벨",
-        "현재 페이지 하이라이트"
-      ],
-      "dependencies": [],
-      "source": "MONITOR/ANALYZE/MANAGE"
-    },
-    {
-      "id": "US-219",
-      "title": "Telegram Bot 커맨드",
-      "phase": "S12",
-      "priority": 3,
-      "passes": true,
-      "files": [
-        "engine/src/infra/telegram_bot.py"
-      ],
-      "acceptanceCriteria": [
-        "/pnl /strategies /risk /pause /resume /alerts 명령 구현",
-        "단위테스트"
-      ],
-      "dependencies": [],
-      "source": "/pnl, /strategies, /risk, /pause, /resume"
-    },
-    {
-      "id": "US-220",
-      "title": "주간 자동 리포트",
-      "phase": "S12",
-      "priority": 4,
-      "passes": true,
-      "files": [
-        "engine/src/infra/telegram.py"
-      ],
-      "acceptanceCriteria": [
-        "일요일 23:59 KST 자동 발송",
-        "주간 PnL/WR/Sharpe 요약",
-        "APScheduler 스케줄"
-      ],
-      "dependencies": [],
-      "source": "일요일 23:59 KST"
     },
     {
       "id": "US-221",
@@ -5318,7 +5318,7 @@
       "title": "Prometheus 계측 완성",
       "phase": "S20",
       "priority": 291,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/infra/metrics.py"
       ],
@@ -5334,11 +5334,228 @@
       ]
     },
     {
+      "id": "US-291-a",
+      "title": "TelegramBotBase 인라인키보드+callback+사진",
+      "phase": "S20",
+      "priority": 291.01,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram_bot_base.py"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "InlineKeyboard 빌더 클래스 구현",
+        "send_message()에 reply_markup 인라인 키보드 지원",
+        "send_photo() PNG 바이트 전송 지원",
+        "answer_callback_query() 버튼 클릭 응답",
+        "poll_loop()에서 message + callback_query 동시 처리",
+        "register_command() / register_callback() 동적 라우팅",
+        "chat_id 인증 + 레이트 리미팅 (20/min)"
+      ]
+    },
+    {
+      "id": "US-291-b",
+      "title": "InfraTelegramBot 인프라봇",
+      "phase": "S20",
+      "priority": 291.02,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram_infra_bot.py"
+      ],
+      "dependencies": [
+        "US-291-a"
+      ],
+      "acceptanceCriteria": [
+        "INFRA_TELEGRAM_BOT_TOKEN/CHAT_ID 환경변수 사용",
+        "/health 명령: Redis/DB/Engine 상태 조회",
+        "/docker 명령: 컨테이너 상태 표시",
+        "/checklist 명령: 시작 체크리스트 표시",
+        "MonitorDaemon 장애 알림 인프라봇으로 전송"
+      ]
+    },
+    {
+      "id": "US-291-c",
+      "title": "TradeTelegramBot 거래봇",
+      "phase": "S20",
+      "priority": 291.03,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram_trade_bot.py"
+      ],
+      "dependencies": [
+        "US-291-a"
+      ],
+      "acceptanceCriteria": [
+        "TRADE_TELEGRAM_BOT_TOKEN 사용 (TELEGRAM_BOT_TOKEN fallback)",
+        "/status /pnl /strategies /risk /kill /pause /resume /alerts 명령",
+        "거래 체결 알림 (기존 TelegramAlerter 기능 계승)",
+        "AlertLevel 설정 (ALL/IMPORTANT/CRITICAL_ONLY)",
+        "기존 self._telegram 참조 코드 하위호환"
+      ]
+    },
+    {
+      "id": "US-291-d",
+      "title": "DevTelegramBot 개발봇",
+      "phase": "S20",
+      "priority": 291.04,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram_dev_bot.py"
+      ],
+      "dependencies": [
+        "US-291-a"
+      ],
+      "acceptanceCriteria": [
+        "DEV_TELEGRAM_BOT_TOKEN 사용 (WORKFLOW_TELEGRAM_BOT_TOKEN fallback)",
+        "/phase 명령: 현재 Phase 상태",
+        "/tests 명령: 최근 테스트 결과",
+        "/errors 명령: 최근 에러 요약",
+        "Phase 완료/에러 알림 자동 발송"
+      ]
+    },
+    {
+      "id": "US-291-e",
+      "title": "시작 체크리스트 (인프라봇)",
+      "phase": "S20",
+      "priority": 291.05,
+      "passes": true,
+      "files": [
+        "engine/src/infra/startup_checker.py"
+      ],
+      "dependencies": [
+        "US-291-b",
+        "US-295-a"
+      ],
+      "acceptanceCriteria": [
+        "StartupChecker 클래스: 8개 항목 점검 (Redis, DB, API, WS, Prometheus, Grafana, .env, 디스크)",
+        "check_all() → 항목별 PASS/FAIL 딕셔너리",
+        "send_checklist() → 인프라봇으로 포맷된 체크리스트 전송",
+        "엔진 시작 시 자동 실행 + 결과 인프라봇 전송"
+      ]
+    },
+    {
+      "id": "US-291-f",
+      "title": "긴급 제어 인라인 키보드",
+      "phase": "S20",
+      "priority": 291.06,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram_trade_bot.py"
+      ],
+      "dependencies": [
+        "US-291-c"
+      ],
+      "acceptanceCriteria": [
+        "/kill 명령 시 2단계 인라인 키보드 확인 (정말 중단? → 예/아니오)",
+        "확인 버튼 클릭 시 KillSwitch 활성화",
+        "취소 버튼 클릭 시 메시지 업데이트 (취소됨)",
+        "callback_query 핸들러 정상 동작"
+      ]
+    },
+    {
+      "id": "US-291-g",
+      "title": "조회 메뉴 인라인 키보드",
+      "phase": "S20",
+      "priority": 291.07,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram_trade_bot.py"
+      ],
+      "dependencies": [
+        "US-291-f"
+      ],
+      "acceptanceCriteria": [
+        "/menu 명령: 4-버튼 인라인 키보드 (PnL/전략/리스크/거래소)",
+        "각 버튼 클릭 시 해당 정보 표시",
+        "뒤로가기 버튼으로 메뉴 복귀"
+      ]
+    },
+    {
+      "id": "US-291-h",
+      "title": "설정 변경 (/settings)",
+      "phase": "S20",
+      "priority": 291.08,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram_trade_bot.py"
+      ],
+      "dependencies": [
+        "US-291-g"
+      ],
+      "acceptanceCriteria": [
+        "/settings 명령: 현재 알림 레벨 표시 + 변경 키보드",
+        "ALL/IMPORTANT/CRITICAL_ONLY 3단계 선택",
+        "선택 시 즉시 반영 + 확인 메시지"
+      ]
+    },
+    {
+      "id": "US-291-i",
+      "title": "차트 시각화 (/chart)",
+      "phase": "S20",
+      "priority": 291.09,
+      "passes": true,
+      "files": [
+        "engine/src/infra/telegram_charts.py"
+      ],
+      "dependencies": [
+        "US-291-c"
+      ],
+      "acceptanceCriteria": [
+        "/chart pnl: PnL 곡선 차트 PNG 생성",
+        "/chart strategy: 전략별 파이차트 PNG 생성",
+        "/chart mdd: MDD 추이 차트 PNG 생성",
+        "matplotlib로 PNG 바이트 생성 → send_photo() 전송",
+        "데이터 없을 시 텍스트 메시지 대체"
+      ]
+    },
+    {
+      "id": "US-291-j",
+      "title": ".env 3봇 토큰 매핑",
+      "phase": "S20",
+      "priority": 291.1,
+      "passes": true,
+      "files": [
+        "engine/.env"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "TRADE_TELEGRAM_BOT_TOKEN (TELEGRAM_BOT_TOKEN fallback)",
+        "DEV_TELEGRAM_BOT_TOKEN (WORKFLOW_TELEGRAM_BOT_TOKEN fallback)",
+        "INFRA_TELEGRAM_BOT_TOKEN (신규)",
+        "각 봇별 CHAT_ID 환경변수",
+        "engine/.env에 신규 변수 추가"
+      ]
+    },
+    {
+      "id": "US-291-k",
+      "title": "main.py 3봇 와이어링",
+      "phase": "S20",
+      "priority": 291.11,
+      "passes": true,
+      "files": [
+        "engine/src/main.py"
+      ],
+      "dependencies": [
+        "US-291-b",
+        "US-291-c",
+        "US-291-d",
+        "US-295-a"
+      ],
+      "acceptanceCriteria": [
+        "_init_telegram()에서 3봇 초기화 (InfraBot, TradeBot, DevBot)",
+        "기존 self._telegram 참조 → TradeBot으로 위임 (하위호환)",
+        "각 봇 poll_loop() 백그라운드 태스크 등록",
+        "shutdown 시 3봇 모두 close()",
+        "MonitorDaemon → InfraBot 연결",
+        "StartupChecker → InfraBot 연결"
+      ]
+    },
+    {
       "id": "US-292",
       "title": "Grafana 대시보드 4개",
       "phase": "S20",
       "priority": 292,
-      "passes": false,
+      "passes": true,
       "files": [
         "docker/grafana/dashboards/overview.json",
         "docker/grafana/dashboards/strategy_detail.json",
@@ -5361,7 +5578,7 @@
       "title": "Alertmanager → 텔레그램 알림 강화 + Kill Switch 버튼",
       "phase": "S20",
       "priority": 293,
-      "passes": false,
+      "passes": true,
       "files": [
         "docker/alertmanager/rules.yml",
         "engine/src/infra/telegram_bot.py"
@@ -5382,7 +5599,7 @@
       "title": "원클릭 시작/중지 CLI",
       "phase": "S20",
       "priority": 294,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/cli.py"
       ],
@@ -5401,7 +5618,7 @@
       "title": "일일 요약 리포트 (텔레그램)",
       "phase": "S20",
       "priority": 295,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/infra/daily_report.py",
         "engine/src/main.py"
@@ -5420,7 +5637,7 @@
       "title": "MonitorDaemon 백그라운드 시작",
       "phase": "S20",
       "priority": 295.1,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/infra/monitor_daemon.py",
         "engine/src/main.py"
@@ -5439,7 +5656,7 @@
       "title": "S20 통합 Shadow 10min 검증",
       "phase": "S20",
       "priority": 296,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py"
       ],
