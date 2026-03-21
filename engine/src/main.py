@@ -142,6 +142,8 @@ class Engine:
         self._capital_allocator: Any = None
         # US-277/278: PortfolioRiskManager
         self._portfolio_risk: Any = None
+        # US-286: DataQualityManager
+        self._data_quality_manager: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -1099,6 +1101,19 @@ class Engine:
         # US-278: Wire PortfolioRiskManager into RiskGuardian
         if self._portfolio_risk is not None and self._risk_guardian is not None:
             self._risk_guardian.portfolio_risk = self._portfolio_risk
+
+        # US-286: DataQualityManager → RiskGuardian Check #5
+        try:
+            from src.core.data_quality_manager import DataQualityManager
+            self._data_quality_manager = DataQualityManager()
+            # Register known exchanges
+            for eid in self._exchanges:
+                self._data_quality_manager.register_exchange(eid)
+            if self._risk_guardian is not None:
+                self._risk_guardian.data_quality_manager = self._data_quality_manager
+            logger.info("DataQualityManager initialized (%d exchanges)", len(self._exchanges))
+        except Exception as exc:
+            logger.warning("DataQualityManager init failed (non-fatal): %s", exc)
 
         # US-175: ExposureTracker
         try:
@@ -2349,6 +2364,7 @@ class Engine:
             regime_detector=self._regime_detector,
             adaptive_threshold=self._adaptive_threshold,
             db_pool=self._db_pool,  # US-256
+            data_quality_manager=self._data_quality_manager,  # US-286
         )
 
         # Set all registered strategies to shadow mode and start them
@@ -2374,11 +2390,14 @@ class Engine:
                 from src.risk.kill_switch import KillSwitch
 
                 kill_switch = KillSwitch()  # uses module-level halt flag
+                # US-286: DQM health scores as exchange_health_fn
+                _ehf = self._data_quality_manager.get_all_health_scores if self._data_quality_manager else None
                 self._live_gate = LiveGate(
                     pool=self._db_pool.pool,
                     telegram=self._telegram,
                     kill_switch=kill_switch,
                     circuit_breaker=self._circuit_breaker,
+                    exchange_health_fn=_ehf,
                     settings=self._settings,
                 )
                 await self._live_gate.start_auto_evaluation()
@@ -2444,6 +2463,7 @@ class Engine:
             regime_detector=self._regime_detector,
             adaptive_threshold=self._adaptive_threshold,
             db_pool=self._db_pool,  # US-256
+            data_quality_manager=self._data_quality_manager,  # US-286
         )
 
         if self._strategy_manager is not None:
@@ -2518,6 +2538,7 @@ class Engine:
             regime_detector=self._regime_detector,
             adaptive_threshold=self._adaptive_threshold,
             db_pool=self._db_pool,  # US-256
+            data_quality_manager=self._data_quality_manager,  # US-286
         )
 
         # Set all registered strategies to shadow mode
@@ -2539,11 +2560,14 @@ class Engine:
                 from src.risk.kill_switch import KillSwitch
 
                 kill_switch = KillSwitch()
+                # US-286: DQM health scores as exchange_health_fn
+                _ehf2 = self._data_quality_manager.get_all_health_scores if self._data_quality_manager else None
                 self._live_gate = LiveGate(
                     pool=self._db_pool.pool,
                     telegram=self._telegram,
                     kill_switch=kill_switch,
                     circuit_breaker=self._circuit_breaker,
+                    exchange_health_fn=_ehf2,
                     settings=self._settings,
                 )
             except Exception as exc:
@@ -2583,8 +2607,24 @@ class Engine:
         for eid, adapter in self._exchanges.items():
             score = adapter.health_score
             self._exchange_health[eid] = Decimal(str(score))
+            # US-286: Sync health data to DataQualityManager
+            if self._data_quality_manager is not None:
+                self._data_quality_manager.record_heartbeat(eid)
             if score < 0.9:
                 logger.warning("Exchange %s health_score=%.2f", eid, score)
+
+        # US-286: Periodic DQM cleanup + stats logging
+        if self._data_quality_manager is not None:
+            cleaned = self._data_quality_manager.cleanup_expired()
+            stats = self._data_quality_manager.get_stats()
+            if stats["check_count"] > 0:
+                logger.debug(
+                    "dqm_stats",
+                    checks=stats["check_count"],
+                    rejects=stats["reject_count"],
+                    blacklisted=stats["active_blacklist"],
+                    cleaned=cleaned,
+                )
 
         # Log trade consumer metrics
         if self._trade_consumer:

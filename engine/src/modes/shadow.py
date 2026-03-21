@@ -393,6 +393,7 @@ class ShadowMode:
         regime_detector: Any | None = None,
         adaptive_threshold: Any | None = None,
         db_pool: Any | None = None,
+        data_quality_manager: Any | None = None,
     ) -> None:
         """Initialise the shadow mode orchestrator.
 
@@ -415,6 +416,7 @@ class ShadowMode:
             strategy_manager:  Optional StrategyManager. If provided, signals
                                are also routed to registered strategies and their
                                TradeRequests are paper-executed (N-leg support).
+            data_quality_manager: Optional DataQualityManager for US-286 quality checks.
         """
         self._signal_generator = signal_generator
         self._multi_signal_producer = multi_signal_producer
@@ -423,6 +425,7 @@ class ShadowMode:
         self._regime_detector = regime_detector
         self._adaptive_threshold = adaptive_threshold
         self._db_pool = db_pool  # US-256: peak_equity persistence
+        self._data_quality_manager = data_quality_manager  # US-286
         # Shadow-local min_edge multiplier (CRISIS 레짐 시 2배 상향, log-only 모드)
         self._shadow_min_edge_factor: float = 1.0
 
@@ -880,6 +883,32 @@ class ShadowMode:
                     symbol=symbol,
                 )
                 return
+
+            # US-286: DataQualityManager central check (anomaly + freshness + bithumb)
+            if self._data_quality_manager is not None:
+                try:
+                    _bid = book.best_bid()
+                    _ask = book.best_ask()
+                    if _bid is not None and _ask is not None:
+                        _mid = float((_bid + _ask) / 2)
+                        _spread = (float(_ask) - float(_bid)) / _mid if _mid > 0 else 0.0
+                        dqm_result = self._data_quality_manager.check(
+                            exchange_id, symbol, _mid, _spread,
+                        )
+                        if not dqm_result.ok:
+                            STALE_ORDERBOOK_REJECTED.labels(
+                                exchange=exchange_id, reason="data_quality"
+                            ).inc()
+                            logger.info(
+                                "shadow_mode.data_quality_rejected",
+                                exchange=exchange_id,
+                                symbol=symbol,
+                                reasons=dqm_result.reasons,
+                                score=dqm_result.score,
+                            )
+                            return
+                except Exception as exc:
+                    logger.debug("dqm_check_error", exchange=exchange_id, symbol=symbol, error=str(exc))
 
             # Record to TimescaleDB (best_bid / best_ask; skip if missing)
             if self._market_recorder is not None:

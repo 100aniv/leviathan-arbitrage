@@ -139,6 +139,8 @@ class RiskGuardian:
         self.correlation_monitor: CorrelationMonitor | None = None
         # US-278: optional portfolio risk manager — set externally after construction
         self.portfolio_risk: Any | None = None
+        # US-286: optional DataQualityManager — set externally after construction
+        self.data_quality_manager: Any | None = None
         # US-280: emergency halt flag (set by emergency_pause, read by check #0 via is_halted)
         self._halted: bool = False
 
@@ -242,10 +244,14 @@ class RiskGuardian:
                     ),
                 )
 
-        # CHECK #5: Exchange health score
-        health_score = portfolio.exchange_health_scores.get(
-            proposal.exchange_id, Decimal("0")
-        )
+        # CHECK #5: Exchange health score (US-286: prefer DQM if available)
+        if self.data_quality_manager is not None:
+            _dqm_score = self.data_quality_manager.get_health_score(proposal.exchange_id)
+            health_score = Decimal(str(_dqm_score))
+        else:
+            health_score = portfolio.exchange_health_scores.get(
+                proposal.exchange_id, Decimal("0")
+            )
         if health_score < self._exchange_health_threshold:
             RISK_REJECTIONS_TOTAL.labels(
                 check_number="5", reason="exchange_health_low"

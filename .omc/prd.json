@@ -5197,7 +5197,7 @@
       "title": "DataQualityManager 중앙 관리 객체",
       "phase": "S19",
       "priority": 286,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/data_quality_manager.py",
         "engine/src/risk/guardian.py",
@@ -5218,7 +5218,7 @@
       "title": "전략별/거래소별 차등 Freshness Threshold",
       "phase": "S19",
       "priority": 287,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/data_quality_manager.py"
       ],
@@ -5236,7 +5236,7 @@
       "title": "Exchange Health Score 실시간 계산",
       "phase": "S19",
       "priority": 288,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/data_quality_manager.py",
         "engine/src/core/exchange_health.py"
@@ -5256,7 +5256,7 @@
       "title": "Anomaly Detection (가격 이상치)",
       "phase": "S19",
       "priority": 289,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/data_quality_manager.py"
       ],
@@ -5274,7 +5274,7 @@
       "title": "Bithumb 증분 Orderbook Stale 특화",
       "phase": "S19",
       "priority": 290,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/core/data_quality_manager.py",
         "engine/src/collectors/bithumb_collector.py"
@@ -5293,7 +5293,7 @@
       "title": "S19 통합 Shadow 10min 검증",
       "phase": "S19",
       "priority": 290.1,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py",
         "engine/src/core/data_quality_manager.py"

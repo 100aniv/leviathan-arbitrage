@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-21 (Phase S18 완료 — 포트폴리오 리스크 + 평가 체계 + Slippage Feedback, 11 US VERIFIED) | PRD: `.omc/prd.json` (255+42개 US, 297 total)
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (278 passes:true / 19 passes:false)
-> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S18 ✅** → **S19 진행 예정** → S20~S21 → TF QF → TF SF → TF Final → Live
+> 마지막 업데이트: 2026-03-21 (Phase S19 완료 — 데이터 품질 통합 DataQualityManager, 6 US VERIFIED) | PRD: `.omc/prd.json` (255+42개 US, 297 total)
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (284 passes:true / 13 passes:false)
+> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S19 ✅** → **S20 진행 예정** → S21 → TF QF → TF SF → TF Final → Live
 
 ---
 
@@ -31,11 +31,11 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S18 완료 (2026-03-21) — 포트폴리오 리스크 + 평가 체계 + Slippage Feedback
-**Tests**: 5,080 passed / 0 failed / 12 skipped
+**Phase**: S19 완료 (2026-03-21) — 데이터 품질 통합 DataQualityManager (6 US VERIFIED)
+**Tests**: 5,123 passed / 0 failed / 12 skipped
 **Coverage**: 82%
-**TF Status**: TF SF 9H 중단 → S15~S18 완료 → **S19 진행 예정** → S20~S21 → TF QF → TF SF → TF Final → Live
-**Next**: Phase S19 (US-286~290-a, 6 US) — 데이터 품질 통합 DataQualityManager
+**TF Status**: TF SF 9H 중단 → S15~S19 완료 → **S20 진행 예정** → S21 → TF QF → TF SF → TF Final → Live
+**Next**: Phase S20 (US-291~296, 6 US) — Prometheus 계측 + Grafana + 모니터링
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
