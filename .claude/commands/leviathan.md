@@ -9,7 +9,7 @@
 **강제**: 모든 응답에 텍스트 1줄 + tool call 병행. Stage A→B→C→다음Phase 끊김 없는 연속 흐름. **모든 Agent foreground 실행.**
 **외부 CLI**: codex/gemini/qwen은 **동일 메시지 foreground 병렬** + `timeout 300`. 실패 시 3회 재시도 → 전원 실패 시 L5 (스킵 절대 금지).
 **멈춤 허용**: (1) TF Final PASS (Live 준비) (2) 5회 연속 동일 US/TF 실패 (L5) (3) 사용자 "stop/cancel/멈춰"
-**에이전트 반환**: **파일 기반**. 결과를 `.omc/artifacts/{agent}-{phase}.md`에 기록. 반환은 `PASS/FAIL + 파일 경로` **100토큰 이내**만. 컨텍스트 팽창 원천 차단.
+**에이전트 반환**: **파일 기반**. 결과를 `.omc/artifacts/{agent}-{phase}.md`에 기록. 반환은 `PASS/FAIL + 경로 + 핵심 요약`. 상세는 `.omc/artifacts/`에 기록. 컨텍스트 팽창 원천 차단.
 **CLI 전용**: tmux/터미널에서 실행. VS Code에서 실행 금지 (freeze 위험 #26778).
 **Watchdog**: Dev봇이 watchdog. `python -m src.infra.telegram_dev_bot` (또는 `bash scripts/watchdog.sh`). tmux 멈춤 감지 → 알림 → 자동 재개. `/go`로 텔레그램 수동 재개.
 **ANTI-STALL (#30625/#33043/#34238)**: 텍스트 없는 응답 = stop hook 루프 종료. 에이전트 결과 수신 → 즉시 다음 tool call. "다음 세션에서" 금지. TeamCreate 30초 무응답 → TeamDelete → Agent() fallback.
@@ -85,7 +85,7 @@ REVIEW_PROMPT: "docs/planning/Phase-X_PLAN.md 읽고 설계 결함/누락/과복
 PASS → Stage B. FAIL → 수정 후 재호출 (최대 2회).
 
 **A→B 전환 (동일 메시지 병렬 필수):**
-`state_write(next_stage:"B")` + `TeamCreate("leviathan-phase-X")` — 텍스트 금지, tool call만.
+'Stage B 진입.' 텍스트 1줄 + `state_write(next_stage:"B")` + `TeamCreate("leviathan-phase-X")` 동일 메시지 병렬.
 
 ---
 
@@ -137,7 +137,7 @@ Type W(Wiring: trade=0) → 즉시 L2. Type P(PnL<0, 전략 활성) → 3회. Ty
 
 **체크포인트:** `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) checkpoint save --trigger "stage_B_complete"`
 
-**B→C 전환:** pytest PASS + Shadow 13항목 PASS → cleanup → `state_write(next_stage:"C")` + C-Step 1 스폰. 텍스트 1줄 + tool call 병행.
+**B→C 전환:** pytest PASS + Shadow 13항목 PASS → cleanup → `python -m src.workflow.cli transition shadow_pass` + `state_write(next_stage:"C")` + C-Step 1 스폰. 텍스트 1줄 + tool call 병행.
 
 ---
 
@@ -152,42 +152,38 @@ Assembly Verifier(verifier/sonnet): 4개 서브체크 — Init Chain, Signal Flo
 
 **체크포인트:** Assembly PASS 후 `checkpoint save --trigger "assembly_gate_pass"`
 
-#### C-Step 2: 멀티모델 독립 감사 + Go/No-Go (통합, Assembly PASS 후)
+#### C-Step 2: 코드리뷰 + 보안 + 멀티모델 감사 (병렬, Assembly PASS 후)
 
-> Claude 미포함 = 확증 편향 제거. 코드감사 + Go/No-Go 판정을 1회로 통합.
+> Claude 미포함 = 확증 편향 제거. 코드리뷰/보안/멀티모델 감사를 1회 병렬로 통합.
 
 AUDIT_PROMPT: "Phase X 변경 파일 감사. git diff main...HEAD.
 Part 1: 로직 오류, 엣지케이스, 수학, wiring. CRITICAL/HIGH/MEDIUM.
 Part 2: Go/No-Go 판정 — PLAN 이행, Shadow 13항목, CRITICAL/HIGH 해결, wiring 완전성. Go/No-Go + 근거."
 
+병렬 실행:
+- Jennie(code-reviewer/opus): 종합 리뷰 — API 계약, 하위호환, SOLID, 통합 추적, Shadow trade=0 집중. 산출물: `docs/review/Phase-X_REVIEW.md`. **1K 토큰.**
+- Jisoo(security-reviewer): JWT/API키/OWASP Top 10/시크릿 노출. **1K 토큰.**
 - codex-auditor: `timeout 300 codex exec -s read-only '$AUDIT_PROMPT'`
 - gemini-auditor: `timeout 300 gemini -p '$AUDIT_PROMPT' --approval-mode plan`
 - qwen-auditor: `timeout 300 qwen --approval-mode plan -p '$AUDIT_PROMPT'`
 
 Quorum: 2+ CRITICAL/HIGH = MUST FIX → B-Step 1 복귀. 과반수 Go = Go.
-보안 스캔: 전략/API 변경 시 security-reviewer 추가.
-결과 → `.omc/artifacts/consensus-audit-{phase}.md` + Jennie 컨텍스트 주입.
+조건부: Yeji(퀀트, 수식 변경 시), Haerin(Chrome, 대시보드/API US 시)
+결과 → `.omc/artifacts/consensus-audit-{phase}.md`.
 
-#### C-Step 3: 코드리뷰 + 보안 (병렬)
-
-- Jennie(code-reviewer/opus): 종합 리뷰 — API 계약, 하위호환, SOLID, 통합 추적, Shadow trade=0 집중. [멀티모델 결과 주입]. 산출물: `docs/review/Phase-X_REVIEW.md`. **1K 토큰.**
-- Jisoo(security-reviewer): JWT/API키/OWASP Top 10/시크릿 노출. **1K 토큰.**
-- 조건부: Yeji(퀀트, 수식 변경 시), Haerin(Chrome, 대시보드/API US 시)
-
-CRITICAL/HIGH → B-Step 1 복귀.
-
-#### C-Step 4: Karina 최종 리뷰 (Go/No-Go)
+#### C-Step 3: Karina Go/No-Go (C-Step 2 결과 주입)
 
 Karina(architect/opus): Phase 완료 리뷰 7항목 — PLAN 이행, REVIEW CRITICAL/HIGH 해결, Shadow 13항목, Assembly 5-check, AC 충족(⚡ WIRING), 3-way 정합성, 외부 모델 Go/No-Go 참조. FAIL → 유형별 복귀. **1K 토큰.**
 
-#### C-Step 5: SSOT + Git (Go 시)
+#### C-Step 4: SSOT + Git (Go 시, 팀 종료 후 단독)
 
 Sakura(ssot-keeper/sonnet): passes:true 전 런타임 증거 확인. prd.json 업데이트, SSOT §2 업데이트, 이월 항목, §7 헤더 동기화, CLAUDE.md 동기화, 3곳 대조, git add+commit+push. **1K 토큰.**
 
-**일관성 재검증 + 체크포인트:**
+**일관성 재검증 + 체크포인트 + FSM sync:**
 ```
 cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) check_all
 cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) checkpoint save --trigger "phase_complete"
+cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) sync --phase X --tests Y --prd-pass Z --prd-total W
 ```
 
 **C→다음Phase:** Karina Go + Sakura push → cleanup → 텔레그램 알림(정보 전달, 대기 없음) → `state_write(next_stage:"A", next_phase:"Phase-Y")` → 즉시 다음 Phase.
@@ -200,11 +196,14 @@ cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) 
 
 | 시점 | 동작 |
 |------|------|
-| A 완료 | checkpoint save → `/clear` → progress.json에서 B 재개 |
+| A 완료 | `transition plan_approved` → checkpoint save → `/clear` → progress.json에서 B 재개 |
 | B-1 완료 | pytest PASS + TeamDelete → 즉시 B-2 Shadow |
-| B-2 완료 | checkpoint save → `/clear` → progress.json에서 C 재개 |
-| C-1~4 | 끊김 없이 체인 실행 |
-| C-5 완료 | SSOT+push + 텔레그램 → checkpoint save → `/clear` → 다음 Phase A 재개 |
+| B-2 완료 | `transition shadow_pass` → checkpoint save → `/clear` → progress.json에서 C 재개 |
+| C-1~3 | 끊김 없이 체인 실행 |
+| C-4 완료 | SSOT+push + `sync --phase X --tests Y --prd-pass Z --prd-total W` + 텔레그램 → checkpoint save → `/clear` → 다음 Phase A 재개 |
+
+> `transition` 명령: `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) transition <event>`
+> `sync` 명령: `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) sync --phase X --tests Y --prd-pass Z --prd-total W`
 
 **체크포인트**: `.omc/state/leviathan-progress.json` (Phase Loop) + `.omc/state/leviathan-tf-status.json` (TF 추적).
 **에이전트 결과**: `.omc/artifacts/{agent}-{phase}.md` 파일에 기록. 메인 컨텍스트에는 PASS/FAIL + 경로만.

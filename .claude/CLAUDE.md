@@ -283,13 +283,17 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 워크플로우 핵심 (상세 → leviathan.md)
 
-- **3-Stage Sequential**: A(기획)→B(구현+Shadow)→C(Assembly→멀티모델감사→코드리뷰→Go/No-Go→SSOT+git)→다음Phase
+- **3-Stage Sequential**: A(기획)→B(구현+Shadow)→C(Assembly→코드리뷰+멀티모델 병렬→Go/No-Go→SSOT+sync+git)→다음Phase
 - **Assembly Gate (C-Step 1)**: 코드리뷰 전 조립 검증 (init chain + signal flow + dead wiring + config audit)
+- **C-Step 2 병렬**: Jennie(코드리뷰) + Jisoo(보안) + 멀티모델 CLI(codex/gemini/qwen) 동시 실행. quorum 2+ 지적 = MUST FIX
 - **Shadow 13항목 복합지표**: MDD%, PF, 전략별 trade>=1, 방어 레이어 활성
 - **WIRING AC 필수**: 새 컴포넌트 US에 `⚡ WIRING:` AC 3개 (생성→주입→호출)
-- **멀티모델 감사**: 3개 외부 CLI(Codex/Gemini/Qwen) 인라인 병렬 → quorum 합의 (Claude 편향 제거)
 - **Fix Loop 유형**: Type W(Wiring→L2) / Type P(Parameter→3회) / Type B(Bug→3회)
 - **CLI**: Codex(`codex exec`), Gemini(`gemini -p`), Qwen(`qwen -p`) — 수동: `/consensus-code-review`, `/octo-debate`
-- **세션**: ralph 루프 연속. `/compact` 금지. checkpoint → `/clear` → 자동 재개.
+- **세션**: ralph 루프 연속. `/compact` 금지. checkpoint → `/clear` → checkpoint apply로 재개.
 - **에스컬레이션**: L0(팀 내) → L1(fix) → L2(Stage A) → L3(SSOT) → L4(Phase) → **L5(텔레그램→사장님)**
 - **TF**: leviathan.md §7 자동 진입 (전 US passes:true 시) → leviathan-tf.md 절차 (QF→SF→PF→Final 4-Round)
+- **동기화 CLI**: Phase 완료 시 `python -m src.workflow.cli sync --phase X --tests Y --prd-pass Z --prd-total W` → 7개 파일 원자 업데이트
+- **FSM 전환**: Stage 전환 시 `python -m src.workflow.cli transition <event>` → 잘못된 전환 차단
+- **정합성 검사**: `python -m src.workflow.cli check_all` → 9항목 (파일/PRD/Phase/Tests/해시/CLAUDE.md/State4파일/Phase이력/TF status)
+- **교차검증**: Agent()는 매 호출 새 인스턴스 = 자동 fresh context. 수행자≠검증자 자동 보장.

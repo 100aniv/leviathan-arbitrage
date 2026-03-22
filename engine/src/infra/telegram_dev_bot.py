@@ -788,10 +788,13 @@ class DevTelegramBot(TelegramBotBase):
         cooldown: float = 30.0,
         resume_delay: float = 2.0,
         resume_msg: str = "멈추지 말고 계속 진행해. Stage 전환 즉시 실행.",
+        stall_timeout: float = 60.0,
     ) -> None:
         """tmux 세션 모니터링: 멈춤 감지 → 알림 → 자동 재개.
 
         `python -m src.infra.telegram_dev_bot` 실행 시 poll_loop와 병렬.
+        시간 기반 멈춤 감지: 60초 이상 출력 무변화 → stall alert.
+        _STALL_PATTERNS regex는 보조 fast-detect로 병행 유지.
         """
         import subprocess
 
@@ -799,11 +802,12 @@ class DevTelegramBot(TelegramBotBase):
         last_stall = 0.0
         stall_count = 0
         last_output = ""
+        last_change_time = time.monotonic()
 
         logger.info("watchdog_started", session=tmux_session, interval=check_interval)
         await self.send_message(
             f"🐕 Watchdog 시작\nSession: <code>{tmux_session}</code>\n"
-            f"Check: {check_interval}s | Cooldown: {cooldown}s"
+            f"Check: {check_interval}s | Cooldown: {cooldown}s | StallTimeout: {stall_timeout}s"
         )
 
         while True:
@@ -823,32 +827,46 @@ class DevTelegramBot(TelegramBotBase):
                     capture_output=True, text=True, timeout=5,
                 )
                 output = result.stdout.strip()
-                if not output or output == last_output:
-                    continue
-                last_output = output
 
-                # Check for stall patterns
-                if self._STALL_PATTERNS.search(output):
+                # 출력이 변경되면 last_change_time 갱신
+                if output and output != last_output:
+                    last_change_time = time.monotonic()
+                    last_output = output
+
+                # 보조 fast-detect: _STALL_PATTERNS regex 매치 시 즉시 stall 처리
+                fast_stall = bool(output) and bool(self._STALL_PATTERNS.search(output))
+
+                # 시간 기반 stall 감지: 60초 이상 출력 무변화
+                time_stall = bool(output) and (time.monotonic() - last_change_time > stall_timeout)
+
+                if fast_stall or time_stall:
                     now = time.monotonic()
                     if now - last_stall < cooldown:
-                        continue  # cooldown active
-                    last_stall = now
-                    stall_count += 1
-                    logger.warning("watchdog_stall_detected", count=stall_count)
-                    await self.send_message(
-                        f"🔴 <b>Claude CLI 멈춤 감지</b> (#{stall_count})\n"
-                        f"Action: {resume_delay}s 후 자동 재개"
-                    )
-                    await asyncio.sleep(resume_delay)
-                    subprocess.run(
-                        ["tmux", "send-keys", "-t", tmux_pane, resume_msg, "Enter"],
-                        capture_output=True, timeout=5,
-                    )
-                    logger.info("watchdog_resume_sent", msg=resume_msg[:50])
+                        # Stage completion 체크는 cooldown 중에도 계속
+                        pass
+                    else:
+                        last_stall = now
+                        stall_count += 1
+                        reason = "regex 패턴 감지" if fast_stall else f"{stall_timeout:.0f}초 무변화"
+                        logger.warning("watchdog_stall_detected", count=stall_count, reason=reason)
+                        await self.send_message(
+                            f"🔴 <b>Claude CLI 멈춤 감지</b> (#{stall_count})\n"
+                            f"사유: {reason}\n"
+                            f"Action: {resume_delay}s 후 자동 재개"
+                        )
+                        await asyncio.sleep(resume_delay)
+                        subprocess.run(
+                            ["tmux", "send-keys", "-t", tmux_pane, resume_msg, "Enter"],
+                            capture_output=True, timeout=5,
+                        )
+                        # stall 해소 후 last_change_time 리셋 (연속 알림 방지)
+                        last_change_time = time.monotonic()
+                        logger.info("watchdog_resume_sent", msg=resume_msg[:50])
 
                 # Check for stage completion
-                for match in self._STAGE_PATTERNS.finditer(output):
-                    await self.send_message(f"📋 <b>Progress</b>: {match.group()}")
+                if output:
+                    for match in self._STAGE_PATTERNS.finditer(output):
+                        await self.send_message(f"📋 <b>Progress</b>: {match.group()}")
 
             except Exception as exc:
                 logger.warning("watchdog_error", error=str(exc))
