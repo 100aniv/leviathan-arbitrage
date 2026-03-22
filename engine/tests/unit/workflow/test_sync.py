@@ -181,16 +181,15 @@ class TestFSM:
             fsm.transition("shadow_pass")  # A 상태에서 shadow_pass 불가
 
     def test_fsm_full_cycle(self, tmp_path):
-        """A → B → C → NEXT_PHASE 전체 사이클."""
+        """A → B → C → NEXT_PHASE 전체 사이클 (v2 단순화)."""
         from src.workflow.fsm import WorkflowFSM
         fsm = WorkflowFSM(root=tmp_path)
         fsm.transition("entry_gate_pass")  # A -> A_plan
-        fsm.transition("plan_review_skip")  # A_plan -> B (퀀트 스킵)
-        fsm.transition("build_complete")    # B -> B_test
-        fsm.transition("pytest_pass")       # B_test -> B_shadow
-        fsm.transition("shadow_pass")       # B_shadow -> C
-        fsm.transition("assembly_pass")     # C -> C_review
-        fsm.transition("review_pass")       # C_review -> C_go
-        fsm.transition("go")               # C_go -> C_release
-        result = fsm.transition("pushed")   # C_release -> NEXT_PHASE
+        fsm.transition("plan_approved")    # A_plan -> B
+        fsm.transition("build_complete")   # B -> B_test
+        fsm.transition("pytest_pass")      # B_test -> B_shadow
+        fsm.transition("shadow_pass")      # B_shadow -> C
+        fsm.transition("assembly_pass")    # C -> C_review
+        fsm.transition("review_pass")      # C_review -> C_release
+        result = fsm.transition("pushed")  # C_release -> NEXT_PHASE
         assert result == "NEXT_PHASE"
