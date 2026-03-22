@@ -172,6 +172,11 @@ class SpotFuturesStrategy(BaseStrategy):
 
         if abs_basis_bps < _min_basis:
             self._metrics.signals_filtered += 1
+            logger.info(
+                "strategy.rejected strategy=spot_futures reason=min_basis symbol=%s "
+                "basis_bps=%.2f threshold_bps=%.2f",
+                signal.symbol, float(abs_basis_bps), float(_min_basis),
+            )
             return None
 
         # US-270: OU basis modeling — update with raw (signed) basis_bps, no abs()

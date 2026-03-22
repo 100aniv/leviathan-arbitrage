@@ -371,10 +371,28 @@ class SignalGenerator:
             regime_edge = REGIME_MIN_EDGE.get(regime, self._config.min_edge)
             effective_min_edge = max(effective_min_edge, regime_edge)
         if net_edge < effective_min_edge:
+            # DIAG: log near-miss signals for filter tuning
+            net_edge_bps = float(net_edge * 10000)
+            min_edge_bps = float(effective_min_edge * 10000)
+            if net_edge_bps > -5:  # only log signals within 5bps of passing
+                logger.info(
+                    "signal.min_edge_rejected symbol=%s net_edge_bps=%.2f min_edge_bps=%.2f "
+                    "buy_ex=%s sell_ex=%s fee=%.4f slip=%.4f net_profit=%.6f",
+                    symbol, net_edge_bps, min_edge_bps,
+                    buy_exchange, sell_exchange,
+                    float(friction.fee_buy + friction.fee_sell),
+                    float(friction.slippage_buy + friction.slippage_sell),
+                    float(friction.net_profit),
+                )
             return None
 
         # Max rollback cost gate
         if friction.rollback_cost_expected > self._config.max_rollback_cost_usd:
+            logger.info(
+                "signal.rollback_rejected symbol=%s rollback=%.2f max=%.2f",
+                symbol, float(friction.rollback_cost_expected),
+                float(self._config.max_rollback_cost_usd),
+            )
             return None
 
         # US-284: market impact check — filter if impact exceeds edge (signal filter only)

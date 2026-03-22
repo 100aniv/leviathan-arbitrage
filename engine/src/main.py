@@ -1481,6 +1481,43 @@ class Engine:
         except Exception as exc:
             logger.debug("Failed to record trade to context: %s", exc)
 
+        # US-DW1: CircuitBreaker feedback — record win/loss after each execution
+        if self._circuit_breaker is not None:
+            try:
+                status_val = getattr(execution_result.status, "value", str(execution_result.status))
+                if status_val == "success":
+                    # Compute drawdown for loss detection
+                    pnl_val = getattr(execution_result, "pnl", None)
+                    if pnl_val is not None and float(pnl_val) < 0:
+                        # Loss: compute current drawdown pct
+                        capital = self._settings.capital.initial_capital if self._settings else Decimal("70")
+                        capital_total = capital * max(len(self._exchanges), 1)
+                        dd_pct = float(abs(self._total_pnl) / capital_total) if capital_total > 0 and self._total_pnl < 0 else 0.0
+                        asyncio.ensure_future(self._circuit_breaker.record_loss(drawdown_pct=dd_pct))
+                    else:
+                        asyncio.ensure_future(self._circuit_breaker.record_win())
+                else:
+                    # Execution failure (rejected/timeout) — count as loss
+                    asyncio.ensure_future(self._circuit_breaker.record_loss())
+            except Exception:
+                pass  # Non-critical: CB feedback failure
+
+        # US-DW8: Send Korean fill notification via Telegram
+        if self._trade_bot is not None and getattr(execution_result.status, "value", str(execution_result.status)) == "success":
+            try:
+                fill_data = {
+                    "strategy_id": trade_request.strategy_id,
+                    "symbol": trade_request.legs[0].symbol if trade_request.legs else "UNKNOWN",
+                    "buy_exchange": next((l.exchange_id for l in trade_request.legs if l.side.value == "buy"), ""),
+                    "sell_exchange": next((l.exchange_id for l in trade_request.legs if l.side.value == "sell"), ""),
+                    "size": float(trade_request.legs[0].size) if trade_request.legs else 0,
+                    "pnl": float(execution_result.pnl) if hasattr(execution_result, "pnl") else float(trade_request.expected_profit_usdt),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                asyncio.ensure_future(self._trade_bot.send_fill_kr(fill_data))
+            except Exception:
+                pass  # Non-critical: Telegram fill notification failure
+
     async def _rebalancer_loop(self) -> None:
         """US-120: Periodic inventory rebalancing check + Telegram alert."""
         while self.state.running:

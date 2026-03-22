@@ -88,14 +88,30 @@ SSOT.md §7 구조:
 - Karina + 도메인 전문가 → '완성 기준' 수립
 - Nayeon(TF 리더) 상용화 기준 최종 승인
 
-### [단계 3] 교차 검증 (The Deep Dive, 병렬)
-- Jeongyeon(엔진): 초기화 체인, 전략 등록, RiskGuardian, KillSwitch, dead wiring
-- Momo(인프라): Docker, DB 스키마, Redis, Nginx, .env 동기화, 백업
-- Dahyun(퀀트): 슬리피지, 수수료, 마찰력, Sharpe, MDD 단위
-- Sana(데이터): Shadow 완전성, PnL 기록, WS 흐름, KRW 환율
-- Mina(UI/UX): 대시보드 4페이지, 로그인, API, 모바일, 콘솔 에러 0건
-- Jisoo(보안): JWT, API 키, CSP, IP whitelist, Redis, .gitignore
-- Karina 합동 점검: 실전적 질의응답
+### [단계 3] 교차 검증 (런타임 증거 기반, 병렬)
+
+> **원칙**: "코드 읽기"가 아니라 "런타임 증거 수집". 코드 구조 검증은 단계 3.5 Assembly에서 수행.
+> 단계 0 Shadow 10min 로그를 근거로 검증. 로그에 증거가 없으면 FAIL.
+
+**A. 런타임 로그 분석 (Shadow 10min 로그 기반, grep/count)**
+- 엔진 파이프라인: `grep 'Execution result'` > 0 (trades 발생), `grep 'record_loss\|record_win'` (CB 피드백), `grep 'risk_check.*rejected'` (RiskGuardian 동작)
+- 시그널 품질: `grep 'min_edge_rejected'` (탈락 분포), `grep 'signal_emitted\|Signal.*emit'` > 0 (시그널 발출)
+- CB/KillSwitch: `grep 'circuit_breaker'` (상태 변화), `grep 'is_halted'` (KillSwitch 미발동)
+- DQM: `grep 'data_quality_rejected'` (거부 건수/사유 분포), `grep 'always_healthy'` (Paper bypass 동작)
+- 전략별: `grep 'strategy='` | sort | uniq -c (전략별 trade/signal 분포)
+
+**B. 실행 검증 (Docker/API/DB 실제 호출)**
+- Momo(인프라): `docker compose ps` (healthy), `curl localhost:8000/api/v1/health` (200), DB 연결 확인
+- Jisoo(보안): `curl -X POST localhost:8000/api/auth/login` (rate limit 동작), `.env` 토큰 중복/들여쓰기 검사
+- Mina(UI/UX): 대시보드 4페이지 + API 200 + WS 연결 (브라우저 검증)
+
+**C. 퀀트 검증 (Shadow 결과 수치 분석)**
+- Dahyun(퀀트): Shadow PnL/Sharpe/MDD 수치 계산, 수수료 실측 vs 모델 비교, 슬리피지 분포
+- Sana(데이터): Shadow 10min 13항목 복합지표 판정, 전략별 trade >= 1 확인
+
+**D. 코드 읽기 (구조적 문제 의심 시에만, 조건부)**
+- dead wiring 의심 시 → Jeongyeon 코드 추적 (기본은 Assembly Gate에서 수행)
+- 새 보안 취약점 의심 시 → Jisoo 코드 리뷰
 
 ### [단계 3.5] Assembly Verification
 - main.py 초기화 체인 서브시스템 non-None

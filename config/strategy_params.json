@@ -2,6 +2,34 @@
   "cross_exchange": {
     "min_spread_bps": 5.0,
     "status": "READY",
-    "wfe": 1.2
+    "wfe": 1.2,
+    "data_type": "synthetic_gbm"
+  },
+  "spot_futures": {
+    "min_basis_bps": 5.0,
+    "status": "READY",
+    "wfe": 0.8,
+    "data_type": "live_shadow"
+  },
+  "futures_futures": {
+    "min_spread_bps": 5.0,
+    "status": "READY",
+    "wfe": 0.6,
+    "data_type": "live_shadow"
+  },
+  "triangular": {
+    "status": "READY",
+    "wfe": 0.5,
+    "data_type": "live_shadow"
+  },
+  "funding_rate": {
+    "status": "READY",
+    "wfe": 0.7,
+    "data_type": "live_shadow"
+  },
+  "statistical_arb": {
+    "status": "MONITOR",
+    "wfe": -1.03,
+    "data_type": "live_shadow"
   }
 }

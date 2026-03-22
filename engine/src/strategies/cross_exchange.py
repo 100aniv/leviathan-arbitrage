@@ -137,6 +137,11 @@ class CrossExchangeStrategy(BaseStrategy):
             min_spread = self.config.min_spread_bps / Decimal("10000")
         if signal.spread_pct < min_spread:
             self._metrics.signals_filtered += 1
+            logger.info(
+                "strategy.rejected strategy=cross_exchange reason=min_spread symbol=%s "
+                "spread_bps=%.2f threshold_bps=%.2f",
+                signal.symbol, float(signal.spread_pct) * 10000, float(min_spread) * 10000,
+            )
             return None
 
         # US-235: Reject anomalously wide spreads (likely stale/bad orderbook data)
@@ -174,28 +179,23 @@ class CrossExchangeStrategy(BaseStrategy):
 
         size = min(signal.volume, self.config.max_position_size)
 
-        # Calculate friction costs for both legs
-        buy_cost = self._cost_calculator.estimate_cost(
-            exchange_id=signal.buy_exchange,
-            symbol=signal.symbol,
-            side=OrderSide.BUY,
-            size=size,
-            price=signal.buy_price,
-        )
-        sell_cost = self._cost_calculator.estimate_cost(
-            exchange_id=signal.sell_exchange,
-            symbol=signal.symbol,
-            side=OrderSide.SELL,
-            size=size,
-            price=signal.sell_price,
-        )
-        total_cost = buy_cost + sell_cost
-
-        gross_profit = (signal.sell_price - signal.buy_price) * size
-        net_profit = gross_profit - total_cost
+        # Use pre-computed net_profit from SignalGenerator (already includes fee+slippage+network+rollback).
+        # DO NOT re-calculate friction here — that causes double-counting (see CLAUDE.md "이중 슬리피지 금지").
+        net_profit_str = signal.metadata.get("net_profit")
+        if net_profit_str is not None:
+            net_profit = Decimal(net_profit_str)
+        else:
+            # Fallback: estimate from gross spread (no double friction)
+            gross_profit = (signal.sell_price - signal.buy_price) * size
+            net_profit = gross_profit  # friction already applied by SignalGenerator
 
         if net_profit <= Decimal("0"):
             self._metrics.signals_filtered += 1
+            logger.info(
+                "strategy.rejected strategy=cross_exchange reason=net_profit_negative symbol=%s "
+                "net_profit=%.6f",
+                signal.symbol, float(net_profit),
+            )
             return None
 
         metadata: dict = {"gross_profit": str(gross_profit), "total_cost": str(total_cost)}

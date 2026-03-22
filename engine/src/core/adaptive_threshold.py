@@ -37,6 +37,9 @@ class AdaptiveThreshold:
     static_exit: float = 5.0     # bps
     # Minimum observations before using dynamic thresholds
     min_samples: int = 60
+    # Cap: dynamic entry must not exceed static_entry * max_entry_multiplier
+    # Prevents stale/anomaly spreads from inflating threshold beyond usable range
+    max_entry_multiplier: float = 5.0  # e.g. static=5bps → max dynamic=25bps
     # Volatility multiplier parameters
     vol_lookback: int = 60       # observations for vol calculation
     vol_baseline: float = 0.0    # set on first vol calc
@@ -115,6 +118,15 @@ class AdaptiveThreshold:
             self.static_exit, dynamic_exit,
             vol_mult, len(self._observations),
         )
+
+        # Cap: prevent stale/anomaly data from inflating threshold
+        max_entry = self.static_entry * self.max_entry_multiplier
+        if dynamic_entry > max_entry:
+            logger.info(
+                "adaptive_threshold.capped dynamic=%.2f max=%.2f static=%.2f",
+                dynamic_entry, max_entry, self.static_entry,
+            )
+            dynamic_entry = max_entry
 
         # Ensure entry >= exit (sanity)
         if dynamic_entry < dynamic_exit:
