@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-22 (TF QF PASS → S23 회귀 완료 → TF QF 재검증 대기) | PRD: `.omc/prd.json` (322개 US, 320 passes:true / 2 passes:false)
+> 마지막 업데이트: 2026-03-23 (S22~S25 회귀 + TF QF PASS Re-Validation → TF SF 진행중) | PRD: `.omc/prd.json` (324개 US, 322 passes:true / 2 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 > **실행 순서**: A~M ✅ → S1~S22 ✅ → **TF QF 10차** → TF SF → TF PF → TF Final → Live
 
@@ -31,12 +31,12 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: TF-QF Re-Validation (2026-03-22) — 워크플로우 단순화 후 QF 재검증
+**Phase**: TF-SF Stage 1 진행중 (2026-03-23) — S25 한글화 완료 후 SF 24H Shadow
 **Tests**: 5,200 passed / 0 failed / 12 skipped
 **Coverage**: 77%
-**PRD**: 321/323 passes:true (US-055/056 Phase F Live만 잔여)
-**TF Status**: S1~S24 ✅ → TF QF PASS 재검증 → TF SF → TF Final → Live
-**Next**: QF Re-Validation (FROZEN CRITERIA)
+**PRD**: 322/324 passes:true (US-055/056 Phase F Live만 잔여)
+**TF Status**: S1~S25 ✅ → TF QF Re-Validation PASS → **TF SF** → TF Final → Live
+**Next**: SF Stage 1 (1H) → Stage 2~6 → 24H
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
@@ -518,9 +518,18 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-299: 전략별 독립 Shadow 30min ✅
 - [x] US-300: 포트폴리오 통합 Shadow 1H ✅
 
+#### TF QF 회귀 — S22~S25 (US 단위 핫픽스, 2026-03-22)
+
+> TF QF 9~11차에서 발견된 이슈를 US 단위로 즉시 수정. 1-2 US/Phase.
+
+- [x] **S22** US-316~320: Shadow trades=0 블로커 (이중friction, book_depth, config 경로, DB PW, rate limiter) ✅
+- [x] **S23** US-321~322: QF 10차 quorum MUST FIX (IP cleanup, on_fill 역매핑) ✅
+- [x] **S24** US-323: SignalGenerator regime override 조건부화 (trades=0 근본 원인) ✅
+- [x] **S25** US-324: 텔레그램 알림 전체 한글화 (SF 검증용) ✅
+
 ---
 
-### TF Quarter-Final (QF): Development Verification — 10차 PASS (2026-03-22)
+### TF Quarter-Final (QF): Development Verification — 11차 PASS + Re-Validation PASS (2026-03-22)
 
 > **핵심 질문**: "코드가 올바르고, 빠진 것이 없는가?"
 > **진입 가드**: 회귀 Phase 전부 완료 + pytest 0 fail + Docker healthy
