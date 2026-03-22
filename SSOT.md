@@ -35,8 +35,8 @@
 **Tests**: 5,200 passed / 0 failed / 12 skipped
 **Coverage**: 77%
 **PRD**: 320/322 passes:true (US-055/056 Phase F Live만 잔여)
-**TF Status**: S1~S22 ✅ → TF QF 10차 PASS → **TF SF** → TF PF → TF Final → Live
-**Next**: TF SF 진입
+**TF Status**: S1~S23 ✅ → TF QF 11차 PASS → **TF SF** → TF PF → TF Final → Live
+**Next**: TF SF 단계 2 Progressive Shadow 24H
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
@@ -526,7 +526,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **진입 가드**: 회귀 Phase 전부 완료 + pytest 0 fail + Docker healthy
 > **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → QF 재검증
 > **PASS 기준**: CRITICAL 0, HIGH 0, MEDIUM ≤ 5 (자금 손실 경로 아님)
-> **판정**: 10차 PASS (2026-03-22) — CRITICAL 0, HIGH 0, MEDIUM 0 (S23 회귀 완료 후 재검증 대기)
+> **판정**: 11차 PASS (2026-03-22) — CRITICAL 0, HIGH 0, MEDIUM 0 (S23 회귀 + 멀티모델 3종 재검증 완료)
 > **체크리스트**: `docs/checklists/tf-quarter-final_20260318.md`
 
 **[단계 0] Smoke Test Gate**
