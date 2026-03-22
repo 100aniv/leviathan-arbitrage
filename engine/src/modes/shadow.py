@@ -648,7 +648,7 @@ class ShadowMode:
         if self._telegram is not None:
             try:
                 await self._telegram.send_alert(
-                    "Shadow Mode started. Real data + paper execution active.",
+                    "섀도 모드 시작. 실데이터 + 페이퍼 실행 활성화.",
                     level="INFO",
                 )
             except Exception as exc:
@@ -1975,7 +1975,7 @@ class ShadowMode:
                         if self._telegram is not None:
                             try:
                                 asyncio.create_task(self._telegram.send_alert(
-                                    f"KRW rate stale {elapsed:.0f}s — KRW exchanges soft-blocked",
+                                    f"KRW 환율 {elapsed:.0f}초 지연 — KRW 거래소 소프트 차단됨",
                                     level="WARNING",
                                 ))
                             except Exception:
@@ -1994,7 +1994,7 @@ class ShadowMode:
                         if self._telegram is not None:
                             try:
                                 asyncio.create_task(self._telegram.send_alert(
-                                    f"CRITICAL: KRW rate stale {elapsed:.0f}s (10min+) — KillSwitch triggered",
+                                    f"긴급: KRW 환율 {elapsed:.0f}초 지연 (10분 이상) — 킬 스위치 작동",
                                     level="CRITICAL",
                                 ))
                             except Exception:
@@ -2009,7 +2009,7 @@ class ShadowMode:
                         if self._telegram is not None:
                             try:
                                 asyncio.create_task(self._telegram.send_alert(
-                                    "KRW rate recovered — soft-block cleared",
+                                    "KRW 환율 복구 — 소프트 차단 해제",
                                     level="INFO",
                                 ))
                             except Exception:
@@ -2125,17 +2125,17 @@ class ShadowMode:
 
                 # Send per-strategy breakdown as separate message
                 if strategy_breakdown:
-                    lines = ["Strategy Breakdown:"]
+                    lines = ["전략별 성과:"]
                     for sb in strategy_breakdown:
                         lines.append(
                             f"  {sb['strategy_id']}: "
-                            f"{sb['trades']}T / "
-                            f"{sb['win_rate']:.0%} WR / "
+                            f"{sb['trades']}건 / "
+                            f"{sb['win_rate']:.0%} 승률 / "
                             f"${sb['pnl']:+.4f}"
                         )
                     lines.append(
-                        f"  Rejected: {stats.trades_rejected}\n"
-                        f"  Partial fills: {stats.trades_partial_fill}"
+                        f"  거부: {stats.trades_rejected}\n"
+                        f"  부분 체결: {stats.trades_partial_fill}"
                     )
                     await self._telegram.send_alert("\n".join(lines), level="INFO")
 

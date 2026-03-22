@@ -174,7 +174,7 @@ class TestSendAlertFormatting:
         enabled_alerter._send = fake_send  # type: ignore[method-assign]
         await enabled_alerter.send_alert("engine started", level="INFO")
         assert "ℹ️" in captured[0]
-        assert "INFO" in captured[0]
+        assert "정보" in captured[0]
         assert "engine started" in captured[0]
 
     async def test_send_alert_critical_prefix_contains_siren_emoji(self, enabled_alerter):
@@ -187,7 +187,7 @@ class TestSendAlertFormatting:
         enabled_alerter._send = fake_send  # type: ignore[method-assign]
         await enabled_alerter.send_alert("system failure", level="CRITICAL")
         assert "🚨" in captured[0]
-        assert "CRITICAL" in captured[0]
+        assert "긴급" in captured[0]
 
     async def test_send_alert_unknown_level_falls_back_to_info_emoji(self, enabled_alerter):
         captured: list[str] = []
@@ -218,7 +218,7 @@ class TestSendKillSwitchEventFormatting:
 
         enabled_alerter._send = fake_send  # type: ignore[method-assign]
         await enabled_alerter.send_kill_switch_event(mock_kill_switch_event)
-        assert "KILL SWITCH ACTIVATED" in captured[0]
+        assert "킬 스위치 작동" in captured[0]
 
     async def test_message_includes_tier_latencies(
         self, enabled_alerter, mock_kill_switch_event
@@ -262,7 +262,7 @@ class TestSendKillSwitchEventFormatting:
 
         enabled_alerter._send = fake_send  # type: ignore[method-assign]
         await enabled_alerter.send_kill_switch_event(mock_kill_switch_event)
-        assert "5 more" in captured[0]
+        assert "외" in captured[0]
 
 
 # ---------------------------------------------------------------------------

@@ -156,8 +156,15 @@ class TelegramAlerter:
         Returns:
             True if the message was sent successfully, False otherwise.
         """
+        _LEVEL_KR = {
+            "INFO": "정보",
+            "WARNING": "경고",
+            "ERROR": "오류",
+            "CRITICAL": "긴급",
+        }
         emoji = _LEVEL_EMOJI.get(level.upper(), "ℹ️")
-        text = f"{emoji} <b>[{level.upper()}]</b>\n{message}"
+        label = _LEVEL_KR.get(level.upper(), level.upper())
+        text = f"{emoji} <b>[{label}]</b>\n{message}"
         return await self._send(text)
 
     async def send_kill_switch_event(self, event: "KillSwitchEvent") -> bool:
@@ -173,25 +180,25 @@ class TelegramAlerter:
             return f"{ms:.2f} ms" if ms is not None else "N/A"
 
         lines = [
-            "🚨 <b>KILL SWITCH ACTIVATED</b>",
+            "🚨 <b>긴급: 킬 스위치 작동</b>",
             "",
-            "<b>Timing Breakdown:</b>",
-            f"  Tier 1 (local halt):      {_fmt(event.tier1_latency_ms)}",
-            f"  Tier 2 (cancel orders):   {_fmt(event.tier2_latency_ms)}",
-            f"  Tier 3 (close positions): {_fmt(event.tier3_latency_ms)}",
+            "<b>타이밍 분석:</b>",
+            f"  1단계 (로컬 중단):   {_fmt(event.tier1_latency_ms)}",
+            f"  2단계 (주문 취소):   {_fmt(event.tier2_latency_ms)}",
+            f"  3단계 (포지션 청산): {_fmt(event.tier3_latency_ms)}",
             "",
-            f"<b>Cancelled orders:</b>  {len(event.cancelled_orders)}",
-            f"<b>Closed positions:</b>  {len(event.closed_positions)}",
-            f"<b>Redis halt set:</b>    {'Yes' if event.redis_halt_set else 'No'}",
+            f"<b>취소 주문:</b>  {len(event.cancelled_orders)}",
+            f"<b>청산 포지션:</b>  {len(event.closed_positions)}",
+            f"<b>Redis 중단:</b>    {'예' if event.redis_halt_set else '아니오'}",
         ]
 
         if event.errors:
             lines.append("")
-            lines.append(f"<b>Errors ({len(event.errors)}):</b>")
+            lines.append(f"<b>오류 ({len(event.errors)}):</b>")
             for err in event.errors[:5]:  # cap to avoid truncation
                 lines.append(f"  • {err}")
             if len(event.errors) > 5:
-                lines.append(f"  … and {len(event.errors) - 5} more")
+                lines.append(f"  … 외 {len(event.errors) - 5}건")
 
         return await self._send("\n".join(lines))
 
@@ -205,11 +212,17 @@ class TelegramAlerter:
         Returns:
             True if the message was sent successfully, False otherwise.
         """
+        _STATE_KR = {
+            "OPEN": "열림",
+            "HALF_OPEN": "반열림",
+            "CLOSED": "닫힘",
+        }
         state_upper = state.upper()
         emoji = "🔴" if state_upper == "OPEN" else ("🟡" if state_upper == "HALF_OPEN" else "🟢")
+        state_label = _STATE_KR.get(state_upper, state_upper)
         text = (
-            f"{emoji} <b>CIRCUIT BREAKER: {state_upper}</b>\n"
-            f"<b>Reason:</b> {reason}"
+            f"{emoji} <b>서킷 브레이커: {state_label}</b>\n"
+            f"<b>사유:</b> {reason}"
         )
         return await self._send(text)
 

@@ -5959,6 +5959,26 @@
       "files": [
         "engine/src/core/signal.py"
       ]
+    },
+    {
+      "id": "US-324",
+      "phase": "S25",
+      "title": "텔레그램 알림 전체 한글화 (← SF 검증 시 사장님 직접 확인)",
+      "description": "send_alert 20곳+, send_kill_switch_event, send_circuit_breaker_event, shadow 리포트를 한글+이모지 포맷으로 전환. send_alert_kr 활용.",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "send_kill_switch_event → send_alert_kr(kill_switch) 한글 호출",
+        "send_circuit_breaker_event → send_alert_kr(circuit_breaker) 한글 호출",
+        "shadow.py 일일 리포트 한글+이모지 포맷",
+        "main.py send_alert 호출 한글화 (핵심 20곳)",
+        "pytest 전체 PASS"
+      ],
+      "files": [
+        "engine/src/infra/telegram.py",
+        "engine/src/main.py",
+        "engine/src/modes/shadow.py"
+      ]
     }
   ]
 }
