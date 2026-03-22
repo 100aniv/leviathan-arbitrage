@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-22 (Phase S22 ✅ 완료 → TF QF 10차 진입) | PRD: `.omc/prd.json` (320개 US, 318 passes:true / 2 passes:false)
+> 마지막 업데이트: 2026-03-22 (TF QF PASS → S23 회귀 완료 → TF QF 재검증 대기) | PRD: `.omc/prd.json` (322개 US, 320 passes:true / 2 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 > **실행 순서**: A~M ✅ → S1~S22 ✅ → **TF QF 10차** → TF SF → TF PF → TF Final → Live
 
@@ -526,7 +526,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **진입 가드**: 회귀 Phase 전부 완료 + pytest 0 fail + Docker healthy
 > **FAIL 시**: 회귀 Phase 생성 → 3-Stage(A→B→C) → QF 재검증
 > **PASS 기준**: CRITICAL 0, HIGH 0, MEDIUM ≤ 5 (자금 손실 경로 아님)
-> **판정**: 7차 PASS (2026-03-18) — CRITICAL 0, HIGH 0, MEDIUM 4
+> **판정**: 10차 PASS (2026-03-22) — CRITICAL 0, HIGH 0, MEDIUM 0 (S23 회귀 완료 후 재검증 대기)
 > **체크리스트**: `docs/checklists/tf-quarter-final_20260318.md`
 
 **[단계 0] Smoke Test Gate**
