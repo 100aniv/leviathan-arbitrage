@@ -31,8 +31,8 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: TF QF 진행중 (2026-03-22) — S21 완료 후 TF QF 8차 교차검증 중
-**Tests**: 5,242 passed / 0 failed / 12 skipped
+**Phase**: TF QF 9차 진행중 (2026-03-22) — QF 8차 무효화(Shadow trades=0, DQM health=0.45) → 9차 재검증
+**Tests**: 5,181 passed / 0 failed / 12 skipped
 **Coverage**: 77%
 **PRD**: 313/315 passes:true (US-055/056 Phase F Live전환 = TF Final 후)
 **TF Status**: S15~S21 ✅ → **TF QF 8차 진행중** → TF SF → TF PF → TF Final → Live
@@ -429,7 +429,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-264: CorrelationMonitor 강제 적용 (← Guardian check #9 실제 position scaling) — VERIFIED
 - [x] US-265: S16 통합 Shadow 10min 검증 (← 11min, +$379.44, crash=0, 22 new tests) — VERIFIED
 
-#### Phase S17: 전략별 고급 기능 + 실행 안전장치 — US-266~276
+#### Phase S17: 전략별 고급 기능 + 실행 안전장치 — US-266~276 ✅ 완료 (2026-03-20, 12 US, 4991 tests)
 
 > **목표**: GPT/Gemini 공통 지적 + 사장님 추가 피드백 반영. 전략별 고급 기법 + Atomic Fallback
 > **진입 조건**: Phase S16 완료
@@ -448,7 +448,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-275-a: DepthAnalyzer 주문 사이징 연결 (← core/depth_analyzer.py VWAP/유동성 미사용 → AtomicExecutor 대형 주문 depth 기반 사이징) — VERIFIED
 - [x] US-276: S17 통합 Shadow 10min 검증 (← 멀티모델 감사 Quorum MUST FIX 5건 해결, 4991 tests PASS) — VERIFIED
 
-#### Phase S18: 포트폴리오 리스크 + 평가 체계 + Slippage Feedback — US-277~285
+#### Phase S18: 포트폴리오 리스크 + 평가 체계 + Slippage Feedback — US-277~285 ✅ 완료 (2026-03-20, 11 US, 5080 tests)
 
 > **목표**: 개별 전략 완성 후 포트폴리오 리스크 관리 + 실제 Slippage Feedback Loop + Market Impact
 > **진입 조건**: Phase S17 완료
@@ -466,7 +466,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-284-b: Attribution context 연결 (← main.py:502 생성하지만 EngineContext 미설정, API 매 요청마다 새 인스턴스 생성 문제 수정) ✅
 - [x] US-285: S18 통합 Shadow 10min 검증 (← MDD 관리, 상관관계 제한, Slippage feedback, CapitalAllocator 동작 확인) ✅
 
-#### Phase S19: 데이터 품질 통합 — DataQualityManager — US-286~290-a
+#### Phase S19: 데이터 품질 통합 — DataQualityManager — US-286~290-a ✅ 완료 (2026-03-21, 6 US, 5120 tests)
 
 > **목표**: StaleDetector/HealthChecker 개별 존재 → DataQualityManager 단일 진입점 통합. stale 진입 0건
 > **진입 조건**: Phase S15 완료 (S16/S17/S18과 병렬 가능)
@@ -479,7 +479,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-290: Bithumb 증분 Orderbook Stale 특화 (← 소형코인 2-10x 가격 오차 패턴 탐지 → fake spread 거부) ✅
 - [x] US-290-a: S19 통합 Shadow 10min 검증 (← DataQualityManager 동작, stale 거부 건수, health score 모니터링) ✅
 
-#### Phase S20: 사용자 편의성 + 모니터링 — US-291~296
+#### Phase S20: 사용자 편의성 + 모니터링 — US-291~296 ✅ 완료 (2026-03-21, 7 US, 5150 tests)
 
 > **목표**: 기관급 알고리즘 + 개인 사용자 편의성. 상용 봇(Bitsgap/Pionex) 수준 원클릭 편의성
 > **진입 조건**: Phase S15 완료 (S16/S17/S18과 병렬 가능)
@@ -493,7 +493,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-295-a: MonitorDaemon 백그라운드 시작 (← infra/monitor_daemon.py 5분 주기 Redis/DB/API 헬스체크, main.py 백그라운드 태스크 연결) ✅
 - [x] US-296: S20 통합 Shadow 10min 검증 (← Grafana 실시간 확인, 텔레그램 알림 트리거, CLI 동작, MonitorDaemon 테스트) ✅
 
-#### Phase S20-B: 3-Bot 버그 수정 + 원격 제어 강화 — US-302~308
+#### Phase S20-B: 3-Bot 버그 수정 + 원격 제어 강화 — US-302~308 ✅ 완료 (2026-03-21, 7 US, 5200 tests)
 
 > **목표**: TradeBot 무응답 수정, Docker monitoring 통합, DevBot 원격 제어 15개, TradeBot 기관급 20개, InfraBot 리소스 모니터링
 > **진입 조건**: Phase S20 완료
@@ -589,10 +589,19 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > 4695 tests, Shadow 10min crash=0, 조립 검증 4/4 PASS
 > 체크리스트: `docs/checklists/tf-quarter-final_20260317.md`
 
-> **#7 PASS (2026-03-18) ← CURRENT**
+> **#7 PASS (2026-03-18)**
 > 판정: **PASS** — CRITICAL 0, HIGH 0, MEDIUM 4
 > 4,843 tests, 7개 전략 로직 개선 (stat_arb routing, hedge-ratio, spot_futures direction, funding_rate phantom fix)
 > 체크리스트: `docs/checklists/tf-quarter-final_20260318.md`
+>
+> **#8 INVALIDATED (2026-03-22)**
+> 판정: **무효** — Shadow trades=0 (DQM HealthChecker Paper 모드 health=0.45 → RiskGuardian 차단), 멀티모델 감사 미실행, MEDIUM 6건 override 무단
+> 근본 원인: HealthChecker.is_connected=False (Paper 어댑터가 record_ws_connect() 미호출)
+> 수정: DQM always_healthy 분기 추가 (fc22995)
+>
+> **#9 IN_PROGRESS (2026-03-22) ← CURRENT**
+> Phase 1-2 완료 (Shadow DQM 수정 + sync CLI + FSM + consistency 9항목), Phase 3 완료 (leviathan.md L88 + watchdog + CLAUDE.md)
+> 재검증 대기: Shadow trades>0 확인 후 QF 9차 305줄+ 체크리스트 실행 예정
 
 ### TF Semi-Final (SF): System Validation — 3차 Stage 2 PASS (2026-03-18)
 
@@ -743,40 +752,41 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 > **RESOLVED 항목**: S8/S9에서 해소된 GAP 3/7/8 + HIGH 9건 + LOW 2건 → US-193 완료 시 SSOT_COMPLETE.md §9로 이관 예정.
 
-### CRITICAL (6건 — Phase S15에서 수정 예정)
+### CRITICAL (6건 — 전부 S15에서 해결 ✅)
 
 | 이슈 | 설명 | 해결 US |
 |------|------|---------|
-| **stat_arb regime_detector 미주입** | `main.py:898`에서 regime_detector 미전달 → CRISIS에서도 거래 | US-245 |
-| **LiveGate 차단 미동작** | `is_live_eligible()` 실행 경로에서 미호출 → 평가만 하고 차단 안함 | US-246 |
-| **profit_factor 계산 버그** | `shadow.py:2201` 건수 비율 계산 → AdaptiveThreshold 반대 방향 조정 | US-257 |
-| **estimate_cost() 비용 과소계산** | `cost_calculator.py:110` network_cost=0 → 실제 비용 누락 | US-247 |
-| ~~**ADV/sigma 하드코딩**~~ | ~~`signal.py:51-52` ADV=1000, sigma=0.001 → 동적 계산으로 수정~~ | ~~US-248~~ ✅ S16 |
-| **삼각 leg sizing 통화 불일치** | `triangular.py:134-145` 3 leg 동일 size → 잔여 포지션 발생 | US-249 |
+| ~~**stat_arb regime_detector 미주입**~~ | ~~`main.py:898`에서 regime_detector 미전달~~ | ~~US-245~~ ✅ S15 |
+| ~~**LiveGate 차단 미동작**~~ | ~~`is_live_eligible()` 미호출~~ | ~~US-246~~ ✅ S15 |
+| ~~**profit_factor 계산 버그**~~ | ~~건수 비율 → 금액 비율~~ | ~~US-257~~ ✅ S15 |
+| ~~**estimate_cost() 비용 과소계산**~~ | ~~network_cost=0 → full cost~~ | ~~US-247~~ ✅ S15 |
+| ~~**ADV/sigma 하드코딩**~~ | ~~동적 계산으로 수정~~ | ~~US-248~~ ✅ S16 |
+| ~~**삼각 leg sizing 통화 불일치**~~ | ~~leg별 통화 크기 보정~~ | ~~US-249~~ ✅ S15 |
 
-### HIGH (5건 — Phase S15~S18에서 수정 예정)
-
-| 이슈 | 설명 | 해결 US |
-|------|------|---------|
-| ~~**PositionReconciler 미연결**~~ | ~~PositionRecovery + Reconciler 통합 완료~~ | ~~US-250~~ ✅ S16 |
-| ~~**AdaptiveThreshold 글로벌 단일**~~ | ~~전략별 PerStrategyAdaptiveThreshold로 분리 완료~~ | ~~US-255~~ ✅ S15 |
-| **HealthChecker 피드 미호출** | `record_api_latency()`, `record_ws_disconnect()` 미호출 → health score 항상 1.0 | US-286 (DataQualityManager) |
-| **CapitalAllocator(Kelly) 미연결** | Kelly Criterion 자본 배분 코드 존재하나 미사용 | US-284-a |
-| **Attribution context 미설정** | `main.py:502` 생성하지만 EngineContext에 미설정 → API 매 요청마다 새 인스턴스 | US-284-b |
-
-### MEDIUM (3건)
+### HIGH (5건 — 전부 S15~S19에서 해결 ✅)
 
 | 이슈 | 설명 | 해결 US |
 |------|------|---------|
-| **MonitorDaemon 미시작** | Redis/DB 헬스체크 standalone만, 백그라운드 태스크 미등록 | US-295-a |
-| **ShadowMiniTuner 데드코드** | `shadow.py:692` 시작 시 1회 호출 후 재호출 없음 | US-258-a |
-| ~~**전략 warm-up 추적 없음**~~ | ~~warmup_excluded/crisis_excluded 플래그 추가~~ | ~~US-258-b~~ ✅ S16 |
+| ~~**PositionReconciler 미연결**~~ | ~~PositionRecovery + Reconciler 통합~~ | ~~US-250~~ ✅ S16 |
+| ~~**AdaptiveThreshold 글로벌 단일**~~ | ~~전략별 분리~~ | ~~US-255~~ ✅ S15 |
+| ~~**HealthChecker 피드 미호출**~~ | ~~DQM 통합으로 해결~~ | ~~US-286~~ ✅ S19 |
+| ~~**CapitalAllocator(Kelly) 미연결**~~ | ~~전략별 자본 배분 연결~~ | ~~US-284-a~~ ✅ S18 |
+| ~~**Attribution context 미설정**~~ | ~~EngineContext 주입 완료~~ | ~~US-284-b~~ ✅ S18 |
 
-### LOW (1건)
+### MEDIUM (3건 — 전부 S15~S20에서 해결 ✅)
+
+| 이슈 | 설명 | 해결 US |
+|------|------|---------|
+| ~~**MonitorDaemon 미시작**~~ | ~~백그라운드 태스크 등록 완료~~ | ~~US-295-a~~ ✅ S20 |
+| ~~**ShadowMiniTuner 데드코드**~~ | ~~활성화 완료~~ | ~~US-258-a~~ ✅ S15 |
+| ~~**전략 warm-up 추적 없음**~~ | ~~플래그 추가~~ | ~~US-258-b~~ ✅ S16 |
+
+### LOW (2건)
 
 | 이슈 | 설명 | 해결 시점 |
 |------|------|----------|
 | **Phase D 대시보드 브라우저 미검증** | Chrome 렌더링, 모바일 반응형 미확인 | TF SF [단계 3-A] |
+| **send_fill_kr/send_fill_enhanced dead code** | telegram_trade_bot.py:617,622 정의만 있고 런타임 호출 0건 (테스트만 호출). US-306 passes:true이지만 dead code → 와이어링 필요 | QF 9차 전 |
 
 ### RESOLVED (S13/S14에서 해소 — SSOT_COMPLETE.md §9로 이관)
 
