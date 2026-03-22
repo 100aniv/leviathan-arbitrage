@@ -4,7 +4,7 @@
   "created": "2026-03-08",
   "updated": "2026-03-21",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 315,
+  "total_stories": 320,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -5843,6 +5843,71 @@
         "SSOT.md S19/S20 US 체크 + S20-B 섹션 추가 + 헤더 업데이트",
         "prd.json US-302~308 추가 (7건, passes:true)",
         "CLAUDE.md 3-Bot 명령어/환경변수 정보 추가"
+      ]
+    },
+    {
+      "id": "US-316",
+      "phase": "S22",
+      "title": "Shadow trades=0 블로커 전수 조사 + 파라미터 튜닝 (← TF QF 9차 회귀)",
+      "description": "SignalGenerator→Strategy→ShadowTrade 전체 파이프라인에서 trades>0 달성. 블로커: 이중friction, adaptive threshold 170bps, book_depth $500, 기타 미발견 게이트.",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "Shadow 10min trades > 0 (cross_exchange 전략 최소 1건)",
+        "전략 on_signal() 거부 로그에서 100% 거부율 전략 0개",
+        "SignalGenerator net_edge 분포 → 통과 시그널 존재 확인"
+      ]
+    },
+    {
+      "id": "US-317",
+      "phase": "S22",
+      "title": ".env 설정값 → config/strategy_params.json 분리 (← TF QF 9차 회귀)",
+      "description": "min_book_depth_usd, adaptive threshold 파라미터 등 튜닝 값을 .env에서 config/로 이동. .env는 비밀 정보만 보관.",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "config/strategy_params.json에 모든 전략 파라미터 포함 (min_spread, min_depth, adaptive 설정)",
+        "main.py가 strategy_params.json에서 읽도록 수정",
+        ".env에서 튜닝 파라미터 제거 (API키/토큰/DB만 남음)"
+      ]
+    },
+    {
+      "id": "US-318",
+      "phase": "S22",
+      "title": "engine/.env 텔레그램 토큰 중복 제거 + root .env 들여쓰기 수정 (← TF QF 9차 Momo 인프라 CRITICAL)",
+      "description": "engine/.env에 텔레그램 토큰 블록이 2개 존재(L90 vs L151). python-dotenv가 첫 번째(구 토큰) 우선 적용. root .env에 2칸 들여쓰기로 파서 인식 실패.",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "engine/.env 텔레그램 토큰 블록 1개만 존재 (TRADE/DEV/INFRA 각각 고유)",
+        "root .env 들여쓰기 0칸 (키=값 형식)",
+        "3-Bot 토큰 분리 확인 (TRADE≠DEV≠INFRA)"
+      ]
+    },
+    {
+      "id": "US-319",
+      "phase": "S22",
+      "title": "DB 하드코딩 비밀번호 제거 + login rate limiter 적용 (← TF QF 9차 Jisoo 보안 HIGH)",
+      "description": "docker-compose.yml TimescaleDB 비밀번호 하드코딩(leviathan). /api/auth/login이 RateLimitMiddleware 범위 밖.",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "docker-compose.yml POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?} 필수 변수화",
+        "/api/auth/login에 rate limiter 적용 확인",
+        "config.py fallback DSN이 prod/staging에서 RuntimeError"
+      ]
+    },
+    {
+      "id": "US-320",
+      "phase": "S22",
+      "title": "AdaptiveThreshold 이상치 필터 + 전략 이중 게이트 정리 (← TF QF 9차 회귀)",
+      "description": "AdaptiveThreshold가 stale/anomaly spread를 학습해서 170bps로 팽창. 전략 on_signal()의 이중 friction 계산 정리.",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "AdaptiveThreshold.update()에 이상치 필터 (>100bps 제외 또는 IQR clamp)",
+        "cross_exchange on_signal()에서 estimate_cost() 이중 계산 없음 확인",
+        "Shadow 10min에서 adaptive threshold < 50bps 확인"
       ]
     }
   ]

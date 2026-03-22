@@ -1,0 +1,109 @@
+{
+  "$schema": "leviathan-tf-status-v1",
+
+  "qf": {
+    "status": "FAIL",
+    "round": 9,
+    "date": "2026-03-22",
+    "verdict": "FAIL",
+    "pass_criteria": "CRITICAL 0, HIGH 0, MEDIUM <= 5",
+    "pass_criteria_met": false,
+    "override_reason": null,
+    "invalidation_reason": null,
+    "checklist": null,
+    "history": [
+      {"round": 1, "date": "2026-03-13", "result": "FAIL", "detail": "CRITICAL 9, HIGH 12, MEDIUM 19, LOW 19"},
+      {"round": 2, "date": "2026-03-15", "result": "CONDITIONAL_PASS", "detail": "CRITICAL 0, HIGH 0 (91.5% resolved)"},
+      {"round": 3, "date": "2026-03-16", "result": "FAIL", "detail": "8/8 strategies, 4 disabled"},
+      {"round": 4, "date": "2026-03-16", "result": "PASS", "detail": "S9 evaluators complete"},
+      {"round": 5, "date": "2026-03-17", "result": "FAIL", "detail": "Alert dead wiring undetected"},
+      {"round": 6, "date": "2026-03-17", "result": "PASS", "detail": "Assembly verification 4/4 PASS"},
+      {"round": 7, "date": "2026-03-18", "result": "PASS", "detail": "CRITICAL 0, HIGH 0, MEDIUM 4, 4843 tests"},
+      {"round": 8, "date": "2026-03-22", "result": "INVALIDATED", "detail": "Shadow trades=0(DQM health=0.45), 멀티모델 미실행, MEDIUM override 무단"},
+      {"round": 9, "date": "2026-03-22", "result": "FAIL", "detail": "단계0 Smoke FAIL: Shadow trades=0 — 블로커 3건(이중friction, adaptive 170bps, book_depth $500) + 인프라 CRITICAL 1(env 토큰 중복), HIGH 5. 회귀 Phase S22"}
+    ],
+    "assembly_verification": {
+      "init_chain_non_none": "PASS",
+      "signal_flow_e2e": "PASS",
+      "config_flag_audit": "PASS",
+      "dead_wiring": "PASS"
+    },
+    "tests_at_pass": null
+  },
+
+  "sf": {
+    "status": "IN_PROGRESS",
+    "round": 4,
+    "date": "2026-03-22",
+    "current_stage": "stage1-delta-check",
+    "checklist": "docs/checklists/tf-semi-final_20260317.md",
+    "regression_phase": "S15",
+    "suspension_reason": "CRITICAL bugs 6 + Math errors 3 + ML/Risk unwired — regression to Phase S15",
+    "last_pass_stage": "Stage4",
+    "last_pass_detail": "6H PnL +$9,292, 33K trades, 5/7 strategies active",
+    "stage5_progress": "9H of 12H completed (75%) — suspended before completion",
+    "tf_restart_condition": "S15~S21 all complete + TF QF re-run PASS",
+    "history": [
+      {
+        "round": 1,
+        "stages": {
+          "1A": {"status": "PASS", "date": "2026-03-15"},
+          "2_stage1": {"status": "PASS", "detail": "1H PnL +$18.18"},
+          "2_stage2": {"status": "FAIL", "detail": "2H PnL -$78.82, stat_arb -$127"}
+        },
+        "regression": "S10"
+      },
+      {
+        "round": 2,
+        "stages": {
+          "1A": {"status": "PASS", "detail": "Delta Check 0 CRITICAL/HIGH"},
+          "1B": {"status": "PASS", "detail": "PnL +$59.80, 4 strategies, crash=0"},
+          "1C": {"status": "PASS", "detail": "overlap=0, PnL integrity 99.99%, 8555 trades"},
+          "2_stage1": {"status": "PASS", "detail": "1H crash=0, 4 strategies, 10/10 exchanges"},
+          "2_stage2": {"status": "FAIL", "detail": "2H45M PnL -$153.47, WR 90.7%, loss_capped 17x-$50=-$850"}
+        },
+        "root_causes": [
+          "futures_futures stale entry 17 trades x -$50",
+          "spot_futures WR 42%",
+          "funding_rate WR 6.7%"
+        ],
+        "regression": "S13"
+      },
+      {
+        "round": 3,
+        "date": "2026-03-19",
+        "stages": {
+          "stage1": {"status": "PASS", "detail": "1H crash=0, 5/7 strategies"},
+          "stage2": {"status": "PASS", "detail": "2H PnL +$3,312.08, 5/7 strategies"},
+          "stage3": {"status": "PASS", "detail": "4H progressing"},
+          "stage4": {"status": "PASS", "detail": "6H PnL +$9,292, 33K trades, 5/7 strategies"},
+          "stage5": {"status": "SUSPENDED", "detail": "9H/12H done — suspended for S15 regression"}
+        },
+        "suspension_bugs": {
+          "critical": 6,
+          "math_errors": 3,
+          "unwired_components": ["ML pipeline", "Risk Guardian"]
+        },
+        "regression": "S15"
+      }
+    ]
+  },
+
+  "pf": {
+    "status": "NOT_STARTED",
+    "round": 0,
+    "entry_guard": "TF SF 24H ALL PASS",
+    "baseline_tag": null,
+    "steps_completed": [],
+    "rollback_count": 0
+  },
+
+  "final": {
+    "status": "NOT_STARTED",
+    "round": 0,
+    "entry_guard": "TF PF PASS (또는 PF 스킵) + 24H Shadow ALL PASS"
+  },
+
+  "updated_at": "2026-03-21T00:00:00Z",
+  "updated_by": "executor"
+}

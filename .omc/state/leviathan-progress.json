@@ -1,0 +1,11 @@
+{
+  "current_phase": "S22",
+  "current_stage": "A",
+  "current_step": "A-Step1",
+  "status": "regression",
+  "us_targets": ["US-316", "US-317", "US-318", "US-319", "US-320"],
+  "us_count": 5,
+  "previous_phase": "TF-QF",
+  "previous_result": "FAIL",
+  "regression_source": "TF-QF round 9 — Shadow trades=0"
+}
