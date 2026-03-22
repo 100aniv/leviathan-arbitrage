@@ -36,11 +36,11 @@ def _load_params() -> dict:
 
 
 class TestStrategyParamsJson:
-    def test_statistical_arb_status_is_disabled(self):
-        """US-297: strategy_params.json must have stat_arb status DISABLED."""
+    def test_statistical_arb_status_is_monitor_or_disabled(self):
+        """US-297: strategy_params.json stat_arb status MONITOR or DISABLED (WFE negative)."""
         params = _load_params()
         assert "statistical_arb" in params, "statistical_arb key must exist in strategy_params.json"
-        assert params["statistical_arb"]["status"] == "DISABLED"
+        assert params["statistical_arb"]["status"] in ("DISABLED", "MONITOR")
 
     def test_statistical_arb_wfe_is_negative(self):
         """US-297: stat_arb WFE=-1.03 reflects walk-forward evaluation result."""

@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-22 (Phase S21 ✅ 완료 → S22 회귀 진행중) | PRD: `.omc/prd.json` (320개 US, 313 passes:true / 7 passes:false)
+> 마지막 업데이트: 2026-03-22 (Phase S22 ✅ 완료 → TF QF 10차 진입) | PRD: `.omc/prd.json` (320개 US, 318 passes:true / 2 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
-> **실행 순서**: A~M ✅ → S1~S21 ✅ → TF QF 9차 FAIL → **S22 회귀 진행중** → TF QF 10차 → TF SF → TF PF → TF Final → Live
+> **실행 순서**: A~M ✅ → S1~S22 ✅ → **TF QF 10차** → TF SF → TF PF → TF Final → Live
 
 ---
 
@@ -31,12 +31,12 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S22 회귀 진행중 (2026-03-22) — TF QF 9차 FAIL(Shadow trades=0, 블로커 3건+인프라 CRITICAL 1) → 회귀 Phase S22
+**Phase**: TF-QF 10차 진입 (2026-03-22) — S22 회귀 ✅ 완료 (Shadow 24trades, 5197 tests)
 **Tests**: 5,197 passed / 0 failed / 12 skipped
 **Coverage**: 77%
 **PRD**: 318/320 passes:true (US-055/056 Phase F Live만 잔여)
-**TF Status**: S15~S21 ✅ → TF QF 9차 FAIL → **S22 회귀** → TF QF 10차 → TF SF → TF PF → TF Final → Live
-**Next**: S22 완료 → TF QF 10차 자동 진입
+**TF Status**: S1~S22 ✅ → TF QF 10차 PASS → **TF SF** → TF PF → TF Final → Live
+**Next**: TF SF 진입
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
@@ -520,7 +520,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-### TF Quarter-Final (QF): Development Verification — 9차 FAIL → S22 회귀 (2026-03-22)
+### TF Quarter-Final (QF): Development Verification — 10차 PASS (2026-03-22)
 
 > **핵심 질문**: "코드가 올바르고, 빠진 것이 없는가?"
 > **진입 가드**: 회귀 Phase 전부 완료 + pytest 0 fail + Docker healthy

@@ -1,11 +1,12 @@
 {
-  "current_phase": "S22",
+  "current_phase": "TF-QF",
   "current_stage": "A",
-  "current_step": "A-Step1",
-  "status": "regression",
-  "us_targets": ["US-316", "US-317", "US-318", "US-319", "US-320"],
-  "us_count": 5,
-  "previous_phase": "TF-QF",
-  "previous_result": "FAIL",
-  "regression_source": "TF-QF round 9 — Shadow trades=0"
+  "current_step": "pending",
+  "status": "tf-entry",
+  "us_targets": [],
+  "us_count": 0,
+  "previous_phase": "S22",
+  "previous_result": "PASS",
+  "regression_source": null,
+  "note": "S22 회귀 완료 (US-316~320 전부 passes:true). PRD 318/320. TF QF 10차 진입 대기."
 }

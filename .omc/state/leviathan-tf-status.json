@@ -20,7 +20,8 @@
       {"round": 6, "date": "2026-03-17", "result": "PASS", "detail": "Assembly verification 4/4 PASS"},
       {"round": 7, "date": "2026-03-18", "result": "PASS", "detail": "CRITICAL 0, HIGH 0, MEDIUM 4, 4843 tests"},
       {"round": 8, "date": "2026-03-22", "result": "INVALIDATED", "detail": "Shadow trades=0(DQM health=0.45), 멀티모델 미실행, MEDIUM override 무단"},
-      {"round": 9, "date": "2026-03-22", "result": "FAIL", "detail": "단계0 Smoke FAIL: Shadow trades=0 — 블로커 3건(이중friction, adaptive 170bps, book_depth $500) + 인프라 CRITICAL 1(env 토큰 중복), HIGH 5. 회귀 Phase S22"}
+      {"round": 9, "date": "2026-03-22", "result": "FAIL", "detail": "단계0 Smoke FAIL: Shadow trades=0 — 블로커 3건(이중friction, adaptive 170bps, book_depth $500) + 인프라 CRITICAL 1(env 토큰 중복), HIGH 5. 회귀 Phase S22"},
+      {"round": 9, "date": "2026-03-22", "result": "REGRESSION_COMPLETE", "detail": "S22 회귀 완료: US-316~320 passes:true. Shadow 24trades(cross_exchange), 5197 tests, PRD 318/320. TF QF 10차 진입 준비."}
     ],
     "assembly_verification": {
       "init_chain_non_none": "PASS",
