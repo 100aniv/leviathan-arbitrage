@@ -5851,7 +5851,7 @@
       "title": "Shadow trades=0 블로커 전수 조사 + 파라미터 튜닝 (← TF QF 9차 회귀)",
       "description": "SignalGenerator→Strategy→ShadowTrade 전체 파이프라인에서 trades>0 달성. 블로커: 이중friction, adaptive threshold 170bps, book_depth $500, 기타 미발견 게이트.",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "Shadow 10min trades > 0 (cross_exchange 전략 최소 1건)",
         "전략 on_signal() 거부 로그에서 100% 거부율 전략 0개",
@@ -5864,7 +5864,7 @@
       "title": ".env 설정값 → config/strategy_params.json 분리 (← TF QF 9차 회귀)",
       "description": "min_book_depth_usd, adaptive threshold 파라미터 등 튜닝 값을 .env에서 config/로 이동. .env는 비밀 정보만 보관.",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "config/strategy_params.json에 모든 전략 파라미터 포함 (min_spread, min_depth, adaptive 설정)",
         "main.py가 strategy_params.json에서 읽도록 수정",
@@ -5877,7 +5877,7 @@
       "title": "engine/.env 텔레그램 토큰 중복 제거 + root .env 들여쓰기 수정 (← TF QF 9차 Momo 인프라 CRITICAL)",
       "description": "engine/.env에 텔레그램 토큰 블록이 2개 존재(L90 vs L151). python-dotenv가 첫 번째(구 토큰) 우선 적용. root .env에 2칸 들여쓰기로 파서 인식 실패.",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "engine/.env 텔레그램 토큰 블록 1개만 존재 (TRADE/DEV/INFRA 각각 고유)",
         "root .env 들여쓰기 0칸 (키=값 형식)",
@@ -5890,7 +5890,7 @@
       "title": "DB 하드코딩 비밀번호 제거 + login rate limiter 적용 (← TF QF 9차 Jisoo 보안 HIGH)",
       "description": "docker-compose.yml TimescaleDB 비밀번호 하드코딩(leviathan). /api/auth/login이 RateLimitMiddleware 범위 밖.",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "docker-compose.yml POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?} 필수 변수화",
         "/api/auth/login에 rate limiter 적용 확인",
@@ -5903,7 +5903,7 @@
       "title": "AdaptiveThreshold 이상치 필터 + 전략 이중 게이트 정리 (← TF QF 9차 회귀)",
       "description": "AdaptiveThreshold가 stale/anomaly spread를 학습해서 170bps로 팽창. 전략 on_signal()의 이중 friction 계산 정리.",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "AdaptiveThreshold.update()에 이상치 필터 (>100bps 제외 또는 IQR clamp)",
         "cross_exchange on_signal()에서 estimate_cost() 이중 계산 없음 확인",

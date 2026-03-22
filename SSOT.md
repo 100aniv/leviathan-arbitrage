@@ -32,9 +32,9 @@
 > Team roster: `.omc/state/team-roster.json`
 
 **Phase**: S22 회귀 진행중 (2026-03-22) — TF QF 9차 FAIL(Shadow trades=0, 블로커 3건+인프라 CRITICAL 1) → 회귀 Phase S22
-**Tests**: 5,192 passed / 0 failed / 12 skipped
+**Tests**: 5,197 passed / 0 failed / 12 skipped
 **Coverage**: 77%
-**PRD**: 313/320 passes:true (US-055/056 Phase F Live, US-316~320 S22 회귀)
+**PRD**: 318/320 passes:true (US-055/056 Phase F Live만 잔여)
 **TF Status**: S15~S21 ✅ → TF QF 9차 FAIL → **S22 회귀** → TF QF 10차 → TF SF → TF PF → TF Final → Live
 **Next**: S22 완료 → TF QF 10차 자동 진입
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
