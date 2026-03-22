@@ -8,6 +8,7 @@ on the SAME exchange. Both legs execute atomically on one exchange.
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ from pydantic import BaseModel, Field
 from src.core.models import OrderSide, OrderType, Signal, Trade
 from src.core.ou_process import OUProcess
 from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeRequest
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

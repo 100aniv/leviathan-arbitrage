@@ -35,7 +35,11 @@ def make_signal(
     spread_pct: Decimal = Decimal("0.002"),
     buy_exchange: str = "binance",
     sell_exchange: str = "okx",
+    net_profit: str | None = None,
 ) -> Signal:
+    metadata: dict = {}
+    if net_profit is not None:
+        metadata["net_profit"] = net_profit
     return Signal(
         strategy_id="cross_exchange_v1",
         symbol="BTC/USDT",
@@ -47,6 +51,7 @@ def make_signal(
         confidence=0.9,
         volume=volume,
         timestamp=datetime.now(timezone.utc),
+        metadata=metadata,
     )
 
 
@@ -137,8 +142,8 @@ async def test_no_trade_when_costs_exceed_profit():
 
     await strategy.start()
 
-    # Gross profit = (50100 - 50000) * 0.1 = 10 USDT; total cost = 200 USDT
-    result = await strategy.on_signal(make_signal(volume=Decimal("0.1")))
+    # S22: SignalGenerator pre-computes net_profit (gross 10 - cost 200 = -190)
+    result = await strategy.on_signal(make_signal(volume=Decimal("0.1"), net_profit="-190"))
 
     assert result is None
     assert strategy.metrics.signals_filtered >= 1

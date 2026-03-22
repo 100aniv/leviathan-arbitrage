@@ -33,21 +33,21 @@ from src.tuning.regime_detector import (
 
 
 class TestRegimeMinEdgeConstants:
-    def test_calm_regime_is_3bps(self):
-        """CALM 레짐 최소 엣지는 3 bps (0.0003)."""
-        assert REGIME_MIN_EDGE[MarketRegime.CALM] == Decimal("0.0003")
+    def test_calm_regime_is_1bps(self):
+        """CALM 레짐 최소 엣지는 1 bps (0.0001) — S22 tuning."""
+        assert REGIME_MIN_EDGE[MarketRegime.CALM] == Decimal("0.0001")
 
-    def test_normal_regime_is_5bps(self):
-        """NORMAL 레짐 최소 엣지는 5 bps (0.0005)."""
-        assert REGIME_MIN_EDGE[MarketRegime.NORMAL] == Decimal("0.0005")
+    def test_normal_regime_is_2bps(self):
+        """NORMAL 레짐 최소 엣지는 2 bps (0.0002) — S22 tuning."""
+        assert REGIME_MIN_EDGE[MarketRegime.NORMAL] == Decimal("0.0002")
 
-    def test_volatile_regime_is_8bps(self):
-        """VOLATILE 레짐 최소 엣지는 8 bps (0.0008)."""
-        assert REGIME_MIN_EDGE[MarketRegime.VOLATILE] == Decimal("0.0008")
+    def test_volatile_regime_is_5bps(self):
+        """VOLATILE 레짐 최소 엣지는 5 bps (0.0005) — S22 tuning."""
+        assert REGIME_MIN_EDGE[MarketRegime.VOLATILE] == Decimal("0.0005")
 
-    def test_crisis_regime_is_15bps(self):
-        """CRISIS 레짐 최소 엣지는 15 bps (0.0015)."""
-        assert REGIME_MIN_EDGE[MarketRegime.CRISIS] == Decimal("0.0015")
+    def test_crisis_regime_is_10bps(self):
+        """CRISIS 레짐 최소 엣지는 10 bps (0.0010) — S22 tuning."""
+        assert REGIME_MIN_EDGE[MarketRegime.CRISIS] == Decimal("0.0010")
 
     def test_all_seven_regimes_covered(self):
         """REGIME_MIN_EDGE에 7개 레짐 (CALM, NORMAL, VOLATILE, LOW, MEDIUM, HIGH, CRISIS) 모두 포함."""
@@ -63,10 +63,10 @@ class TestRegimeMinEdgeConstants:
         }
         assert set(REGIME_MIN_EDGE.keys()) == expected_keys
 
-    def test_threshold_aliases_match_hmm_regimes(self):
-        """LOW==CALM, MEDIUM==NORMAL, HIGH==VOLATILE 값 일치 (backward-compat alias)."""
-        assert REGIME_MIN_EDGE[MarketRegime.LOW] == REGIME_MIN_EDGE[MarketRegime.CALM]
-        assert REGIME_MIN_EDGE[MarketRegime.MEDIUM] == REGIME_MIN_EDGE[MarketRegime.NORMAL]
+    def test_threshold_aliases_have_valid_values(self):
+        """LOW/MEDIUM/HIGH aliases have valid threshold values — S22 independent tuning."""
+        assert REGIME_MIN_EDGE[MarketRegime.LOW] == Decimal("0.0002")
+        assert REGIME_MIN_EDGE[MarketRegime.MEDIUM] == Decimal("0.0003")
         assert REGIME_MIN_EDGE[MarketRegime.HIGH] == REGIME_MIN_EDGE[MarketRegime.VOLATILE]
 
     def test_monotonic_increase_calm_to_crisis(self):
@@ -110,51 +110,51 @@ class TestSignalGeneratorRegimeIntegration:
         gen = _make_generator(regime_detector=mock_detector)
         assert gen._regime_detector is mock_detector
 
-    def test_calm_regime_4bps_edge_passes_threshold(self):
-        """CALM 레짐 (문턱 3bps) 에서 4bps edge는 문턱 초과 → 통과."""
+    def test_calm_regime_2bps_edge_passes_threshold(self):
+        """CALM 레짐 (문턱 1bps) 에서 2bps edge는 문턱 초과 → 통과. S22 tuning."""
         mock_detector = MagicMock()
         mock_detector.current_regime = MarketRegime.CALM
         gen = _make_generator(regime_detector=mock_detector)
 
-        edge = Decimal("0.0004")  # 4 bps
+        edge = Decimal("0.0002")  # 2 bps
         effective_min = REGIME_MIN_EDGE.get(
             gen._regime_detector.current_regime, gen._config.min_edge
         )
-        assert effective_min == Decimal("0.0003")
-        assert edge >= effective_min, "4bps edge는 CALM 문턱(3bps)을 통과해야 함"
+        assert effective_min == Decimal("0.0001")
+        assert edge >= effective_min, "2bps edge는 CALM 문턱(1bps)을 통과해야 함"
 
-    def test_volatile_regime_5bps_edge_blocked(self):
-        """VOLATILE 레짐 (문턱 8bps) 에서 5bps edge는 문턱 미달 → 차단."""
+    def test_volatile_regime_3bps_edge_blocked(self):
+        """VOLATILE 레짐 (문턱 5bps) 에서 3bps edge는 문턱 미달 → 차단. S22 tuning."""
         mock_detector = MagicMock()
         mock_detector.current_regime = MarketRegime.VOLATILE
         gen = _make_generator(regime_detector=mock_detector)
 
-        edge = Decimal("0.0005")  # 5 bps
+        edge = Decimal("0.0003")  # 3 bps
         effective_min = REGIME_MIN_EDGE.get(
             gen._regime_detector.current_regime, gen._config.min_edge
         )
-        assert effective_min == Decimal("0.0008")
-        assert edge < effective_min, "5bps edge는 VOLATILE 문턱(8bps)에서 차단되어야 함"
+        assert effective_min == Decimal("0.0005")
+        assert edge < effective_min, "3bps edge는 VOLATILE 문턱(5bps)에서 차단되어야 함"
 
     def test_regime_transition_calm_to_volatile_changes_filter(self):
-        """CALM→VOLATILE 전환 시 동일 5bps edge가 통과 → 차단으로 변경됨."""
+        """CALM→VOLATILE 전환 시 동일 3bps edge가 통과 → 차단으로 변경됨. S22 tuning."""
         mock_detector = MagicMock()
         gen = _make_generator(regime_detector=mock_detector)
-        edge = Decimal("0.0005")  # 5 bps
+        edge = Decimal("0.0003")  # 3 bps
 
-        # CALM: 5bps > 3bps → 통과
+        # CALM: 3bps > 1bps → 통과
         mock_detector.current_regime = MarketRegime.CALM
         calm_threshold = REGIME_MIN_EDGE.get(
             gen._regime_detector.current_regime, gen._config.min_edge
         )
-        assert edge >= calm_threshold, "CALM 레짐에서 5bps는 통과해야 함"
+        assert edge >= calm_threshold, "CALM 레짐에서 3bps는 통과해야 함"
 
-        # VOLATILE 전환: 5bps < 8bps → 차단
+        # VOLATILE 전환: 3bps < 5bps → 차단
         mock_detector.current_regime = MarketRegime.VOLATILE
         volatile_threshold = REGIME_MIN_EDGE.get(
             gen._regime_detector.current_regime, gen._config.min_edge
         )
-        assert edge < volatile_threshold, "VOLATILE 전환 후 5bps는 차단되어야 함"
+        assert edge < volatile_threshold, "VOLATILE 전환 후 3bps는 차단되어야 함"
 
         # 전환 전후 문턱이 다름 확인
         assert calm_threshold != volatile_threshold

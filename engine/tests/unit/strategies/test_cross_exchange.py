@@ -28,7 +28,11 @@ def make_signal(
     buy_price: Decimal = Decimal("50000"),
     sell_price: Decimal = Decimal("50100"),
     volume: Decimal = Decimal("0.5"),
+    net_profit: str | None = None,
 ) -> Signal:
+    metadata: dict = {}
+    if net_profit is not None:
+        metadata["net_profit"] = net_profit
     return Signal(
         strategy_id="cross_exchange_spot_v1",
         symbol="BTC/USDT",
@@ -40,6 +44,7 @@ def make_signal(
         confidence=0.95,
         volume=volume,
         timestamp=datetime.now(timezone.utc),
+        metadata=metadata,
     )
 
 
@@ -64,20 +69,21 @@ async def test_signal_below_spread_threshold_returns_none():
 
 @pytest.mark.asyncio
 async def test_signal_above_threshold_generates_trade_request():
-    """20 bps spread, 1 USDT cost per leg → net profit = (50100-50000)*0.5 - 2 = 48 USDT."""
+    """20 bps spread, net_profit pre-computed by SignalGenerator = 48 USDT."""
     strategy = CrossExchangeStrategy(
         "cex_spot",
         make_calculator(Decimal("1")),
         CrossExchangeConfig(min_spread_bps=Decimal("10")),
     )
     await strategy.start()
-    signal = make_signal(spread_pct=Decimal("0.002"), volume=Decimal("0.5"))
+    # S22: SignalGenerator pre-computes net_profit (gross 50 - friction 2 = 48)
+    signal = make_signal(spread_pct=Decimal("0.002"), volume=Decimal("0.5"), net_profit="48")
     result = await strategy.on_signal(signal)
 
     assert result is not None
     assert result.strategy_id == "cex_spot"
     assert len(result.legs) == 2
-    assert result.expected_profit_usdt == Decimal("48")  # (50100-50000)*0.5 - 2
+    assert result.expected_profit_usdt == Decimal("48")  # pre-computed by SignalGenerator
 
 
 @pytest.mark.asyncio
@@ -109,12 +115,12 @@ async def test_size_capped_by_max_position_size():
 
 @pytest.mark.asyncio
 async def test_no_trade_when_costs_exceed_profit():
-    """High cost per leg makes net profit negative → return None."""
-    calc = make_calculator(Decimal("100"))  # 100 USDT per leg
+    """SignalGenerator pre-computed net_profit is negative → return None."""
+    calc = make_calculator(Decimal("100"))
     strategy = CrossExchangeStrategy("cex_spot", calc, CrossExchangeConfig(min_spread_bps=Decimal("10")))
     await strategy.start()
-    # Gross profit = (50100 - 50000) * 0.5 = 50 USDT; total cost = 200 USDT
-    signal = make_signal(volume=Decimal("0.5"))
+    # S22: SignalGenerator pre-computes net_profit (gross 50 - cost 200 = -150)
+    signal = make_signal(volume=Decimal("0.5"), net_profit="-150")
     result = await strategy.on_signal(signal)
     assert result is None
     assert strategy.metrics.signals_filtered >= 1
@@ -141,12 +147,12 @@ async def test_metrics_track_correctly():
 
 
 @pytest.mark.asyncio
-async def test_cost_calculator_called_for_both_legs():
-    calc = make_calculator()
+async def test_strategy_uses_precomputed_net_profit():
+    """S22: on_signal uses signal.metadata['net_profit'] — no estimate_cost call."""
+    calc = make_calculator(Decimal("1"))
     strategy = CrossExchangeStrategy("cex_spot", calc, CrossExchangeConfig(min_spread_bps=Decimal("10")))
     await strategy.start()
-    signal = make_signal()
-    await strategy.on_signal(signal)
-    assert calc.estimate_cost.call_count == 2
-    calls = {call.kwargs["exchange_id"] for call in calc.estimate_cost.call_args_list}
-    assert calls == {"binance", "okx"}
+    signal = make_signal(net_profit="42")
+    result = await strategy.on_signal(signal)
+    assert result is not None
+    assert result.expected_profit_usdt == Decimal("42")

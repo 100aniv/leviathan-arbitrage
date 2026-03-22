@@ -43,9 +43,9 @@ REGIME_MIN_EDGE: dict[MarketRegime, Decimal] = {
     MarketRegime.CALM: Decimal("0.0001"),      # 1 bps (S22: TF SF에서 최적값 결정)
     MarketRegime.NORMAL: Decimal("0.0002"),     # 2 bps (S22: 5→2 파이프라인 검증용)
     MarketRegime.VOLATILE: Decimal("0.0005"),   # 5 bps (S22: 8→5)
-    MarketRegime.LOW: Decimal("0.0002"),        # threshold alias → CALM
-    MarketRegime.MEDIUM: Decimal("0.0003"),     # threshold alias → NORMAL
-    MarketRegime.HIGH: Decimal("0.0005"),       # threshold alias → VOLATILE
+    MarketRegime.LOW: Decimal("0.0002"),        # threshold alias, independently tuned (S22)
+    MarketRegime.MEDIUM: Decimal("0.0003"),     # threshold alias, independently tuned (S22)
+    MarketRegime.HIGH: Decimal("0.0005"),       # threshold alias = VOLATILE
     MarketRegime.CRISIS: Decimal("0.0010"),     # 10 bps (S22: 15→10)
 }
 

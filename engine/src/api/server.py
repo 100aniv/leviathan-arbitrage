@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.api.auth import DASHBOARD_USER, require_auth, verify_password, create_token, verify_ws_token
-from src.api.middleware import IPWhitelistMiddleware, RateLimitMiddleware
+from src.api.middleware import IPWhitelistMiddleware, LoginRateLimitMiddleware, RateLimitMiddleware
 from src.api.websocket import ConnectionManager
 
 logger = logging.getLogger(__name__)
@@ -104,6 +104,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(LoginRateLimitMiddleware)
     app.add_middleware(IPWhitelistMiddleware)
 
     # Attach shared context to app state

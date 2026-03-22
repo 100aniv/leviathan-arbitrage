@@ -158,3 +158,56 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": str(self._window)},
             )
         return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# Login Rate Limit Middleware (US-319)
+# ---------------------------------------------------------------------------
+
+_LOGIN_RATE_LIMIT = 5
+_LOGIN_RATE_WINDOW = 60  # seconds
+_LOGIN_PREFIX = "/api/auth/"
+
+
+class LoginRateLimitMiddleware(BaseHTTPMiddleware):
+    """Dedicated rate limiter for /api/auth/* endpoints (brute-force protection).
+
+    Allows up to 5 requests per 60-second window per IP.
+    Stricter than the general API rate limiter to guard credential endpoints.
+    """
+
+    def __init__(self, app: ASGIApp, max_requests: int = _LOGIN_RATE_LIMIT,
+                 window_seconds: int = _LOGIN_RATE_WINDOW) -> None:
+        super().__init__(app)
+        self._max = max_requests
+        self._window = window_seconds
+        self._counts: dict[str, list[float]] = defaultdict(list)
+
+    def _is_allowed(self, ip: str) -> bool:
+        now = time.monotonic()
+        cutoff = now - self._window
+        timestamps = self._counts[ip]
+        self._counts[ip] = [t for t in timestamps if t > cutoff]
+        if len(self._counts[ip]) >= self._max:
+            return False
+        self._counts[ip].append(now)
+        return True
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if not request.url.path.startswith(_LOGIN_PREFIX):
+            return await call_next(request)
+
+        client_ip = _get_client_ip(request)
+        if not self._is_allowed(client_ip):
+            logger.warning(
+                "Login rate limit exceeded for %s on %s %s",
+                client_ip,
+                request.method,
+                request.url.path,
+            )
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too Many Requests — login rate limit exceeded"},
+                headers={"Retry-After": str(self._window)},
+            )
+        return await call_next(request)

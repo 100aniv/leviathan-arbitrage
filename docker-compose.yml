@@ -36,7 +36,7 @@ services:
       # Override .env localhost values with Docker service hostnames
       DB_HOST: timescaledb
       REDIS_HOST: redis
-      DATABASE_URL: postgresql+asyncpg://leviathan:leviathan@timescaledb:5432/leviathan
+      DATABASE_URL: postgresql+asyncpg://leviathan:${POSTGRES_PASSWORD}@timescaledb:5432/leviathan
       REDIS_URL: redis://redis:6379/0
       REDIS_PASSWORD: ${REDIS_PASSWORD:-leviathan-redis-secret}
       SHADOW_DISABLED_STRATEGIES: ${SHADOW_DISABLED_STRATEGIES:-}
@@ -128,7 +128,7 @@ services:
     cpus: 1.0
     environment:
       POSTGRES_USER: leviathan
-      POSTGRES_PASSWORD: leviathan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: leviathan
       TIMESCALEDB_TELEMETRY: "off"
     ports:
@@ -327,7 +327,7 @@ services:
       DB_HOST: timescaledb
       REDIS_HOST: redis
       REDIS_URL: redis://redis:6379/0
-      DATABASE_URL: postgresql+asyncpg://leviathan:leviathan@timescaledb:5432/leviathan
+      DATABASE_URL: postgresql+asyncpg://leviathan:${POSTGRES_PASSWORD}@timescaledb:5432/leviathan
     volumes:
       - .:/app:ro
       - /var/run/docker.sock:/var/run/docker.sock
@@ -354,7 +354,7 @@ services:
       DB_HOST: timescaledb
       REDIS_HOST: redis
       REDIS_URL: redis://redis:6379/0
-      DATABASE_URL: postgresql+asyncpg://leviathan:leviathan@timescaledb:5432/leviathan
+      DATABASE_URL: postgresql+asyncpg://leviathan:${POSTGRES_PASSWORD}@timescaledb:5432/leviathan
       TUNER_N_TRIALS: "100"
       TUNER_DATA_SOURCE: ${TUNER_DATA_SOURCE:-timescaledb}
     command: ["python", "-m", "src.tuning.scheduled_tuner"]
@@ -384,7 +384,7 @@ services:
       PGHOST: timescaledb
       PGPORT: "5432"
       PGUSER: leviathan
-      PGPASSWORD: leviathan
+      PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: leviathan
       BACKUP_DIR: /backups
       RETENTION_DAYS: "7"
@@ -460,7 +460,7 @@ services:
       PGHOST: timescaledb
       PGPORT: "5432"
       PGUSER: leviathan
-      PGPASSWORD: leviathan
+      PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: leviathan
       BACKUP_DIR: /backups
       RETENTION_DAYS: "7"

@@ -1,8 +1,8 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-21 (Phase S20-C 완료 — 3-Bot 역할 재정의 + MonitorDaemon 통합) | PRD: `.omc/prd.json` (255+42+7개 US, 315 total)
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (309 passes:true / 6 passes:false)
+> 마지막 업데이트: 2026-03-22 (Phase S21 ✅ 완료 → S22 회귀 진행중) | PRD: `.omc/prd.json` (320개 US, 313 passes:true / 7 passes:false)
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 > **실행 순서**: A~M ✅ → S1~S21 ✅ → TF QF 9차 FAIL → **S22 회귀 진행중** → TF QF 10차 → TF SF → TF PF → TF Final → Live
 
 ---
@@ -513,14 +513,14 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **진입 조건**: Phase S18 + S19 + S20 전부 완료
 > **플랜**: `.claude/plans/parallel-finding-sparrow.md`
 
-- [ ] US-297: stat_arb WFE 음수 해결 (← WFE=-1.03 원인 분석 후 cross-asset 파라미터 재최적화, 개선 안되면 비활성화)
-- [ ] US-298: 실데이터 WFE 백테스트 (← TUNER_DATA_SOURCE=timescaledb, ScheduledTuner 실행, 실데이터 WFE 재계산)
-- [ ] US-299: 전략별 독립 Shadow 30min (← 각 전략 개별 30min, Sharpe/MDD/Consistency 개별 측정)
-- [ ] US-300: 포트폴리오 통합 Shadow 1H (← 전체 전략 동시 1H, 포트폴리오 Sharpe>2.0, MDD<3%)
+- [x] US-297: stat_arb WFE 음수 해결 ✅
+- [x] US-298: 실데이터 WFE 백테스트 ✅
+- [x] US-299: 전략별 독립 Shadow 30min ✅
+- [x] US-300: 포트폴리오 통합 Shadow 1H ✅
 
 ---
 
-### TF Quarter-Final (QF): Development Verification — 9차 진행중 (2026-03-22, 8차 무효화)
+### TF Quarter-Final (QF): Development Verification — 9차 FAIL → S22 회귀 (2026-03-22)
 
 > **핵심 질문**: "코드가 올바르고, 빠진 것이 없는가?"
 > **진입 가드**: 회귀 Phase 전부 완료 + pytest 0 fail + Docker healthy

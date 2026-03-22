@@ -42,7 +42,7 @@ class TestAdaptiveThresholdDynamic:
         at = AdaptiveThreshold(
             min_samples=10, window=100,
             entry_percentile=90.0, exit_percentile=50.0,
-            static_entry=5.0, static_exit=2.5,
+            static_entry=20.0, static_exit=2.5,  # S22: raised so outlier filter allows 0-19 range (cap=20*2=40)
         )
         # Feed uniform spread data
         for i in range(100):
@@ -80,7 +80,7 @@ class TestVolatilityMultiplier:
         at = AdaptiveThreshold(
             min_samples=10, vol_lookback=10, window=200,
             entry_percentile=90.0, exit_percentile=50.0,
-            static_entry=10.0, static_exit=5.0,
+            static_entry=30.0, static_exit=5.0,  # S22: raised so outlier filter allows range 0-29
         )
         # Establish baseline with low-vol data
         for i in range(60):
@@ -89,7 +89,7 @@ class TestVolatilityMultiplier:
 
         # Now inject high-vol data
         for i in range(60):
-            at.update(float(i % 30))  # wide range
+            at.update(float(i % 30))  # wide range (0-29, all < 30*2=60 cap)
         entry_volatile, _ = at.thresholds
 
         # High-vol entry should be >= calm entry (volatility multiplier effect)
@@ -122,7 +122,8 @@ class TestPercentileCalculation:
         assert at._percentile(50.0) == 7.5
 
     def test_known_percentiles(self):
-        at = AdaptiveThreshold(window=100)
+        # S22: static_entry=100 so outlier filter allows all values 1-100
+        at = AdaptiveThreshold(window=100, static_entry=100.0)
         for i in range(1, 101):
             at.update(float(i))
         # 50th percentile of 1-100 ≈ 50.5

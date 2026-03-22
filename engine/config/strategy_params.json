@@ -47,22 +47,25 @@
     "stop_loss_pct": 0.005
   },
   "cross_exchange": {
-    "min_spread_bps": 5.0,
+    "min_spread_bps": 2.0,
+    "min_book_depth_usd": 1.0,
+    "max_position_size_usdt": 9767,
     "status": "READY",
     "wfe": 1.2,
-    "data_type": "synthetic_gbm"
+    "data_type": "live_shadow"
   },
   "futures_futures": {
-    "status": "MONITOR",
-    "wfe": 0.28,
-    "min_spread_bps": 5,
+    "status": "READY",
+    "wfe": 0.6,
+    "min_spread_bps": 5.0,
+    "min_book_depth_usd": 1.0,
     "max_position_size_usdt": 1738,
     "entry_threshold": 0.00121,
     "exit_threshold": 0.000197,
     "stop_loss_pct": 0.005
   },
   "statistical_arb": {
-    "status": "DISABLED",
+    "status": "MONITOR",
     "wfe": -1.03,
     "max_position_size_usdt": 4706,
     "entry_threshold": 0.000188,

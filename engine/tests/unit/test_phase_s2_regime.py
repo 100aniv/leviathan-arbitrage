@@ -26,32 +26,32 @@ from src.tuning.regime_detector import (
 class TestRegimeMinEdgeValues:
     """US-131: REGIME_MIN_EDGE dict must contain correct bps thresholds."""
 
-    def test_calm_min_edge_is_3bps(self):
-        """CALM → 0.0003 (3 bps)."""
-        assert REGIME_MIN_EDGE[MarketRegime.CALM] == Decimal("0.0003")
+    def test_calm_min_edge_is_1bps(self):
+        """CALM → 0.0001 (1 bps) — S22 tuning."""
+        assert REGIME_MIN_EDGE[MarketRegime.CALM] == Decimal("0.0001")
 
-    def test_normal_min_edge_is_5bps(self):
-        """NORMAL → 0.0005 (5 bps)."""
-        assert REGIME_MIN_EDGE[MarketRegime.NORMAL] == Decimal("0.0005")
+    def test_normal_min_edge_is_2bps(self):
+        """NORMAL → 0.0002 (2 bps) — S22 tuning."""
+        assert REGIME_MIN_EDGE[MarketRegime.NORMAL] == Decimal("0.0002")
 
-    def test_volatile_min_edge_is_8bps(self):
-        """VOLATILE → 0.0008 (8 bps)."""
-        assert REGIME_MIN_EDGE[MarketRegime.VOLATILE] == Decimal("0.0008")
+    def test_volatile_min_edge_is_5bps(self):
+        """VOLATILE → 0.0005 (5 bps) — S22 tuning."""
+        assert REGIME_MIN_EDGE[MarketRegime.VOLATILE] == Decimal("0.0005")
 
-    def test_crisis_min_edge_is_15bps(self):
-        """CRISIS → 0.0015 (15 bps)."""
-        assert REGIME_MIN_EDGE[MarketRegime.CRISIS] == Decimal("0.0015")
+    def test_crisis_min_edge_is_10bps(self):
+        """CRISIS → 0.0010 (10 bps) — S22 tuning."""
+        assert REGIME_MIN_EDGE[MarketRegime.CRISIS] == Decimal("0.0010")
 
-    def test_low_alias_matches_calm(self):
-        """LOW alias → same as CALM (3 bps)."""
-        assert REGIME_MIN_EDGE[MarketRegime.LOW] == REGIME_MIN_EDGE[MarketRegime.CALM]
+    def test_low_alias_is_2bps(self):
+        """LOW alias → 0.0002 (2 bps) — S22 threshold alias."""
+        assert REGIME_MIN_EDGE[MarketRegime.LOW] == Decimal("0.0002")
 
-    def test_medium_alias_matches_normal(self):
-        """MEDIUM alias → same as NORMAL (5 bps)."""
-        assert REGIME_MIN_EDGE[MarketRegime.MEDIUM] == REGIME_MIN_EDGE[MarketRegime.NORMAL]
+    def test_medium_alias_is_3bps(self):
+        """MEDIUM alias → 0.0003 (3 bps) — S22 threshold alias."""
+        assert REGIME_MIN_EDGE[MarketRegime.MEDIUM] == Decimal("0.0003")
 
     def test_high_alias_matches_volatile(self):
-        """HIGH alias → same as VOLATILE (8 bps)."""
+        """HIGH alias → same as VOLATILE (5 bps)."""
         assert REGIME_MIN_EDGE[MarketRegime.HIGH] == REGIME_MIN_EDGE[MarketRegime.VOLATILE]
 
     def test_all_regimes_have_min_edge(self):

@@ -23,6 +23,7 @@ from starlette.routing import Route
 
 from src.api.middleware import (
     IPWhitelistMiddleware,
+    LoginRateLimitMiddleware,
     RateLimitMiddleware,
     _get_client_ip,
     _parse_allowed_ips,
@@ -235,6 +236,93 @@ async def test_rate_limit_window_expiry():
     async with AsyncClient(transport=ASGITransport(app=middleware), base_url="http://test") as client:
         resp3 = await client.get("/api/v1/test")
     assert resp3.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# LoginRateLimitMiddleware (US-319)
+# ---------------------------------------------------------------------------
+
+def _make_auth_app() -> Starlette:
+    """Starlette app with /api/auth/login and /api/v1/test routes."""
+    async def login_handler(request: Request) -> PlainTextResponse:
+        return PlainTextResponse("logged in")
+
+    async def api_handler(request: Request) -> PlainTextResponse:
+        return PlainTextResponse("ok")
+
+    return Starlette(routes=[
+        Route("/api/auth/login", login_handler, methods=["POST"]),
+        Route("/api/v1/test", api_handler),
+    ])
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limit_allows_within_limit():
+    """Requests within the 5/min limit pass through."""
+    base = _make_auth_app()
+    middleware = LoginRateLimitMiddleware(base, max_requests=5, window_seconds=60)
+    async with AsyncClient(transport=ASGITransport(app=middleware), base_url="http://test") as client:
+        for _ in range(5):
+            resp = await client.post("/api/auth/login")
+            assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limit_blocks_over_limit():
+    """6th request within the window gets 429."""
+    base = _make_auth_app()
+    middleware = LoginRateLimitMiddleware(base, max_requests=5, window_seconds=60)
+    async with AsyncClient(transport=ASGITransport(app=middleware), base_url="http://test") as client:
+        for _ in range(5):
+            await client.post("/api/auth/login")
+        resp = await client.post("/api/auth/login")
+        assert resp.status_code == 429
+        assert "login rate limit" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limit_does_not_affect_api_v1():
+    """/api/v1/* routes are not subject to login rate limiting."""
+    base = _make_auth_app()
+    middleware = LoginRateLimitMiddleware(base, max_requests=1, window_seconds=60)
+    async with AsyncClient(transport=ASGITransport(app=middleware), base_url="http://test") as client:
+        # Exhaust login limit
+        await client.post("/api/auth/login")
+        # /api/v1/ should still work
+        resp = await client.get("/api/v1/test")
+        assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limit_window_expiry():
+    """After window expires, counter resets."""
+    base = _make_auth_app()
+    middleware = LoginRateLimitMiddleware(base, max_requests=1, window_seconds=1)
+    async with AsyncClient(transport=ASGITransport(app=middleware), base_url="http://test") as client:
+        resp1 = await client.post("/api/auth/login")
+        assert resp1.status_code == 200
+        resp2 = await client.post("/api/auth/login")
+        assert resp2.status_code == 429
+
+    # Backdate timestamps to simulate window expiry
+    for ip in middleware._counts:
+        middleware._counts[ip] = [t - 2 for t in middleware._counts[ip]]
+
+    async with AsyncClient(transport=ASGITransport(app=middleware), base_url="http://test") as client:
+        resp3 = await client.post("/api/auth/login")
+    assert resp3.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limit_retry_after_header():
+    """429 response includes Retry-After header."""
+    base = _make_auth_app()
+    middleware = LoginRateLimitMiddleware(base, max_requests=1, window_seconds=60)
+    async with AsyncClient(transport=ASGITransport(app=middleware), base_url="http://test") as client:
+        await client.post("/api/auth/login")
+        resp = await client.post("/api/auth/login")
+        assert resp.status_code == 429
+        assert resp.headers.get("retry-after") == "60"
 
 
 # ---------------------------------------------------------------------------

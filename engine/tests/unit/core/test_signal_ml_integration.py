@@ -116,42 +116,42 @@ class TestHMMRegimeDetector:
         assert result == expected
 
     def test_regime_min_edge_mapping_calm(self):
-        """CALM regime maps to 3 bps minimum edge."""
+        """CALM regime maps to 1 bps minimum edge — S22 tuning."""
         from src.tuning.regime_detector import REGIME_MIN_EDGE, MarketRegime
         edge = REGIME_MIN_EDGE[MarketRegime.CALM]
-        assert edge == Decimal("0.0003")
+        assert edge == Decimal("0.0001")
 
     def test_regime_min_edge_mapping_normal(self):
-        """NORMAL regime maps to 5 bps minimum edge."""
+        """NORMAL regime maps to 2 bps minimum edge — S22 tuning."""
         from src.tuning.regime_detector import REGIME_MIN_EDGE, MarketRegime
         edge = REGIME_MIN_EDGE[MarketRegime.NORMAL]
-        assert edge == Decimal("0.0005")
+        assert edge == Decimal("0.0002")
 
     def test_regime_min_edge_mapping_volatile(self):
-        """VOLATILE regime maps to 8 bps minimum edge."""
+        """VOLATILE regime maps to 5 bps minimum edge — S22 tuning."""
         from src.tuning.regime_detector import REGIME_MIN_EDGE, MarketRegime
         edge = REGIME_MIN_EDGE[MarketRegime.VOLATILE]
-        assert edge == Decimal("0.0008")
+        assert edge == Decimal("0.0005")
 
     def test_regime_min_edge_mapping_crisis(self):
-        """CRISIS regime maps to 15 bps minimum edge."""
+        """CRISIS regime maps to 10 bps minimum edge — S22 tuning."""
         from src.tuning.regime_detector import REGIME_MIN_EDGE, MarketRegime
         edge = REGIME_MIN_EDGE[MarketRegime.CRISIS]
-        assert edge == Decimal("0.0015")
+        assert edge == Decimal("0.0010")
 
     def test_effective_min_edge_uses_max(self):
         """effective_min_edge = max(adaptive_edge, regime_edge)."""
         from src.tuning.regime_detector import REGIME_MIN_EDGE, MarketRegime
         adaptive_edge = Decimal("0.0006")
-        regime_edge = REGIME_MIN_EDGE[MarketRegime.VOLATILE]  # 0.0008
+        regime_edge = REGIME_MIN_EDGE[MarketRegime.VOLATILE]  # 0.0005
         effective = max(adaptive_edge, regime_edge)
-        assert effective == Decimal("0.0008")
+        assert effective == Decimal("0.0006")
 
     def test_effective_min_edge_uses_adaptive_when_higher(self):
         """When adaptive_edge > regime_edge, adaptive_edge wins."""
         from src.tuning.regime_detector import REGIME_MIN_EDGE, MarketRegime
         adaptive_edge = Decimal("0.002")
-        regime_edge = REGIME_MIN_EDGE[MarketRegime.CALM]  # 0.0003
+        regime_edge = REGIME_MIN_EDGE[MarketRegime.CALM]  # 0.0001
         effective = max(adaptive_edge, regime_edge)
         assert effective == Decimal("0.002")
 
