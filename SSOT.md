@@ -34,7 +34,7 @@
 **Phase**: TF-QF 10차 진입 (2026-03-22) — S22 회귀 ✅ 완료 (Shadow 24trades, 5197 tests)
 **Tests**: 5,200 passed / 0 failed / 12 skipped
 **Coverage**: 77%
-**PRD**: 320/322 passes:true (US-055/056 Phase F Live만 잔여)
+**PRD**: 321/323 passes:true (US-055/056 Phase F Live만 잔여)
 **TF Status**: S1~S23 ✅ → TF QF 11차 PASS → **TF SF** → TF PF → TF Final → Live
 **Next**: TF SF 단계 2 Progressive Shadow 24H
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)

@@ -5943,6 +5943,22 @@
       "files": [
         "engine/src/strategies/spot_futures.py"
       ]
+    },
+    {
+      "id": "US-323",
+      "phase": "S24",
+      "title": "SignalGenerator regime override 조건부화 (← TF QF trades=0 근본 원인)",
+      "description": "REGIME_MIN_EDGE가 MIN_EDGE_BPS=0 설정을 무조건 오버라이드하여 trades=0. config.min_edge > 0일 때만 regime override 적용.",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "MIN_EDGE_BPS=0 시 regime override 비활성화",
+        "MIN_EDGE_BPS>0 시 기존 regime override 동작 보존",
+        "Shadow 2min trades > 0 확인"
+      ],
+      "files": [
+        "engine/src/core/signal.py"
+      ]
     }
   ]
 }
