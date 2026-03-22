@@ -162,6 +162,8 @@ class DataQualityManager:
     def __init__(self) -> None:
         # Per-exchange HealthChecker instances (lazy init)
         self._health_checkers: dict[str, HealthChecker] = {}
+        # Exchanges marked as always-healthy (Paper adapters bypass HealthChecker)
+        self._always_healthy: set[str] = set()
         # Anomaly detector
         self._anomaly = AnomalyDetector()
         # Blacklist: (exchange, symbol) -> expiry monotonic time
@@ -179,9 +181,18 @@ class DataQualityManager:
     # Registration & Health (US-288)
     # ------------------------------------------------------------------
 
-    def register_exchange(self, exchange_id: str) -> None:
-        """Explicitly register an exchange for health tracking."""
-        self.get_or_create_health_checker(exchange_id)
+    def register_exchange(self, exchange_id: str, *, always_healthy: bool = False) -> None:
+        """Explicitly register an exchange for health tracking.
+
+        Args:
+            exchange_id: Exchange identifier.
+            always_healthy: If True, bypass HealthChecker and always return 1.0.
+                            Use for Paper/synthetic adapters that have no real WS feed.
+        """
+        if always_healthy:
+            self._always_healthy.add(exchange_id)
+        else:
+            self.get_or_create_health_checker(exchange_id)
 
     def get_or_create_health_checker(self, exchange_id: str) -> HealthChecker:
         """Get existing or lazily create a HealthChecker for an exchange."""
@@ -194,6 +205,8 @@ class DataQualityManager:
 
     def get_health_score(self, exchange_id: str) -> float:
         """Get health score for a single exchange (0.0-1.0)."""
+        if exchange_id in self._always_healthy:
+            return 1.0  # Paper/synthetic adapter — no real WS feed to measure
         checker = self._health_checkers.get(exchange_id)
         if checker is None:
             return 1.0  # optimistic if not registered

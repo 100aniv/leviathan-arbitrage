@@ -1113,10 +1113,12 @@ class Engine:
         # US-286: DataQualityManager → RiskGuardian Check #5
         try:
             from src.core.data_quality_manager import DataQualityManager
+            from src.execution.paper_adapter import PaperExchangeAdapter
             self._data_quality_manager = DataQualityManager()
-            # Register known exchanges
-            for eid in self._exchanges:
-                self._data_quality_manager.register_exchange(eid)
+            # Register known exchanges (Paper adapters → always_healthy=True)
+            for eid, adapter in self._exchanges.items():
+                is_paper = isinstance(adapter, PaperExchangeAdapter)
+                self._data_quality_manager.register_exchange(eid, always_healthy=is_paper)
             if self._risk_guardian is not None:
                 self._risk_guardian.data_quality_manager = self._data_quality_manager
             logger.info("DataQualityManager initialized (%d exchanges)", len(self._exchanges))

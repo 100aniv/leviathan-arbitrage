@@ -172,6 +172,128 @@ def cmd_checkpoint_history(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# checkpoint apply 커맨드
+# ---------------------------------------------------------------------------
+
+def cmd_checkpoint_apply(args: argparse.Namespace) -> int:
+    """체크포인트를 실제 state 파일에 적용 (restore + 덮어쓰기)."""
+    from src.workflow.checkpoint_engine import WorkflowCheckpointer
+
+    root = Path(args.root) if args.root else _find_project_root()
+    db_path = root / ".omc" / "state" / "checkpoints.db"
+
+    if not db_path.exists():
+        print("[에러] 체크포인트 DB가 없습니다.", file=sys.stderr)
+        return 2
+
+    with WorkflowCheckpointer(db_path=str(db_path)) as cp:
+        state = cp.restore_latest(phase=args.phase or None)
+        if state is None:
+            print("[에러] 복원할 체크포인트가 없습니다.", file=sys.stderr)
+            return 2
+
+    # 실제 state 파일에 덮어쓰기
+    state_dir = root / ".omc" / "state"
+    phase = state.get("phase", "")
+    stage = state.get("stage", "")
+
+    active = {"current_phase": phase, "phase": phase, "status": "in_progress"}
+    prd_pass = state.get("prd_pass_count")
+    prd_total = state.get("prd_total_count")
+    if prd_pass is not None and prd_total is not None:
+        active["prd"] = {"passed": prd_pass, "total_stories": prd_total}
+    test_count = state.get("test_count")
+    if test_count is not None:
+        active["tests"] = {"passed": test_count, "failed": 0, "skipped": 12}
+
+    (state_dir / "leviathan-active-phase.json").write_text(
+        json.dumps(active, ensure_ascii=False), encoding="utf-8"
+    )
+    (state_dir / "leviathan-current-stage.json").write_text(
+        json.dumps({"phase": phase, "stage": stage, "step": f"{stage}-Step1"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    # progress.json 업데이트 (기존 필드 보존)
+    progress_path = state_dir / "leviathan-progress.json"
+    existing = {}
+    if progress_path.exists():
+        try:
+            existing = json.loads(progress_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    existing.update({"current_phase": phase, "current_stage": stage, "status": "in_progress"})
+    progress_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    cp_id = state.get("_restored_from", "unknown")
+    print(f"[OK] 체크포인트 '{cp_id}' → state 파일 3개 적용 완료 (phase={phase}, stage={stage})")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# sync 커맨드
+# ---------------------------------------------------------------------------
+
+def cmd_sync(args: argparse.Namespace) -> int:
+    """7개 파일 원자적 동기화."""
+    from src.workflow.sync import WorkflowSync, SyncParams
+
+    root = Path(args.root) if args.root else _find_project_root()
+    params = SyncParams(
+        phase=args.phase,
+        stage=args.stage or "pending",
+        step=args.step or "",
+        status=args.status or "in_progress",
+        tests_passed=args.tests,
+        prd_pass=args.prd_pass,
+        prd_total=args.prd_total,
+    )
+
+    ws = WorkflowSync(root=root)
+    ok, msg = ws.sync(params)
+    print(f"{'[OK]' if ok else '[FAIL]'} {msg}")
+    return 0 if ok else 1
+
+
+# ---------------------------------------------------------------------------
+# transition 커맨드
+# ---------------------------------------------------------------------------
+
+def cmd_transition(args: argparse.Namespace) -> int:
+    """FSM 상태 전환."""
+    from src.workflow.fsm import WorkflowFSM, InvalidTransition
+
+    root = Path(args.root) if args.root else _find_project_root()
+    fsm = WorkflowFSM(root=root)
+
+    if args.event == "status":
+        from src.workflow.fsm import STATE_LABELS
+        label = STATE_LABELS.get(fsm.current_state, "")
+        allowed = fsm.get_allowed_events()
+        print(f"현재 상태: {fsm.current_state} ({label})")
+        print(f"허용 이벤트: {', '.join(allowed) if allowed else '없음 (종료 상태)'}")
+        return 0
+
+    if args.event == "set":
+        if not args.state:
+            print("[에러] --state 인자가 필요합니다.", file=sys.stderr)
+            return 2
+        fsm.set_state(args.state)
+        print(f"[OK] 상태 강제 설정: {args.state}")
+        return 0
+
+    try:
+        new_state = fsm.transition(args.event)
+        from src.workflow.fsm import STATE_LABELS
+        label = STATE_LABELS.get(new_state, "")
+        print(f"[OK] 전환 완료: {new_state} ({label})")
+        return 0
+    except InvalidTransition as exc:
+        print(f"[FAIL] {exc}", file=sys.stderr)
+        return 1
+
+
+# ---------------------------------------------------------------------------
 # 인자 파서
 # ---------------------------------------------------------------------------
 
@@ -242,6 +364,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="최대 표시 수 (기본: 20)",
     )
     p_hist.set_defaults(func=cmd_checkpoint_history)
+
+    # checkpoint apply
+    p_apply = cp_sub.add_parser("apply", help="체크포인트를 state 파일에 실제 적용")
+    p_apply.add_argument("--phase", metavar="PHASE", default=None, help="Phase로 필터링")
+    p_apply.set_defaults(func=cmd_checkpoint_apply)
+
+    # sync
+    p_sync = sub.add_parser("sync", help="7개 파일 원자적 동기화")
+    p_sync.add_argument("--phase", required=True, help="Phase (예: TF-QF)")
+    p_sync.add_argument("--stage", default="pending", help="Stage (기본: pending)")
+    p_sync.add_argument("--step", default="", help="Step")
+    p_sync.add_argument("--status", default="in_progress", help="상태 (기본: in_progress)")
+    p_sync.add_argument("--tests", type=int, default=None, help="테스트 통과 수")
+    p_sync.add_argument("--prd-pass", type=int, default=None, help="PRD 통과 수")
+    p_sync.add_argument("--prd-total", type=int, default=None, help="PRD 전체 수")
+    p_sync.set_defaults(func=cmd_sync)
+
+    # transition
+    p_trans = sub.add_parser("transition", help="FSM 상태 전환")
+    p_trans.add_argument("event", help="이벤트 (예: shadow_pass, entry_gate_pass) 또는 status/set")
+    p_trans.add_argument("--state", default=None, help="set 시 강제 설정할 상태")
+    p_trans.set_defaults(func=cmd_transition)
 
     return parser
 

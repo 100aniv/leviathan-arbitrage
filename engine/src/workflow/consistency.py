@@ -95,6 +95,10 @@ class ConsistencyChecker:
         report.checks.append(self._check_active_phase())
         report.checks.append(self._check_test_count())
         report.checks.append(self._check_ssot_hash_drift())
+        report.checks.append(self._check_claude_md_sync())
+        report.checks.append(self._check_state_files_sync())
+        report.checks.append(self._check_ssot_phase_history())
+        report.checks.append(self._check_tf_status_consistency())
         return report
 
     # ------------------------------------------------------------------
@@ -361,6 +365,147 @@ class ConsistencyChecker:
         if m:
             return int(m.group(1).replace(",", ""))
         return None
+
+    # ------------------------------------------------------------------
+    # 검사 6~9: 확장 (2026-03-22 Phase 2)
+    # ------------------------------------------------------------------
+
+    def _check_claude_md_sync(self) -> CheckResult:
+        """검사 6: CLAUDE.md ↔ SSOT.md 현재 Phase 동기화."""
+        claude_md = self.root / ".claude" / "CLAUDE.md"
+        if not claude_md.exists():
+            return CheckResult("CLAUDE_MD_동기화", "ERROR", "CLAUDE.md 없음", "HIGH")
+
+        try:
+            claude_text = claude_md.read_text(encoding="utf-8")
+        except OSError as exc:
+            return CheckResult("CLAUDE_MD_동기화", "ERROR", f"CLAUDE.md 읽기 실패: {exc}", "HIGH")
+
+        # CLAUDE.md에서 Phase 추출 (마커 기반 또는 **Phase 순서** 패턴)
+        import re as _re
+        claude_phase = None
+        # 마커 기반
+        m = _re.search(r"<!-- SYNC:PHASE -->(.+?)<!-- /SYNC:PHASE -->", claude_text)
+        if m:
+            claude_phase = m.group(1).strip().split("(")[0].strip()  # "TF-QF (in_progress)" → "TF-QF"
+        else:
+            # 폴백: **Phase 순서** 패턴
+            m = _re.search(r"\*\*Phase 순서\*\*:.*?→\s*\*\*(.+?)\*\*", claude_text)
+            if m:
+                claude_phase = m.group(1).strip()
+
+        ssot_phase = self._parse_ssot_current_phase()
+
+        if claude_phase is None:
+            return CheckResult("CLAUDE_MD_동기화", "OK", "CLAUDE.md에 Phase 마커 없음 — 스킵", "INFO")
+
+        if ssot_phase and claude_phase != ssot_phase:
+            return CheckResult(
+                "CLAUDE_MD_동기화", "DRIFT",
+                f"CLAUDE.md '{claude_phase}' != SSOT '{ssot_phase}'", "HIGH",
+            )
+        return CheckResult("CLAUDE_MD_동기화", "OK", f"CLAUDE.md ↔ SSOT Phase 일치: {claude_phase or ssot_phase}")
+
+    def _check_state_files_sync(self) -> CheckResult:
+        """검사 7: State 4파일 Phase 일치 (active-phase, current-stage, progress, tf-status)."""
+        phases: dict[str, Optional[str]] = {}
+
+        for name, key in [
+            ("active-phase", "current_phase"),
+            ("current-stage", "phase"),
+            ("progress", "current_phase"),
+        ]:
+            path = self.state_dir / f"leviathan-{name}.json"
+            if path.exists():
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    phases[name] = data.get(key)
+                except (json.JSONDecodeError, OSError):
+                    phases[name] = None
+            else:
+                phases[name] = None
+
+        # 값이 있는 것끼리 비교
+        present = {k: v for k, v in phases.items() if v is not None}
+        if not present:
+            return CheckResult("State_4파일_동기화", "ERROR", "State 파일에서 Phase를 찾을 수 없음", "HIGH")
+
+        unique_phases = set(present.values())
+        if len(unique_phases) > 1:
+            detail = ", ".join(f"{k}='{v}'" for k, v in present.items())
+            return CheckResult(
+                "State_4파일_동기화", "DRIFT",
+                f"State 파일 Phase 불일치: {detail}", "HIGH",
+            )
+        return CheckResult(
+            "State_4파일_동기화", "OK",
+            f"State 3파일 Phase 일치: {next(iter(unique_phases))}",
+        )
+
+    def _check_ssot_phase_history(self) -> CheckResult:
+        """검사 8: SSOT §7의 Phase 헤더에 완료 표시가 있는지."""
+        try:
+            text = self.ssot_path.read_text(encoding="utf-8")
+        except OSError:
+            return CheckResult("Phase_이력_완료표시", "ERROR", "SSOT.md 읽기 실패", "MEDIUM")
+
+        import re as _re
+        # "#### Phase S15: ... ✅" 또는 "#### Phase S15: ... — US-XXX ✅ 완료"
+        phase_headers = _re.findall(r"####\s+Phase\s+(S\d+[A-Z\-]*):\s*(.+)", text)
+        incomplete = []
+        for phase_id, header_text in phase_headers:
+            # "✅" 또는 "완료" 키워드가 헤더에 있는지
+            if "✅" not in header_text and "완료" not in header_text:
+                incomplete.append(phase_id)
+
+        if incomplete:
+            return CheckResult(
+                "Phase_이력_완료표시", "DRIFT",
+                f"SSOT §7에 완료 표시 없는 Phase: {', '.join(incomplete[:5])}", "MEDIUM",
+            )
+        return CheckResult("Phase_이력_완료표시", "OK", f"SSOT §7 Phase 헤더 {len(phase_headers)}개 완료 표시 확인")
+
+    def _check_tf_status_consistency(self) -> CheckResult:
+        """검사 9: TF status JSON ↔ SSOT TF 섹션 일치."""
+        tf_path = self.state_dir / "leviathan-tf-status.json"
+        if not tf_path.exists():
+            return CheckResult("TF_Status_일치", "OK", "TF status 파일 없음 — 스킵", "INFO")
+
+        try:
+            tf_data = json.loads(tf_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            return CheckResult("TF_Status_일치", "ERROR", f"TF status 읽기 실패: {exc}", "HIGH")
+
+        qf = tf_data.get("qf", {})
+        qf_status = qf.get("status", "UNKNOWN")
+        qf_round = qf.get("round", 0)
+
+        # SSOT에서 TF QF 섹션 확인
+        try:
+            ssot_text = self.ssot_path.read_text(encoding="utf-8")
+        except OSError:
+            return CheckResult("TF_Status_일치", "ERROR", "SSOT.md 읽기 실패", "HIGH")
+
+        import re as _re
+        drifts = []
+
+        # QF PASS/IN_PROGRESS 상태 vs SSOT "PASS N차" 표시
+        if qf_status == "PASS":
+            if "QF" in ssot_text and "PASS" not in ssot_text.split("QF")[1][:200]:
+                drifts.append(f"TF status QF=PASS but SSOT에 QF PASS 미기록")
+        elif qf_status == "IN_PROGRESS":
+            if "QF" in ssot_text and "진행중" not in ssot_text.split("QF")[1][:200]:
+                drifts.append(f"TF status QF=IN_PROGRESS but SSOT에 '진행중' 미기록")
+
+        if drifts:
+            return CheckResult(
+                "TF_Status_일치", "DRIFT",
+                f"TF ↔ SSOT 불일치: {'; '.join(drifts)}", "MEDIUM",
+            )
+        return CheckResult(
+            "TF_Status_일치", "OK",
+            f"TF QF round={qf_round}, status={qf_status} — SSOT 일치",
+        )
 
     # ------------------------------------------------------------------
     # 유틸리티
