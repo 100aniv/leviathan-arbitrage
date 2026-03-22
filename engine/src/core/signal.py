@@ -355,9 +355,7 @@ class SignalGenerator:
                 effective_min_edge = self._config.min_edge
         else:
             effective_min_edge = self._config.min_edge
-        if self._regime_detector is not None and self._config.min_edge > Decimal("0"):
-            # S24: Regime override only when user sets non-zero min_edge.
-            # MIN_EDGE_BPS=0 means "pass all profitable signals" — regime should not block.
+        if self._regime_detector is not None:
             from src.tuning.regime_detector import REGIME_MIN_EDGE, MarketRegime
             regime = self._regime_detector.current_regime
             # US-173: CRISIS timeout — reset to HIGH after 30 minutes
@@ -370,8 +368,11 @@ class SignalGenerator:
                     self._crisis_start_time = None
             else:
                 self._crisis_start_time = None
-            regime_edge = REGIME_MIN_EDGE.get(regime, self._config.min_edge)
-            effective_min_edge = max(effective_min_edge, regime_edge)
+            # S24: CRISIS always enforced (safety). Non-CRISIS only when min_edge > 0.
+            is_crisis = regime in (MarketRegime.CRISIS, MarketRegime.HIGH)
+            if is_crisis or self._config.min_edge > Decimal("0"):
+                regime_edge = REGIME_MIN_EDGE.get(regime, self._config.min_edge)
+                effective_min_edge = max(effective_min_edge, regime_edge)
         if net_edge < effective_min_edge:
             # DIAG: log near-miss signals for filter tuning
             net_edge_bps = float(net_edge * 10000)
