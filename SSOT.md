@@ -3,7 +3,7 @@
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-21 (Phase S20-C 완료 — 3-Bot 역할 재정의 + MonitorDaemon 통합) | PRD: `.omc/prd.json` (255+42+7개 US, 315 total)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | PRD: `.omc/prd.json` (309 passes:true / 6 passes:false)
-> **실행 순서**: A~M ✅ → S1~S14 ✅ → TF QF 7차 ✅ → TF SF Stage 4 PASS → TF SF 중단 (9H) → **S15~S21 ✅** → **TF QF 8차 진행중** → TF SF → TF PF → TF Final → Live
+> **실행 순서**: A~M ✅ → S1~S21 ✅ → **TF QF 9차 진행중** → TF SF → TF PF → TF Final → Live
 
 ---
 
@@ -31,11 +31,11 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: TF QF 9차 진행중 (2026-03-22) — QF 8차 무효화(Shadow trades=0, DQM health=0.45) → 9차 재검증
-**Tests**: 5,181 passed / 0 failed / 12 skipped
+**Phase**: TF-QF 9차 진행중 (2026-03-22) — QF 8차 무효화(Shadow trades=0, DQM health=0.45) → 9차 재검증
+**Tests**: 5,242 passed / 0 failed / 12 skipped
 **Coverage**: 77%
 **PRD**: 313/315 passes:true (US-055/056 Phase F Live전환 = TF Final 후)
-**TF Status**: S15~S21 ✅ → **TF QF 8차 진행중** → TF SF → TF PF → TF Final → Live
+**TF Status**: S15~S21 ✅ → **TF-QF 9차 진행중** → TF SF → TF PF → TF Final → Live
 **Next**: TF QF PASS → TF SF 24H Shadow
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
@@ -507,7 +507,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-307: InfraBot 시스템 리소스 4→7 (← /resources psutil CPU/메모리/디스크/네트워크/Top프로세스, /metrics Prometheus, /restart 2단계 확인) ✅
 - [x] US-308: S20-B SSOT/prd.json/CLAUDE.md 동기화 + Stage C 검증 ✅
 
-#### Phase S21: 전략 포트폴리오 최적화 + Live 준비 — US-297~300
+#### Phase S21: 전략 포트폴리오 최적화 + Live 준비 — US-297~300 ✅
 
 > **목표**: S15~S20 전체 완성 후 포트폴리오 최종 최적화. 실데이터 WFE + 통합 1H Shadow
 > **진입 조건**: Phase S18 + S19 + S20 전부 완료
@@ -520,7 +520,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-### TF Quarter-Final (QF): Development Verification — ✅ PASS 7차 (2026-03-18)
+### TF Quarter-Final (QF): Development Verification — 9차 진행중 (2026-03-22, 8차 무효화)
 
 > **핵심 질문**: "코드가 올바르고, 빠진 것이 없는가?"
 > **진입 가드**: 회귀 Phase 전부 완료 + pytest 0 fail + Docker healthy

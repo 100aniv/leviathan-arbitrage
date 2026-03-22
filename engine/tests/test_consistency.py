@@ -620,6 +620,13 @@ class TestCliCheckAll:
             ),
             encoding="utf-8",
         )
+        # 검사 6: CLAUDE.md 동기화 — .claude/CLAUDE.md 필요
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        (claude_dir / "CLAUDE.md").write_text(
+            "- **Phase 순서**: **S13** 진행중\n",
+            encoding="utf-8",
+        )
 
         결과 = main(["--root", str(tmp_path), "check_all"])
 
@@ -648,6 +655,13 @@ class TestCliCheckAll:
                     "tests": {"passed": 4695},
                 }
             ),
+            encoding="utf-8",
+        )
+        # 검사 6: CLAUDE.md 필요 (ERROR 방지)
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        (claude_dir / "CLAUDE.md").write_text(
+            "- **Phase 순서**: **S13** 진행중\n",
             encoding="utf-8",
         )
 

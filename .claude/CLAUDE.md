@@ -274,7 +274,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S21✅ → **TF QF 8차 진행중** → TF SF → TF PF → TF Final → Live
+- **Phase 순서**: A~M✅ → S1~S21✅ → **TF-QF** 9차 진행중 → TF SF → TF PF → TF Final → Live
 - **Tests**: 5,242 passed, 0 failed, 12 skipped
 - **PRD**: `.omc/prd.json` (315개 US, 313 passes:true / 2 passes:false — US-055/056 Phase F Live전환)
 - **다음 작업**: TF QF PASS → TF SF 24H Shadow → TF PF → TF Final → Live
