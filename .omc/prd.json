@@ -5909,6 +5909,40 @@
         "cross_exchange on_signal()에서 estimate_cost() 이중 계산 없음 확인",
         "Shadow 10min에서 adaptive threshold < 50bps 확인"
       ]
+    },
+    {
+      "id": "US-321",
+      "phase": "S23",
+      "title": "LoginRateLimitMiddleware _counts IP cleanup 메커니즘 (← TF QF 10차 quorum MUST FIX)",
+      "description": "in-memory _counts dict에 stale IP 정리 로직 추가. 장기 운영 시 메모리 누수 방지.",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "_counts dict에서 window 초과 IP 자동 정리",
+        "MAX_TRACKED_IPS 상한 설정 (기본 10000)",
+        "기존 rate limit 동작 보존 (5 req/min/IP)",
+        "단위테스트 추가"
+      ],
+      "files": [
+        "engine/src/api/middleware.py"
+      ]
+    },
+    {
+      "id": "US-322",
+      "phase": "S23",
+      "title": "spot_futures on_fill 심볼 키 불일치 수정 (← TF QF 10차 quorum MUST FIX)",
+      "description": "on_fill에서 trade.symbol이 futures 심볼일 경우 _open_positions 매칭 실패. spot_symbol 기반 역매핑 추가.",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "on_fill에서 futures symbol → spot symbol 역매핑",
+        "futures leg 체결 시에도 _open_positions 정리",
+        "기존 contango/backwardation 로직 보존",
+        "단위테스트 추가"
+      ],
+      "files": [
+        "engine/src/strategies/spot_futures.py"
+      ]
     }
   ]
 }

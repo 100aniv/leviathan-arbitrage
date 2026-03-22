@@ -202,3 +202,77 @@ async def test_net_profit_positive():
     result = await strategy.on_signal(signal)
     assert result is not None
     assert result.expected_profit_usdt == Decimal("49")
+
+
+# ---------------------------------------------------------------------------
+# US-322: on_fill futures symbol reverse lookup
+# ---------------------------------------------------------------------------
+
+from src.core.models import Trade
+from src.strategies.spot_futures import OpenPosition
+import time
+
+
+@pytest.mark.asyncio
+async def test_on_fill_resolves_futures_symbol():
+    """US-322: on_fill with futures symbol correctly resolves to spot symbol."""
+    config = SpotFuturesConfig(min_basis_bps=Decimal("10"))
+    strategy = SpotFuturesStrategy("sf_basis", make_calculator(), config)
+    await strategy.start()
+    strategy._holding_timeout_enabled = True
+
+    # Manually add a position keyed by spot symbol
+    strategy._open_positions["BTC/USDT"] = OpenPosition(
+        symbol="BTC/USDT",
+        entry_time=time.monotonic(),
+        entry_price=Decimal("50000"),
+        size=Decimal("0.5"),
+        side="contango",
+        exchange_id="binance",
+        futures_symbol="BTC/USDT:USDT",
+        futures_exchange="binance",
+    )
+    assert "BTC/USDT" in strategy._open_positions
+
+    # Simulate fill with FUTURES symbol (not spot)
+    trade = MagicMock(spec=Trade)
+    trade.symbol = "BTC/USDT:USDT"  # futures symbol
+    trade.metadata = {"leg_type": "timeout_close_futures"}
+    trade.fee = Decimal("0")
+    trade.side = OrderSide.SELL
+    trade.size = Decimal("0.5")
+    trade.price = Decimal("50000")
+    await strategy.on_fill(trade)
+
+    # Position should be removed via reverse lookup
+    assert "BTC/USDT" not in strategy._open_positions
+
+
+@pytest.mark.asyncio
+async def test_on_fill_resolves_spot_symbol_directly():
+    """US-322: on_fill with spot symbol still works (backward compat)."""
+    config = SpotFuturesConfig(min_basis_bps=Decimal("10"))
+    strategy = SpotFuturesStrategy("sf_basis", make_calculator(), config)
+    await strategy.start()
+    strategy._holding_timeout_enabled = True
+
+    strategy._open_positions["ETH/USDT"] = OpenPosition(
+        symbol="ETH/USDT",
+        entry_time=time.monotonic(),
+        entry_price=Decimal("3000"),
+        size=Decimal("1.0"),
+        side="backwardation",
+        exchange_id="binance",
+        futures_symbol="ETH/USDT:USDT",
+    )
+
+    trade = MagicMock(spec=Trade)
+    trade.symbol = "ETH/USDT"  # spot symbol directly
+    trade.metadata = {"leg_type": "timeout_close_spot"}
+    trade.fee = Decimal("0")
+    trade.side = OrderSide.BUY
+    trade.size = Decimal("1.0")
+    trade.price = Decimal("3000")
+    await strategy.on_fill(trade)
+
+    assert "ETH/USDT" not in strategy._open_positions

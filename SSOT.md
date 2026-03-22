@@ -32,9 +32,9 @@
 > Team roster: `.omc/state/team-roster.json`
 
 **Phase**: TF-QF 10차 진입 (2026-03-22) — S22 회귀 ✅ 완료 (Shadow 24trades, 5197 tests)
-**Tests**: 5,197 passed / 0 failed / 12 skipped
+**Tests**: 5,200 passed / 0 failed / 12 skipped
 **Coverage**: 77%
-**PRD**: 318/320 passes:true (US-055/056 Phase F Live만 잔여)
+**PRD**: 320/322 passes:true (US-055/056 Phase F Live만 잔여)
 **TF Status**: S1~S22 ✅ → TF QF 10차 PASS → **TF SF** → TF PF → TF Final → Live
 **Next**: TF SF 진입
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)

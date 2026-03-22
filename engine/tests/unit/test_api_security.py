@@ -314,6 +314,22 @@ async def test_login_rate_limit_window_expiry():
 
 
 @pytest.mark.asyncio
+async def test_login_rate_limit_cleanup_stale_ips():
+    """US-321: stale IPs are cleaned when max_tracked_ips exceeded."""
+    base = _make_auth_app()
+    middleware = LoginRateLimitMiddleware(base, max_requests=100, window_seconds=1, max_tracked_ips=5)
+    # Simulate many unique IPs by directly injecting stale entries
+    for i in range(10):
+        middleware._counts[f"10.0.0.{i}"] = [0.0]  # timestamps in the past (monotonic=0)
+    assert len(middleware._counts) >= 10
+    # Trigger cleanup via _is_allowed (counter will be 0, but we force it)
+    middleware._cleanup_counter = 99
+    middleware._is_allowed("192.168.1.1")
+    # Stale IPs (timestamp=0.0) should be evicted since they're past the window
+    assert len(middleware._counts) <= 6  # 5 max + the new one
+
+
+@pytest.mark.asyncio
 async def test_login_rate_limit_retry_after_header():
     """429 response includes Retry-After header."""
     base = _make_auth_app()

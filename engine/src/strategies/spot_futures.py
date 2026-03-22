@@ -304,10 +304,26 @@ class SpotFuturesStrategy(BaseStrategy):
             },
         )
 
+    def _resolve_spot_symbol(self, symbol: str) -> str | None:
+        """US-322: Resolve futures symbol to spot symbol for position tracking.
+
+        If the symbol is already a spot key in _open_positions, return as-is.
+        Otherwise, search for a position whose futures_symbol matches.
+        """
+        if symbol in self._open_positions:
+            return symbol
+        for spot_sym, pos in self._open_positions.items():
+            if getattr(pos, "futures_symbol", None) == symbol:
+                return spot_sym
+        return None
+
     async def on_fill(self, trade: Trade) -> None:
         await super().on_fill(trade)
-        # US-271: Remove closed position on exit fill
+        # US-271/US-322: Remove closed position on exit fill
+        # Handles both spot and futures leg symbols via reverse lookup
         if self._holding_timeout_enabled:
             meta = getattr(trade, "metadata", {}) or {}
             if meta.get("leg_type", "").startswith("timeout_close"):
-                self._open_positions.pop(trade.symbol, None)
+                resolved = self._resolve_spot_symbol(trade.symbol)
+                if resolved:
+                    self._open_positions.pop(resolved, None)

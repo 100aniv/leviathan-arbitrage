@@ -167,6 +167,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 _LOGIN_RATE_LIMIT = 5
 _LOGIN_RATE_WINDOW = 60  # seconds
 _LOGIN_PREFIX = "/api/auth/"
+_MAX_TRACKED_IPS = 10_000  # US-321: cap to prevent unbounded memory growth
 
 
 class LoginRateLimitMiddleware(BaseHTTPMiddleware):
@@ -174,14 +175,26 @@ class LoginRateLimitMiddleware(BaseHTTPMiddleware):
 
     Allows up to 5 requests per 60-second window per IP.
     Stricter than the general API rate limiter to guard credential endpoints.
+    Stale IPs are evicted when the tracked IP count exceeds _MAX_TRACKED_IPS.
     """
 
     def __init__(self, app: ASGIApp, max_requests: int = _LOGIN_RATE_LIMIT,
-                 window_seconds: int = _LOGIN_RATE_WINDOW) -> None:
+                 window_seconds: int = _LOGIN_RATE_WINDOW,
+                 max_tracked_ips: int = _MAX_TRACKED_IPS) -> None:
         super().__init__(app)
         self._max = max_requests
         self._window = window_seconds
+        self._max_ips = max_tracked_ips
         self._counts: dict[str, list[float]] = defaultdict(list)
+        self._cleanup_counter = 0
+
+    def _cleanup_stale_ips(self) -> None:
+        """Remove IPs with no recent timestamps to bound memory usage."""
+        now = time.monotonic()
+        cutoff = now - self._window
+        stale = [ip for ip, ts in self._counts.items() if not ts or ts[-1] <= cutoff]
+        for ip in stale:
+            del self._counts[ip]
 
     def _is_allowed(self, ip: str) -> bool:
         now = time.monotonic()
@@ -191,6 +204,11 @@ class LoginRateLimitMiddleware(BaseHTTPMiddleware):
         if len(self._counts[ip]) >= self._max:
             return False
         self._counts[ip].append(now)
+        # US-321: periodic cleanup every 100 calls when over capacity
+        self._cleanup_counter += 1
+        if self._cleanup_counter >= 100 and len(self._counts) > self._max_ips:
+            self._cleanup_stale_ips()
+            self._cleanup_counter = 0
         return True
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
