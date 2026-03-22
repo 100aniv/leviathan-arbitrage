@@ -31,12 +31,12 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: TF-QF 10차 진입 (2026-03-22) — S22 회귀 ✅ 완료 (Shadow 24trades, 5197 tests)
+**Phase**: TF-QF Re-Validation (2026-03-22) — 워크플로우 단순화 후 QF 재검증
 **Tests**: 5,200 passed / 0 failed / 12 skipped
 **Coverage**: 77%
 **PRD**: 321/323 passes:true (US-055/056 Phase F Live만 잔여)
-**TF Status**: S1~S23 ✅ → TF QF 11차 PASS → **TF SF** → TF PF → TF Final → Live
-**Next**: TF SF 단계 2 Progressive Shadow 24H
+**TF Status**: S1~S24 ✅ → TF QF PASS 재검증 → TF SF → TF Final → Live
+**Next**: QF Re-Validation (FROZEN CRITERIA)
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)

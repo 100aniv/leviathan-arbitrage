@@ -5,6 +5,7 @@ Usage::
     python -m src.workflow.cli transition entry_gate_pass
 
 잘못된 전환 시도를 차단하여 워크플로우 무결성 보장.
+단순화 (v2): 19→15상태. A_quant, C_go, TF_PF, ESCALATE_L2 제거.
 """
 from __future__ import annotations
 
@@ -24,39 +25,30 @@ class InvalidTransition(Exception):
 
 # (current_state, event) -> next_state
 TRANSITIONS: dict[tuple[str, str], str] = {
-    # Stage A (기획)
+    # Stage A (기획) — architect + critic
     ("A", "entry_gate_pass"): "A_plan",
-    ("A_plan", "plan_review_pass"): "A_quant",
-    ("A_plan", "plan_review_skip"): "B",  # 퀀트 불필요 시
-    ("A_quant", "quant_pass"): "B",
-    ("A_quant", "quant_fail"): "A_plan",  # 재기획
+    ("A_plan", "plan_approved"): "B",
+    ("A_plan", "plan_rejected"): "A",  # 재기획
     # Stage B (구현 + 검증)
     ("B", "build_complete"): "B_test",
     ("B_test", "pytest_pass"): "B_shadow",
     ("B_test", "pytest_fail"): "B",  # 수정 후 재빌드
     ("B_shadow", "shadow_pass"): "C",
-    ("B_shadow", "shadow_fail_type_w"): "ESCALATE_L2",
+    ("B_shadow", "shadow_fail_type_w"): "B",  # trades=0 → fix
     ("B_shadow", "shadow_fail_type_p"): "B_fix",
     ("B_shadow", "shadow_fail_type_b"): "B_fix",
     ("B_fix", "fix_complete"): "B_test",
     # Stage C (리뷰 + 릴리스)
     ("C", "assembly_pass"): "C_review",
     ("C", "assembly_fail"): "B",  # Stage B 복귀
-    ("C_review", "review_pass"): "C_go",
+    ("C_review", "review_pass"): "C_release",
     ("C_review", "review_fail"): "B",  # CRITICAL/HIGH → Stage B 복귀
-    ("C_go", "go"): "C_release",
-    ("C_go", "no_go"): "B",
     ("C_release", "pushed"): "NEXT_PHASE",
-    # 에스컬레이션
-    ("ESCALATE_L2", "escalation_resolved"): "A",
-    # TF 관련
+    # TF 관련 (3-Round: QF→SF→Final, PF 제거)
     ("TF_QF", "qf_pass"): "TF_SF",
     ("TF_QF", "qf_fail"): "REGRESSION",
-    ("TF_SF", "sf_pass"): "TF_PF",
+    ("TF_SF", "sf_pass"): "TF_FINAL",
     ("TF_SF", "sf_fail"): "REGRESSION",
-    ("TF_PF", "pf_pass"): "TF_FINAL",
-    ("TF_PF", "pf_fail"): "TF_PF",  # 재시도 (최대 2회)
-    ("TF_PF", "pf_skip"): "TF_FINAL",
     ("TF_FINAL", "final_pass"): "LIVE",
     ("TF_FINAL", "final_fail"): "TF_SF",  # 코드 변경 시 SF부터
     ("REGRESSION", "regression_complete"): "TF_QF",
@@ -66,20 +58,16 @@ TRANSITIONS: dict[tuple[str, str], str] = {
 STATE_LABELS: dict[str, str] = {
     "A": "Stage A: Entry Gate",
     "A_plan": "Stage A: Plan + Review",
-    "A_quant": "Stage A: Quant Gate",
     "B": "Stage B: Build",
     "B_test": "Stage B: pytest",
     "B_shadow": "Stage B: Shadow 10min",
     "B_fix": "Stage B: Fix Loop",
     "C": "Stage C: Assembly Gate",
-    "C_review": "Stage C: Code Review + Audit",
-    "C_go": "Stage C: Go/No-Go",
+    "C_review": "Stage C: Code Review",
     "C_release": "Stage C: SSOT + Git Push",
     "NEXT_PHASE": "다음 Phase 진입",
-    "ESCALATE_L2": "에스컬레이션 L2",
     "TF_QF": "TF Quarter-Final",
     "TF_SF": "TF Semi-Final",
-    "TF_PF": "TF Pre-Final",
     "TF_FINAL": "TF Final",
     "LIVE": "Live 운영",
     "REGRESSION": "회귀 Phase",
@@ -103,11 +91,7 @@ class WorkflowFSM:
         return (self._current, event) in TRANSITIONS
 
     def transition(self, event: str) -> str:
-        """상태 전환 실행. 불가능하면 InvalidTransition 발생.
-
-        Returns:
-            새 상태 문자열.
-        """
+        """상태 전환 실행. 불가능하면 InvalidTransition 발생."""
         key = (self._current, event)
         if key not in TRANSITIONS:
             allowed = [e for (s, e) in TRANSITIONS if s == self._current]

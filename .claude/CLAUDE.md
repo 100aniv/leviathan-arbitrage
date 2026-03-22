@@ -201,23 +201,16 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 3. **완료 기준**: 단위테스트 통과만으로 Phase 완료 선언 금지.
    반드시 Shadow 10분 실행 후 PnL > 0, crash 0건 확인.
 
-## 팀 구조 (7팀 + TF)
+## 에이전트 역할 (단순화)
 
-> 팀은 기능별 정의, Stage가 필요한 팀을 호출. Stage B-Step 1만 TeamCreate, 나머지 Agent() 서브에이전트.
+| Stage | 에이전트 | 역할 |
+|-------|---------|------|
+| A | architect(opus), critic(opus) | Entry Gate + 비판 |
+| B | executor(sonnet), test-engineer(sonnet), shadow-tester | 구현 + pytest + Shadow |
+| C | verifier(sonnet), code-reviewer(opus), security-reviewer | Assembly + 리뷰 + Go/No-Go |
+| TF | architect, verifier, infra-tester, quant-validator + codex/gemini/qwen | 상용화 검증 (3-Round: QF→SF→Final) |
 
-| 팀 | Stage | 에이전트 | 역할 |
-|----|-------|---------|------|
-| ① AESPA (기획) | A | Karina(architect/opus), NingNing(analyst), Winter(critic/opus), Giselle(planner) | Entry Gate 정합성, 요구사항, 기획비판, PLAN.md |
-| ② IVE (개발) | B-Step 1 | Yujin/Gaeul/Leeseo/Liz(executor), Wonyoung(test-engineer), Rei(designer) | TeamCreate 협업, 최대 6명 |
-| ②-B Assembly Gate | C-Step 1 | Assembly Verifier(verifier/sonnet) | **조립검증**: init chain + signal flow + dead wiring + config audit (독립 에이전트, 코드리뷰 전 필수) |
-| ③ BLACKPINK (코드리뷰) | C-Step 3 | Jennie(code-reviewer/opus), Jisoo(security-reviewer) | 코드리뷰+통합추적+Shadow교차평가, 보안 (Assembly Gate PASS 후에만 진행) |
-| ④ NewJeans (테스트) | B-Step 2 | Minji(shadow-tester), Hanni(qa-tester/haiku), Danielle(scientist/haiku), Haerin(browser-verifier), Hyein(debugger) | Shadow 13항목 복합지표, QA, 모니터링 |
-| ⑤ LE SSERAFIM (릴리스) | C-Step 5~6 | Karina(architect/opus), Sakura(ssot-keeper/sonnet) | Phase완료리뷰(7항목)+Go/No-Go, SSOT+git push |
-| ⑥ ITZY (퀀트) | A+B | Yeji(quant-validator/opus), Ryujin(scientist), Lia(ml-pipeline), Chaeryeong(dex-specialist), Yuna(analyst) | 수학 검증, ML, DEX |
-| ⑦ Fix 루프 | L1+ | Joy(debugger), Irene(build-fixer), Wendy(code-simplifier/opus) | 에스컬레이션 시 활성화 |
-| TF TWICE | QF/SF/PF/Final | Nayeon(TF리더), Karina, Jeongyeon, Momo, Sana, Mina, Dahyun, Chaeyoung, Tzuyu (9명+Jisoo차출) | 상용화 최종 검증 (4-Round) |
-
-**사이클**: Stage A(기획)→B(구현+검증)→C(리뷰+릴리스+사장님승인)→다음Phase
+**사이클**: Stage A(기획)→B(구현+Shadow+trades>0)→C(Assembly+리뷰)→다음Phase
 
 ## 커스텀 에이전트 (.claude/agents/)
 
