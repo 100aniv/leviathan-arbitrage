@@ -124,17 +124,16 @@ class CrossExchangeStrategy(BaseStrategy):
                 self._metrics.signals_filtered += 1
                 return None
 
-        # US-260: Feed spread to adaptive threshold tracker
+        # US-260: Feed spread to adaptive threshold tracker (data collection only)
         _spread_bps = float(signal.spread_pct) * 10000
         if self._adaptive_threshold is not None:
             self._adaptive_threshold.update(_spread_bps)
 
-        # Check spread threshold (US-260: dynamic when ready, static fallback)
-        if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
-            _entry_bps, _ = self._adaptive_threshold.thresholds
-            min_spread = Decimal(str(_entry_bps)) / Decimal("10000")
-        else:
-            min_spread = self.config.min_spread_bps / Decimal("10000")
+        # Spread threshold: use static min_spread_bps only.
+        # Adaptive threshold disabled for cross_exchange — arbitrage should trade
+        # every profitable opportunity, not just top 5% (95th percentile = mean-reversion logic).
+        # SignalGenerator already guarantees net_edge >= MIN_EDGE_BPS after full friction.
+        min_spread = self.config.min_spread_bps / Decimal("10000")
         if signal.spread_pct < min_spread:
             self._metrics.signals_filtered += 1
             logger.info(
@@ -198,7 +197,8 @@ class CrossExchangeStrategy(BaseStrategy):
             )
             return None
 
-        metadata: dict = {"gross_profit": str(gross_profit), "total_cost": str(total_cost)}
+        gross_profit = (signal.sell_price - signal.buy_price) * size
+        metadata: dict = {"gross_profit": str(gross_profit), "net_profit": str(net_profit)}
         if self.config.latency_boost:
             metadata["mode"] = "latency_boost"
             metadata["latency_advantage_ms"] = str(

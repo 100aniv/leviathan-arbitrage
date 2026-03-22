@@ -39,7 +39,7 @@ class AdaptiveThreshold:
     min_samples: int = 60
     # Cap: dynamic entry must not exceed static_entry * max_entry_multiplier
     # Prevents stale/anomaly spreads from inflating threshold beyond usable range
-    max_entry_multiplier: float = 5.0  # e.g. static=5bps → max dynamic=25bps
+    max_entry_multiplier: float = 2.0  # e.g. static=5bps → max dynamic=10bps (SignalGenerator already ensures net profitability)
     # Volatility multiplier parameters
     vol_lookback: int = 60       # observations for vol calculation
     vol_baseline: float = 0.0    # set on first vol calc
@@ -52,7 +52,16 @@ class AdaptiveThreshold:
         self._observations = deque(maxlen=self.window)
 
     def update(self, value_bps: float) -> None:
-        """Record a new spread/basis observation (in bps)."""
+        """Record a new spread/basis observation (in bps).
+
+        Filters outliers: values > static_entry * max_entry_multiplier are
+        likely stale/anomaly data and would inflate dynamic thresholds.
+        """
+        max_allowed = self.static_entry * self.max_entry_multiplier
+        if value_bps > max_allowed:
+            return  # skip stale/anomaly outlier
+        if value_bps < 0:
+            return  # skip negative spreads (data error)
         self._observations.append(value_bps)
 
     def _percentile(self, pct: float) -> float:

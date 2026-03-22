@@ -953,14 +953,14 @@ class Engine:
         ce_config = CrossExchangeConfig(
             min_spread_bps=Decimal(str(ce_p.get("min_spread_bps", 10))),
             max_position_size=Decimal(str(ce_p.get("max_position_size_usdt", 9767))) / _BTC_REFERENCE_PRICE,
-            min_book_depth_usd=Decimal(os.environ.get("CROSS_EXCHANGE_MIN_BOOK_DEPTH_USD", "500")),
+            min_book_depth_usd=Decimal(str(ce_p.get("min_book_depth_usd", 500))),
         ) if ce_p.get("status") in ("READY", "MONITOR") else None
 
         ff_p = tuned.get("futures_futures", {})
         ff_config = FuturesFuturesConfig(
             min_spread_bps=Decimal(str(ff_p.get("min_spread_bps", 8))),
             max_position_size=Decimal(str(ff_p.get("max_position_size_usdt", 1738))) / _BTC_REFERENCE_PRICE,
-            min_book_depth_usd=Decimal(os.environ.get("FUTURES_MIN_BOOK_DEPTH_USD", "500")),
+            min_book_depth_usd=Decimal(str(ff_p.get("min_book_depth_usd", 500))),
         ) if ff_p.get("status") in ("READY", "MONITOR") else None
 
         tri_p = tuned.get("triangular", {})
