@@ -3,21 +3,22 @@
 > ralph 루프 + Stage B TeamCreate 방식으로 prd.json US 자동 순회.
 > 사용법: `/project:leviathan` 또는 `/project:leviathan US-010부터`
 
-## 0. ZERO TOLERANCE (최우선 규칙)
+## 0. ZERO TOLERANCE + ANTI-STALL
 
 **절대 금지**: 사용자 확인 요청, Stage 간 멈춤, 에이전트 대기 중 멈춤, US 간 멈춤, 상태 보고만 하고 멈춤, **run_in_background: true**
-**강제**: 모든 응답에 tool call 포함. Stage A→B→C→다음Phase 끊김 없는 연속 흐름. **모든 Agent는 foreground 실행** (background 금지 — 메인 스레드 멈춤 버그).
-**외부 CLI 규칙**: codex/gemini/qwen은 **동일 메시지 foreground 병렬 호출** + `timeout 300`. CLI 실패 시 최대 3회 재시도. 전원 실패 시 L5 에스컬레이션 (스킵 절대 금지).
-**멈춤 허용**: (1) 전 US `passes:true` (2) 5회 연속 동일 US 실패 (3) 사용자 "stop/cancel/멈춰"
-**컨텍스트 압축 후에도 이 규칙 유지. 압축으로 지시 소실 시 §0과 §99 참조.**
-**에이전트 반환 크기 제한**: 모든 에이전트 반환 3K 토큰 이내. 상세는 파일에 기록. (컨텍스트 팽창 → 압축 → 멈춤 방지)
-**ANTI-STALL (근본 멈춤 방지 — GitHub #33043/#30625/#34238 대응)**:
-- **모든 응답에 텍스트 1줄 + tool call 병행** (텍스트 없으면 stop hook이 "완료"로 판단 → 루프 종료 버그 #30625). 예: "다음 Step 진행." + Agent() 호출.
-- 매 에이전트 결과 수신 후 **즉시** 다음 tool call 발행. "다음 세션에서 하자" 응답 금지 (#34238).
-- C-Step 사이 전환: 이전 Step 결과 수신 즉시 다음 Step Agent 스폰. 중간 요약/분석 금지.
-- **컨텍스트 60% 감지 시**: 즉시 checkpoint 저장 → 텔레그램 경고 → `/clear` → progress.json으로 재개.
-- **Stage C 전체가 1개 메시지 체인**: C-Step 1~7을 끊기 없이 연속 실행.
-- **TeamCreate hang 방지 (#33043)**: TeamCreate 후 30초 내 teammate 응답 없으면 TeamDelete → Agent() fallback.
+**강제**: 모든 응답에 텍스트 1줄 + tool call 병행. Stage A→B→C→다음Phase 끊김 없는 연속 흐름. **모든 Agent foreground 실행.**
+**외부 CLI**: codex/gemini/qwen은 **동일 메시지 foreground 병렬** + `timeout 300`. 실패 시 3회 재시도 → 전원 실패 시 L5 (스킵 절대 금지).
+**멈춤 허용**: (1) TF Final PASS (Live 준비) (2) 5회 연속 동일 US/TF 실패 (L5) (3) 사용자 "stop/cancel/멈춰"
+**에이전트 반환**: **파일 기반**. 결과를 `.omc/artifacts/{agent}-{phase}.md`에 기록. 반환은 `PASS/FAIL + 경로 + 핵심 요약`. 컨텍스트 팽창 원천 차단.
+**CLI 전용**: tmux/터미널에서 실행. VS Code에서 실행 금지 (freeze 위험 #26778).
+**Watchdog**: Dev봇이 watchdog. `python -m src.infra.telegram_dev_bot` (또는 `bash scripts/watchdog.sh`). tmux 멈춤 감지 → 알림 → 자동 재개. `/go`로 텔레그램 수동 재개.
+**ANTI-STALL (#30625/#33043/#34238)**:
+- **모든 응답에 텍스트 1줄 + tool call 병행** (텍스트 없으면 stop hook이 "완료"로 판단 → 루프 종료 버그 #30625).
+- 에이전트 결과 수신 → 즉시 다음 tool call. "다음 세션에서" 금지 (#34238).
+- **TeamCreate 30초 무응답 → TeamDelete → Agent() fallback** (#33043).
+- **컨텍스트 60% 감지 시**: checkpoint → `/clear` → progress.json 재개.
+- **Stage C 전체가 1개 메시지 체인**: C-Step 1~7 끊기 없이 연속.
+**압축 후에도 §0과 §99 유지.**
 
 ```
 Stage A (Entry Gate → 기획 → QUANT GATE → checkpoint)
@@ -33,7 +34,7 @@ Stage A (Entry Gate → 기획 → QUANT GATE → checkpoint)
 ## 1. 소스
 
 - `SSOT.md` — 유일한 설계 문서. 작업 전 반드시 읽기.
-- `.omc/prd.json` — 234+62 US 목록 (S15~S21 회귀, US-245~US-300+서브항목). `passes:false`인 첫 번째 US부터 시작.
+- `.omc/prd.json` — US 목록 (335개). `passes:false`인 첫 번째 US부터 시작.
 - 팀 구조, 기술 스택, 커스텀 에이전트, 자주 틀리는 패턴 → **CLAUDE.md 참조** (여기서 중복 기술하지 않음)
 
 ## 2. 실행 모드
@@ -752,40 +753,6 @@ L0~L4 자동 처리. L5 텔레그램 알림 후 1회 추가 재시도, 재실패
 5. 실패 시 → `send_context_alert()` 알림 → 사장님 수동 개입 필요
 6. **`/compact` 절대 금지** — 결과 소실 위험
 
-## 6.5 Phase S15~S21 실행 (2026-03-19 회귀)
-
-> 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
-> 회귀 사유: CRITICAL 버그 6개 + 수학 오류 3개 + ML/리스크 미연결
-> **다음 작업**: Phase S15 (최우선) → S16 → S17 → S18 → S19+S20 병렬 → S21 → TF QF 재개
-
-**실행 순서:**
-- S15 + S19 + S20 병렬 → S16 → S17 → S18 → S21
-- Phase 완료 즉시 다음 Phase 자동 진행
-
-**Phase 완료 기준 (강화판):**
-1. 단위 테스트 PASS
-2. Shadow 10min — crash 0, LiveGate 6-check 계산 + **차단 동작**
-3. 전략별 독립 검증 (5min) + 통합 검증 (10min)
-4. **수치 리포트 제출** — 성공 증명 로그 + 수치
-5. ML Phase: 모델 파일 생성 + Score→Threshold 변경 **Live Log 증명**
-6. SSOT.md 갱신
-
-**S15 핵심 (최우선):**
-- stat_arb regime_detector 주입 (main.py:898)
-- LiveGate 실행 경로 강제 (is_live_eligible 차단)
-- profit_factor 금액 비율 수정 (shadow.py:2201)
-- estimate_cost→calculate 통합 (cost_calculator.py)
-- ADV/sigma 동적 계산 (signal.py:51-52)
-- 삼각 leg sizing 보정 (triangular.py:134-145)
-- HMM/XGBoost 학습 루프 + ONNX export + Model Performance Gate
-- Feature Pipeline→ONNX Scorer 20-feature 연결
-- RegimeDetector 전 전략 연결
-- AdaptiveThreshold 전략별 분리
-- PositionReconciler + PositionRecovery + RecoveryManager 통합 (main.py)
-- ComplianceChecker 시작 시 실행 (startup sequence)
-- peak_equity DB 영속화 (TimescaleDB persist/restore on restart)
-- Walk-forward Validation (ML 모델 실데이터 검증)
-
 ---
 
 ## 7. TF (Task Force) — Quarter-Final / Semi-Final / Final
@@ -800,23 +767,25 @@ L0~L4 자동 처리. L5 텔레그램 알림 후 1회 추가 재시도, 재실패
 > 회귀 Phase는 SSOT.md에서 **TF 섹션 위, 원본 Phase 다음**에 위치한다.
 > 각 회귀 US에는 `(← 원본 Phase US-XXX 사유)` 역추적 주석을 붙인다.
 
-### TF 3-Round 체계 (XXX STUDIO 표준)
+### TF 4-Round 체계 (상세 → `.claude/commands/leviathan-tf.md`)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  TF Quarter-Final (QF) — Development Verification           │
-│  "코드가 올바른가?"                                          │
-│  정합성, 체크리스트, 교차검증, 코드 품질                      │
+│  "코드가 올바른가?" — 정합성, 체크리스트, 교차검증            │
 ├─────────────────────────────────────────────────────────────┤
 │  TF Semi-Final (SF) — System Validation                     │
-│  "24시간 돈을 벌 수 있나?"                                   │
-│  24H Shadow, 전략별 P&L, E2E 시나리오(병렬), UAT            │
+│  "24시간 돈을 벌 수 있나?" — 24H Progressive Shadow          │
+├─────────────────────────────────────────────────────────────┤
+│  TF Pre-Final (PF) — Regression Guard                       │
+│  "코드 변경 없이 안정적인가?" — git baseline 비교             │
 ├─────────────────────────────────────────────────────────────┤
 │  TF Final (F) — Operations Readiness                        │
-│  "문제 생기면 대응할 수 있나?"                                │
-│  DR 훈련, Sandbox 실거래, 운영 매뉴얼, Canary 1~5%          │
+│  "문제 생기면 대응할 수 있나?" — DR, Canary 7일              │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+> **상세 절차**: `.claude/commands/leviathan-tf.md` (394줄) 참조. 아래는 팀 로스터 + 개요만.
 
 ```
 SSOT.md §7 구조:
@@ -856,257 +825,34 @@ SSOT.md §7 구조:
 - SF: `browser-verifier` — E2E 시나리오 (로그인→모드선택→거래소→모니터링)
 - Final: `writer` — 운영 매뉴얼, IRP, 일일점검 체크리스트 작성
 
-### TF Quarter-Final (QF) — Development Verification
-
-> **핵심 질문**: "코드가 올바르고, 빠진 것이 없는가?"
-
-```
-[단계 0] Smoke Test Gate
-- 전체 pytest PASS
-- Docker 전 컨테이너 healthy
-- 통합 Shadow 10min (crash=0, 전략 신호 흐름 정상, PnL 기록 확인)
-- 실패 시 TF 소집하지 않고 해당 Phase로 회귀
-
-[단계 1] 정합성 확인
-- Karina: SSOT.md + prd.json + CLAUDE.md 3-way 정합성 확인
-- 누락 US/Phase 발견 시 새 Phase/US 생성
-
-[단계 2] 체크리스트 수립 (The Blueprint)
-- Karina + 도메인 전문가 협의 → '완성 기준' 수립
-- 분야별 확인 체크리스트 문서 생성
-- Nayeon(TF 리더)이 상용화 기준 부합 여부 최종 승인
-
-[단계 3] 교차 검증 (The Deep Dive)
-- 전문가별 체크리스트 기반 자기 분야 검증 (병렬):
-  · Jeongyeon(엔진): 초기화 체인, 전략 등록, 어댑터, RiskGuardian, KillSwitch, Shutdown, dead wiring
-  · Momo(인프라): Docker, DB 스키마, Redis 인증, Nginx, .env 동기화, 포트, 리소스 제한, 백업
-  · Dahyun(퀀트): 슬리피지 모델, 수수료 정합, 마찰력 공식, Sharpe, MDD 단위, 기본값 위험
-  · Sana(데이터): Shadow 완전성, PnL 기록, WS 흐름, KRW 환율, 피드 연결 상태
-  · Mina(UI/UX): 대시보드 4페이지 렌더링, 로그인, API 응답, 모바일 반응형, 콘솔 에러 0건
-  · Jisoo(보안): JWT 인증, API 키 노출, CSP 헤더, IP whitelist, Redis commands, .gitignore
-- 타 분야 협업 필요 시 클론 전문가 스폰
-- Karina 합동 점검: 실전적 질의응답
-
-[단계 3.5] 조립 검증 — 통합 검증 (Assembly Verification)
-> "부품이 아니라, 조립된 완성품이 제대로 동작하는가?"
-- verify_assembly.py 자동화: main.py 10단계 초기화 체인 서브시스템 non-None 확인
-- Signal Flow E2E: 7개 전략 각각 on_signal() 호출 횟수 > 0 (5분 대기)
-- Config Flag Audit: ENABLE_INLINE_TUNER=true, SHADOW_DISABLED_STRATEGIES=[], ScheduledTuner.EXCLUDED 확인
-- Dead Wiring Detection: 구현되었으나 미연결 코드 0건 (main.py 코드 경로 추적)
-- PASS 기준: 4개 sub-check 전부 PASS
-- FAIL 시: 미연결 기능 → 회귀 Phase 생성
-
-[단계 4] 최종 확인 + 회귀 (The Feedback Loop)
-- Karina → Nayeon 보고
-- Chaeyoung/Tzuyu QA 감사단 압박 면접
-- FAIL 시:
-  1. 미비점 분석 → 원본 Phase별 회귀 US 생성
-  2. 회귀 Phase를 SSOT.md에서 TF 섹션 위에 배치 (원본 Phase 다음)
-  3. 각 회귀 US에 `(← 원본 Phase US-XXX 사유)` 역추적 주석
-  4. 통합 추적 문서 생성: `docs/checklists/tf-qf-consolidated_YYYYMMDD.md`
-  5. 회귀 Phase 개발 → 3-Stage(A~C) 사이클 → QF 재검증
-- PASS 기준: CRITICAL 0, HIGH 0, MEDIUM ≤ 5 (자금 손실 경로 아님)
-- PASS 시: SF 진출
-
-산출물: docs/checklists/tf-quarter-final_YYYYMMDD.md
-```
-
-### TF Semi-Final (SF) — System Validation
-
-> **핵심 질문**: "72시간 동안 실제로 돈을 벌 수 있는가?"
-
-```
-[전제]: QF 통과 상태에서만 진행
-
-[단계 1-A] 경량 재확인 (Delta Check)
-- QF 이후 코드 변경분만 대상 (git diff QF-PASS..HEAD)
-- CRITICAL/HIGH 신규 발생 여부 확인
-- 10분 Smoke Shadow (crash=0, 신호 흐름 정상)
-
-[단계 1-B] 전략별 독립 검증 (Strategy Isolation)
-- 각 활성 전략을 단독 실행하여 독립 수익성 확인
-- 전략별 10분 Shadow: P&L, WR, Sharpe, MDD 개별 측정
-- 손실 전략 식별 → disabled_strategies에 추가 여부 판단
-- 전략 간 상관관계 분석 (CorrelationMonitor 데이터 활용)
-
-[단계 1-C] 전략 상호작용 검증 (Strategy Interaction) ← 신규
-- 7개 전략 동시 10min Shadow 실행
-- 합산 PnL vs 개별 PnL 합계 비교
-  · 합산 > 개별합 80% → PASS (약간의 간섭 허용)
-  · 합산 < 개별합 50% → FAIL (심각한 전략 간섭)
-- Strategy overlap 메트릭 = 0 확인 (Prometheus counter)
-- FAIL 시: 전략 간 충돌 원인 분석 → 회귀 Phase
-
-[단계 2] Progressive Shadow (24H+) — 순차 OFF→ON 오토튜너 비교
-- Stage 1:  1H  (튜너 OFF) → crash=0, 신호 흐름, 거래소 10/10
-- Stage 2:  2H  (튜너 OFF) → WR>60%, PnL>0, 전략별 분리 리포트
-- Stage 3:  2H  (튜너 ON)  → Stage 2 대비 비교 리포트 (오토튜너 효과 검증)
-  · 튜너 효과 판정:
-    PROVEN:  튜너 ON PnL > 튜너 OFF PnL + 10% → 튜너 유지
-    NEUTRAL: 차이 < 10% → 추가 조사
-    HARMFUL: 튜너 ON PnL < 튜너 OFF PnL → 튜너 비활성화 or 튜닝
-    BUG:     튜너 ON에서 crash/error → 즉시 수정
-- Stage 4:  6H  (최적 설정) → 각 전략 WR>50%, 마찰력 오차<20%
-- Stage 5: 12H  → 메모리 증가<100MB, CPU<80%, WS 재연결
-- Stage 6: 24H  → LiveGate 6-check + 일일 성과 (최종)
-  1. Sharpe ≥ 2.0
-  2. MDD < 5%
-  3. 총 신호 ≥ 100개
-  4. KillSwitch 수동 테스트 PASS
-  5. CircuitBreaker 동작 확인
-  6. 거래소 건강도 ≥ 95%
-- 각 Stage PASS 시 자동으로 다음 연장 (멈추지 않고 누적)
-- 장기 안정성은 TF Final Canary 7일에서 실 자본으로 검증
-- 실패 시 회귀 Phase 생성 → 3-Stage(A~C) → SF 재검증 (QF 스킵, 구조적 결함 시 QF부터)
-
-[단계 3] 병렬 검증 (단계 2 실행 중 동시 수행)
-- 단계 3-A,B,C는 단계 2 Stage 2 통과 후 병렬 수행 (순차 대기 불필요)
-- 효과: 단계 3이 Shadow 시간에 흡수 → SF 전체 소요 = 24H + α(단계1)
-
-[단계 3-A] E2E 사용자 시나리오 (UAT) ← Stage 2+ 통과 후 병렬
-- Mina(browser-verifier) 에이전트 실행
-- 시나리오 체크리스트:
-  □ 로그인: dashboard/login → JWT 쿠키 발급 → 리다이렉트
-  □ Overview: 실시간 PnL, 승률, 활성 거래 표시
-  □ Strategies: 전략별 성과, 활성/비활성 상태
-  □ Portfolio: 거래소별 잔고, 자산 분배
-  □ Settings: 모드 선택, 거래소 토글
-  □ 모바일 반응형: 375px, 768px 뷰포트
-  □ 실시간 업데이트: WebSocket 1초 간격 갱신
-  □ 알림 흐름: Kill Switch → Telegram 도달 (< 5초)
-  □ API 응답: 전 엔드포인트 200 (인증 포함)
-  □ 콘솔 에러: 0건
-
-[단계 3-B] Master Inspection
-- 전체 시스템의 "결" 맞춤
-- 코드: TODO/FIXME, dead code, 하드코딩 상수
-- 로그: 적절한 레벨, 민감 정보 미포함
-- 설정: trading.json ↔ .env ↔ 코드 기본값 일관성
-
-[단계 3-C] 알림 체계 종합 검증
-- Telegram 거래 알림 수신 확인
-- Telegram 워크플로우 알림 수신 확인
-- Kill Switch → 알림 → 거래 중단 (< 5초)
-- Alertmanager 규칙 → 라우팅 → 수신 확인
-
-PASS 기준:
-- 24H+ Shadow 6-Stage 전부 PASS
-- 활성 전략 각각 WR>50%, Sharpe>1.0 (통합 Sharpe>2.0)
-- E2E 시나리오 10개 전부 PASS
-- 알림: Kill Switch → Telegram < 5초
-- LiveGate 6-check 전부 PASS
-
-산출물:
-- docs/checklists/tf-semi-final_YYYYMMDD.md (전체 보고서)
-- docs/checklists/tf-sf-shadow-report_YYYYMMDD.md (24H 상세)
-- docs/checklists/tf-sf-strategy-pnl_YYYYMMDD.md (전략별 P&L)
-- docs/checklists/tf-sf-e2e-scenarios_YYYYMMDD.md (E2E 결과)
-```
-
-### TF Final (F) — Operations Readiness
-
-> **핵심 질문**: "문제가 생기면 대응할 수 있는가? 실제 돈을 안전하게 운용할 준비가 되었는가?"
-
-```
-[전제]: SF 통과 + 24H Shadow ALL PASS
-
-[단계 1] Operations Readiness Review (ORR)
-- Mina(writer): 운영 매뉴얼 작성
-  □ 일일 점검 절차 (매일 09:00 체크리스트)
-  □ 주간 리포트 양식 (P&L, 거래소별 성과, 리스크 지표)
-  □ 장애 대응 절차 (IRP):
-    - P1 (자본 손실): Kill Switch → 전원 알림 → 15분 내 대응
-    - P2 (서비스 장애): 30분 내 대응, 거래 일시 중단
-    - P3 (성능 저하): 4시간 내 대응, 모니터링 강화
-  □ 에스컬레이션: 엔진 → TF 리더 → 사장님
-  □ 당직 체계: 자동 알림 기반
-
-[단계 2] Disaster Recovery (DR) 훈련
-- Jeongyeon + Momo 주도, Chaeyoung 시나리오 설계
-  □ DR-1: 엔진 crash → 재시작 → 포지션 복구 → DB 무결성
-  □ DR-2: DB 장애 → WAL 복구 → PITR → 데이터 정합성
-  □ DR-3: 거래소 API 장애 → CircuitBreaker → 자동 복구
-  □ DR-4: Redis 장애 → 상태 복구 → Kill Switch 유지
-  □ DR-5: 네트워크 단절 → WS 재연결 → 데이터 갭 처리
-  □ DR-6: 코드 롤백 → git revert → 포지션 청산 → 안전 상태
-  □ DR-7: 전략 카니발리제이션 → overlap 감지 → 해당 전략 자동 비활성화
-  □ DR-8: 폭주 전략 (단일 전략 연속 손실) → per-strategy circuit breaker 발동
-  □ DR-9: 오토튜너 잘못된 파라미터 적용 → strategy_params.json 즉시 롤백 + 튜너 비활성화
-
-[단계 3] Sandbox 실거래 테스트
-- Momo 주도
-  □ Binance Testnet: 주문 생성 → 체결 → 잔고 → PnL
-  □ 주문 취소 → 잔고 복원
-  □ Rate limit + 응답 지연 처리
-  □ Testnet 없는 거래소(Upbit, Bithumb, Coinone): API 조회만
-
-[단계 4] 자본/리스크 한도 확정
-- Dahyun 검증, Nayeon + 사장님 승인
-  □ 거래소별 자본 한도 (alpha: $70, beta: $750)
-  □ 전략별 포지션 한도
-  □ max_daily_loss_usd, max_single_loss_usd
-  □ DynamicSizer 파라미터 (Kelly fraction, min/max)
-  □ Auto-discovery 필터 (min_volume_usd, min_exchanges)
-
-[단계 5] Canary Deployment (1% 자본, 7일) — 오토튜너 최종 검증 포함
-- Sana 리콘실리에이션, Dahyun 수익성 판단
-  □ Alpha Phase: $70/exchange × 10 = $700
-  □ 튜너 OFF 3일 → 튜너 ON 4일 → 순차 A/B 비교 (최종 실거래 검증)
-  □ 일일 3-way 대조: 엔진 P&L vs 거래소 잔고 vs DB
-  □ 슬리피지/수수료 실측 vs 예측 비교 (FillAnalyzer 데이터)
-  □ 수수료/네트워크 비용 실측
-  □ PASS: P&L>0, 리콘 오차<1%, 슬리피지 오차<50%, 튜너 효과 판정 완료
-
-[단계 6] Live Kick-Off
-- Nayeon(TF 리더) 최종 서명
-- Jisoo(보안): API 키 Live 환경 최종 점검
-- 사장님 승인
-- Alpha → Beta 확대 또는 Full Live 전환
-- 운영 모니터링 시작
-
-PASS 기준:
-- ORR: 운영 매뉴얼 + IRP + 에스컬레이션 완비
-- DR: 9개 시나리오 전부 PASS (DR-1~6 인프라 + DR-7~9 전략)
-- Sandbox: Binance Testnet 주문 흐름 정상
-- 자본 한도: 사장님 승인 완료
-- Canary 7일: P&L>0, 리콘 오차<1%
-
-산출물:
-- docs/operations/daily-checklist.md (일일 점검)
-- docs/operations/incident-response.md (IRP)
-- docs/operations/weekly-report-template.md (주간 리포트)
-- docs/checklists/tf-final_YYYYMMDD.md (검증 보고서)
-- docs/checklists/tf-final-dr-report_YYYYMMDD.md (DR 결과)
-- docs/checklists/tf-final-canary-report_YYYYMMDD.md (Canary 리포트)
-```
-
-### 회귀 구조 (3-Round 공통)
+### 회귀 구조 (4-Round 공통)
 
 ```
 QF FAIL → 회귀 Phase 생성 → 3-Stage(A→B→C) → QF 재검증
-SF FAIL → 회귀 Phase 생성 → 3-Stage(A→B→C) → SF 재검증 (QF 스킵)
-          ※ 구조적 결함 시 QF부터 재검증
-Final FAIL → 항목별 수정 → Final 해당 단계 재검증
-             ※ 코드 변경 시 SF 재검증부터
+SF FAIL → 회귀 Phase 생성 → 3-Stage(A→B→C) → SF 재검증 (QF 스킵, 구조적 결함 시 QF부터)
+PF FAIL → git rollback → PF 재시도 (최대 2회) → 2회 실패 시 PF 스킵 → Final 직행
+Final FAIL → 항목별 수정 → 코드 변경 시 SF부터, 구조 변경 시 PF부터
 ```
+
+> **QF/SF/PF/Final 상세 절차**: `.claude/commands/leviathan-tf.md` 참조.
 
 ---
 
-## 8. 텔레그램 워크플로우 알림
+## 8. 텔레그램 3-Bot 체계
 
-**환경변수** (기존 거래 알림과 완전 분리):
-```
-WORKFLOW_TELEGRAM_BOT_TOKEN=<사장님이 생성한 봇 토큰>
-WORKFLOW_TELEGRAM_CHAT_ID=<채팅 ID>
-```
+> 상세 → CLAUDE.md "텔레그램 3-Bot" 섹션 참조.
 
-**알림 조건:**
-1. **L5 에스컬레이션**: 동일 Phase 3회 실패 → 사장님 판단 요청
-3. **컨텍스트 60% 도달**: `/clear` 시도 예고 알림 (`send_context_warning`)
-4. **컨텍스트 /clear 성공**: 자동 재개 알림 (`send_context_clear_success`)
-5. **컨텍스트 /clear 실패**: 수동 개입 필요 알림 (`send_context_alert`)
+| 봇 | 환경변수 | 용도 |
+|----|---------|------|
+| TradeBot | `TRADE_TELEGRAM_BOT_TOKEN` | 거래 알림 + Kill Switch + 포지션 제어 (20cmd) |
+| DevBot | `DEV_TELEGRAM_BOT_TOKEN` | 워크플로우 알림 + Watchdog `/go` 수동 재개 (16cmd) |
+| InfraBot | `INFRA_TELEGRAM_BOT_TOKEN` | 인프라 모니터링 /health /resources (7cmd) |
 
-기존 `TELEGRAM_BOT_TOKEN`(거래 알림)과 혼용 금지.
+**워크플로우 알림 (DevBot 경유):**
+- L5 에스컬레이션: 동일 Phase 3회 실패 → 사장님 판단 요청
+- 컨텍스트 60%: `/clear` 예고 → 성공/실패 알림
+- Phase 완료: 정보 전달 (승인 대기 없음, 즉시 다음 Phase)
+- **DevBot = Watchdog**: tmux 멈춤 감지 → 알림 → 자동 재개
 
 ---
 
@@ -1132,11 +878,11 @@ WORKFLOW_TELEGRAM_CHAT_ID=<채팅 ID>
 
 > 컨텍스트 압축 시 앞부분이 먼저 삭제됨. 이 섹션은 마지막에 있으므로 압축 후에도 살아남음.
 
-**절대 규칙 (§0 ZERO TOLERANCE 반복):**
-- 에이전트 결과 수신 즉시 다음 tool call 발행. 텍스트만 출력하고 멈추면 = **BUG**.
-- Stage 전환 순서: **A→B(TeamCreate) → B-Step 2(Shadow) → C(Assembly+Review) → C(Go/No-Go) → C(SSOT+push) → 텔레그램 → 다음Phase A**
-- "Churned/Brewed/Cooked" 후 반드시 tool call. 요약/보고만 하고 멈추면 = **BUG**.
-- 모든 에이전트 반환 3K 토큰 이내. 상세는 파일에 기록.
-- **run_in_background 금지**. 모든 Agent foreground 실행. 외부 CLI는 foreground 병렬 + timeout 300 + 3회 재시도 → L5.
-- **모든 응답에 텍스트 1줄 + tool call 병행** (텍스트 없으면 stop hook이 루프 종료 — #30625).
-- **"다음 세션에서 하자" 응답 절대 금지** (#34238). 컨텍스트 부족 시 checkpoint → `/clear` → 자동 재개.
+**§0 반복 — 압축 후에도 유지:**
+- 결과 수신 → 즉시 다음 tool call. 텍스트만 = **BUG**. 요약만 = **BUG**.
+- 순서: **A→B(TeamCreate)→B-2(Shadow)→C(Assembly→멀티모델→코드리뷰→Go/No-Go→SSOT+push)→다음A**
+- 에이전트 반환: **파일 기반** (`.omc/artifacts/`). 반환 PASS/FAIL+경로만.
+- 모든 Agent **foreground**. 외부 CLI **foreground 병렬 + timeout 300 + 3회 재시도 → L5**.
+- **모든 응답에 텍스트 1줄 + tool call** (#30625). "다음 세션에서" **금지** (#34238).
+- **TeamCreate 30초 무응답 → TeamDelete → Agent() fallback** (#33043).
+- **Watchdog**: Dev봇 독립 프로세스. tmux 멈춤 → 알림 → `/go` 재개.
