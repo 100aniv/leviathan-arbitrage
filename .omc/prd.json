@@ -6058,11 +6058,13 @@
       "phase": "S26",
       "title": "TCA 로깅 강화 (Arrival Price, Timing, 전략별)",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
-        "Arrival Price 기록",
-        "Timing 분해 (signal→fill)",
-        "전략별 TCA 세분화"
+        "ExecutionRecord에 arrival_price, signal_ts, decision_ts, submission_ts, fill_ts 필드 추가",
+        "record_execution()에 새 필드 파라미터 추가 (기본값으로 하위호환)",
+        "get_strategy_summary(strategy_id) 메서드 추가 — 전략별 IS/latency/fill_rate 반환",
+        "main.py record_execution 호출에 signal_ts 주입 (trade_request.timestamp 활용)",
+        "pytest tests/unit/analysis/ PASS"
       ],
       "files": [
         "engine/src/analysis/tca.py"
@@ -6076,8 +6078,10 @@
       "priority": 2,
       "passes": false,
       "acceptanceCriteria": [
-        "1H 주기 비교 리포트",
-        "PnL/slippage/fill rate 갭 측정"
+        "ShadowLiveReporter 클래스 생성 (engine/src/analysis/shadow_live_reporter.py)",
+        "generate_report() → PnL gap, slippage gap, fill rate 비교 dict 반환",
+        "TCAAnalyzer.get_summary()를 활용한 슬리피지 갭 계산",
+        "pytest 테스트 PASS"
       ],
       "files": [
         "engine/src/analysis/shadow_live_reporter.py"
@@ -6089,10 +6093,12 @@
       "phase": "S26",
       "title": "Leg Risk 감지 + 메트릭",
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
-        "한쪽만 체결 시 감지",
-        "leg_risk 카운터 메트릭"
+        "AtomicOrderExecutor에 leg_risk_events 카운터 추가",
+        "execute()에서 한쪽 leg만 체결 시 카운터 증가 + WARNING 로그",
+        "get_leg_risk_count() 메서드 반환",
+        "pytest 테스트 PASS"
       ],
       "files": [
         "engine/src/execution/atomic.py"

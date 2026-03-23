@@ -71,6 +71,8 @@ class AtomicOrderExecutor:
         # US-275-a: depth-based sizing
         self._depth_analyzer: DepthAnalyzer | None = depth_analyzer
         self.enable_depth_sizing: bool = os.environ.get("ENABLE_DEPTH_SIZING", "true").lower() == "true"
+        # US-331: leg risk detection
+        self._leg_risk_events: int = 0
 
     def _cleanup_old_keys(self) -> None:
         """Remove idempotency keys older than 5 minutes (US-153)."""
@@ -252,3 +254,21 @@ class AtomicOrderExecutor:
             market_slippage_bps=self._market_slippage_sum / max(self._market_fills, 1),
             fill_rate=self._ioc_fills / max(total, 1),
         )
+
+    # US-331: Leg risk detection
+    def record_leg_risk(self, symbol: str = "", buy_filled: bool = True, sell_filled: bool = True) -> None:
+        """Record a leg risk event when one side of a two-leg trade fails."""
+        if buy_filled == sell_filled:
+            return  # Both filled or both failed — not a leg risk
+        self._leg_risk_events += 1
+        logger.warning(
+            "leg_risk_detected",
+            symbol=symbol,
+            buy_filled=buy_filled,
+            sell_filled=sell_filled,
+            total_events=self._leg_risk_events,
+        )
+
+    def get_leg_risk_count(self) -> int:
+        """US-331: Return total leg risk events."""
+        return self._leg_risk_events

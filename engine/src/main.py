@@ -1464,12 +1464,19 @@ class Engine:
                         if expected <= 0:
                             logger.debug("TCA: skipping leg %d — no expected price", idx)
                             continue
+                        # US-329: pass signal_ts for timing decomposition
+                        try:
+                            _signal_ts = trade_request.timestamp.timestamp()
+                        except (AttributeError, TypeError):
+                            _signal_ts = 0.0
                         self._tca_analyzer.record_execution(
                             expected_price=expected,
                             fill_price=float(trade.price),
                             latency_ms=latency_ms,
                             filled_ratio=float(getattr(leg, 'filled_ratio', 1.0)),
                             strategy_id=trade_request.strategy_id,
+                            signal_ts=_signal_ts,
+                            fill_ts=time.time(),
                         )
             except Exception:
                 pass  # Non-critical: TCA tracking failure
