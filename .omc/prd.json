@@ -6124,7 +6124,7 @@
       "phase": "S26",
       "title": "TCA 기반 min_profitability 재보정",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "TCA P95 IS 기반 min_edge 재계산",
         "slippage_buffer 보정"
@@ -6152,7 +6152,7 @@
       "phase": "S26",
       "title": "일일 3-Way 리콘실리에이션 리포터",
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "엔진PnL vs 거래소잔고 vs DB 비교",
         "텔레그램 자동 리포트"
