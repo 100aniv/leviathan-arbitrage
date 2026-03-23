@@ -42,7 +42,8 @@ class ShadowLiveReporter:
     ) -> None:
         self._tca = tca_analyzer
         self._output_path = Path(output_path)
-        self._reports: list[ComparisonReport] = []
+        self._reports: list[ComparisonReport] = []  # bounded by generate_report frequency (~24/day)
+        self._max_reports = 1000
         self._last_report_time: float = 0.0
         self._cumulative_shadow_pnl: float = 0.0
         self._cumulative_virtual_pnl: float = 0.0
@@ -51,12 +52,12 @@ class ShadowLiveReporter:
     def record_trade(
         self,
         shadow_pnl: float,
-        virtual_live_pnl: float = 0.0,
+        virtual_live_pnl: float | None = None,
     ) -> None:
         """Record a single trade's PnL for both Shadow and Virtual Live."""
         self._cumulative_shadow_pnl += shadow_pnl
-        # Virtual Live PnL: if not provided, estimate as shadow_pnl * scaling factor
-        if virtual_live_pnl == 0.0:
+        # Virtual Live PnL: None = not provided → use shadow_pnl as estimate
+        if virtual_live_pnl is None:
             virtual_live_pnl = shadow_pnl
         self._cumulative_virtual_pnl += virtual_live_pnl
         self._trade_count += 1
@@ -90,6 +91,8 @@ class ShadowLiveReporter:
             shadow_trade_count=self._trade_count,
         )
         self._reports.append(report)
+        if len(self._reports) > self._max_reports:
+            self._reports = self._reports[-self._max_reports:]
         self._last_report_time = now
 
         result = {

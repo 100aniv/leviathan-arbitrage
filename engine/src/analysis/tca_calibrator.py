@@ -88,7 +88,7 @@ class TCACalibrator:
         )
         return result
 
-    def apply_to_params(self, params_path: str | Path = "config/strategy_params.json") -> dict:
+    def apply_to_params(self, params_path: str | Path = "engine/config/strategy_params.json") -> dict:
         """Calibrate and write updated slippage_buffer to strategy_params.json."""
         cal = self.calibrate()
         if "error" in cal:

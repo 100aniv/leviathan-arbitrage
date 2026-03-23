@@ -115,14 +115,14 @@ class TCAAnalyzer:
             self._strategy_is[strategy_id].add(is_bps)
             self._strategy_latency[strategy_id].add(max(0.0, latency_ms))
             self._strategy_fills[strategy_id].append(max(0.0, min(1.0, filled_ratio)))
-        # US-329: timing decomposition
-        if signal_ts > 0 and fill_ts > 0:
+        # US-329: timing decomposition (non-negative validation for clock skew)
+        if signal_ts > 0 and fill_ts > signal_ts:
             self._signal_to_fill_tracker.add((fill_ts - signal_ts) * 1000)
-        if signal_ts > 0 and decision_ts > 0:
+        if signal_ts > 0 and decision_ts > signal_ts:
             self._signal_to_decision_tracker.add((decision_ts - signal_ts) * 1000)
-        if decision_ts > 0 and submission_ts > 0:
+        if decision_ts > 0 and submission_ts > decision_ts:
             self._decision_to_submit_tracker.add((submission_ts - decision_ts) * 1000)
-        if submission_ts > 0 and fill_ts > 0:
+        if submission_ts > 0 and fill_ts > submission_ts:
             self._submit_to_fill_tracker.add((fill_ts - submission_ts) * 1000)
 
     def get_summary(self) -> dict:

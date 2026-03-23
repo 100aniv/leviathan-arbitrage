@@ -47,4 +47,4 @@ class TestReconciliationReporter:
         history = reporter.get_history()
         assert len(history) == 2
         assert history[0]["status"] == "OK"
-        assert history[1]["status"] == "WARNING"  # 5% drift = WARNING (>1%, <=5%)
+        assert history[1]["status"] == "CRITICAL"  # 5% drift = CRITICAL (>=5%)

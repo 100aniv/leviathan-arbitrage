@@ -30,7 +30,7 @@ class TestShadowLiveReporter:
             "fill_rate_pct": 95.0,
         }
         reporter = ShadowLiveReporter(tca_analyzer=mock_tca, output_path="/tmp/test-slr2.json")
-        reporter.record_trade(shadow_pnl=1.0)
+        reporter.record_trade(shadow_pnl=1.0, virtual_live_pnl=None)
         report = reporter.generate_report()
         assert report["slippage"]["is_p50_bps"] == 3.5
         assert report["fill_rate_pct"] == 95.0

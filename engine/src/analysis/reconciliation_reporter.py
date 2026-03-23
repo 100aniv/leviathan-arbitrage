@@ -44,7 +44,8 @@ class ReconciliationReporter:
         output_path: str | Path = ".omc/state/reconciliation-latest.json",
     ) -> None:
         self._output_path = Path(output_path)
-        self._results: list[ReconciliationResult] = []
+        self._results: list[ReconciliationResult] = []  # bounded: ~1/day
+        self._max_results = 1000
 
     def reconcile(
         self,
@@ -68,9 +69,9 @@ class ReconciliationReporter:
         ex_vs_db = _pct_diff(exchange_balance_delta, db_pnl)
         max_drift = max(e_vs_ex, e_vs_db, ex_vs_db)
 
-        if max_drift > self.THRESHOLD_CRITICAL_PCT:
+        if max_drift >= self.THRESHOLD_CRITICAL_PCT:
             status = "CRITICAL"
-        elif max_drift > self.THRESHOLD_WARNING_PCT:
+        elif max_drift >= self.THRESHOLD_WARNING_PCT:
             status = "WARNING"
         else:
             status = "OK"
@@ -88,6 +89,8 @@ class ReconciliationReporter:
         )
 
         self._results.append(result)
+        if len(self._results) > self._max_results:
+            self._results = self._results[-self._max_results:]
         self._write_report(result)
 
         if status != "OK":
