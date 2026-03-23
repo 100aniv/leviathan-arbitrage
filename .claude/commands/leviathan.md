@@ -7,19 +7,21 @@
 
 **절대 금지**: 사용자 확인 요청, Stage 간 멈춤, 에이전트 대기 중 멈춤, US 간 멈춤, 상태 보고만 하고 멈춤, **run_in_background: true**
 **강제**: 모든 응답에 텍스트 1줄 + tool call 병행. Stage A→B→C→다음Phase 끊김 없는 연속 흐름. **모든 Agent foreground 실행.**
+**외부 CLI**: codex/gemini/qwen은 **동일 메시지 foreground 병렬** + `timeout 300`. 실패 시 3회 재시도 → 전원 실패 시 L5 (스킵 절대 금지).
 **멈춤 허용**: (1) TF Final PASS (Live 준비) (2) 5회 연속 동일 US/TF 실패 (L5) (3) 사용자 "stop/cancel/멈춰"
-**에이전트 반환**: **파일 기반**. 결과를 `.omc/artifacts/{agent}-{phase}.md`에 기록. 반환은 `PASS/FAIL + 경로 + 핵심 요약`.
-**Watchdog**: Dev봇이 watchdog. `python -m src.infra.telegram_dev_bot`. tmux 멈춤 감지 → 알림 → 자동 재개. `/go`로 텔레그램 수동 재개.
+**에이전트 반환**: **파일 기반**. 결과를 `.omc/artifacts/{agent}-{phase}.md`에 기록. 반환은 `PASS/FAIL + 경로 + 핵심 요약`. 상세는 `.omc/artifacts/`에 기록. 컨텍스트 팽창 원천 차단.
+**CLI 전용**: tmux/터미널에서 실행. VS Code에서 실행 금지 (freeze 위험 #26778).
+**Watchdog**: Dev봇이 watchdog. `python -m src.infra.telegram_dev_bot` (또는 `bash scripts/watchdog.sh`). tmux 멈춤 감지 → 알림 → 자동 재개. `/go`로 텔레그램 수동 재개.
 **ANTI-STALL (#30625/#33043/#34238)**: 텍스트 없는 응답 = stop hook 루프 종료. 에이전트 결과 수신 → 즉시 다음 tool call. "다음 세션에서" 금지. TeamCreate 30초 무응답 → TeamDelete → Agent() fallback.
 
 ```
-Stage A (check_all → architect(Entry Gate) → critic(비판) → QUANT GATE → checkpoint)
-  → Stage B (TeamCreate → pytest → TeamDelete → Shadow 10min → trades>0 HARD GATE → checkpoint)
-  → Stage C (Assembly Gate → code-reviewer+security-reviewer → architect(Go/No-Go) → SSOT+git)
+Stage A (Entry Gate → 기획 → QUANT GATE → checkpoint)
+  → Stage B (TeamCreate → pytest → TeamDelete → Shadow 10min+ → checkpoint)
+  → Stage C (Assembly → 멀티모델 감사+Go/No-Go → 코드리뷰 → SSOT+git)
   → 다음 Phase Stage A
 ```
 
-> **용어**: "Stage" = 워크플로우 (A~C), "Phase" = 로드맵/PRD (S15~S22 등). 혼용 금지.
+> **용어**: "Stage" = 워크플로우 (A~C), "Phase" = 로드맵/PRD (S15~S21 등). 혼용 금지.
 
 ---
 
@@ -45,15 +47,19 @@ ralph 루프 안에서 **Phase 단위**로 **3-Stage Sequential** 수행:
 
 #### 자동 일관성 검사
 `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) check_all`
-→ OK면 architect에게 "PASS" 주입. DRIFT/ERROR면 Entry Gate 전 수정.
+→ OK면 Karina에게 "PASS" 주입. DRIFT/ERROR면 Entry Gate 전 수정.
 
-#### Step 1: architect(Entry Gate, 순차)
-architect(opus): Entry Gate — SSOT+CLAUDE.md+prd.json 3-way 정합성. passes 카운트, 테스트 수, Phase 순서, 대상 파일 코드 구조. 불일치 → 수정 완료까지 B 진입 금지. PLAN.md 작성 → `docs/planning/Phase-X_PLAN.md`. **반환 1K 토큰 이내.**
+#### Step 1: Karina — Entry Gate (순차)
+Karina(architect/opus): Entry Gate — SSOT+CLAUDE.md+prd.json 3-way 정합성. passes 카운트, 테스트 수, Phase 순서, 대상 파일 코드 구조. 불일치 → 수정 완료까지 B 진입 금지. **반환 1K 토큰 이내.**
 
 > 결과 수신 즉시 Step 2 스폰.
 
-#### Step 2: critic(비판, architect 결과 주입)
-critic(opus): 기획 비판 — 설계 결함, 누락, 과복잡성. MUST FIX 항목 → architect 수정 후 재검사 (최대 2회). **1K 토큰.**
+#### Step 2: NingNing + Winter + Giselle (병렬, Karina 결과 주입)
+- NingNing(analyst): 요구사항 분석 + AC 검증 + 엣지케이스. **1K 토큰.**
+- Winter(critic/opus): 기획 비판 — 설계 결함, 누락, 과복잡성. **1K 토큰.**
+- Giselle(planner): PLAN.md 작성 → `docs/planning/Phase-X_PLAN.md`. **1K 토큰. 상세는 PLAN.md에.**
+
+> Entry Gate 불일치 시 수정 후 재검사 (최대 2회).
 
 #### 배치 수집
 1. progress.json `us_targets` 확인 → 있으면 재사용
@@ -61,10 +67,20 @@ critic(opus): 기획 비판 — 설계 결함, 누락, 과복잡성. MUST FIX �
 3. **prd.json 전체 Read 금지** (32K tokens 초과)
 4. 의존성 분석 → 독립 배치(최대 5 US), 의존 순차. 도메인별 그룹.
 
+#### PLAN REVIEW GATE — 멀티모델 감사 (PLAN.md 완성 후)
+
+3개 외부 모델 병렬 + Claude 독립 리뷰 → quorum 합의 (2+ 지적 = MUST FIX):
+- codex-plan-reviewer: `timeout 300 codex exec -s read-only '$REVIEW_PROMPT'`
+- gemini-plan-reviewer: `timeout 300 gemini -p '$REVIEW_PROMPT' --approval-mode plan`
+- qwen-plan-reviewer: `timeout 300 qwen --approval-mode plan -p '$REVIEW_PROMPT'`
+
+REVIEW_PROMPT: "docs/planning/Phase-X_PLAN.md 읽고 설계 결함/누락/과복잡성/엣지케이스 지적. CRITICAL/HIGH/MEDIUM."
+결과 → `.omc/artifacts/consensus-plan-{phase}.md`. MUST FIX → PLAN 수정 (최대 1회).
+
 #### QUANT GATE — 전략/수식 키워드 포함 시에만
 
 키워드: `slippage|signal|strategy|executor|funding|futures|triangular|statistical|friction|cost_calculator|regime|hmm|xgboost|onnx|dex|gas_oracle`
-- quant-validator(opus): 파라미터 범위, 이중계산, PnL 영향, 수식 일치. PASS/FAIL. **1K 토큰.**
+- Yeji(quant-validator/opus): 파라미터 범위, 이중계산, PnL 영향, 수식 일치. PASS/FAIL. **1K 토큰.**
 
 PASS → Stage B. FAIL → 수정 후 재호출 (최대 2회).
 
@@ -80,12 +96,12 @@ PASS → Stage B. FAIL → 수정 후 재호출 (최대 2회).
 `TeamCreate(team_name="leviathan-phase-X")`
 
 **필수 Teammate:**
-- **executor**: `engine/src/` 구현. dashboard/tests/ 금지. 완료 시 test-engineer에게 SendMessage.
-- **test-engineer**: `tests/` 작성 + `pytest -x --tb=short`. 결과 Lead 보고.
+- **Yujin** (executor): `engine/src/` 구현. dashboard/tests/ 금지. 완료 시 Wonyoung에게 SendMessage.
+- **Wonyoung** (test-engineer): `tests/` 작성 + `pytest -x --tb=short`. 결과 Lead 보고.
 
 **조건부:**
-- **designer**: `files`에 `dashboard/` OR AC에 `UI/프론트` → `dashboard/src/` 구현.
-- 추가 executor: 독립 모듈 병렬 시 추가 (최대 4명).
+- **Rei** (designer): `files`에 `dashboard/` OR AC에 `UI/프론트` → `dashboard/src/` 구현.
+- **Gaeul/Leeseo/Liz** (executor): 독립 모듈 병렬 시 추가 (최대 4명).
 
 **D-verify (대시보드/API US 시 필수) — Chrome 검증:**
 1. `preview_start("dashboard")` → localhost:3000
@@ -93,9 +109,10 @@ PASS → Stage B. FAIL → 수정 후 재호출 (최대 2회).
 3. `preview_resize(preset="mobile")` → 모바일 확인
 4. `preview_screenshot()` → 증거 캡처
 
-**완료:** test-engineer pytest PASS → 전원 `shutdown_request` → `TeamDelete()`
+**완료:** Wonyoung pytest PASS → 전원 `shutdown_request` → `TeamDelete()`
+**파일 소유권:** Yujin/Gaeul/Leeseo/Liz=`engine/src/`, Rei=`dashboard/src/`, Wonyoung=`tests/`
 
-#### B-Step 2: Shadow (Sub-agent)
+#### B-Step 2: Shadow + 모니터링 (Sub-agents)
 
 **B-2-1. Docker 인프라:**
 ```
@@ -104,15 +121,19 @@ docker compose stop engine auto-tuner monitoring 2>/dev/null
 ```
 
 **B-2-2. Shadow 10min+:**
-shadow-tester: `cd engine && timeout 600 python -m src.main`. 결과 → `.omc/state/shadow-result-latest.json`. **1K 토큰.**
+Minji(shadow-tester): `cd engine && timeout 600 python -m src.main`. 결과 → `.omc/state/shadow-result-latest.json`. **1K 토큰.**
 
-**trades>0 HARD GATE**: Shadow 완료 후 trades=0이면 즉시 FAIL → Type W(Wiring) → L2 에스컬레이션. B-Step 1 복귀.
+**B-2-3~6 (조건부 병렬):**
+- Danielle(scientist/haiku): PnL/WR/DD 분석 — Shadow 중 병렬
+- Hanni(qa-tester/haiku): CLI/런타임 검증
+- Haerin(browser-verifier): 대시보드/API US 시 Chrome 검증 (API 200 + WS 연결 확인)
+- Hyein(debugger): crash 시만
 
-**Shadow 13항목**: crash=0, >=10min, PnL>=0, MDD<5%, PF>1.0, 신호>=100/day, KillSwitch not halted, CB CLOSED, Health>=95%, loss_capped=0, 전략별 trade>=1, 방어로그>=1, 결과파일 존재.
+**Shadow 13항목**: CLAUDE.md 참조 (crash=0, >=10min, PnL>=0, MDD<5%, PF>1.0, 신호>=100/day, KillSwitch not halted, CB CLOSED, Health>=95%, loss_capped=0, 전략별 trade>=1, 방어로그>=1, 결과파일 존재)
 
 #### B-Step 3: Shadow 실패 시 fix loop
 
-Type W(Wiring: trade=0) → 즉시 L2. Type P(PnL<0, 전략 활성) → 3회. Type B(crash) → 3회.
+Type W(Wiring: trade=0) → 즉시 L2. Type P(PnL<0, 전략 활성) → 3회. Type B(crash) → 3회. 분류는 Hyein(debugger).
 
 **체크포인트:** `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) checkpoint save --trigger "stage_B_complete"`
 
@@ -122,33 +143,41 @@ Type W(Wiring: trade=0) → 즉시 L2. Type P(PnL<0, 전략 활성) → 3회. Ty
 
 ### Stage C — 리뷰 + 릴리스 (Review + Release)
 
-#### C-Step 1: Assembly Gate (코드리뷰 전 필수)
+#### C-Step 1: Assembly Verification (코드리뷰 전 필수)
 
 > 조건부: `git diff --name-only`에 `class ` 또는 `__init__` 변경 시에만. 아니면 스킵.
 > Assembly FAIL → B-Step 1 복귀. PASS → C-Step 2.
 
-verifier(sonnet): 4개 서브체크 — Init Chain, Signal Flow E2E, Dead Wiring, Config Flag. **1K 토큰.**
+Assembly Verifier(verifier/sonnet): 4개 서브체크 — Init Chain, Signal Flow E2E, Dead Wiring, Config Flag. **1K 토큰.**
 
 **체크포인트:** Assembly PASS 후 `checkpoint save --trigger "assembly_gate_pass"`
 
-#### C-Step 2: 코드리뷰 + 보안 (병렬, Assembly PASS 후)
+#### C-Step 2: 코드리뷰 + 보안 + 멀티모델 감사 (병렬, Assembly PASS 후)
+
+> Claude 미포함 = 확증 편향 제거. 코드리뷰/보안/멀티모델 감사를 1회 병렬로 통합.
+
+AUDIT_PROMPT: "Phase X 변경 파일 감사. git diff main...HEAD.
+Part 1: 로직 오류, 엣지케이스, 수학, wiring. CRITICAL/HIGH/MEDIUM.
+Part 2: Go/No-Go 판정 — PLAN 이행, Shadow 13항목, CRITICAL/HIGH 해결, wiring 완전성. Go/No-Go + 근거."
 
 병렬 실행:
-- code-reviewer(opus): 종합 리뷰 — API 계약, 하위호환, SOLID, 통합 추적, Shadow trade=0 집중. 산출물: `docs/review/Phase-X_REVIEW.md`. **1K 토큰.**
-- security-reviewer: JWT/API키/OWASP Top 10/시크릿 노출. **1K 토큰.**
+- Jennie(code-reviewer/opus): 종합 리뷰 — API 계약, 하위호환, SOLID, 통합 추적, Shadow trade=0 집중. 산출물: `docs/review/Phase-X_REVIEW.md`. **1K 토큰.**
+- Jisoo(security-reviewer): JWT/API키/OWASP Top 10/시크릿 노출. **1K 토큰.**
+- codex-auditor: `timeout 300 codex exec -s read-only '$AUDIT_PROMPT'`
+- gemini-auditor: `timeout 300 gemini -p '$AUDIT_PROMPT' --approval-mode plan`
+- qwen-auditor: `timeout 300 qwen --approval-mode plan -p '$AUDIT_PROMPT'`
 
-조건부: quant-validator(수식 변경 시), browser-verifier(대시보드/API US 시)
+Quorum: 2+ CRITICAL/HIGH = MUST FIX → B-Step 1 복귀. 과반수 Go = Go.
+조건부: Yeji(퀀트, 수식 변경 시), Haerin(Chrome, 대시보드/API US 시)
+결과 → `.omc/artifacts/consensus-audit-{phase}.md`.
 
-Quorum: 2+ CRITICAL/HIGH = MUST FIX → B-Step 1 복귀.
-결과 → `.omc/artifacts/review-{phase}.md`.
+#### C-Step 3: Karina Go/No-Go (C-Step 2 결과 주입)
 
-#### C-Step 3: architect Go/No-Go (C-Step 2 결과 주입)
-
-architect(opus): Phase 완료 리뷰 7항목 — PLAN 이행, REVIEW CRITICAL/HIGH 해결, Shadow 13항목, Assembly 5-check, AC 충족(⚡ WIRING), 3-way 정합성, code-reviewer/security-reviewer Go/No-Go 참조. FAIL → 유형별 복귀. **1K 토큰.**
+Karina(architect/opus): Phase 완료 리뷰 7항목 — PLAN 이행, REVIEW CRITICAL/HIGH 해결, Shadow 13항목, Assembly 5-check, AC 충족(⚡ WIRING), 3-way 정합성, 외부 모델 Go/No-Go 참조. FAIL → 유형별 복귀. **1K 토큰.**
 
 #### C-Step 4: SSOT + Git (Go 시, 팀 종료 후 단독)
 
-ssot-keeper(sonnet): passes:true 전 런타임 증거 확인. prd.json 업데이트, SSOT §2 업데이트, 이월 항목, §7 헤더 동기화, CLAUDE.md 동기화, 3곳 대조, git add+commit+push. **1K 토큰.**
+Sakura(ssot-keeper/sonnet): passes:true 전 런타임 증거 확인. prd.json 업데이트, SSOT §2 업데이트, 이월 항목, §7 헤더 동기화, CLAUDE.md 동기화, 3곳 대조, git add+commit+push. **1K 토큰.**
 
 **일관성 재검증 + 체크포인트 + FSM sync:**
 ```
@@ -157,7 +186,7 @@ cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) 
 cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) sync --phase X --tests Y --prd-pass Z --prd-total W
 ```
 
-**C→다음Phase:** architect Go + ssot-keeper push → cleanup → 텔레그램 알림(정보 전달, 대기 없음) → `state_write(next_stage:"A", next_phase:"Phase-Y")` → 즉시 다음 Phase.
+**C→다음Phase:** Karina Go + Sakura push → cleanup → 텔레그램 알림(정보 전달, 대기 없음) → `state_write(next_stage:"A", next_phase:"Phase-Y")` → 즉시 다음 Phase.
 
 ---
 
@@ -178,6 +207,8 @@ cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) 
 
 **체크포인트**: `.omc/state/leviathan-progress.json` (Phase Loop) + `.omc/state/leviathan-tf-status.json` (TF 추적).
 **에이전트 결과**: `.omc/artifacts/{agent}-{phase}.md` 파일에 기록. 메인 컨텍스트에는 PASS/FAIL + 경로만.
+**Watchdog**: Dev봇 독립 프로세스 = watchdog (`python -m src.infra.telegram_dev_bot`). tmux 멈춤 감지 + 알림 + 자동 재개 + `/go` 수동 재개.
+
 **60% 컨텍스트:** 즉시 현 Stage 마무리 → checkpoint → `/clear` → progress.json 재개.
 
 ---
@@ -205,20 +236,25 @@ prd.json 전수 확인 → `passes:false` = 0건 → TF 진입.
    - FAIL → 회귀 처리
 3. **TF PF**: leviathan-tf.md §PF 절차 실행
    - PASS → `tf-status.json` pf.status:"PASS" → Final 진입
-   - FAIL → rollback 후 PF 재시도 (최대 2회). 2회 실패 → PF 스킵 → Final 직행
+   - FAIL → rollback 후 PF 재시도 (최대 2회, 다른 리팩토링 전략). 2회 실패 → PF 스킵 → Final 직행
+   - ※ PF는 prd.json 비관여 (git rollback 기반 회귀)
 4. **TF Final**: leviathan-tf.md §Final 절차 실행
    - PASS → Live 준비 완료 → 텔레그램 알림 → **루프 정상 종료**
-   - FAIL → 항목별 수정 → Final 재검증 (최대 3회)
+   - FAIL → 항목별 수정 → Final 재검증 (최대 3회, 코드 변경 시 SF부터, 구조 변경 시 PF부터)
 
 ### TF 회귀 자동화
-1. FAIL 항목에서 회귀 US 도출
+1. FAIL 항목에서 회귀 US 도출 (예: `US-S22-001: TF QF에서 발견된 X 수정`)
 2. prd.json에 추가 (`passes:false`, `phase: "S{N}-regression"`)
 3. `tf-status.json`에 `regression_phase` 기록, `progress.json` status:"regression"
-4. 루프가 `passes:false` 감지 → Phase Loop 자연 복귀 (Stage A→B→C)
-5. 회귀 완료 → 전 US `passes:true` → TF 재진입 (QF/SF/PF/Final 회귀 규칙 적용)
+4. → 루프가 `passes:false` 감지 → Phase Loop 자연 복귀 (Stage A→B→C)
+5. 회귀 완료 → 전 US `passes:true` → TF 재진입
+   - QF 회귀: QF부터 재실행
+   - SF 회귀: QF 스킵 (구조적 결함 시 QF부터)
+   - PF 회귀: git rollback (prd.json 비관여) → PF 재시도 (최대 2회) → 스킵 시 Final 직행
+   - Final 회귀: 코드 변경 시 SF부터, 구조 변경 시 PF부터
 
 ### 에스컬레이션
-- 동일 TF 라운드 3회 연속 FAIL → 접근법 변경
+- 동일 TF 라운드 3회 연속 FAIL → 접근법 변경 (다른 수정 전략)
 - 5회 연속 FAIL → L5 텔레그램 알림 + 루프 일시정지 + `/approve` 대기
 
 ---

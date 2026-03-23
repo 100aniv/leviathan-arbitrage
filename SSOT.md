@@ -31,12 +31,12 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: TF-SF Stage 1 진행중 (2026-03-23) — S25 한글화 완료 후 SF 24H Shadow
+**Phase**: S26 회귀 (2026-03-23) — TF SF FAIL(Sharpe 0.53) → 전략 리서치 + Shadow 강화
 **Tests**: 5,200 passed / 0 failed / 12 skipped
 **Coverage**: 77%
 **PRD**: 322/324 passes:true (US-055/056 Phase F Live만 잔여)
-**TF Status**: S1~S25 ✅ → TF QF Re-Validation PASS → **TF SF** → TF Final → Live
-**Next**: SF Stage 1 (1H) → Stage 2~6 → 24H
+**TF Status**: S1~S25 ✅ → TF QF Re-Validation PASS → TF SF FAIL(Sharpe 0.53) → **S26 회귀** → TF QF → SF → PF → Final → Live
+**Next**: S26 워크플로우 복구 + 전략 리서치 + Shadow 강화 + SF 재실행
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
