@@ -1,12 +1,24 @@
 {
-  "current_phase": "TF-QF",
-  "current_stage": "A",
-  "current_step": "pending",
-  "status": "tf-entry",
-  "us_targets": [],
-  "us_count": 0,
-  "previous_phase": "S22",
-  "previous_result": "PASS",
-  "regression_source": null,
-  "note": "S22 회귀 완료 (US-316~320 전부 passes:true). PRD 318/320. TF QF 10차 진입 대기."
+  "current_phase": "S26",
+  "current_stage": "pending",
+  "current_step": "pending-Step1",
+  "status": "in_progress",
+  "us_targets": [
+    "US-325",
+    "US-326",
+    "US-327",
+    "US-328",
+    "US-329",
+    "US-330",
+    "US-331",
+    "US-332",
+    "US-333",
+    "US-334",
+    "US-335"
+  ],
+  "us_count": 11,
+  "previous_phase": "TF-SF",
+  "previous_result": "FAIL",
+  "regression_source": "TF SF Stage 4 FAIL: Sharpe 0.53, WR 56%",
+  "note": "워크플로우 4-Round 복구 완료. S26: 전략 리서치 + Shadow Live급 강화 + TCA + 소액 Live 전환."
 }

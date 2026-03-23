@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-23 (S22~S25 회귀 + TF QF PASS Re-Validation → TF SF 진행중) | PRD: `.omc/prd.json` (324개 US, 322 passes:true / 2 passes:false)
+> 마지막 업데이트: 2026-03-24 (S26 전략 리서치 + Shadow 강화) | PRD: `.omc/prd.json` (335개 US, 331 passes:true / 4 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 > **실행 순서**: A~M ✅ → S1~S22 ✅ → **TF QF 10차** → TF SF → TF PF → TF Final → Live
 
@@ -32,9 +32,9 @@
 > Team roster: `.omc/state/team-roster.json`
 
 **Phase**: S26 회귀 (2026-03-23) — TF SF FAIL(Sharpe 0.53) → 전략 리서치 + Shadow 강화
-**Tests**: 5,200 passed / 0 failed / 12 skipped
+**Tests**: 5,207 passed / 0 failed / 12 skipped
 **Coverage**: 77%
-**PRD**: 322/324 passes:true (US-055/056 Phase F Live만 잔여)
+**PRD**: 331/335 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 잔여)
 **TF Status**: S1~S25 ✅ → TF QF Re-Validation PASS → TF SF FAIL(Sharpe 0.53) → **S26 회귀** → TF QF → SF → PF → Final → Live
 **Next**: S26 워크플로우 복구 + 전략 리서치 + Shadow 강화 + SF 재실행
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
