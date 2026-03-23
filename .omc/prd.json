@@ -5979,6 +5979,174 @@
         "engine/src/main.py",
         "engine/src/modes/shadow.py"
       ]
+    },
+    {
+      "id": "US-325",
+      "phase": "S26",
+      "title": "전략 수익성 벤치마크 리서치 + 스프레드 시간대 분석",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "exa.ai 리서치 결과 문서화",
+        "시간대별 스프레드 분포 분석",
+        "업계 수익률 벤치마크 정리"
+      ],
+      "files": [
+        ".omc/artifacts/s26-research.md"
+      ],
+      "description": "전략 수익성 벤치마크 리서치 + 스프레드 시간대 분석"
+    },
+    {
+      "id": "US-326",
+      "phase": "S26",
+      "title": "파라미터 근본 재설계 (min_edge, position_size, slippage_buffer)",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "MIN_EDGE_BPS 리서치 기반 재설정",
+        "slippage_buffer 도입",
+        "strategy_params.json 업데이트"
+      ],
+      "files": [
+        "engine/config/strategy_params.json",
+        "engine/.env",
+        "engine/src/core/signal.py"
+      ],
+      "description": "파라미터 근본 재설계 (min_edge, position_size, slippage_buffer)"
+    },
+    {
+      "id": "US-327",
+      "phase": "S26",
+      "title": "전략별 활성화/비활성화 기준 재설정",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "전략별 WFE/시간대 기반 활성화 매트릭스",
+        "비활성 전략 명확 표시"
+      ],
+      "files": [
+        "engine/config/strategy_params.json"
+      ],
+      "description": "전략별 활성화/비활성화 기준 재설정"
+    },
+    {
+      "id": "US-328",
+      "phase": "S26",
+      "title": "Shadow 포지션 크기 Live급 상향 (DEPTH_FRACTION=1.0)",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "SHADOW_DEPTH_FRACTION=1.0 적용",
+        "Shadow 10min notional 검증 (기존 대비 10x+)"
+      ],
+      "files": [
+        "engine/src/core/signal.py",
+        "engine/.env"
+      ],
+      "description": "Shadow 포지션 크기 Live급 상향 (DEPTH_FRACTION=1.0)"
+    },
+    {
+      "id": "US-329",
+      "phase": "S26",
+      "title": "TCA 로깅 강화 (Arrival Price, Timing, 전략별)",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "Arrival Price 기록",
+        "Timing 분해 (signal→fill)",
+        "전략별 TCA 세분화"
+      ],
+      "files": [
+        "engine/src/analysis/tca.py"
+      ],
+      "description": "TCA 로깅 강화 (Arrival Price, Timing, 전략별)"
+    },
+    {
+      "id": "US-330",
+      "phase": "S26",
+      "title": "Shadow vs Virtual Live 비교 리포터",
+      "priority": 2,
+      "passes": false,
+      "acceptanceCriteria": [
+        "1H 주기 비교 리포트",
+        "PnL/slippage/fill rate 갭 측정"
+      ],
+      "files": [
+        "engine/src/analysis/shadow_live_reporter.py"
+      ],
+      "description": "Shadow vs Virtual Live 비교 리포터"
+    },
+    {
+      "id": "US-331",
+      "phase": "S26",
+      "title": "Leg Risk 감지 + 메트릭",
+      "priority": 2,
+      "passes": false,
+      "acceptanceCriteria": [
+        "한쪽만 체결 시 감지",
+        "leg_risk 카운터 메트릭"
+      ],
+      "files": [
+        "engine/src/execution/atomic.py"
+      ],
+      "description": "Leg Risk 감지 + 메트릭"
+    },
+    {
+      "id": "US-332",
+      "phase": "S26",
+      "title": "SF 24H Progressive Shadow 재실행",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "LiveGate 6-check PASS",
+        "Sharpe>=2.0",
+        "TCA 데이터 수집"
+      ],
+      "files": [],
+      "description": "SF 24H Progressive Shadow 재실행"
+    },
+    {
+      "id": "US-333",
+      "phase": "S26",
+      "title": "TCA 기반 min_profitability 재보정",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "TCA P95 IS 기반 min_edge 재계산",
+        "slippage_buffer 보정"
+      ],
+      "files": [
+        "engine/config/strategy_params.json"
+      ],
+      "description": "TCA 기반 min_profitability 재보정"
+    },
+    {
+      "id": "US-334",
+      "phase": "S26",
+      "title": "소액 Live 전환 기준 + Sandbox Testnet 검증",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "Sandbox API 연결 확인",
+        "Canary Alpha $70/거래소 기준 수립"
+      ],
+      "files": [],
+      "description": "소액 Live 전환 기준 + Sandbox Testnet 검증"
+    },
+    {
+      "id": "US-335",
+      "phase": "S26",
+      "title": "일일 3-Way 리콘실리에이션 리포터",
+      "priority": 2,
+      "passes": false,
+      "acceptanceCriteria": [
+        "엔진PnL vs 거래소잔고 vs DB 비교",
+        "텔레그램 자동 리포트"
+      ],
+      "files": [
+        "engine/src/analysis/reconciliation.py"
+      ],
+      "description": "일일 3-Way 리콘실리에이션 리포터"
     }
   ]
 }

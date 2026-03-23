@@ -109,22 +109,21 @@ def test_multi_exchange_isolation():
 
 
 def test_depth_based_sizing_basic():
-    """min(buy_depth, sell_depth) * 0.10 with typical depths gives expected size."""
+    """min(buy_depth, sell_depth) * fraction with explicit params."""
     # min(10, 20) * 0.10 = 1.0
-    size = compute_depth_trade_size(Decimal("10"), Decimal("20"))
+    size = compute_depth_trade_size(Decimal("10"), Decimal("20"), depth_fraction=Decimal("0.10"), max_trade=Decimal("10"))
     assert size == Decimal("1.0")
 
 
 def test_depth_based_sizing_clamp_max():
-    """Computed size is clamped to the maximum of 10 when depth is very large."""
-    size = compute_depth_trade_size(Decimal("1000"), Decimal("2000"))
+    """Computed size is clamped to max_trade when depth is very large."""
+    size = compute_depth_trade_size(Decimal("1000"), Decimal("2000"), depth_fraction=Decimal("0.10"), max_trade=Decimal("10"))
     assert size == Decimal("10")
 
 
 def test_depth_based_sizing_clamp_min():
     """Computed size is clamped to the minimum of 0.001 when depth is very small."""
-    # 0.005 * 0.10 = 0.0005 — below min → should return 0.001
-    size = compute_depth_trade_size(Decimal("0.005"), Decimal("0.005"))
+    size = compute_depth_trade_size(Decimal("0.005"), Decimal("0.005"), depth_fraction=Decimal("0.10"), max_trade=Decimal("10"))
     assert size == Decimal("0.001")
 
 

@@ -35,8 +35,8 @@ def compute_depth_trade_size(
 
     Returns clamped value in [0.001, max_trade].
     """
-    frac = depth_fraction or Decimal(os.getenv("SHADOW_DEPTH_FRACTION", "0.10"))
-    cap = max_trade or Decimal(os.getenv("SHADOW_MAX_TRADE_SIZE", "10"))
+    frac = depth_fraction or Decimal(os.getenv("SHADOW_DEPTH_FRACTION", "1.0"))
+    cap = max_trade or Decimal(os.getenv("SHADOW_MAX_TRADE_SIZE", "100"))
     depth_size = min(buy_depth, sell_depth) * frac
     return max(Decimal("0.001"), min(depth_size, cap))
 

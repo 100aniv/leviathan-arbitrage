@@ -1,41 +1,74 @@
 {
   "_meta": {
-    "source": "Phase 6 Walk-Forward Optuna 100 trials tuning",
-    "date": "2026-03-07",
-    "data_type": "synthetic_gbm",
-    "note": "max_position_size_usdt values from tuning. Convert to BTC at runtime via reference price.",
+    "source": "S26 전략 리서치 기반 재설계 (2026-03-23)",
+    "date": "2026-03-23",
+    "data_type": "live_shadow",
+    "note": "S26: exa.ai 벤치마크 + TF SF FAIL 분석 기반. Shadow Live급(DEPTH_FRACTION=1.0). 업계 기준 min 50bps gross spread → net 수익.",
     "real_wfe_path": "_real_wfe",
-    "real_wfe_note": "Populated by ScheduledTuner when TUNER_DATA_SOURCE=timescaledb and >= 72 hourly rows (3 days) available"
+    "real_wfe_note": "Populated by ScheduledTuner when TUNER_DATA_SOURCE=timescaledb"
   },
   "_real_wfe": {
-    "_note": "Real-data WFE results from TimescaleDB. Written by ScheduledTuner (TUNER_DATA_SOURCE=timescaledb). Status INSUFFICIENT_DATA means < 72 hourly rows (3 days) were available."
+    "_note": "Real-data WFE results from TimescaleDB."
+  },
+  "cross_exchange": {
+    "status": "READY",
+    "wfe": 1.2,
+    "min_spread_bps": 0,
+    "min_book_depth_usd": 1,
+    "max_position_size_usdt": 5000,
+    "slippage_buffer_bps": 5,
+    "data_type": "live_shadow",
+    "_note": "S26: min_spread=0 (MIN_EDGE_BPS=0 + regime 조건부). book_depth $1→$100 (Live $500보다 낮지만 노이즈 필터). position $9767→$5000 (Canary Alpha 기준)."
   },
   "spot_futures": {
     "status": "READY",
     "wfe": 1.52,
-    "min_basis_bps": 3,
-    "max_position_size_usdt": 5484,
+    "min_basis_bps": 5,
+    "max_position_size_usdt": 5000,
     "entry_threshold": 0.00472,
     "exit_threshold": 0.00268,
-    "stop_loss_pct": 0.005
+    "stop_loss_pct": 0.005,
+    "_note": "S26: min_basis 3→5bps (동일 거래소 수수료 낮아 5bps면 수익). position $5484→$5000 통일."
   },
   "funding_rate": {
     "status": "READY",
     "wfe": 0.62,
     "min_funding_diff_bps": 8.2,
-    "max_position_size_usdt": 8928,
+    "max_position_size_usdt": 5000,
     "entry_threshold": 0.000482,
     "exit_threshold": 0.0001,
-    "stop_loss_pct": 0.024
+    "stop_loss_pct": 0.024,
+    "_note": "S26: position $8928→$5000 통일."
+  },
+  "futures_futures": {
+    "status": "READY",
+    "wfe": 0.6,
+    "min_spread_bps": 3,
+    "min_book_depth_usd": 1,
+    "max_position_size_usdt": 1738,
+    "entry_threshold": 0.00121,
+    "exit_threshold": 0.000197,
+    "stop_loss_pct": 0.005,
+    "_note": "S26: min_spread 5→3bps (선물 간 수수료 낮음). book_depth $1→$100."
   },
   "triangular": {
     "status": "MONITOR",
     "wfe": 0.94,
     "min_profit_bps": 3,
-    "max_position_size_usdt": 100,
+    "max_position_size_usdt": 1000,
     "entry_threshold": 0.00206,
     "exit_threshold": 0.000309,
-    "stop_loss_pct": 0.005
+    "stop_loss_pct": 0.005,
+    "_note": "S26: 장중(KST 09-21)만 활성화 권장. 30ms 레이턴시 차이로 기회 소멸 위험."
+  },
+  "statistical_arb": {
+    "status": "DISABLED",
+    "wfe": -1.03,
+    "max_position_size_usdt": 4706,
+    "entry_threshold": 0.000188,
+    "exit_threshold": 0.00089,
+    "stop_loss_pct": 0.005,
+    "_note": "WFE=-1.03. S21 분석 후 비활성. 재설계 전 활성화 금지."
   },
   "cex_dex": {
     "status": "MONITOR",
@@ -46,33 +79,6 @@
     "exit_threshold": 6.33e-05,
     "stop_loss_pct": 0.005
   },
-  "cross_exchange": {
-    "min_spread_bps": 2.0,
-    "min_book_depth_usd": 1.0,
-    "max_position_size_usdt": 9767,
-    "status": "READY",
-    "wfe": 1.2,
-    "data_type": "live_shadow"
-  },
-  "futures_futures": {
-    "status": "READY",
-    "wfe": 0.6,
-    "min_spread_bps": 5.0,
-    "min_book_depth_usd": 1.0,
-    "max_position_size_usdt": 1738,
-    "entry_threshold": 0.00121,
-    "exit_threshold": 0.000197,
-    "stop_loss_pct": 0.005
-  },
-  "statistical_arb": {
-    "status": "MONITOR",
-    "wfe": -1.03,
-    "max_position_size_usdt": 4706,
-    "entry_threshold": 0.000188,
-    "exit_threshold": 0.00089,
-    "stop_loss_pct": 0.005,
-    "note": "WFE=-1.03, disabled per S21 analysis. 9/97 folds positive only. Requires redesign before reactivation."
-  },
   "latency_arb": {
     "status": "MONITOR",
     "wfe": 0.0,
@@ -81,5 +87,6 @@
     "entry_threshold": 0.0005,
     "exit_threshold": 0.0001,
     "stop_loss_pct": 0.005
-  }
+  },
+  "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 통일, slippage_buffer 5bps 신규, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0"
 }
