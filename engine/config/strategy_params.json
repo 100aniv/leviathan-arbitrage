@@ -1,9 +1,9 @@
 {
   "_meta": {
-    "source": "S26 전략 리서치 기반 재설계 (2026-03-23)",
+    "source": "S26 \uc804\ub7b5 \ub9ac\uc11c\uce58 \uae30\ubc18 \uc7ac\uc124\uacc4 (2026-03-23)",
     "date": "2026-03-23",
     "data_type": "live_shadow",
-    "note": "S26: exa.ai 벤치마크 + TF SF FAIL 분석 기반. Shadow Live급(DEPTH_FRACTION=1.0). 업계 기준 min 50bps gross spread → net 수익.",
+    "note": "S26: exa.ai \ubca4\uce58\ub9c8\ud06c + TF SF FAIL \ubd84\uc11d \uae30\ubc18. Shadow Live\uae09(DEPTH_FRACTION=1.0). \uc5c5\uacc4 \uae30\uc900 min 50bps gross spread \u2192 net \uc218\uc775.",
     "real_wfe_path": "_real_wfe",
     "real_wfe_note": "Populated by ScheduledTuner when TUNER_DATA_SOURCE=timescaledb"
   },
@@ -11,14 +11,10 @@
     "_note": "Real-data WFE results from TimescaleDB."
   },
   "cross_exchange": {
+    "min_spread_bps": 5.0,
     "status": "READY",
     "wfe": 1.2,
-    "min_spread_bps": 0,
-    "min_book_depth_usd": 1,
-    "max_position_size_usdt": 5000,
-    "slippage_buffer_bps": 5,
-    "data_type": "live_shadow",
-    "_note": "S26: min_spread=0 (MIN_EDGE_BPS=0 + regime 조건부). book_depth $1→$100 (Live $500보다 낮지만 노이즈 필터). position $9767→$5000 (Canary Alpha 기준)."
+    "data_type": "synthetic_gbm"
   },
   "spot_futures": {
     "status": "READY",
@@ -28,7 +24,7 @@
     "entry_threshold": 0.00472,
     "exit_threshold": 0.00268,
     "stop_loss_pct": 0.005,
-    "_note": "S26: min_basis 3→5bps (동일 거래소 수수료 낮아 5bps면 수익). position $5484→$5000 통일."
+    "_note": "S26: min_basis 3\u21925bps (\ub3d9\uc77c \uac70\ub798\uc18c \uc218\uc218\ub8cc \ub0ae\uc544 5bps\uba74 \uc218\uc775). position $5484\u2192$5000 \ud1b5\uc77c."
   },
   "funding_rate": {
     "status": "READY",
@@ -38,7 +34,7 @@
     "entry_threshold": 0.000482,
     "exit_threshold": 0.0001,
     "stop_loss_pct": 0.024,
-    "_note": "S26: position $8928→$5000 통일."
+    "_note": "S26: position $8928\u2192$5000 \ud1b5\uc77c."
   },
   "futures_futures": {
     "status": "READY",
@@ -49,7 +45,7 @@
     "entry_threshold": 0.00121,
     "exit_threshold": 0.000197,
     "stop_loss_pct": 0.005,
-    "_note": "S26: min_spread 5→3bps (선물 간 수수료 낮음). book_depth $1→$100."
+    "_note": "S26: min_spread 5\u21923bps (\uc120\ubb3c \uac04 \uc218\uc218\ub8cc \ub0ae\uc74c). book_depth $1\u2192$100."
   },
   "triangular": {
     "status": "MONITOR",
@@ -59,7 +55,7 @@
     "entry_threshold": 0.00206,
     "exit_threshold": 0.000309,
     "stop_loss_pct": 0.005,
-    "_note": "S26: 장중(KST 09-21)만 활성화 권장. 30ms 레이턴시 차이로 기회 소멸 위험."
+    "_note": "S26: \uc7a5\uc911(KST 09-21)\ub9cc \ud65c\uc131\ud654 \uad8c\uc7a5. 30ms \ub808\uc774\ud134\uc2dc \ucc28\uc774\ub85c \uae30\ud68c \uc18c\uba78 \uc704\ud5d8."
   },
   "statistical_arb": {
     "status": "DISABLED",
@@ -68,7 +64,7 @@
     "entry_threshold": 0.000188,
     "exit_threshold": 0.00089,
     "stop_loss_pct": 0.005,
-    "_note": "WFE=-1.03. S21 분석 후 비활성. 재설계 전 활성화 금지."
+    "_note": "WFE=-1.03. S21 \ubd84\uc11d \ud6c4 \ube44\ud65c\uc131. \uc7ac\uc124\uacc4 \uc804 \ud65c\uc131\ud654 \uae08\uc9c0."
   },
   "cex_dex": {
     "status": "MONITOR",
@@ -88,5 +84,5 @@
     "exit_threshold": 0.0001,
     "stop_loss_pct": 0.005
   },
-  "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 통일, slippage_buffer 5bps 신규, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0"
+  "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 \ud1b5\uc77c, slippage_buffer 5bps \uc2e0\uaddc, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0"
 }

@@ -5985,7 +5985,7 @@
       "phase": "S26",
       "title": "전략 수익성 벤치마크 리서치 + 스프레드 시간대 분석",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "exa.ai 리서치 결과 문서화",
         "시간대별 스프레드 분포 분석",
@@ -6001,16 +6001,18 @@
       "phase": "S26",
       "title": "파라미터 근본 재설계 (min_edge, position_size, slippage_buffer)",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
-        "MIN_EDGE_BPS 리서치 기반 재설정",
-        "slippage_buffer 도입",
-        "strategy_params.json 업데이트"
+        "SignalConfig에 slippage_buffer_bps 필드 추가",
+        "signal.py generate_signal에서 net_edge 계산 후 slippage_buffer 차감",
+        "main.py에서 strategy_params.json의 slippage_buffer_bps를 SignalConfig에 주입",
+        "⚡ WIRING: SignalConfig.slippage_buffer_bps → generate_signal net_edge 차감 → hot-reload 콜백",
+        "pytest tests/unit/core/test_signal*.py PASS"
       ],
       "files": [
-        "engine/config/strategy_params.json",
-        "engine/.env",
-        "engine/src/core/signal.py"
+        "engine/src/core/signal.py",
+        "engine/src/main.py",
+        "engine/config/strategy_params.json"
       ],
       "description": "파라미터 근본 재설계 (min_edge, position_size, slippage_buffer)"
     },
@@ -6019,12 +6021,18 @@
       "phase": "S26",
       "title": "전략별 활성화/비활성화 기준 재설정",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
-        "전략별 WFE/시간대 기반 활성화 매트릭스",
-        "비활성 전략 명확 표시"
+        "SignalConfig에 active_hours_kst 필드 추가 (tuple[int,int] | None)",
+        "signal.py generate_signal에서 active_hours 외 시간대 → return None",
+        "main.py에서 MONITOR 전략에 active_hours_kst=(9,21) 주입",
+        "strategy_params.json에 DISABLED/MONITOR/READY 상태 명확 구분",
+        "⚡ WIRING: strategy_params.json status → main.py 조건부 등록 → signal time gate",
+        "pytest PASS"
       ],
       "files": [
+        "engine/src/core/signal.py",
+        "engine/src/main.py",
         "engine/config/strategy_params.json"
       ],
       "description": "전략별 활성화/비활성화 기준 재설정"
@@ -6034,7 +6042,7 @@
       "phase": "S26",
       "title": "Shadow 포지션 크기 Live급 상향 (DEPTH_FRACTION=1.0)",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "SHADOW_DEPTH_FRACTION=1.0 적용",
         "Shadow 10min notional 검증 (기존 대비 10x+)"

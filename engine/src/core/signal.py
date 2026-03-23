@@ -55,6 +55,10 @@ class SignalConfig:
     max_book_age_seconds: float = 30.0  # reject orderbooks not updated within this window
     min_delta_update_count: int = 3    # STALE_MIN_DELTA_UPDATES: min deltas since snapshot for delta exchanges
     min_volume_usd: Decimal = Decimal("0")  # US-162: minimum 24h volume filter (0 = disabled)
+    # US-326: slippage buffer — additional safety margin (bps) subtracted from net_edge
+    slippage_buffer_bps: Decimal = Decimal("0")
+    # US-327: time-based activation — (start_hour, end_hour) in KST; None = always active
+    active_hours_kst: tuple[int, int] | None = None
 
 
 class SignalGenerator:
@@ -196,6 +200,18 @@ class SignalGenerator:
 
         Returns Signal if all gates pass, None otherwise.
         """
+        # US-327: time-based activation gate — skip if outside active hours (KST = UTC+9)
+        if self._config.active_hours_kst is not None:
+            from datetime import timezone as _tz, timedelta as _td
+            kst_hour = datetime.now(_tz(_td(hours=9))).hour
+            start_h, end_h = self._config.active_hours_kst
+            if start_h <= end_h:
+                if not (start_h <= kst_hour < end_h):
+                    return None
+            else:  # wraps midnight (e.g. 21-9)
+                if end_h <= kst_hour < start_h:
+                    return None
+
         self._hub.update(book)
         symbol = book.symbol
 
@@ -335,6 +351,10 @@ class SignalGenerator:
 
         notional = buy_price * trade_size
         net_edge = friction.net_profit / notional if notional > 0 else Decimal("0")
+
+        # US-326: slippage buffer — subtract fixed safety margin from net_edge
+        if self._config.slippage_buffer_bps > 0:
+            net_edge -= self._config.slippage_buffer_bps / Decimal("10000")
 
         # US-283: slippage feedback correction — reduce net_edge by historical over/under-estimate
         if self._slippage_feedback is not None:

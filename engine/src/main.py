@@ -603,6 +603,12 @@ class Engine:
                                     "ScheduledTuner hot-reload: min_edge updated to %.2f bps",
                                     float(ce["min_spread_bps"]),
                                 )
+                        # US-326: hot-reload slippage_buffer
+                        if ce.get("slippage_buffer_bps") is not None:
+                            if hasattr(self._signal_generator, "_config"):
+                                self._signal_generator._config.slippage_buffer_bps = Decimal(
+                                    str(ce["slippage_buffer_bps"])
+                                )
                 except Exception as exc:
                     logger.warning("ScheduledTuner hot-reload failed: %s", exc)
 
@@ -748,12 +754,19 @@ class Engine:
         max_spread_pct = float(os.environ.get("MAX_SPREAD_PCT", "0.05"))
         cooldown_sec = float(os.environ.get("SIGNAL_COOLDOWN_SEC", "2.0"))
         min_price_usd = Decimal(os.environ.get("MIN_PRICE_USD", "0.10"))
+        # US-326/327: load slippage_buffer + active_hours from strategy_params.json
+        _ce_params = self._load_strategy_params().get("cross_exchange", {})
+        _slippage_buf = Decimal(str(_ce_params.get("slippage_buffer_bps", 0)))
+        # US-327: MONITOR strategies get time-gated (KST 09-21); READY = always active
+        _active_hours = (9, 21) if _ce_params.get("status") == "MONITOR" else None
         signal_config = SignalConfig(
             min_edge=Decimal(str(min_edge_bps)) / Decimal("10000"),  # bps → fraction
             max_spread_pct=Decimal(str(max_spread_pct)),
             cooldown_seconds=cooldown_sec,
             min_price_usd=min_price_usd,
             min_volume_usd=Decimal(os.environ.get("SIGNAL_MIN_VOLUME_USD", "0")),
+            slippage_buffer_bps=_slippage_buf,  # US-326
+            active_hours_kst=_active_hours,  # US-327
         )
         stale_detector = StaleOrderbookDetector(
             deviation_pct=float(os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10")),

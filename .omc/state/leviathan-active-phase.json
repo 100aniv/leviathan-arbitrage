@@ -1,1 +1,1 @@
-{"current_phase": "S22", "phase": "S22", "status": "regression", "prd": {"passed": 313, "total_stories": 320}, "tests": {"passed": 5192, "failed": 0, "skipped": 12}}
+{"current_phase": "S26", "phase": "S26", "status": "in_progress", "prd": {"passed": 324, "total_stories": 335}, "tests": {"passed": 5200, "failed": 0, "skipped": 12}}

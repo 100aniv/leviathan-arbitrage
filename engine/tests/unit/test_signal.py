@@ -341,3 +341,127 @@ class TestMaxRollbackGate:
         books = {"binance": buy_book, "okx": sell_book}
         signal = await gen.on_orderbook_update(sell_book, books, Decimal("1.0"))
         assert signal is None
+
+
+class TestSlippageBuffer:
+    """US-326: slippage_buffer_bps subtracts safety margin from net_edge."""
+
+    @pytest.mark.asyncio
+    async def test_large_buffer_blocks_marginal_signal(self, buy_book, sell_book, hub, calculator):
+        """A large slippage buffer should block a signal that would otherwise pass."""
+        # Without buffer: signal passes (spread ~1% = 100bps, well above 1bps min_edge)
+        config_no_buf = SignalConfig(
+            min_edge=Decimal("0.0001"),
+            cooldown_seconds=0.0,
+            max_rollback_cost_usd=Decimal("1000"),
+            slippage_buffer_bps=Decimal("0"),
+        )
+        gen_no_buf = SignalGenerator(hub, calculator, config_no_buf)
+        hub.update(buy_book)
+        books = {"binance": buy_book, "okx": sell_book}
+        signal = await gen_no_buf.on_orderbook_update(sell_book, books, Decimal("1.0"))
+        assert signal is not None, "Signal should pass without buffer"
+
+        # With huge buffer (10000 bps = 100%): signal should be blocked
+        hub2 = PriceHub()
+        config_buf = SignalConfig(
+            min_edge=Decimal("0.0001"),
+            cooldown_seconds=0.0,
+            max_rollback_cost_usd=Decimal("1000"),
+            slippage_buffer_bps=Decimal("10000"),  # 100% buffer → kills all signals
+        )
+        gen_buf = SignalGenerator(hub2, calculator, config_buf)
+        hub2.update(buy_book)
+        signal2 = await gen_buf.on_orderbook_update(sell_book, books, Decimal("1.0"))
+        assert signal2 is None, "Huge slippage buffer should block signal"
+
+    @pytest.mark.asyncio
+    async def test_zero_buffer_no_effect(self, buy_book, sell_book, hub, calculator):
+        """Zero buffer should not affect signal generation."""
+        config = SignalConfig(
+            min_edge=Decimal("0.0001"),
+            cooldown_seconds=0.0,
+            max_rollback_cost_usd=Decimal("1000"),
+            slippage_buffer_bps=Decimal("0"),
+        )
+        gen = SignalGenerator(hub, calculator, config)
+        hub.update(buy_book)
+        books = {"binance": buy_book, "okx": sell_book}
+        signal = await gen.on_orderbook_update(sell_book, books, Decimal("1.0"))
+        assert signal is not None
+
+    @pytest.mark.asyncio
+    async def test_buffer_default_is_zero(self):
+        """Default slippage_buffer_bps should be 0."""
+        config = SignalConfig()
+        assert config.slippage_buffer_bps == Decimal("0")
+
+
+class TestActiveHoursKST:
+    """US-327: active_hours_kst time-based signal gating."""
+
+    @pytest.mark.asyncio
+    async def test_none_active_hours_always_active(self, buy_book, sell_book, hub, calculator):
+        """None active_hours means always active."""
+        config = SignalConfig(
+            min_edge=Decimal("0.0001"),
+            cooldown_seconds=0.0,
+            max_rollback_cost_usd=Decimal("1000"),
+            active_hours_kst=None,
+        )
+        gen = SignalGenerator(hub, calculator, config)
+        hub.update(buy_book)
+        books = {"binance": buy_book, "okx": sell_book}
+        signal = await gen.on_orderbook_update(sell_book, books, Decimal("1.0"))
+        assert signal is not None
+
+    @pytest.mark.asyncio
+    async def test_outside_active_hours_blocks_signal(self, buy_book, sell_book, hub, calculator):
+        """Signal should be blocked when current KST hour is outside active_hours."""
+        from unittest.mock import patch
+        from datetime import datetime, timezone, timedelta
+
+        # Force KST hour to 3 AM (outside 9-21)
+        fake_dt = datetime(2026, 3, 23, 3, 0, 0, tzinfo=timezone(timedelta(hours=9)))
+        config = SignalConfig(
+            min_edge=Decimal("0.0001"),
+            cooldown_seconds=0.0,
+            max_rollback_cost_usd=Decimal("1000"),
+            active_hours_kst=(9, 21),
+        )
+        gen = SignalGenerator(hub, calculator, config)
+        hub.update(buy_book)
+        books = {"binance": buy_book, "okx": sell_book}
+        with patch("src.core.signal.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_dt
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            signal = await gen.on_orderbook_update(sell_book, books, Decimal("1.0"))
+        assert signal is None, "Should block signal outside active hours"
+
+    @pytest.mark.asyncio
+    async def test_inside_active_hours_allows_signal(self, buy_book, sell_book, hub, calculator):
+        """Signal should pass when current KST hour is inside active_hours."""
+        from unittest.mock import patch
+        from datetime import datetime, timezone, timedelta
+
+        # Force KST hour to 14:00 (inside 9-21)
+        fake_dt = datetime(2026, 3, 23, 14, 0, 0, tzinfo=timezone(timedelta(hours=9)))
+        config = SignalConfig(
+            min_edge=Decimal("0.0001"),
+            cooldown_seconds=0.0,
+            max_rollback_cost_usd=Decimal("1000"),
+            active_hours_kst=(9, 21),
+        )
+        gen = SignalGenerator(hub, calculator, config)
+        hub.update(buy_book)
+        books = {"binance": buy_book, "okx": sell_book}
+        with patch("src.core.signal.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_dt
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            signal = await gen.on_orderbook_update(sell_book, books, Decimal("1.0"))
+        assert signal is not None, "Should allow signal inside active hours"
+
+    def test_active_hours_default_is_none(self):
+        """Default active_hours_kst should be None (always active)."""
+        config = SignalConfig()
+        assert config.active_hours_kst is None
