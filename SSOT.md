@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-24 (S26 전략 리서치 + Shadow 강화) | PRD: `.omc/prd.json` (335개 US, 331 passes:true / 4 passes:false)
+> 마지막 업데이트: 2026-03-24 (S26 전략 리서치 + Shadow 강화 + SIT-1 완료) | PRD: `.omc/prd.json` (339개 US, 333 passes:true / 6 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 > **실행 순서**: A~M ✅ → S1~S22 ✅ → **TF QF 10차** → TF SF → TF PF → TF Final → Live
 
@@ -32,9 +32,9 @@
 > Team roster: `.omc/state/team-roster.json`
 
 **Phase**: S26 회귀 (2026-03-23) — TF SF FAIL(Sharpe 0.53) → 전략 리서치 + Shadow 강화
-**Tests**: 5,207 passed / 0 failed / 12 skipped
+**Tests**: 5,244 passed / 0 failed / 12 skipped
 **Coverage**: 77%
-**PRD**: 331/335 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 잔여)
+**PRD**: 333/339 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 + US-338/339 SIT 잔여)
 **TF Status**: S1~S25 ✅ → TF QF Re-Validation PASS → TF SF FAIL(Sharpe 0.53) → **S26 회귀** → TF QF → SF → PF → Final → Live
 **Next**: S26 워크플로우 복구 + 전략 리서치 + Shadow 강화 + SF 재실행
 **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
@@ -373,7 +373,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 297개 User Stories, 267개 완료, 30개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 339개 User Stories, 333개 완료, 6개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -518,14 +518,42 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-299: 전략별 독립 Shadow 30min ✅
 - [x] US-300: 포트폴리오 통합 Shadow 1H ✅
 
-#### TF QF 회귀 — S22~S25 (US 단위 핫픽스, 2026-03-22)
+#### Phase S22: AdaptiveThreshold 이상치 필터 + 전략 이중 게이트 정리 — US-316~320 ✅ 완료 (2026-03-22, 5 US)
+- [x] US-316~320: TF QF 9차 회귀 수정 (이중friction, book_depth, config 경로, DB PW, rate limiter)
 
-> TF QF 9~11차에서 발견된 이슈를 US 단위로 즉시 수정. 1-2 US/Phase.
+#### Phase S23: LoginRateLimitMiddleware + spot_futures 역매핑 — US-321~322 ✅ 완료 (2026-03-22, 2 US)
+- [x] US-321: _counts IP cleanup 메커니즘
+- [x] US-322: spot_futures on_fill 심볼 키 불일치 수정
 
-- [x] **S22** US-316~320: Shadow trades=0 블로커 (이중friction, book_depth, config 경로, DB PW, rate limiter) ✅
-- [x] **S23** US-321~322: QF 10차 quorum MUST FIX (IP cleanup, on_fill 역매핑) ✅
-- [x] **S24** US-323: SignalGenerator regime override 조건부화 (trades=0 근본 원인) ✅
-- [x] **S25** US-324: 텔레그램 알림 전체 한글화 (SF 검증용) ✅
+#### Phase S24: SignalGenerator regime override 조건부화 — US-323 ✅ 완료 (2026-03-22, 1 US)
+- [x] US-323: MIN_EDGE_BPS=0 시 regime override 비활성화
+
+#### Phase S25: 텔레그램 알림 전체 한글화 — US-324 ✅ 완료 (2026-03-22, 1 US)
+- [x] US-324: send_alert 20곳 한글화
+
+#### Phase S26: 전략 리서치 + Shadow Live급 강화 — US-325~335 ✅ 완료 (2026-03-24, 9/11 US, 5244 tests)
+> TF SF FAIL(Sharpe 0.53) → 전략 리서치 + 파라미터 재설계 + Shadow 강화
+- [x] US-325: 전략 수익성 벤치마크 리서치 (exa.ai)
+- [x] US-326: 파라미터 근본 재설계 (slippage_buffer, active_hours)
+- [x] US-327: 전략별 활성화/비활성화 기준 재설정
+- [x] US-328: Shadow 포지션 크기 Live급 상향 (DEPTH_FRACTION=1.0)
+- [x] US-329: TCA 로깅 강화 (Arrival Price, Timing, 전략별)
+- [x] US-330: Shadow vs Virtual Live 비교 리포터
+- [x] US-331: Leg Risk 감지 + 메트릭
+- [ ] US-332: SF 24H Progressive Shadow 재실행 — **런타임 실행 필요**
+- [x] US-333: TCA 기반 min_profitability 재보정
+- [ ] US-334: 소액 Live 전환 기준 + Sandbox Testnet 검증 — **런타임 실행 필요**
+- [x] US-335: 일일 3-Way 리콘실리에이션 리포터
+
+#### Phase SIT-1: 완전체 구축 (한글화 + 모드UI) — US-336~337 ✅ 완료 (2026-03-24, 2 US)
+- [x] US-336: 텔레그램 send_alert_kr 구조화 양식 전환 (15곳)
+- [x] US-337: 대시보드 Settings 모드별 설정 UI
+
+#### Phase SIT-2: 클로즈 베타 — US-338 (진행 중)
+- [ ] US-338: 클로즈 베타 체크리스트 10항목 통과
+
+#### Phase SIT-3: 종합테스트 — US-339 (미시작)
+- [ ] US-339: 7팀 Agent Teams + Progressive Shadow 24H
 
 ---
 
