@@ -6161,6 +6161,68 @@
         "engine/src/analysis/reconciliation.py"
       ],
       "description": "일일 3-Way 리콘실리에이션 리포터"
+    },
+    {
+      "id": "US-336",
+      "phase": "SIT-1",
+      "title": "텔레그램 send_alert_kr 구조화 양식 전환",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "send_alert_kr에 12개 alert_type 한글 템플릿 추가",
+        "shadow.py 5곳 + main.py 10곳 send_alert_kr(type, data) 교체",
+        "send_alert 호출 0건 (shadow.py + main.py)",
+        "pytest PASS"
+      ],
+      "files": ["engine/src/infra/telegram.py", "engine/src/modes/shadow.py", "engine/src/main.py"],
+      "description": "텔레그램 한글화 완전 적용 — send_alert → send_alert_kr 구조화 양식"
+    },
+    {
+      "id": "US-337",
+      "phase": "SIT-1",
+      "title": "대시보드 Settings 모드별 설정 UI",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "Settings 페이지에 모드 선택 UI (Backtest/Paper/Shadow/Live)",
+        "전략 활성/비활성 토글 → API PATCH 반영",
+        "MIN_EDGE, MAX_POSITION 파라미터 UI 설정",
+        "Chrome 렌더링 + API 200"
+      ],
+      "files": ["dashboard/src/app/settings/page.tsx"],
+      "description": "대시보드 Settings 모드별 계좌 설정 + 전략 토글 + 파라미터 UI"
+    },
+    {
+      "id": "US-338",
+      "phase": "SIT-2",
+      "title": "클로즈 베타 체크리스트 10항목 통과",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "로그인 → JWT → 리다이렉트 확인",
+        "텔레그램 /status 한글 응답",
+        "텔레그램 /kill + /resume 3-tier 동작",
+        "대시보드 모바일 반응형 (콘솔 에러 0)",
+        "Grafana 대시보드 메트릭 수집",
+        "일일 리포트 한글 수신"
+      ],
+      "files": [],
+      "description": "클로즈 베타 — 사장님 상호작용 10개 체크리스트"
+    },
+    {
+      "id": "US-339",
+      "phase": "SIT-3",
+      "title": "종합테스트 7팀 Agent Teams + Progressive Shadow",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "T1~T7 팀 체크리스트 전부 GREEN",
+        "Progressive Shadow 6-Stage PASS (5min→10min→30min→1H→6H→24H)",
+        "AI CLI (codex+gemini) 교차검증 quorum PASS",
+        "리더(Nayeon) 최종 PASS"
+      ],
+      "files": [],
+      "description": "종합테스트 — 15분야 300+시나리오 + 24H Shadow + ralph 루프"
     }
   ]
 }

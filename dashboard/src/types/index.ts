@@ -170,6 +170,10 @@ export interface SettingsResponse {
   min_edge_bps: number;
   active_strategies: { id: string; type: string; enabled: boolean }[];
   active_exchanges: string[];
+  max_position_usd?: number;
+  capital_per_exchange_usd?: number;
+  max_daily_loss_usd?: number;
+  execution_mode?: "paper" | "shadow" | "live";
 }
 
 // ─── Analytics Types ──────────────────────────────────────────────────────────

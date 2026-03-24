@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSettings, updateSettings, toggleStrategy, logout, killEngine } from "@/lib/api";
+import { getSettings, updateSettings, updateMode, toggleStrategy, logout, killEngine } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type { SettingsResponse } from "@/types";
 
@@ -34,6 +34,18 @@ const ALL_EXCHANGES = [
   "bitget", "upbit", "bithumb", "coinone",
 ];
 
+const MODE_LABELS: Record<"paper" | "shadow" | "live", string> = {
+  paper: "페이퍼 모드",
+  shadow: "섀도 모드",
+  live: "라이브 모드",
+};
+
+const MODE_DESCRIPTIONS: Record<"paper" | "shadow" | "live", string> = {
+  paper: "가상 자본으로 전략 로직 검증 (시장 영향 없음)",
+  shadow: "실시간 시장 데이터로 전략 시뮬레이션 (주문 없음)",
+  live: "실제 자본으로 거래 실행 — LiveGate 통과 필요",
+};
+
 type FeedbackState = { type: "success" | "error"; message: string } | null;
 
 type Dialog =
@@ -44,6 +56,11 @@ type Dialog =
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [minEdge, setMinEdge]   = useState<number>(5);
+  const [maxPosition, setMaxPosition] = useState<number>(5000);
+  const [capitalPerExchange, setCapitalPerExchange] = useState<number>(70);
+  const [maxDailyLoss, setMaxDailyLoss] = useState<number>(500);
+  const [capitalSaving, setCapitalSaving] = useState(false);
+  const [modeSaving, setModeSaving] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [saving, setSaving]     = useState(false);
   const [dialog, setDialog]     = useState<Dialog>(null);
@@ -54,6 +71,9 @@ export default function SettingsPage() {
       .then((data) => {
         setSettings(data);
         setMinEdge(data.min_edge_bps);
+        if (data.max_position_usd != null) setMaxPosition(data.max_position_usd);
+        if (data.capital_per_exchange_usd != null) setCapitalPerExchange(data.capital_per_exchange_usd);
+        if (data.max_daily_loss_usd != null) setMaxDailyLoss(data.max_daily_loss_usd);
       })
       .catch(() => {
         setFeedback({ type: "error", message: "Failed to load settings." });
@@ -63,6 +83,36 @@ export default function SettingsPage() {
   function showFeedback(type: "success" | "error", message: string) {
     setFeedback({ type, message });
     setTimeout(() => setFeedback(null), 3000);
+  }
+
+  async function handleSelectMode(mode: "paper" | "shadow" | "live") {
+    setModeSaving(true);
+    try {
+      await updateMode(mode);
+      setSettings((prev) => prev ? { ...prev, execution_mode: mode } : prev);
+      showFeedback("success", `실행 모드가 "${MODE_LABELS[mode]}"로 변경되었습니다.`);
+    } catch {
+      showFeedback("error", "실행 모드 변경에 실패했습니다.");
+    } finally {
+      setModeSaving(false);
+    }
+  }
+
+  async function handleSaveCapital() {
+    setCapitalSaving(true);
+    try {
+      const updated = await updateSettings({
+        capital_per_exchange_usd: capitalPerExchange,
+        max_position_usd: maxPosition,
+        max_daily_loss_usd: maxDailyLoss,
+      });
+      setSettings((prev) => prev ? { ...prev, ...updated } : prev);
+      showFeedback("success", "자본 설정이 저장되었습니다.");
+    } catch {
+      showFeedback("error", "자본 설정 저장에 실패했습니다.");
+    } finally {
+      setCapitalSaving(false);
+    }
   }
 
   async function handleSaveEdge() {
@@ -162,6 +212,98 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* Execution Mode */}
+      <section className="bg-terminal-surface border border-terminal-border rounded-lg p-5 space-y-4">
+        <h3 className="text-sm font-mono font-semibold text-terminal-text">
+          실행 모드<InfoTip text="엔진의 거래 실행 방식을 선택합니다" />
+        </h3>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {(["paper", "shadow", "live"] as const).map((mode) => {
+            const active = settings?.execution_mode === mode;
+            const isLive = mode === "live";
+            return (
+              <button
+                key={mode}
+                onClick={() => handleSelectMode(mode)}
+                disabled={modeSaving}
+                className={`flex flex-col gap-1 p-4 rounded border text-left transition-colors disabled:opacity-50 ${
+                  active
+                    ? "border-accent bg-accent/10 text-terminal-text"
+                    : "border-terminal-border hover:border-accent/50 text-terminal-subtle hover:text-terminal-text"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-mono font-semibold">
+                    {MODE_LABELS[mode]}
+                  </span>
+                  {isLive && (
+                    <span className="text-[10px] font-mono text-warn border border-warn/40 rounded px-1">
+                      ⚠ LiveGate 필요
+                    </span>
+                  )}
+                  {active && (
+                    <span className="ml-auto text-[10px] font-mono text-accent">● 활성</span>
+                  )}
+                </div>
+                <span className="text-[10px] font-mono text-terminal-subtle leading-relaxed">
+                  {MODE_DESCRIPTIONS[mode]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Capital Settings */}
+      <section className="bg-terminal-surface border border-terminal-border rounded-lg p-5 space-y-4">
+        <h3 className="text-sm font-mono font-semibold text-terminal-text">자본 설정</h3>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-mono text-terminal-subtle w-40 shrink-0">
+              거래소당 자본 ($)<InfoTip text="거래소당 할당 자본 (alpha 기본값 $70)" />
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={capitalPerExchange}
+              onChange={(e) => setCapitalPerExchange(Number(e.target.value))}
+              className="w-28 bg-terminal-muted border border-terminal-border rounded px-2 py-1 text-sm font-mono text-terminal-text focus:outline-none focus:border-accent"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-mono text-terminal-subtle w-40 shrink-0">
+              최대 포지션 ($)<InfoTip text="단일 포지션 최대 규모" />
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={maxPosition}
+              onChange={(e) => setMaxPosition(Number(e.target.value))}
+              className="w-28 bg-terminal-muted border border-terminal-border rounded px-2 py-1 text-sm font-mono text-terminal-text focus:outline-none focus:border-accent"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-mono text-terminal-subtle w-40 shrink-0">
+              최대 일일 손실 ($)<InfoTip text="일일 최대 허용 손실액 초과 시 Kill Switch 발동" />
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={maxDailyLoss}
+              onChange={(e) => setMaxDailyLoss(Number(e.target.value))}
+              className="w-28 bg-terminal-muted border border-terminal-border rounded px-2 py-1 text-sm font-mono text-terminal-text focus:outline-none focus:border-accent"
+            />
+          </div>
+        </div>
+        <button
+          onClick={handleSaveCapital}
+          disabled={capitalSaving}
+          className="px-3 py-1 text-xs font-mono rounded border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
+        >
+          {capitalSaving ? "저장 중…" : "저장"}
+        </button>
+      </section>
+
       {/* Trading Parameters */}
       <section className="bg-terminal-surface border border-terminal-border rounded-lg p-5 space-y-4">
         <h3 className="text-sm font-mono font-semibold text-terminal-text">거래 파라미터</h3>
@@ -177,14 +319,28 @@ export default function SettingsPage() {
             onChange={(e) => setMinEdge(Number(e.target.value))}
             className="w-24 bg-terminal-muted border border-terminal-border rounded px-2 py-1 text-sm font-mono text-terminal-text focus:outline-none focus:border-accent"
           />
-          <button
-            onClick={handleSaveEdge}
-            disabled={saving}
-            className="px-3 py-1 text-xs font-mono rounded border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
-          >
-            {saving ? "저장 중…" : "저장"}
-          </button>
         </div>
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-mono text-terminal-subtle w-36 shrink-0">
+            최대 포지션 USD<InfoTip text="최대 단일 포지션 규모 (USD)" />
+          </label>
+          <input
+            type="number"
+            min={1}
+            value={maxPosition}
+            onChange={(e) => setMaxPosition(Number(e.target.value))}
+            className="w-24 bg-terminal-muted border border-terminal-border rounded px-2 py-1 text-sm font-mono text-terminal-text focus:outline-none focus:border-accent"
+            readOnly
+          />
+          <span className="text-[10px] font-mono text-terminal-subtle">"자본 설정"에서 관리</span>
+        </div>
+        <button
+          onClick={handleSaveEdge}
+          disabled={saving}
+          className="px-3 py-1 text-xs font-mono rounded border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
+        >
+          {saving ? "저장 중…" : "저장"}
+        </button>
       </section>
 
       {/* Strategy Control */}

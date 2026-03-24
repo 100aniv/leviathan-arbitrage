@@ -148,6 +148,12 @@ export const updateSettings = (settings: Partial<SettingsResponse>) =>
     body: JSON.stringify(settings),
   });
 
+export const updateMode = (mode: string) =>
+  request<{ mode: string }>("/api/v1/settings/mode", {
+    method: "PATCH",
+    body: JSON.stringify({ mode }),
+  });
+
 // ─── Analytics ────────────────────────────────────────────────────────────────
 
 export const getStrategyMetrics = () =>
