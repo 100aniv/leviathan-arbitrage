@@ -6229,7 +6229,7 @@
       "phase": "SIT-0",
       "title": "dynaconf 프로필 도입 (settings.toml 5개 프로필)",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "engine/settings.toml 생성 (default/shadow/live/test/backtest)",
         "config.py에서 dynaconf 값 로드 (ENV_FOR_DYNACONF 환경변수)",
@@ -6245,7 +6245,7 @@
       "phase": "SIT-0",
       "title": "Docker profiles + override.yml 제거",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "docker-compose.override.yml 삭제 (백업)",
         "docker-compose.yml에 profiles (dev/shadow/live) 추가",
@@ -6260,7 +6260,7 @@
       "phase": "SIT-0",
       "title": "로그인 근본 해결 (JWT + CSP)",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "브라우저 localhost:3000 로그인 → JWT → Overview 리다이렉트",
         "CSP 위반 0건",
@@ -6274,7 +6274,7 @@
       "phase": "SIT-0",
       "title": ".env 파편화 해결 + sync 자동화",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "scripts/sync_env.sh 생성",
         "check_all에 env drift 검사 추가 (10번째)",
