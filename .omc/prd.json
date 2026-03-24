@@ -6182,7 +6182,7 @@
       "phase": "SIT-1",
       "title": "대시보드 Settings 모드별 설정 UI",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "Settings 페이지에 모드 선택 UI (Backtest/Paper/Shadow/Live)",
         "전략 활성/비활성 토글 → API PATCH 반영",
