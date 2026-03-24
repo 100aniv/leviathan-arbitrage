@@ -29,6 +29,7 @@ dependencies = [
     "numpy>=1.26",
     "statsmodels>=0.14",
     "psutil>=5.9",
+    "dynaconf>=3.2",
 ]
 
 [project.optional-dependencies]

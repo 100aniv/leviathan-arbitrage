@@ -2,10 +2,18 @@
 
 Loads all settings from environment variables using Pydantic Settings v2.
 Supports dev/staging/prod environment switching.
+
+Dynaconf integration: ``ENV_FOR_DYNACONF=shadow|live|test|backtest`` selects
+a profile from ``engine/settings.toml``.  Values are injected into
+``os.environ`` **only when not already set**, so the priority chain is:
+
+    environment variable  >  .env file  >  settings.toml (dynaconf)  >  hardcoded default
 """
 from __future__ import annotations
 
 import json
+import logging
+import os
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
@@ -13,6 +21,72 @@ from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# ---------------------------------------------------------------------------
+# Dynaconf profile loader — runs once at module import time
+# ---------------------------------------------------------------------------
+
+_ENGINE_ROOT = Path(__file__).resolve().parent.parent.parent  # engine/
+
+_DYNACONF_SETTINGS_FILE = _ENGINE_ROOT / "settings.toml"
+
+
+def _load_dynaconf_defaults() -> None:
+    """Inject dynaconf profile values into ``os.environ`` for keys not already set.
+
+    This makes dynaconf act as a **lowest-priority value provider**.  The full
+    priority chain is:
+
+        shell environment variable  >  .env file  >  settings.toml (dynaconf)  >  hardcoded default
+
+    To enforce ``.env`` > ``settings.toml``, we first load ``.env`` into
+    ``os.environ`` (without overriding real shell vars) via ``dotenv``, then
+    only inject dynaconf values for keys still absent.
+
+    The function is a no-op when ``settings.toml`` is absent (e.g. CI).
+    """
+    if not _DYNACONF_SETTINGS_FILE.exists():
+        return
+
+    try:
+        # Step 1: Pre-load .env into os.environ so its values beat dynaconf.
+        # override=False means real shell env vars are never clobbered.
+        _env_file = _ENGINE_ROOT / ".env"
+        if _env_file.exists():
+            try:
+                from dotenv import load_dotenv  # noqa: PLC0415
+
+                load_dotenv(str(_env_file), override=False)
+            except ImportError:
+                pass  # python-dotenv absent — .env handled by Pydantic later
+
+        # Step 2: Load dynaconf profile and inject only missing keys.
+        from dynaconf import Dynaconf  # noqa: PLC0415
+
+        dc = Dynaconf(
+            settings_files=[str(_DYNACONF_SETTINGS_FILE)],
+            environments=True,
+            env_switcher="ENV_FOR_DYNACONF",
+            root_path=str(_ENGINE_ROOT),
+        )
+
+        for key in dc.keys():
+            env_key = key.upper()
+            if env_key not in os.environ:
+                val = dc[key]
+                # Convert Python booleans to lowercase strings for Pydantic compat
+                if isinstance(val, bool):
+                    os.environ[env_key] = str(val).lower()
+                else:
+                    os.environ[env_key] = str(val)
+    except Exception:
+        # Never block engine startup — dynaconf is a convenience layer
+        logging.getLogger(__name__).warning(
+            "Failed to load dynaconf defaults from %s", _DYNACONF_SETTINGS_FILE, exc_info=True
+        )
+
+
+_load_dynaconf_defaults()
 
 
 class ExecutionMode(StrEnum):

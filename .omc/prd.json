@@ -6223,6 +6223,65 @@
       ],
       "files": [],
       "description": "종합테스트 — 15분야 300+시나리오 + 24H Shadow + ralph 루프"
+    },
+    {
+      "id": "US-340",
+      "phase": "SIT-0",
+      "title": "dynaconf 프로필 도입 (settings.toml 5개 프로필)",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "engine/settings.toml 생성 (default/shadow/live/test/backtest)",
+        "config.py에서 dynaconf 값 로드 (ENV_FOR_DYNACONF 환경변수)",
+        "ENV_FOR_DYNACONF=shadow → data_mode=shadow, min_edge_bps=0",
+        "기존 .env 환경변수 우선순위 유지 (하위호환)",
+        "pytest 전체 PASS"
+      ],
+      "files": ["engine/settings.toml", "engine/src/core/config.py", "engine/pyproject.toml"],
+      "description": "dynaconf 5개 프로필로 설정 통합. LEVIATHAN_MODE 하나로 전체 전환."
+    },
+    {
+      "id": "US-341",
+      "phase": "SIT-0",
+      "title": "Docker profiles + override.yml 제거",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "docker-compose.override.yml 삭제 (백업)",
+        "docker-compose.yml에 profiles (dev/shadow/live) 추가",
+        "dashboard 서비스에 JWT_SECRET env 전달",
+        "docker compose --profile shadow up -d → production 빌드 healthy"
+      ],
+      "files": ["docker-compose.yml", "docker-compose.override.yml"],
+      "description": "Docker profiles로 dev/prod 분리. override.yml 제거."
+    },
+    {
+      "id": "US-342",
+      "phase": "SIT-0",
+      "title": "로그인 근본 해결 (JWT + CSP)",
+      "priority": 0,
+      "passes": false,
+      "acceptanceCriteria": [
+        "브라우저 localhost:3000 로그인 → JWT → Overview 리다이렉트",
+        "CSP 위반 0건",
+        "nginx.conf CSP 제거 (Next.js에 위임)"
+      ],
+      "files": ["infra/nginx/nginx.conf", "dashboard/next.config.js"],
+      "description": "대시보드 로그인 근본 해결. Docker production + JWT + CSP 통합."
+    },
+    {
+      "id": "US-343",
+      "phase": "SIT-0",
+      "title": ".env 파편화 해결 + sync 자동화",
+      "priority": 1,
+      "passes": false,
+      "acceptanceCriteria": [
+        "scripts/sync_env.sh 생성",
+        "check_all에 env drift 검사 추가 (10번째)",
+        "check_all 10/10 OK"
+      ],
+      "files": ["scripts/sync_env.sh", "engine/src/workflow/consistency.py"],
+      "description": ".env secret-only + dynaconf 비밀 아닌 설정 이관 + 동기화 자동화."
     }
   ]
 }
