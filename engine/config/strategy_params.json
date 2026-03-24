@@ -12,7 +12,6 @@
   },
   "cross_exchange": {
     "min_spread_bps": 5.0,
-    "slippage_buffer_bps": 5,
     "status": "READY",
     "wfe": 1.2,
     "data_type": "synthetic_gbm"
