@@ -41,8 +41,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy source
+# Copy source + config
 COPY engine/src ./src
+COPY engine/config ./config
+COPY engine/settings.toml ./settings.toml
 COPY engine/pyproject.toml ./
 
 RUN pip install --no-cache-dir debugpy
@@ -53,7 +55,7 @@ ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000 8001 5678
 
-CMD ["python", "-m", "uvicorn", "src.main:build_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["python", "-m", "src.main"]
 
 # ---------------------------------------------------------------------------
 # Stage 3: test — runs pytest
@@ -95,6 +97,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --chown=leviathan:leviathan engine/src ./src
+COPY --chown=leviathan:leviathan engine/config ./config
+COPY --chown=leviathan:leviathan engine/settings.toml ./settings.toml
 COPY --chown=leviathan:leviathan engine/pyproject.toml ./
 
 ENV PYTHONPATH=/app
@@ -108,4 +112,4 @@ EXPOSE 8000 8001
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "src.main:build_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+CMD ["python", "-m", "src.main"]
