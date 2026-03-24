@@ -376,11 +376,19 @@ class TelegramAlerter:
         return await self._send("\n".join(lines))
 
     async def send_alert_kr(self, alert_type: str, data: dict[str, Any]) -> bool:
-        """장애 경보 (한국어).
+        """구조화 경보 (한국어).
 
         Args:
-            alert_type: "kill_switch" | "circuit_breaker" | "db_failure"
-            data: Alert-specific data.
+            alert_type: 경보 유형 문자열.
+                기존: "kill_switch" | "circuit_breaker" | "db_failure"
+                신규: "shadow_start" | "shadow_daily_breakdown" |
+                      "krw_soft_block" | "krw_killswitch" | "krw_recovered" |
+                      "position_discrepancy" | "position_tracking_fail" |
+                      "inventory_critical" | "inventory_rebalance" |
+                      "order_cancel_fail" | "balance_mismatch" |
+                      "orphan_positions" | "data_collector_start" |
+                      "live_mode_start" | "shadow_mode_start"
+            data: Alert-specific data dict.
         """
         if alert_type == "kill_switch":
             lines = [
@@ -406,6 +414,125 @@ class TelegramAlerter:
                 f"<b>유형:</b> {data.get('db_type', 'TimescaleDB')}",
                 f"<b>오류:</b> {data.get('error', '알 수 없음')}",
                 f"<b>영향:</b> {data.get('impact', '데이터 저장 불가')}",
+            ]
+        # --- shadow.py templates ---
+        elif alert_type == "shadow_start":
+            lines = [
+                "🌑 <b>섀도 모드 시작</b>",
+                "",
+                "<b>모드:</b> 실데이터 + 페이퍼 실행",
+            ]
+        elif alert_type == "shadow_daily_breakdown":
+            lines = ["📊 <b>전략별 성과</b>", ""]
+            for sb in data.get("strategies", []):
+                lines.append(
+                    f"  • {sb.get('strategy_id', '?')}: "
+                    f"{sb.get('trades', 0)}건 / "
+                    f"{sb.get('win_rate', 0):.0%} 승률 / "
+                    f"${sb.get('pnl', 0):+.4f}"
+                )
+            lines.extend([
+                "",
+                f"<b>거부:</b> {data.get('trades_rejected', 0)}건",
+                f"<b>부분 체결:</b> {data.get('trades_partial_fill', 0)}건",
+            ])
+        elif alert_type == "krw_soft_block":
+            lines = [
+                "🟡 <b>KRW 환율 지연 — 소프트 차단</b>",
+                "",
+                f"<b>지연:</b> {data.get('stale_seconds', 0):.0f}초",
+                f"<b>조치:</b> KRW 거래소 일시 차단",
+            ]
+        elif alert_type == "krw_killswitch":
+            lines = [
+                "🚨 <b>긴급: KRW 환율 장기 지연 — 킬 스위치</b>",
+                "",
+                f"<b>지연:</b> {data.get('stale_seconds', 0):.0f}초 (10분 이상)",
+                "<b>조치:</b> 전체 킬 스위치 작동",
+            ]
+        elif alert_type == "krw_recovered":
+            lines = [
+                "🟢 <b>KRW 환율 복구</b>",
+                "",
+                "<b>조치:</b> 소프트 차단 해제",
+            ]
+        # --- main.py templates ---
+        elif alert_type == "position_discrepancy":
+            count = data.get("count", 0)
+            summary = data.get("summary", "N/A")
+            lines = [
+                "🔴 <b>포지션 불일치 감지</b>",
+                "",
+                f"<b>건수:</b> {count}건",
+                f"<b>상세:</b> {summary}",
+            ]
+        elif alert_type == "position_tracking_fail":
+            lines = [
+                "🔴 <b>포지션 추적 지속 실패</b>",
+                "",
+                f"<b>실패 횟수:</b> {data.get('error_count', 0)}회",
+                "<b>영향:</b> 리스크 데이터 불신뢰",
+            ]
+        elif alert_type == "inventory_critical":
+            lines = [
+                "🚨 <b>인벤토리 심각한 불균형</b>",
+                "",
+                "<b>조치:</b> 즉시 확인 필요",
+            ]
+        elif alert_type == "inventory_rebalance":
+            suggestions = data.get("suggestions", [])
+            lines = [
+                f"⚠️ <b>인벤토리 리밸런싱 필요 ({len(suggestions)}건)</b>",
+                "",
+            ]
+            for s in suggestions:
+                lines.append(
+                    f"  • {s.get('from')} → {s.get('to')}: "
+                    f"${s.get('amount_usd', 0):.0f} ({s.get('reason', '')})"
+                )
+        elif alert_type == "order_cancel_fail":
+            lines = [
+                "🔴 <b>주문 취소 실패</b>",
+                "",
+                f"<b>거래소:</b> {data.get('exchange', 'N/A')}",
+                f"<b>주문 ID:</b> {data.get('order_id', 'N/A')}",
+                f"<b>오류:</b> {data.get('error', '알 수 없음')}",
+            ]
+        elif alert_type == "balance_mismatch":
+            lines = [
+                "⚠️ <b>잔고 불일치</b>",
+                "",
+                f"<b>상세:</b> {data.get('detail', 'N/A')}",
+            ]
+        elif alert_type == "orphan_positions":
+            lines = [
+                "⚠️ <b>시작 시 미정리 포지션 발견</b>",
+                "",
+                f"<b>발견:</b> {data.get('found', 0)}건",
+                f"<b>종료:</b> {data.get('closed', 0)}건",
+                f"<b>재개:</b> {data.get('resumed', 0)}건",
+            ]
+        elif alert_type == "data_collector_start":
+            lines = [
+                "📡 <b>실 데이터 수집 시작</b>",
+                "",
+                f"<b>거래소:</b> {data.get('exchanges', 'N/A')}",
+                f"<b>심볼:</b> {data.get('symbols', 'N/A')}",
+            ]
+        elif alert_type == "live_mode_start":
+            lines = [
+                "🚀 <b>라이브 모드 시작</b>",
+                "",
+                f"<b>거래소:</b> {data.get('exchanges', 'N/A')}",
+                f"<b>심볼:</b> {data.get('symbols', 'N/A')}",
+            ]
+        elif alert_type == "shadow_mode_start":
+            lines = [
+                "🌑 <b>섀도 모드 활성화</b>",
+                "",
+                f"<b>거래소:</b> {data.get('exchanges', 'N/A')}",
+                f"<b>심볼:</b> {data.get('symbols', 'N/A')}",
+                f"<b>라이브게이트:</b> {data.get('live_gate', '비활성')}",
             ]
         else:
             lines = [

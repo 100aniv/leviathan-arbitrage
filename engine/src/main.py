@@ -1276,9 +1276,9 @@ class Engine:
             def _on_reconcile_discrepancy(result) -> None:
                 if self._telegram:
                     summary = result.discrepancies[:3]
-                    asyncio.ensure_future(self._telegram.send_alert(
-                        f"⚠️ 포지션 불일치 {len(result.discrepancies)}건: {summary}",
-                        level="CRITICAL",
+                    asyncio.ensure_future(self._telegram.send_alert_kr(
+                        "position_discrepancy",
+                        {"count": len(result.discrepancies), "summary": str(summary)},
                     ))
 
             self._position_reconciler = PositionReconciler(
@@ -1397,9 +1397,9 @@ class Engine:
                 logger.error("position_tracking_failed strategy=%s error=%s", trade_request.strategy_id, exc)
                 self._position_tracking_errors = getattr(self, "_position_tracking_errors", 0) + 1
                 if self._position_tracking_errors > 5 and self._telegram:
-                    asyncio.ensure_future(self._telegram.send_alert(
-                        f"Position tracking persistently failing ({self._position_tracking_errors}x) — risk data unreliable",
-                        level="CRITICAL",
+                    asyncio.ensure_future(self._telegram.send_alert_kr(
+                        "position_tracking_fail",
+                        {"error_count": self._position_tracking_errors},
                     ))
         # US-175: Update ExposureTracker on successful fills
         if (getattr(execution_result.status, "value", str(execution_result.status)) == "success"
@@ -1546,23 +1546,22 @@ class Engine:
 
                 if self._rebalancer.has_critical_imbalance() and self._telegram:
                     try:
-                        await self._telegram.send_alert(
-                            "🚨 인벤토리 심각한 불균형 감지! 즉시 확인 필요.",
-                            level="CRITICAL",
+                        await self._telegram.send_alert_kr(
+                            "inventory_critical", {},
                         )
                     except Exception:
                         pass
 
                 suggestions = self._rebalancer.check_and_suggest()
                 if suggestions and self._telegram:
-                    lines = [f"⚠️ 인벤토리 리밸런싱 필요 ({len(suggestions)}건)"]
-                    for s in suggestions:
-                        lines.append(
-                            f"  {s.from_exchange} → {s.to_exchange}: "
-                            f"${s.amount_usd:.0f} ({s.reason})"
-                        )
                     try:
-                        await self._telegram.send_alert("\n".join(lines), level="WARNING")
+                        await self._telegram.send_alert_kr("inventory_rebalance", {
+                            "suggestions": [
+                                {"from": s.from_exchange, "to": s.to_exchange,
+                                 "amount_usd": s.amount_usd, "reason": s.reason}
+                                for s in suggestions
+                            ],
+                        })
                     except Exception:
                         pass
 
@@ -1595,9 +1594,9 @@ class Engine:
                     logger.error("Failed to cancel order %s on %s: %s", order.order_id, eid, exc)
                     if self._telegram:
                         try:
-                            await self._telegram.send_alert(
-                                f"⚠️ 주문 취소 실패: {eid} {order.order_id} — {exc}",
-                                level="CRITICAL",
+                            await self._telegram.send_alert_kr(
+                                "order_cancel_fail",
+                                {"exchange": eid, "order_id": str(order.order_id), "error": str(exc)},
                             )
                         except Exception:
                             pass
@@ -1964,12 +1963,10 @@ class Engine:
 
         # Send Telegram notification
         if self._telegram and self._telegram._enabled:
-            await self._telegram.send_alert(
-                f"Real data collection started\n"
-                f"Exchanges: {', '.join(exchanges)}\n"
-                f"Symbols: {', '.join(symbols)}",
-                level="INFO",
-            )
+            await self._telegram.send_alert_kr("data_collector_start", {
+                "exchanges": ", ".join(exchanges),
+                "symbols": ", ".join(symbols),
+            })
 
         # Keep alive until cancelled
         try:
@@ -2088,10 +2085,10 @@ class Engine:
         logger.info("Live mode collectors started: %s for %s", exchanges, symbols)
 
         if self._telegram and self._telegram._enabled:
-            await self._telegram.send_alert(
-                f"LIVE Mode started\nExchanges: {', '.join(exchanges)}\nSymbols: {', '.join(symbols)}",
-                level="INFO",
-            )
+            await self._telegram.send_alert_kr("live_mode_start", {
+                "exchanges": ", ".join(exchanges),
+                "symbols": ", ".join(symbols),
+            })
 
         try:
             while self.state.running:
@@ -2460,13 +2457,11 @@ class Engine:
 
         # Send Telegram notification
         if self._telegram and self._telegram._enabled:
-            await self._telegram.send_alert(
-                f"Shadow Mode active\n"
-                f"Exchanges: {', '.join(exchanges)}\n"
-                f"Symbols: {', '.join(symbols)}\n"
-                f"LiveGate: {'enabled' if self._live_gate else 'disabled'}",
-                level="INFO",
-            )
+            await self._telegram.send_alert_kr("shadow_mode_start", {
+                "exchanges": ", ".join(exchanges),
+                "symbols": ", ".join(symbols),
+                "live_gate": "활성" if self._live_gate else "비활성",
+            })
 
         # Keep alive until cancelled
         # NOTE: Cleanup is handled exclusively by Engine.stop() to avoid
@@ -2726,11 +2721,11 @@ class Engine:
                     result.positions_found, result.closed, result.resumed, result.skipped,
                 )
                 if self._telegram:
-                    await self._telegram.send_alert(
-                        f"⚠️ 시작 시 미정리 포지션 {result.positions_found}건 발견 "
-                        f"(종료={result.closed}, 재개={result.resumed})",
-                        level="WARNING",
-                    )
+                    await self._telegram.send_alert_kr("orphan_positions", {
+                        "found": result.positions_found,
+                        "closed": result.closed,
+                        "resumed": result.resumed,
+                    })
             else:
                 logger.info("startup_position_scan: no orphaned positions found")
             logger.info("[position_recovery] scan completed")
@@ -2800,11 +2795,13 @@ class Engine:
                             except (ValueError, ZeroDivisionError):
                                 pass
                     if mismatches:
-                        msg = "Reconciliation mismatch: " + ", ".join(mismatches)
+                        msg = "잔고 불일치: " + ", ".join(mismatches)
                         logger.warning(msg)
                         if self._telegram:
                             try:
-                                await self._telegram.send_alert(f"⚠️ {msg}")
+                                await self._telegram.send_alert_kr(
+                                    "balance_mismatch", {"detail": msg},
+                                )
                             except Exception:
                                 pass
 

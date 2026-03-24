@@ -303,7 +303,7 @@ class TestSummaryIncludesRejectionStats:
         """_send_summary passes trades_rejected and trades_partial_fill in summary_data."""
         telegram = MagicMock()
         telegram.send_daily_summary = AsyncMock()
-        telegram.send_alert = AsyncMock()
+        telegram.send_alert_kr = AsyncMock()
 
         shadow = make_shadow_mode(telegram=telegram)
         shadow._stats.trades_rejected = 3

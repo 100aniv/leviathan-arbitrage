@@ -366,10 +366,10 @@ class TestShadowModeLifecycle:
     async def test_start_sends_telegram_notification(self) -> None:
         """start() notifies Telegram when alerter is configured."""
         telegram = MagicMock()
-        telegram.send_alert = AsyncMock()
+        telegram.send_alert_kr = AsyncMock()
         sm = make_shadow_mode(telegram=telegram)
         await sm.start()
-        telegram.send_alert.assert_awaited_once()
+        telegram.send_alert_kr.assert_awaited_once()
         await sm.stop()
 
     @pytest.mark.asyncio
@@ -743,7 +743,7 @@ class TestShadowModeStopSendsFinalSummary:
     async def test_stop_sends_final_summary_via_telegram(self) -> None:
         """stop() triggers a final Telegram summary when telegram is configured."""
         telegram = MagicMock()
-        telegram.send_alert = AsyncMock()
+        telegram.send_alert_kr = AsyncMock()
         telegram.send_daily_summary = AsyncMock()
 
         sm = make_shadow_mode(telegram=telegram)
@@ -756,7 +756,7 @@ class TestShadowModeStopSendsFinalSummary:
     async def test_stop_does_not_raise_when_telegram_send_fails(self) -> None:
         """stop() swallows Telegram errors in the final summary."""
         telegram = MagicMock()
-        telegram.send_alert = AsyncMock()
+        telegram.send_alert_kr = AsyncMock()
         telegram.send_daily_summary = AsyncMock(side_effect=RuntimeError("network down"))
 
         sm = make_shadow_mode(telegram=telegram)

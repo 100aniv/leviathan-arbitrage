@@ -647,10 +647,7 @@ class ShadowMode:
         # Send Telegram "started" notification (non-blocking; never crashes)
         if self._telegram is not None:
             try:
-                await self._telegram.send_alert(
-                    "섀도 모드 시작. 실데이터 + 페이퍼 실행 활성화.",
-                    level="INFO",
-                )
+                await self._telegram.send_alert_kr("shadow_start", {})
             except Exception as exc:
                 logger.warning("shadow_mode.telegram_start_alert_failed", error=str(exc))
 
@@ -1974,9 +1971,8 @@ class ShadowMode:
                         )
                         if self._telegram is not None:
                             try:
-                                asyncio.create_task(self._telegram.send_alert(
-                                    f"KRW 환율 {elapsed:.0f}초 지연 — KRW 거래소 소프트 차단됨",
-                                    level="WARNING",
+                                asyncio.create_task(self._telegram.send_alert_kr(
+                                    "krw_soft_block", {"stale_seconds": elapsed},
                                 ))
                             except Exception:
                                 pass
@@ -1993,9 +1989,8 @@ class ShadowMode:
                             logger.error("shadow_mode.kill_switch_trigger_failed", error=str(exc))
                         if self._telegram is not None:
                             try:
-                                asyncio.create_task(self._telegram.send_alert(
-                                    f"긴급: KRW 환율 {elapsed:.0f}초 지연 (10분 이상) — 킬 스위치 작동",
-                                    level="CRITICAL",
+                                asyncio.create_task(self._telegram.send_alert_kr(
+                                    "krw_killswitch", {"stale_seconds": elapsed},
                                 ))
                             except Exception:
                                 pass
@@ -2008,9 +2003,8 @@ class ShadowMode:
                         logger.info("shadow_mode.krw_soft_block_cleared")
                         if self._telegram is not None:
                             try:
-                                asyncio.create_task(self._telegram.send_alert(
-                                    "KRW 환율 복구 — 소프트 차단 해제",
-                                    level="INFO",
+                                asyncio.create_task(self._telegram.send_alert_kr(
+                                    "krw_recovered", {},
                                 ))
                             except Exception:
                                 pass
@@ -2125,19 +2119,11 @@ class ShadowMode:
 
                 # Send per-strategy breakdown as separate message
                 if strategy_breakdown:
-                    lines = ["전략별 성과:"]
-                    for sb in strategy_breakdown:
-                        lines.append(
-                            f"  {sb['strategy_id']}: "
-                            f"{sb['trades']}건 / "
-                            f"{sb['win_rate']:.0%} 승률 / "
-                            f"${sb['pnl']:+.4f}"
-                        )
-                    lines.append(
-                        f"  거부: {stats.trades_rejected}\n"
-                        f"  부분 체결: {stats.trades_partial_fill}"
-                    )
-                    await self._telegram.send_alert("\n".join(lines), level="INFO")
+                    await self._telegram.send_alert_kr("shadow_daily_breakdown", {
+                        "strategies": strategy_breakdown,
+                        "trades_rejected": stats.trades_rejected,
+                        "trades_partial_fill": stats.trades_partial_fill,
+                    })
 
                 stats.last_daily_summary = now
                 logger.info(
