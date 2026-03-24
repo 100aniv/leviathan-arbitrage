@@ -6197,7 +6197,7 @@
       "phase": "SIT-2",
       "title": "클로즈 베타 체크리스트 10항목 통과",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "로그인 → JWT → 리다이렉트 확인",
         "텔레그램 /status 한글 응답",
