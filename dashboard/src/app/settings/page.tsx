@@ -332,7 +332,7 @@ export default function SettingsPage() {
             className="w-24 bg-terminal-muted border border-terminal-border rounded px-2 py-1 text-sm font-mono text-terminal-text focus:outline-none focus:border-accent"
             readOnly
           />
-          <span className="text-[10px] font-mono text-terminal-subtle">"자본 설정"에서 관리</span>
+          <span className="text-[10px] font-mono text-terminal-subtle">&ldquo;자본 설정&rdquo;에서 관리</span>
         </div>
         <button
           onClick={handleSaveEdge}
