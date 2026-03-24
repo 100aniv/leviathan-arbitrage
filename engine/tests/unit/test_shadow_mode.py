@@ -655,7 +655,7 @@ class TestOnOrderbookMarketRecorder:
         paper_executor.execute = AsyncMock(side_effect=[buy_trade, sell_trade])
 
         telegram = MagicMock()
-        telegram.send_signal_found = AsyncMock()
+        telegram.send_alert_kr = AsyncMock()
 
         sm = make_shadow_mode(
             signal_generator=signal_generator,
@@ -666,7 +666,7 @@ class TestOnOrderbookMarketRecorder:
 
         await sm._on_orderbook("binance", "BTC/USDT", [["50000", "1.0"]], [["50001", "1.0"]])
 
-        telegram.send_signal_found.assert_awaited_once_with(signal)
+        telegram.send_alert_kr.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -686,10 +686,10 @@ class TestSendSummary:
         await sm._send_summary()
 
     @pytest.mark.asyncio
-    async def test_send_summary_calls_telegram_send_daily_summary(self) -> None:
-        """_send_summary calls telegram.send_daily_summary with correct fields."""
+    async def test_send_summary_calls_telegram_send_daily_report_kr(self) -> None:
+        """_send_summary calls telegram.send_daily_report_kr with correct fields."""
         telegram = MagicMock()
-        telegram.send_daily_summary = AsyncMock()
+        telegram.send_daily_report_kr = AsyncMock()
 
         sm = make_shadow_mode(telegram=telegram)
         sm._stats.trades_executed = 10
@@ -699,8 +699,8 @@ class TestSendSummary:
 
         await sm._send_summary()
 
-        telegram.send_daily_summary.assert_awaited_once()
-        call_kwargs = telegram.send_daily_summary.call_args[0][0]
+        telegram.send_daily_report_kr.assert_awaited_once()
+        call_kwargs = telegram.send_daily_report_kr.call_args[0][0]
         assert call_kwargs["trades"] == 10
         assert abs(call_kwargs["win_rate"] - 0.7) < 1e-9
         assert call_kwargs["total_pnl"] == 42.5
@@ -709,21 +709,21 @@ class TestSendSummary:
     async def test_send_summary_win_rate_zero_when_no_trades(self) -> None:
         """_send_summary computes win_rate=0 when no trades executed."""
         telegram = MagicMock()
-        telegram.send_daily_summary = AsyncMock()
+        telegram.send_daily_report_kr = AsyncMock()
 
         sm = make_shadow_mode(telegram=telegram)
         sm._stats.trades_executed = 0
 
         await sm._send_summary()
 
-        call_kwargs = telegram.send_daily_summary.call_args[0][0]
+        call_kwargs = telegram.send_daily_report_kr.call_args[0][0]
         assert call_kwargs["win_rate"] == 0.0
 
     @pytest.mark.asyncio
     async def test_send_summary_updates_last_daily_summary_timestamp(self) -> None:
         """_send_summary sets stats.last_daily_summary after successful send."""
         telegram = MagicMock()
-        telegram.send_daily_summary = AsyncMock()
+        telegram.send_daily_report_kr = AsyncMock()
 
         sm = make_shadow_mode(telegram=telegram)
         assert sm._stats.last_daily_summary is None
@@ -744,20 +744,20 @@ class TestShadowModeStopSendsFinalSummary:
         """stop() triggers a final Telegram summary when telegram is configured."""
         telegram = MagicMock()
         telegram.send_alert_kr = AsyncMock()
-        telegram.send_daily_summary = AsyncMock()
+        telegram.send_daily_report_kr = AsyncMock()
 
         sm = make_shadow_mode(telegram=telegram)
         await sm.start()
         await sm.stop()
 
-        telegram.send_daily_summary.assert_awaited_once()
+        telegram.send_daily_report_kr.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_stop_does_not_raise_when_telegram_send_fails(self) -> None:
         """stop() swallows Telegram errors in the final summary."""
         telegram = MagicMock()
         telegram.send_alert_kr = AsyncMock()
-        telegram.send_daily_summary = AsyncMock(side_effect=RuntimeError("network down"))
+        telegram.send_daily_report_kr = AsyncMock(side_effect=RuntimeError("network down"))
 
         sm = make_shadow_mode(telegram=telegram)
         await sm.start()

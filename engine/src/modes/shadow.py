@@ -998,7 +998,14 @@ class ShadowMode:
                 # Telegram signal notification (fire-and-forget)
                 if self._telegram is not None:
                     try:
-                        await self._telegram.send_signal_found(signal)
+                        await self._telegram.send_alert_kr("signal_found", {
+                            "strategy": signal.strategy_id,
+                            "symbol": signal.symbol,
+                            "buy_exchange": signal.buy_exchange,
+                            "sell_exchange": signal.sell_exchange,
+                            "spread_pct": float(signal.spread_pct) * 100,
+                            "net_profit": signal.metadata.get("net_profit", 0),
+                        })
                     except Exception as exc:
                         logger.warning(
                             "shadow_mode.telegram_signal_notify_failed", error=str(exc)
@@ -2115,7 +2122,7 @@ class ShadowMode:
 
         if self._telegram is not None:
             try:
-                await self._telegram.send_daily_summary(summary_data)
+                await self._telegram.send_daily_report_kr(summary_data)
 
                 # Send per-strategy breakdown as separate message
                 if strategy_breakdown:

@@ -416,6 +416,19 @@ class TelegramAlerter:
                 f"<b>영향:</b> {data.get('impact', '데이터 저장 불가')}",
             ]
         # --- shadow.py templates ---
+        elif alert_type == "signal_found":
+            pnl = data.get("net_profit", 0)
+            pnl_str = f"${float(pnl):+,.4f}" if pnl else "N/A"
+            lines = [
+                "💹 <b>차익거래 시그널 감지</b>",
+                "",
+                f"<b>전략:</b> {data.get('strategy', 'N/A')}",
+                f"<b>심볼:</b> {data.get('symbol', 'N/A')}",
+                f"<b>매수:</b> {data.get('buy_exchange', 'N/A')}",
+                f"<b>매도:</b> {data.get('sell_exchange', 'N/A')}",
+                f"<b>스프레드:</b> {data.get('spread_pct', 0):.2f}%",
+                f"<b>예상 수익:</b> {pnl_str}",
+            ]
         elif alert_type == "shadow_start":
             lines = [
                 "🌑 <b>섀도 모드 시작</b>",
