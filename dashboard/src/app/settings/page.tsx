@@ -87,7 +87,7 @@ export default function SettingsPage() {
     setTimeout(() => setFeedback(null), 3000);
   }
 
-  async function handleSelectMode(mode: "paper" | "shadow" | "live") {
+  async function handleSelectMode(mode: "backtest" | "paper" | "shadow" | "live") {
     setModeSaving(true);
     try {
       await updateMode(mode);

@@ -173,7 +173,7 @@ export interface SettingsResponse {
   max_position_usd?: number;
   capital_per_exchange_usd?: number;
   max_daily_loss_usd?: number;
-  execution_mode?: "paper" | "shadow" | "live";
+  execution_mode?: "backtest" | "paper" | "shadow" | "live";
 }
 
 // ─── Analytics Types ──────────────────────────────────────────────────────────
