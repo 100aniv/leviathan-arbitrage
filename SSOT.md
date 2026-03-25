@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-24 (S26 전략 리서치 + Shadow 강화 + SIT-1 완료) | PRD: `.omc/prd.json` (339개 US, 333 passes:true / 6 passes:false)
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
-> **실행 순서**: A~M ✅ → S1~S22 ✅ → **TF QF 10차** → TF SF → TF PF → TF Final → Live
+> 마지막 업데이트: 2026-03-25 (SIT-2 클로즈 베타 PASS + SIT-3 종합테스트 진입) | PRD: `.omc/prd.json` (343개 US, 338 passes:true / 5 passes:false)
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | SIT 플랜: `.claude/plans/vivid-jingling-valiant.md`
+> **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → **SIT-3 종합테스트** → TF Final → Live
 
 ---
 
@@ -31,13 +31,13 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: S26 회귀 (2026-03-23) — TF SF FAIL(Sharpe 0.53) → 전략 리서치 + Shadow 강화
+**Phase**: SIT-3 종합테스트 (2026-03-25) — 7팀 Agent Teams + Progressive Shadow
 **Tests**: 5,244 passed / 0 failed / 12 skipped
 **Coverage**: 77%
-**PRD**: 333/339 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 + US-338/339 SIT 잔여)
-**TF Status**: S1~S25 ✅ → TF QF Re-Validation PASS → TF SF FAIL(Sharpe 0.53) → **S26 회귀** → TF QF → SF → PF → Final → Live
-**Next**: S26 워크플로우 복구 + 전략 리서치 + Shadow 강화 + SF 재실행
-**계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
+**PRD**: 338/343 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 + US-339 SIT-3 잔여)
+**TF Status**: S1~S26 ✅ → TF QF 11차 PASS(S23) → TF SF FAIL(Sharpe 0.53) → S26 회귀 ✅ → SIT-0~2 ✅ → **SIT-3 종합테스트** → TF QF 12차(재검증) → TF SF → TF PF → TF Final → Live
+**Next**: SIT-3 종합테스트 7팀 체크리스트 + Progressive Shadow → TF QF 12차 재검증
+**계획서**: `.claude/plans/vivid-jingling-valiant.md` (3단계: 완전체→클로즈베타→종합테스트)
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 

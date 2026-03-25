@@ -643,8 +643,8 @@ class TestOnOrderbookMarketRecorder:
         await sm._on_orderbook("binance", "BTC/USDT", bids, asks)
 
     @pytest.mark.asyncio
-    async def test_on_orderbook_notifies_telegram_on_signal(self) -> None:
-        """When a signal is emitted, Telegram is notified."""
+    async def test_on_orderbook_notifies_telegram_on_fill(self) -> None:
+        """When a trade is executed, Telegram fill notification is sent (not signal)."""
         signal = make_signal()
         signal_generator = MagicMock()
         signal_generator.on_orderbook_update = AsyncMock(return_value=signal)
@@ -655,7 +655,7 @@ class TestOnOrderbookMarketRecorder:
         paper_executor.execute = AsyncMock(side_effect=[buy_trade, sell_trade])
 
         telegram = MagicMock()
-        telegram.send_alert_kr = AsyncMock()
+        telegram.send_fill_enhanced = AsyncMock()
 
         sm = make_shadow_mode(
             signal_generator=signal_generator,
@@ -666,7 +666,7 @@ class TestOnOrderbookMarketRecorder:
 
         await sm._on_orderbook("binance", "BTC/USDT", [["50000", "1.0"]], [["50001", "1.0"]])
 
-        telegram.send_alert_kr.assert_awaited_once()
+        telegram.send_fill_enhanced.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

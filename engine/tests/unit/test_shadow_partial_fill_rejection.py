@@ -302,7 +302,7 @@ class TestSummaryIncludesRejectionStats:
     async def test_summary_includes_rejection_stats(self) -> None:
         """_send_summary passes trades_rejected and trades_partial_fill in summary_data."""
         telegram = MagicMock()
-        telegram.send_daily_summary = AsyncMock()
+        telegram.send_daily_report_kr = AsyncMock()
         telegram.send_alert_kr = AsyncMock()
 
         shadow = make_shadow_mode(telegram=telegram)
@@ -312,8 +312,8 @@ class TestSummaryIncludesRejectionStats:
 
         await shadow._send_summary()
 
-        assert telegram.send_daily_summary.called, "send_daily_summary must be called"
-        call_args = telegram.send_daily_summary.call_args[0][0]
+        assert telegram.send_daily_report_kr.called, "send_daily_report_kr must be called"
+        call_args = telegram.send_daily_report_kr.call_args[0][0]
 
         assert "trades_rejected" in call_args, (
             f"summary_data missing 'trades_rejected'. Keys: {sorted(call_args.keys())}"

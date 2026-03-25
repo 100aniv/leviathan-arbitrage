@@ -841,6 +841,11 @@ class ShadowMode:
         if not self._running:
             return
 
+        # Yield to event loop every 5 updates to prevent API/telegram starvation
+        self._ob_counter = getattr(self, "_ob_counter", 0) + 1
+        if self._ob_counter % 5 == 0:
+            await asyncio.sleep(0)
+
         # Normalize KRW prices to USDT for cross-exchange comparison
         # Korean exchanges (upbit, bithumb, coinone) quote in KRW
         if "/KRW" in symbol:
@@ -995,21 +1000,8 @@ class ShadowMode:
                 pass
 
             if signal is not None:
-                # Telegram signal notification (fire-and-forget)
-                if self._telegram is not None:
-                    try:
-                        await self._telegram.send_alert_kr("signal_found", {
-                            "strategy": signal.strategy_id,
-                            "symbol": signal.symbol,
-                            "buy_exchange": signal.buy_exchange,
-                            "sell_exchange": signal.sell_exchange,
-                            "spread_pct": float(signal.spread_pct) * 100,
-                            "net_profit": signal.metadata.get("net_profit", 0),
-                        })
-                    except Exception as exc:
-                        logger.warning(
-                            "shadow_mode.telegram_signal_notify_failed", error=str(exc)
-                        )
+                # Note: signal_found 알람 제거 — 시그널은 시간당 수백건으로 노이지.
+                # 실제 체결(fill) 시에만 send_fill_kr()로 알람 (아래 _execute_shadow_trade에서 처리)
 
                 # Route through Strategy objects when StrategyManager is available;
                 # otherwise fall back to direct 2-leg execution (backward compat).
@@ -1524,6 +1516,23 @@ class ShadowMode:
 
         self._stats.total_pnl += net_pnl_float
         self._compute_drawdown()
+
+        # 체결 알림 (시그널 아닌 실제 체결만)
+        if self._telegram is not None:
+            try:
+                await self._telegram.send_fill_enhanced({
+                    "strategy": sid,
+                    "symbol": signal.symbol,
+                    "buy_exchange": buy_ex,
+                    "sell_exchange": sell_ex,
+                    "pnl": net_pnl_float,
+                    "spread_bps": float(signal.spread_pct) * 10000,
+                    "fee": float(real_buy_fee + real_sell_fee),
+                    "slippage_bps": 0.0,
+                    "latency_ms": int((time.monotonic() - t0) * 1000),
+                })
+            except Exception:
+                pass
 
         # US-300: update PortfolioRiskManager with per-strategy PnL
         if self._portfolio_risk is not None:

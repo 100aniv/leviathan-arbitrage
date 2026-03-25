@@ -274,10 +274,10 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S25✅ → TF QF PASS → TF SF FAIL(Sharpe 0.53) → **S26** → TF QF → SF → PF → Final → Live
+- **Phase 순서**: A~M✅ → S1~S26✅ → SIT-0~2✅ → **SIT-3** → TF QF 12차 → TF SF → TF PF → TF Final → Live
 - **Tests**: 5,244 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (339개 US, 333 passes:true / 6 passes:false — US-055/056 Live + US-332/334 런타임 + US-338/339 SIT)
-- **다음 작업**: SIT-2 클로즈 베타 → SIT-3 종합테스트 → TF Final → Live
+- **PRD**: `.omc/prd.json` (343개 US, 338 passes:true / 5 passes:false — US-055/056 Live + US-332/334 런타임 + US-339 SIT-3)
+- **다음 작업**: SIT-3 종합테스트 → TF Final → Live
 - **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%
 

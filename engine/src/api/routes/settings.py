@@ -19,6 +19,9 @@ router = APIRouter(prefix="/api/v1")
 class SettingsUpdate(BaseModel):
     min_edge_bps: int | None = None
     active_exchanges: list[str] | None = None
+    capital_per_exchange_usd: float | None = None
+    max_position_usd: float | None = None
+    max_daily_loss_usd: float | None = None
 
 
 class ModeUpdate(BaseModel):
@@ -37,6 +40,10 @@ async def get_settings(request: Request) -> JSONResponse:
         "min_edge_bps": ctx.runtime_settings.get("min_edge_bps", 5),
         "active_strategies": active_strategies,
         "active_exchanges": ctx.runtime_settings.get("active_exchanges", []),
+        "execution_mode": getattr(ctx, "execution_mode", "shadow"),
+        "capital_per_exchange_usd": ctx.runtime_settings.get("capital_per_exchange_usd", 70),
+        "max_position_usd": ctx.runtime_settings.get("max_position_usd", 5000),
+        "max_daily_loss_usd": ctx.runtime_settings.get("max_daily_loss_usd", 500),
     })
 
 
@@ -48,9 +55,19 @@ async def update_settings(request: Request, body: SettingsUpdate) -> JSONRespons
         ctx.runtime_settings["min_edge_bps"] = body.min_edge_bps
     if body.active_exchanges is not None:
         ctx.runtime_settings["active_exchanges"] = body.active_exchanges
+    if body.capital_per_exchange_usd is not None:
+        ctx.runtime_settings["capital_per_exchange_usd"] = body.capital_per_exchange_usd
+    if body.max_position_usd is not None:
+        ctx.runtime_settings["max_position_usd"] = body.max_position_usd
+    if body.max_daily_loss_usd is not None:
+        ctx.runtime_settings["max_daily_loss_usd"] = body.max_daily_loss_usd
     return JSONResponse({
         "min_edge_bps": ctx.runtime_settings.get("min_edge_bps", 5),
         "active_exchanges": ctx.runtime_settings.get("active_exchanges", []),
+        "execution_mode": getattr(ctx, "execution_mode", "shadow"),
+        "capital_per_exchange_usd": ctx.runtime_settings.get("capital_per_exchange_usd", 70),
+        "max_position_usd": ctx.runtime_settings.get("max_position_usd", 5000),
+        "max_daily_loss_usd": ctx.runtime_settings.get("max_daily_loss_usd", 500),
     })
 
 
@@ -58,7 +75,7 @@ async def update_settings(request: Request, body: SettingsUpdate) -> JSONRespons
 async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
     """Switch execution mode. Live mode requires LiveGate check."""
     ctx = request.app.state.engine_context
-    valid_modes = {"shadow", "paper", "live"}
+    valid_modes = {"backtest", "paper", "shadow", "live"}
     if body.mode not in valid_modes:
         raise HTTPException(status_code=400, detail=f"Invalid mode. Must be one of: {valid_modes}")
 

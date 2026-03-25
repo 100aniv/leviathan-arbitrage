@@ -54,13 +54,13 @@ services:
         condition: service_healthy
     mem_limit: 2g
     memswap_limit: 2g
-    cpus: 2.0
+    cpus: 4.0
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
     logging: *default-logging
 
   # ---------------------------------------------------------------------------

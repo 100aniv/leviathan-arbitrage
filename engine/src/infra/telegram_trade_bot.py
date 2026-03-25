@@ -614,6 +614,14 @@ class TradeTelegramBot(TelegramBotBase):
     async def send_daily_summary(self, data: dict) -> bool:
         return await self._alerter.send_daily_summary(data)
 
+    async def send_alert_kr(self, alert_type: str, data: dict) -> bool:
+        """구조화 한국어 경보 위임."""
+        return await self._alerter.send_alert_kr(alert_type, data)
+
+    async def send_daily_report_kr(self, data: dict) -> bool:
+        """일일 리포트 한국어 위임."""
+        return await self._alerter.send_daily_report_kr(data)
+
     async def send_fill_kr(self, data: dict) -> bool:
         if self._alert_level == AlertLevel.CRITICAL_ONLY:
             return False

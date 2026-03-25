@@ -88,12 +88,16 @@ export default function SettingsPage() {
   }
 
   async function handleSelectMode(mode: "backtest" | "paper" | "shadow" | "live") {
+    const prevMode = settings?.execution_mode;
+    // Optimistic UI: 즉시 모드 표시 변경
+    setSettings((prev) => prev ? { ...prev, execution_mode: mode } : prev);
     setModeSaving(true);
     try {
       await updateMode(mode);
-      setSettings((prev) => prev ? { ...prev, execution_mode: mode } : prev);
       showFeedback("success", `실행 모드가 "${MODE_LABELS[mode]}"로 변경되었습니다.`);
     } catch {
+      // 실패 시 롤백
+      setSettings((prev) => prev ? { ...prev, execution_mode: prevMode } : prev);
       showFeedback("error", "실행 모드 변경에 실패했습니다.");
     } finally {
       setModeSaving(false);
@@ -219,7 +223,7 @@ export default function SettingsPage() {
         <h3 className="text-sm font-mono font-semibold text-terminal-text">
           실행 모드<InfoTip text="엔진의 거래 실행 방식을 선택합니다" />
         </h3>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(["backtest", "paper", "shadow", "live"] as const).map((mode) => {
             const active = settings?.execution_mode === mode;
             const isLive = mode === "live";
