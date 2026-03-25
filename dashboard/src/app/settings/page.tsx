@@ -34,13 +34,15 @@ const ALL_EXCHANGES = [
   "bitget", "upbit", "bithumb", "coinone",
 ];
 
-const MODE_LABELS: Record<"paper" | "shadow" | "live", string> = {
-  paper: "페이퍼 모드",
-  shadow: "섀도 모드",
-  live: "라이브 모드",
+const MODE_LABELS: Record<string, string> = {
+  backtest: "Backtest",
+  paper: "Paper",
+  shadow: "Shadow",
+  live: "Live",
 };
 
-const MODE_DESCRIPTIONS: Record<"paper" | "shadow" | "live", string> = {
+const MODE_DESCRIPTIONS: Record<string, string> = {
+  backtest: "과거 데이터로 전략 성능 검증 (오프라인)",
   paper: "가상 자본으로 전략 로직 검증 (시장 영향 없음)",
   shadow: "실시간 시장 데이터로 전략 시뮬레이션 (주문 없음)",
   live: "실제 자본으로 거래 실행 — LiveGate 통과 필요",
@@ -218,7 +220,7 @@ export default function SettingsPage() {
           실행 모드<InfoTip text="엔진의 거래 실행 방식을 선택합니다" />
         </h3>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {(["paper", "shadow", "live"] as const).map((mode) => {
+          {(["backtest", "paper", "shadow", "live"] as const).map((mode) => {
             const active = settings?.execution_mode === mode;
             const isLive = mode === "live";
             return (
