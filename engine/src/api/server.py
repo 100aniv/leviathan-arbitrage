@@ -87,10 +87,13 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     ws_manager = ConnectionManager()
     context.ws_manager = ws_manager
 
+    _is_prod = os.environ.get("ENGINE_ENV", "dev") in ("prod", "staging")
     app = FastAPI(
         title="LEVIATHAN Arbitrage Engine",
         version="1.0.0",
         description="Cross-exchange arbitrage engine REST API",
+        docs_url=None if _is_prod else "/docs",
+        redoc_url=None if _is_prod else "/redoc",
     )
 
     _cors_origins = os.environ.get(
@@ -155,8 +158,16 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     # ---------------------------------------------------------------------------
 
     @app.get("/metrics")
-    async def short_metrics():  # type: ignore[return]
-        """Alias so Prometheus scraper at /metrics works alongside /api/v1/metrics."""
+    async def short_metrics(request: Request):  # type: ignore[return]
+        """Alias so Prometheus scraper at /metrics works alongside /api/v1/metrics.
+
+        In prod/staging, restrict to internal Docker network IPs only.
+        """
+        if _is_prod:
+            client_ip = request.client.host if request.client else ""
+            if not (client_ip.startswith("172.") or client_ip.startswith("127.") or client_ip == "::1"):
+                from fastapi.responses import PlainTextResponse
+                return PlainTextResponse("Forbidden", status_code=403)
         try:
             from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
             from fastapi.responses import PlainTextResponse
