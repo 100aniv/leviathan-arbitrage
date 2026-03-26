@@ -119,7 +119,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
 
     @app.post("/api/auth/login")
     async def login(body: LoginBody):  # type: ignore[return]
-        if body.username != DASHBOARD_USER or not verify_password(body.password):
+        if body.username != DASHBOARD_USER or not await verify_password(body.password):
             raise HTTPException(status_code=401, detail="Invalid credentials")
         token = create_token(body.username)
         return JSONResponse({"access_token": token, "token_type": "bearer"})

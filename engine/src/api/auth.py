@@ -58,8 +58,9 @@ if _ENGINE_ENV in ("prod", "staging") and not os.environ.get("DASHBOARD_PASSWORD
 
 if _HAS_BCRYPT:
     # Hash the password from env at startup (so plaintext is never compared at runtime)
+    _BCRYPT_ROUNDS = 12 if _ENGINE_ENV in ("prod", "staging") else 4
     _DASHBOARD_PASSWORD_HASH: bytes = bcrypt.hashpw(
-        _DASHBOARD_PASSWORD_RAW.encode("utf-8"), bcrypt.gensalt(rounds=12)
+        _DASHBOARD_PASSWORD_RAW.encode("utf-8"), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
     )
 else:
     # SHA-256 fallback for test environments without bcrypt
@@ -68,11 +69,19 @@ else:
     ).hexdigest()
 
 
-def verify_password(plain_password: str) -> bool:
-    """Verify a plaintext password against the stored hash."""
+async def verify_password(plain_password: str) -> bool:
+    """Verify a plaintext password against the stored hash.
+
+    bcrypt is CPU-bound — run in executor to avoid blocking the event loop.
+    """
     if _HAS_BCRYPT:
-        return bcrypt.checkpw(
-            plain_password.encode("utf-8"), _DASHBOARD_PASSWORD_HASH
+        import asyncio
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            bcrypt.checkpw,
+            plain_password.encode("utf-8"),
+            _DASHBOARD_PASSWORD_HASH,
         )
     # SHA-256 fallback
     return (
@@ -115,14 +124,23 @@ def verify_ws_token(websocket: Any) -> str | None:
     Verify JWT for WebSocket connections.
 
     Checks in order:
-    1. ?token= query parameter
-    2. leviathan_token cookie (dashboard compatibility)
+    1. leviathan_token cookie (preferred — not exposed in server access logs)
+    2. ?token= query parameter (fallback — legacy clients only; logs a warning)
+
+    Security note: JWT is stateless with 24H TTL. No server-side revocation.
+    Prod recommendation: implement Redis blacklist for immediate token invalidation.
 
     Returns username if valid, None if invalid/missing.
     """
-    token = websocket.query_params.get("token")
+    token = websocket.cookies.get("leviathan_token")
     if not token:
-        token = websocket.cookies.get("leviathan_token")
+        token = websocket.query_params.get("token")
+        if token:
+            logger.warning(
+                "ws_token_via_query_param: JWT in URL query param exposes token to server logs "
+                "— migrate to cookie (path=%s)",
+                websocket.url.path,
+            )
     if not token:
         return None
     try:
