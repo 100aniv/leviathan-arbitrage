@@ -150,6 +150,11 @@ class FuturesFuturesStrategy(BaseStrategy):
             book_depth_usd = signal.volume * signal.buy_price
             if book_depth_usd < self.config.min_book_depth_usd:
                 self._metrics.signals_filtered += 1
+                logger.info(
+                    "strategy.rejected strategy=futures_futures reason=depth_insufficient symbol=%s "
+                    "depth_usd=%.2f min_depth_usd=%.2f",
+                    signal.symbol, float(book_depth_usd), float(self.config.min_book_depth_usd),
+                )
                 return None
 
         size = min(signal.volume, self.config.max_position_size)
@@ -170,6 +175,11 @@ class FuturesFuturesStrategy(BaseStrategy):
             max_allowed_margin = margin_available * (Decimal("1") - self.config.margin_safety_pct)
             if required_margin > max_allowed_margin:
                 self._metrics.signals_filtered += 1
+                logger.info(
+                    "strategy.rejected strategy=futures_futures reason=margin_insufficient symbol=%s "
+                    "required=%.2f max_allowed=%.2f",
+                    signal.symbol, float(required_margin), float(max_allowed_margin),
+                )
                 return None
 
         buy_cost = self._cost_calculator.estimate_cost(
@@ -192,6 +202,11 @@ class FuturesFuturesStrategy(BaseStrategy):
 
         if net_profit <= Decimal("0"):
             self._metrics.signals_filtered += 1
+            logger.info(
+                "strategy.rejected strategy=futures_futures reason=net_profit_negative symbol=%s "
+                "net_profit=%.6f gross=%.6f cost=%.6f",
+                signal.symbol, float(net_profit), float(gross_profit), float(total_cost),
+            )
             return None
 
         self._metrics.trade_requests_generated += 1
