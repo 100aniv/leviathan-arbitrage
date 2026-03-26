@@ -74,7 +74,7 @@ class TestSubscribeMessage:
         msg = c._subscribe_message("BTC/USDT")
         assert msg == {
             "op": "subscribe",
-            "args": [{"channel": "books50-l2-tbt", "instId": "BTC-USDT-SWAP"}],
+            "args": [{"channel": "books5", "instId": "BTC-USDT-SWAP"}],
         }
 
     def test_subscribe_message_eth(self):
@@ -94,7 +94,7 @@ class TestParseMessage:
 
     def test_parse_snapshot(self):
         data = {
-            "arg": {"channel": "books50-l2-tbt", "instId": "BTC-USDT-SWAP"},
+            "arg": {"channel": "books5", "instId": "BTC-USDT-SWAP"},
             "action": "snapshot",
             "data": [{"bids": [["50000", "1", "0", "1"]], "asks": [["50001", "0.5", "0", "1"]]}],
         }
@@ -107,7 +107,7 @@ class TestParseMessage:
 
     def test_parse_update(self):
         data = {
-            "arg": {"channel": "books50-l2-tbt", "instId": "ETH-USDT-SWAP"},
+            "arg": {"channel": "books5", "instId": "ETH-USDT-SWAP"},
             "action": "update",
             "data": [{"bids": [["3000", "2", "0", "1"]], "asks": [["3001", "1", "0", "1"]]}],
         }
@@ -118,7 +118,7 @@ class TestParseMessage:
         assert bids == [["3000", "2"]]
 
     def test_parse_ack_returns_none(self):
-        data = {"event": "subscribe", "arg": {"channel": "books50-l2-tbt", "instId": "BTC-USDT-SWAP"}}
+        data = {"event": "subscribe", "arg": {"channel": "books5", "instId": "BTC-USDT-SWAP"}}
         assert self.c._parse_message(data) is None
 
     def test_parse_unknown_action_returns_none(self):
@@ -152,7 +152,7 @@ class TestCallback:
 
         c = OKXFuturesCollector(symbols=["BTC/USDT"], on_orderbook=cb)
         raw = json.dumps({
-            "arg": {"channel": "books50-l2-tbt", "instId": "BTC-USDT-SWAP"},
+            "arg": {"channel": "books5", "instId": "BTC-USDT-SWAP"},
             "action": "snapshot",
             "data": [{"bids": [["50000", "1", "0", "1"]], "asks": [["50001", "0.5", "0", "1"]]}],
         })

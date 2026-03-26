@@ -476,7 +476,7 @@ class TestOKXCollectorSubscribeMessage:
         assert msg["op"] == "subscribe"
         assert len(msg["args"]) == 1
         arg = msg["args"][0]
-        assert arg["channel"] == "books50-l2-tbt"
+        assert arg["channel"] == "books5"
         assert arg["instId"] == "BTC-USDT"
 
     def test_subscribe_message_eth_usdt(self):
@@ -549,10 +549,19 @@ class TestOKXCollectorParseMessage:
         result = c._parse_message(data)
         assert result is None
 
-    def test_no_action_field_returns_none(self):
+    def test_no_action_field_returns_data(self):
+        # books5 channel sends messages without an "action" field — data should be returned
         c = OKXCollector(symbols=["BTC/USDT"])
-        result = c._parse_message({"arg": {"instId": "BTC-USDT"}, "data": [{}]})
-        assert result is None
+        msg = {
+            "arg": {"channel": "books5", "instId": "BTC-USDT"},
+            "data": [{"bids": [["50000", "1", "0", "1"]], "asks": [["50001", "0.5", "0", "1"]], "ts": "1234", "seqId": 1}],
+        }
+        result = c._parse_message(msg)
+        assert result is not None
+        symbol, bids, asks = result
+        assert symbol == "BTC/USDT"
+        assert bids == [["50000", "1"]]
+        assert asks == [["50001", "0.5"]]
 
     def test_empty_bids_and_asks_in_data_returns_empty_lists(self):
         c = OKXCollector(symbols=["BTC/USDT"])

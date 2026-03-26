@@ -25,16 +25,15 @@ class OKXCollector(BaseCollector):
 
     Endpoint: wss://ws.okx.com:8443/ws/v5/public
 
-    Subscribes to the "books50-l2-tbt" channel which streams top-50 levels
-    with tick-by-tick granularity. Both "snapshot" and "update" actions are
-    forwarded as-is (full replace of local state) which is sufficient for
-    cross-exchange arbitrage price comparison.
+    Subscribes to the "books5" channel (top-5 levels, public, no auth required).
+    The books5 channel sends data without an "action" field; messages contain
+    "arg" + "data" keys directly.
 
     No API key is required.
     """
 
     _WS_URL = "wss://ws.okx.com:8443/ws/v5/public"
-    _CHANNEL = "books50-l2-tbt"
+    _CHANNEL = "books5"
 
     def __init__(
         self,
@@ -63,15 +62,16 @@ class OKXCollector(BaseCollector):
         }
 
     def _parse_message(self, data: dict) -> tuple[str, list, list] | None:
-        # Subscription ack: {"event": "subscribe", ...} — ignore
+        # Subscription ack / error events — ignore
         if "event" in data:
             return None
 
         arg = data.get("arg", {})
         action = data.get("action")
 
-        # Only handle snapshot and update actions
-        if action not in ("snapshot", "update"):
+        # books5 sends no "action" field; books-l2 variants send "snapshot"/"update".
+        # Reject only messages with an explicit unrecognised action.
+        if action is not None and action not in ("snapshot", "update"):
             return None
 
         inst_id: str = arg.get("instId", "")
