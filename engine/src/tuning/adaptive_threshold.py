@@ -1,6 +1,7 @@
 """Adaptive MIN_EDGE_BPS threshold — adjusts hourly based on win-rate."""
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
@@ -20,7 +21,7 @@ class AdaptiveThreshold:
         self,
         initial_edge_bps: float = 5.0,
         min_edge: float = 2.0,
-        max_edge: float = 50.0,
+        max_edge: float = float(os.environ.get("ADAPTIVE_MAX_EDGE_BPS", "15.0")),
         step_bps: float = 1.0,
     ) -> None:
         self.current_edge_bps = initial_edge_bps
