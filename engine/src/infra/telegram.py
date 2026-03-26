@@ -362,12 +362,24 @@ class TelegramAlerter:
             icon = "🟢" if status == "정상" else "🔴"
             ex_lines.append(f"  {icon} {ex_id}: {status}")
 
+        mdd = data.get("max_drawdown")
+        mdd_str = f"{float(mdd):.2f}%" if mdd is not None else "N/A"
+        pf = data.get("profit_factor")
+        pf_str = f"{float(pf):.2f}" if pf is not None else "N/A"
+        sharpe = data.get("sharpe")
+        sharpe_str = f"{float(sharpe):.2f}" if sharpe is not None else "N/A"
+
         lines = [
             f"📊 <b>일일 가동 리포트 — {data.get('date', 'N/A')}</b>",
             "",
             f"{pnl_emoji} <b>총 PnL:</b> {pnl_str}",
             f"🔁 <b>거래 수:</b> {data.get('trades', 'N/A')}",
             f"🎯 <b>승률:</b> {wr_str}",
+            f"📉 <b>최대 낙폭:</b> {mdd_str}",
+            f"📊 <b>Profit Factor:</b> {pf_str}",
+            f"📈 <b>Sharpe:</b> {sharpe_str}",
+            f"❌ <b>거부:</b> {data.get('trades_rejected', 0)}건",
+            f"⚡ <b>부분 체결:</b> {data.get('trades_partial_fill', 0)}건",
             f"⚙️ <b>활성 전략:</b> {data.get('active_strategies', 'N/A')}개",
             "",
             "<b>거래소 상태:</b>",

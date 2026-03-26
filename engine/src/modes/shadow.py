@@ -2109,6 +2109,22 @@ class ShadowMode:
         except Exception:
             pass
 
+        # Profit factor (US-257)
+        profit_factor = (
+            stats.winning_pnl_sum / abs(stats.losing_pnl_sum)
+            if stats.losing_pnl_sum != 0 else 0.0
+        )
+        # Sharpe estimate (annualized from per-trade returns)
+        sharpe = 0.0
+        if total_trades > 1:
+            import statistics
+            all_pnls = [ss.pnl / max(ss.trades, 1) for ss in stats.by_strategy.values() if ss.trades > 0]
+            if len(all_pnls) > 1:
+                try:
+                    sharpe = statistics.mean(all_pnls) / statistics.stdev(all_pnls) * (252 ** 0.5)
+                except (ZeroDivisionError, statistics.StatisticsError):
+                    sharpe = 0.0
+
         summary_data: dict[str, Any] = {
             "date": now.strftime("%Y-%m-%d"),
             "strategy": self.STRATEGY_ID,
@@ -2116,9 +2132,13 @@ class ShadowMode:
             "trades": total_trades,
             "win_rate": win_rate,
             "max_drawdown": stats.max_drawdown,
+            "profit_factor": profit_factor,
+            "sharpe": sharpe,
             "trades_rejected": stats.trades_rejected,
             "trades_partial_fill": stats.trades_partial_fill,
             "trades_rate_limited": stats.trades_rate_limited,
+            "active_strategies": len([s for s in strategy_breakdown if s.get("trades", 0) > 0]),
+            "exchange_status": {},  # populated below
             "by_strategy": strategy_breakdown,
         }
 
