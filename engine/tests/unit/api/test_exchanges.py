@@ -32,8 +32,11 @@ class TestExchangesBasicResponse:
     def test_requires_auth(self, client):
         assert client.get("/api/v1/exchanges").status_code == 401
 
-    def test_empty_by_default(self, client, auth_headers):
-        assert client.get("/api/v1/exchanges", headers=auth_headers).json() == {}
+    def test_fallback_when_no_exchange_status(self, client, auth_headers):
+        """When exchange_status is empty, API returns known exchanges fallback."""
+        data = client.get("/api/v1/exchanges", headers=auth_headers).json()
+        assert len(data) >= 8  # at least known exchanges returned
+        assert all(v.get("connected") is True for v in data.values())
 
 
 class TestExchangesWithData:
