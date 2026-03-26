@@ -157,6 +157,9 @@ class Engine:
         """Full engine startup sequence. Blocks until shutdown signal."""
         logger.info("LEVIATHAN engine starting...")
         self._setup_signal_handlers()
+        # ER4-03: log WARNING when any asyncio callback exceeds 100ms
+        loop = asyncio.get_event_loop()
+        loop.slow_callback_duration = 0.1
 
         try:
             await self._init_config()
@@ -2448,6 +2451,24 @@ class Engine:
         self.context.shadow_mode = self._shadow_mode
         logger.info("Shadow Mode started: %s for %s", exchanges, symbols)
 
+        # ER5-04: Warm-start restore — load previous shadow stats from DB
+        if self._db_pool is not None:
+            try:
+                async with self._db_pool.pool.acquire() as conn:
+                    rows = await conn.fetch(
+                        "SELECT key, value FROM engine_state"
+                        " WHERE key IN ('shadow_total_pnl', 'shadow_trades_executed')"
+                    )
+                    for row in rows:
+                        if row["key"] == "shadow_total_pnl":
+                            self._shadow_mode._stats.total_pnl = float(row["value"])
+                            logger.info("shadow_total_pnl_restored value=%s", row["value"])
+                        elif row["key"] == "shadow_trades_executed":
+                            self._shadow_mode._stats.trades_executed = int(row["value"])
+                            logger.info("shadow_trades_executed_restored value=%s", row["value"])
+            except Exception as exc:
+                logger.warning("shadow_stats_warm_start_failed error=%s", exc)
+
         # Start LiveGate auto-evaluation if DB is available
         if self._db_pool is not None:
             try:
@@ -2921,6 +2942,22 @@ class Engine:
                         logger.debug("peak_equity_persisted_to_file value=%s", val_str)
                     except Exception as exc:
                         logger.debug("peak_equity_file_persist_error error=%s", exc)
+                # ER5-04: Persist shadow stats alongside peak_equity
+                if self._shadow_mode is not None and self._db_pool is not None:
+                    try:
+                        stats = self._shadow_mode._stats
+                        async with self._db_pool.pool.acquire() as conn:
+                            await conn.execute(_CREATE_TABLE)
+                            _UPSERT_SHADOW = """
+                                INSERT INTO engine_state (key, value, updated_at)
+                                VALUES ($1, $2, NOW())
+                                ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
+                            """
+                            await conn.execute(_UPSERT_SHADOW, "shadow_total_pnl", str(stats.total_pnl))
+                            await conn.execute(_UPSERT_SHADOW, "shadow_trades_executed", str(stats.trades_executed))
+                        logger.debug("shadow_stats_persisted trades=%s pnl=%s", stats.trades_executed, stats.total_pnl)
+                    except Exception as exc:
+                        logger.debug("shadow_stats_persist_error error=%s", exc)
             except asyncio.CancelledError:
                 break
             except Exception as exc:

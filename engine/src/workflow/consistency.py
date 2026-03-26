@@ -491,10 +491,10 @@ class ConsistencyChecker:
 
         # QF PASS/IN_PROGRESS 상태 vs SSOT "PASS N차" 표시
         if qf_status == "PASS":
-            if "QF" in ssot_text and "PASS" not in ssot_text.split("QF")[1][:200]:
+            if not _re.search(r"QF[^\n]*PASS|PASS[^\n]*QF", ssot_text):
                 drifts.append(f"TF status QF=PASS but SSOT에 QF PASS 미기록")
         elif qf_status == "IN_PROGRESS":
-            if "QF" in ssot_text and "진행중" not in ssot_text.split("QF")[1][:200]:
+            if not _re.search(r"QF[^\n]*진행중|진행중[^\n]*QF", ssot_text):
                 drifts.append(f"TF status QF=IN_PROGRESS but SSOT에 '진행중' 미기록")
 
         if drifts:

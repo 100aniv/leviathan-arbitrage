@@ -21,6 +21,7 @@ from src.core.order_book import OrderBook
 from src.core.price_hub import PriceHub
 from src.friction.cost_calculator import CostCalculator
 from src.core.stale_detector import StaleOrderbookDetector
+from src.infra.metrics import SIGNAL_PROCESSING_TIME
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +201,8 @@ class SignalGenerator:
 
         Returns Signal if all gates pass, None otherwise.
         """
+        _t0 = time.perf_counter()
+
         # US-327: time-based activation gate — skip if outside active hours (KST = UTC+9)
         if self._config.active_hours_kst is not None:
             from datetime import timezone as _tz, timedelta as _td
@@ -614,4 +617,7 @@ class SignalGenerator:
             except Exception as exc:
                 logger.error("Failed to publish signal to Redis: %s", exc)
 
+        SIGNAL_PROCESSING_TIME.labels(strategy=self._config.strategy_id).observe(
+            time.perf_counter() - _t0
+        )
         return signal
