@@ -5,6 +5,7 @@ import abc
 import asyncio
 import random
 import time
+from collections import deque
 from typing import Any, Callable, Awaitable
 
 import structlog
@@ -58,6 +59,7 @@ class BaseCollector(abc.ABC):
         self._connected = False
         self._message_count = 0
         self._last_message_time = 0.0
+        self._ws_latencies: deque[float] = deque(maxlen=1000)
 
     async def start(self) -> None:
         """Start the collector. Runs until stop() is called."""
@@ -132,7 +134,10 @@ class BaseCollector(abc.ABC):
     async def _handle_message(self, raw: str | bytes) -> None:
         """Parse and dispatch a WebSocket message."""
         import json
+        local_recv_ts = time.time()
         data = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+
+        self._record_ws_latency(data, local_recv_ts)
 
         result = self._parse_message(data)
         if result is None:
@@ -141,6 +146,75 @@ class BaseCollector(abc.ABC):
         symbol, bids, asks = result
         if self._on_orderbook:
             await self._on_orderbook(self.exchange_id, symbol, bids, asks)
+
+    def _extract_exchange_ts_ms(self, data: dict) -> float | None:
+        """Extract exchange-provided timestamp (ms) from common WS message fields.
+
+        Checks top-level keys first (T, ts, timestamp, time), then nested
+        data[0]['ts'] used by OKX-style messages.
+        Returns None if no timestamp is found or the value is invalid.
+        """
+        for field in ("T", "ts", "timestamp", "time"):
+            val = data.get(field)
+            if isinstance(val, (int, float)) and val > 0:
+                return float(val)
+        # OKX / some exchanges embed ts inside data[0]
+        data_list = data.get("data")
+        if isinstance(data_list, list) and data_list:
+            entry = data_list[0]
+            if isinstance(entry, dict):
+                val = entry.get("ts")
+                if val is not None:
+                    try:
+                        ts = float(val)
+                        if ts > 0:
+                            return ts
+                    except (ValueError, TypeError):
+                        pass
+        return None
+
+    def _record_ws_latency(self, data: dict, local_recv_ts: float | None = None) -> None:
+        """Compute and record WS message latency if exchange timestamp is present.
+
+        Latency = local receipt time − exchange timestamp.
+        Negative values (clock skew) are clamped to 0.
+        Samples are stored in a bounded deque for median/percentile queries.
+        A Prometheus histogram observation is also emitted when available.
+        """
+        exchange_ts_ms = self._extract_exchange_ts_ms(data)
+        if exchange_ts_ms is None:
+            return
+        if local_recv_ts is None:
+            local_recv_ts = time.time()
+        latency_ms = max(0.0, (local_recv_ts - exchange_ts_ms / 1000.0) * 1000.0)
+        self._ws_latencies.append(latency_ms)
+        try:
+            from src.infra.metrics import WS_MESSAGE_LATENCY
+            WS_MESSAGE_LATENCY.labels(exchange=self.exchange_id).observe(latency_ms / 1000.0)
+        except Exception:
+            pass
+
+    def ws_latency_stats(self) -> dict[str, float | int | None]:
+        """Return WS message latency statistics (ms) from the last 1000 samples.
+
+        Returns dict with keys: median_ms, p95_ms, p99_ms, sample_count.
+        All latency values are None when no samples have been recorded.
+        """
+        if not self._ws_latencies:
+            return {"median_ms": None, "p95_ms": None, "p99_ms": None, "sample_count": 0}
+        sorted_lats = sorted(self._ws_latencies)
+        n = len(sorted_lats)
+
+        def _pct(p: float) -> float:
+            idx = min(int(p / 100.0 * n), n - 1)
+            return sorted_lats[idx]
+
+        return {
+            "median_ms": _pct(50),
+            "p95_ms": _pct(95),
+            "p99_ms": _pct(99),
+            "sample_count": n,
+        }
 
     async def _backoff(self) -> None:
         """Exponential backoff with ±25% jitter between reconnection attempts."""

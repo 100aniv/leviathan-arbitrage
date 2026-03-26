@@ -22,12 +22,13 @@ class TestEngineState:
 
 class TestEngineLifecycle:
     @pytest.fixture
-    def engine(self):
+    async def engine(self):
         from src.api.server import EngineContext
         ctx = EngineContext()
         return Engine(context=ctx)
 
-    def test_engine_initial_state_not_running(self, engine):
+    @pytest.mark.asyncio
+    async def test_engine_initial_state_not_running(self, engine):
         assert engine.state.running is False
 
     @pytest.mark.asyncio
@@ -61,7 +62,7 @@ class TestEngineLifecycle:
 
 class TestEngineHealthCheck:
     @pytest.fixture
-    def engine(self):
+    async def engine(self):
         from src.api.server import EngineContext
         ctx = EngineContext()
         return Engine(context=ctx)

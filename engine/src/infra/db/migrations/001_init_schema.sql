@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS orderbook_snapshots (
     mid_price   NUMERIC     NOT NULL DEFAULT 0
 );
 SELECT create_hypertable('orderbook_snapshots', 'ts', if_not_exists => TRUE);
-SELECT add_retention_policy('orderbook_snapshots', INTERVAL '30 days', if_not_exists => TRUE);
+SELECT add_retention_policy('orderbook_snapshots', INTERVAL '7 days', if_not_exists => TRUE);
+ALTER TABLE orderbook_snapshots SET (timescaledb.compress, timescaledb.compress_segmentby = 'symbol,exchange');
+SELECT add_compression_policy('orderbook_snapshots', INTERVAL '1 day', if_not_exists => TRUE);
 
 -- 2. Execution log hypertable
 CREATE TABLE IF NOT EXISTS execution_log (

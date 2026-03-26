@@ -139,6 +139,8 @@ class Engine:
         # US-250: PositionRecovery + PositionReconciler
         self._position_recovery: Any = None
         self._position_reconciler: Any = None
+        # ER2-22: RecoveryManager (WAL replay on Redis restart)
+        self._recovery_manager: Any = None
         # US-284-b/a: Attribution + CapitalAllocator (wired in _populate_context)
         self._attribution: Any = None
         self._capital_allocator: Any = None
@@ -288,9 +290,10 @@ class Engine:
                 logger.warning("ScheduledTuner stop error: %s", exc)
 
         # Cancel background tasks
-        for task in self.state.background_tasks:
-            if not task.done():
-                task.cancel()
+        pending_tasks = [t for t in self.state.background_tasks if not t.done()]
+        logger.info("shutdown_remaining_tasks count=%d", len(pending_tasks))
+        for task in pending_tasks:
+            task.cancel()
         if self.state.background_tasks:
             await asyncio.wait(self.state.background_tasks, timeout=self.SHUTDOWN_TIMEOUT)
         self.state.background_tasks.clear()
@@ -1090,7 +1093,10 @@ class Engine:
                     except RuntimeError:
                         pass
 
-            self._circuit_breaker = CircuitBreaker(on_state_change=cb_state_callback)
+            self._circuit_breaker = CircuitBreaker(
+                consecutive_loss_limit=3,
+                on_state_change=cb_state_callback,
+            )
             logger.info("CircuitBreaker initialized")
         except Exception as exc:
             logger.warning("CircuitBreaker init failed: %s", exc)
@@ -1283,6 +1289,20 @@ class Engine:
             logger.info("PositionRecovery initialized")
         except Exception as exc:
             logger.warning("PositionRecovery init failed (non-fatal): %s", exc)
+
+        # ER2-22: RecoveryManager (WAL-based Redis state reconstruction on Redis restart)
+        if self._db_pool is not None and self._redis_client is not None:
+            try:
+                from src.infra.db.recovery import RecoveryManager
+                redis_raw = self._redis_client.redis
+                self._recovery_manager = RecoveryManager(
+                    db_pool=self._db_pool,
+                    redis_client=redis_raw,
+                    exchange_clients={ex_id: ex for ex_id, ex in self._exchanges.items()},
+                )
+                logger.info("RecoveryManager initialized")
+            except Exception as exc:
+                logger.warning("RecoveryManager init failed (non-fatal): %s", exc)
 
         # US-250: PositionReconciler (60s periodic engine-vs-exchange check)
         try:
@@ -2742,6 +2762,17 @@ class Engine:
 
     async def _startup_position_scan(self) -> None:
         """US-250: Scan for orphaned positions (WAL) on engine startup."""
+        # ER2-22: WAL replay — reconstruct Redis state from PostgreSQL on startup
+        if self._recovery_manager is not None:
+            try:
+                recovered = await self._recovery_manager.recover()
+                if recovered:
+                    logger.info("RecoveryManager WAL replay completed successfully")
+                else:
+                    logger.warning("RecoveryManager WAL replay: reconciliation failed, HALT flag set")
+            except Exception as exc:
+                logger.warning("RecoveryManager.recover() startup error: %s", exc)
+
         if self._position_recovery is None:
             return
         # Use public .redis property (raises RuntimeError if not connected)

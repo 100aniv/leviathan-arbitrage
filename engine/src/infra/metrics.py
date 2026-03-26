@@ -162,6 +162,13 @@ COLLECTOR_MESSAGES = Counter(
     ["exchange"],
 )
 
+WS_MESSAGE_LATENCY = Histogram(
+    "leviathan_ws_message_latency_seconds",
+    "WebSocket message latency: exchange timestamp to local receipt time",
+    ["exchange"],
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+)
+
 # ---------------------------------------------------------------------------
 # Phase G: Stale orderbook detection (US-066)
 # ---------------------------------------------------------------------------

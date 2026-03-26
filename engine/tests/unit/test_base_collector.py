@@ -274,3 +274,88 @@ class TestHandleMessage:
         raw = '{"type": "orderbook", "symbol": "BTC/USDT", "bids": [], "asks": []}'
         # Should complete without raising
         await collector._handle_message(raw)
+
+
+# ---------------------------------------------------------------------------
+# WS latency tracking
+# ---------------------------------------------------------------------------
+
+
+class TestWsLatency:
+    def test_latency_stats_empty_before_any_message(self):
+        collector = ConcreteCollector(exchange_id="binance", symbols=["BTC/USDT"])
+        stats = collector.ws_latency_stats()
+        assert stats["sample_count"] == 0
+        assert stats["median_ms"] is None
+        assert stats["p95_ms"] is None
+        assert stats["p99_ms"] is None
+
+    def test_extract_ts_from_top_level_ts_field(self):
+        collector = ConcreteCollector(exchange_id="bybit", symbols=["BTC/USDT"])
+        ts_ms = collector._extract_exchange_ts_ms({"ts": 1700000000000})
+        assert ts_ms == 1700000000000.0
+
+    def test_extract_ts_from_T_field(self):
+        collector = ConcreteCollector(exchange_id="binance", symbols=["BTC/USDT"])
+        ts_ms = collector._extract_exchange_ts_ms({"T": 1700000000123})
+        assert ts_ms == 1700000000123.0
+
+    def test_extract_ts_from_timestamp_field(self):
+        collector = ConcreteCollector(exchange_id="upbit", symbols=["BTC/KRW"])
+        ts_ms = collector._extract_exchange_ts_ms({"timestamp": 1700000000456})
+        assert ts_ms == 1700000000456.0
+
+    def test_extract_ts_from_nested_data_ts(self):
+        collector = ConcreteCollector(exchange_id="okx", symbols=["BTC/USDT"])
+        data = {"data": [{"ts": "1700000000789", "bids": [], "asks": []}]}
+        ts_ms = collector._extract_exchange_ts_ms(data)
+        assert ts_ms == 1700000000789.0
+
+    def test_extract_ts_returns_none_when_absent(self):
+        collector = ConcreteCollector(exchange_id="binance", symbols=["BTC/USDT"])
+        assert collector._extract_exchange_ts_ms({"bids": [], "asks": []}) is None
+
+    def test_record_ws_latency_appends_sample(self):
+        collector = ConcreteCollector(exchange_id="bybit", symbols=["BTC/USDT"])
+        local_recv = time.time()
+        exchange_ts_ms = (local_recv - 0.05) * 1000  # 50 ms in the past
+        collector._record_ws_latency({"ts": exchange_ts_ms}, local_recv)
+        assert collector.ws_latency_stats()["sample_count"] == 1
+        assert 40.0 <= collector.ws_latency_stats()["median_ms"] <= 60.0  # ~50 ms
+
+    def test_negative_latency_clamped_to_zero(self):
+        collector = ConcreteCollector(exchange_id="bybit", symbols=["BTC/USDT"])
+        local_recv = time.time()
+        future_ts_ms = (local_recv + 10.0) * 1000  # exchange ts 10s in the future
+        collector._record_ws_latency({"ts": future_ts_ms}, local_recv)
+        assert collector.ws_latency_stats()["median_ms"] == 0.0
+
+    def test_latency_stats_percentiles(self):
+        collector = ConcreteCollector(exchange_id="bybit", symbols=["BTC/USDT"])
+        # Inject known latency values directly
+        for ms in range(1, 101):  # 1..100 ms
+            collector._ws_latencies.append(float(ms))
+        stats = collector.ws_latency_stats()
+        assert stats["sample_count"] == 100
+        # floor(p/100 * n): p50→idx=50→val=51, p95→idx=95→val=96, p99→idx=99→val=100
+        assert stats["median_ms"] == 51.0
+        assert stats["p95_ms"] == 96.0
+        assert stats["p99_ms"] == 100.0
+
+    async def test_handle_message_records_latency_when_ts_present(self):
+        collector = ConcreteCollector(
+            exchange_id="bybit", symbols=["BTC/USDT"], on_orderbook=None
+        )
+        local_recv = time.time()
+        exchange_ts_ms = int((local_recv - 0.030) * 1000)  # 30 ms ago
+        raw = f'{{"ts": {exchange_ts_ms}, "type": "ping"}}'
+        await collector._handle_message(raw)
+        assert collector.ws_latency_stats()["sample_count"] == 1
+
+    async def test_handle_message_no_latency_without_ts(self):
+        collector = ConcreteCollector(
+            exchange_id="binance", symbols=["BTC/USDT"], on_orderbook=None
+        )
+        raw = '{"type": "orderbook", "symbol": "BTC/USDT", "bids": [], "asks": []}'
+        await collector._handle_message(raw)
+        assert collector.ws_latency_stats()["sample_count"] == 0

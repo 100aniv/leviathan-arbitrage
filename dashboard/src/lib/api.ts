@@ -44,8 +44,10 @@ async function request<T>(
     ...options,
   });
   if (res.status === 401) {
-    // Clear stale token and redirect to login
-    if (typeof window !== "undefined") {
+    // Clear stale token and redirect to login — but only if not already on /login
+    // to prevent infinite reload loop (root layout renders MissionControlStrip on
+    // every page including /login, which polls authenticated endpoints).
+    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
       localStorage.removeItem("leviathan_token");
       document.cookie = "leviathan_token=; path=/; max-age=0";
       window.location.href = "/login";

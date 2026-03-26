@@ -95,10 +95,14 @@ class UpbitCollector(BaseCollector):
 
     async def _handle_message(self, raw: str | bytes) -> None:
         """Override to handle Upbit's binary (bytes) messages."""
+        import time as _time
+        local_recv_ts = _time.time()
         if isinstance(raw, bytes):
             data = json.loads(raw.decode("utf-8"))
         else:
             data = json.loads(raw)
+
+        self._record_ws_latency(data, local_recv_ts)
 
         result = self._parse_message(data)
         if result is None:

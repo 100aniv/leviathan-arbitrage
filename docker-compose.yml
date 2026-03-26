@@ -31,14 +31,16 @@ services:
       dockerfile: docker/engine.Dockerfile
     container_name: leviathan-engine
     restart: unless-stopped
+    # Security note (ER3-19): env_file exposes API keys via `docker inspect`.
+    # Prod migration: replace env_file with Docker secrets or external vault (e.g. HashiCorp Vault).
     env_file: .env
     environment:
       # Override .env localhost values with Docker service hostnames
       DB_HOST: timescaledb
       REDIS_HOST: redis
-      DATABASE_URL: postgresql+asyncpg://leviathan:${POSTGRES_PASSWORD}@timescaledb:5432/leviathan
+      DATABASE_URL: postgresql+asyncpg://leviathan:${DB_PASSWORD}@timescaledb:5432/leviathan
       REDIS_URL: redis://redis:6379/0
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-leviathan-redis-secret}
+      # REDIS_PASSWORD: removed — loaded via env_file to prevent docker inspect exposure (ER3-19)
       SHADOW_DISABLED_STRATEGIES: ${SHADOW_DISABLED_STRATEGIES:-}
     volumes:
       - ./docker/init.sql:/app/docker/init.sql:ro
@@ -147,7 +149,7 @@ services:
       - -c
       - archive_mode=on
       - -c
-      - "archive_command=test ! -f /var/lib/postgresql/wal_archive/%f && cp %p /var/lib/postgresql/wal_archive/%f"
+      - "archive_command=test ! -f /var/lib/postgresql/wal_archive/%f.gz && gzip -c %p > /var/lib/postgresql/wal_archive/%f.gz"
       - -c
       - archive_timeout=300
       - -c
@@ -183,11 +185,11 @@ services:
       target: production
     container_name: leviathan-dashboard
     restart: unless-stopped
+    env_file: .env
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_ENGINE_URL=http://localhost:8000
       - NEXT_PUBLIC_WS_URL=ws://localhost:8000
-      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
     ports:
       - "3000:3000"
     networks:
@@ -312,12 +314,10 @@ services:
     command: ["python", "-m", "src.bot_gateway"]
     env_file: .env
     environment:
-      # DevBot
-      DEV_TELEGRAM_BOT_TOKEN: ${DEV_TELEGRAM_BOT_TOKEN}
+      # DevBot / InfraBot tokens come from env_file (.env) — not repeated here to avoid docker inspect exposure
       DEV_TELEGRAM_CHAT_ID: ${DEV_TELEGRAM_CHAT_ID}
       DEV_TELEGRAM_ENABLED: ${DEV_TELEGRAM_ENABLED:-true}
       # InfraBot
-      INFRA_TELEGRAM_BOT_TOKEN: ${INFRA_TELEGRAM_BOT_TOKEN}
       INFRA_TELEGRAM_CHAT_ID: ${INFRA_TELEGRAM_CHAT_ID}
       INFRA_TELEGRAM_ENABLED: ${INFRA_TELEGRAM_ENABLED:-true}
       # TradeBot disabled (runs inside engine)
@@ -329,7 +329,7 @@ services:
       DB_HOST: timescaledb
       REDIS_HOST: redis
       REDIS_URL: redis://redis:6379/0
-      DATABASE_URL: postgresql+asyncpg://leviathan:${POSTGRES_PASSWORD}@timescaledb:5432/leviathan
+      DATABASE_URL: postgresql+asyncpg://leviathan:${DB_PASSWORD}@timescaledb:5432/leviathan
     volumes:
       - .:/app:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -356,7 +356,7 @@ services:
       DB_HOST: timescaledb
       REDIS_HOST: redis
       REDIS_URL: redis://redis:6379/0
-      DATABASE_URL: postgresql+asyncpg://leviathan:${POSTGRES_PASSWORD}@timescaledb:5432/leviathan
+      DATABASE_URL: postgresql+asyncpg://leviathan:${DB_PASSWORD}@timescaledb:5432/leviathan
       TUNER_N_TRIALS: "100"
       TUNER_DATA_SOURCE: ${TUNER_DATA_SOURCE:-timescaledb}
     command: ["python", "-m", "src.tuning.scheduled_tuner"]
@@ -491,6 +491,7 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_HTTP_PORT=3001
       - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION=true
     ports:
       - "3001:3001"
     networks:
