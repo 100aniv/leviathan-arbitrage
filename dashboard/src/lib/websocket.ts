@@ -28,10 +28,8 @@ export class WebSocketManager {
     this.setState("connecting");
 
     try {
-      const token = typeof localStorage !== "undefined" ? localStorage.getItem("leviathan_token") : null;
-      const sep = this.url.includes("?") ? "&" : "?";
-      const urlWithAuth = token ? `${this.url}${sep}token=${token}` : this.url;
-      this.ws = new WebSocket(urlWithAuth);
+      // JWT sent via leviathan_token cookie (set at login) — no query param exposure
+      this.ws = new WebSocket(this.url);
     } catch {
       this.scheduleReconnect();
       return;

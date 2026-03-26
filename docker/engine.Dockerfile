@@ -101,6 +101,9 @@ COPY --chown=leviathan:leviathan engine/config ./config
 COPY --chown=leviathan:leviathan engine/settings.toml ./settings.toml
 COPY --chown=leviathan:leviathan engine/pyproject.toml ./
 
+# XGBoost/ONNX model output directory (writable by leviathan user)
+RUN mkdir -p models/latest && chown -R leviathan:leviathan models
+
 ENV PYTHONPATH=/app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1

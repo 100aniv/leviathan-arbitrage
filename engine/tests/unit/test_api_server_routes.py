@@ -486,7 +486,8 @@ class TestVerifyWsToken:
         result = verify_ws_token(mock_ws)
         assert result == "testuser"
 
-    def test_query_param_takes_priority_over_cookie(self):
+    def test_cookie_takes_priority_over_query_param(self):
+        # Cookie is preferred over query param (ER3-04: query param exposes token in server logs)
         from src.api.auth import verify_ws_token, create_token
         token1 = create_token("user1")
         token2 = create_token("user2")
@@ -494,7 +495,7 @@ class TestVerifyWsToken:
         mock_ws.query_params = {"token": token1}
         mock_ws.cookies = {"leviathan_token": token2}
         result = verify_ws_token(mock_ws)
-        assert result == "user1"
+        assert result == "user2"
 
     def test_no_token_returns_none(self):
         from src.api.auth import verify_ws_token

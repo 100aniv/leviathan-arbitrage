@@ -73,8 +73,8 @@ export default function AlertsPage() {
   useEffect(() => {
     const engineUrl = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8000";
     const wsBase    = engineUrl.replace(/^http/, "ws") + "/ws/feed";
-    const token     = typeof localStorage !== "undefined" ? localStorage.getItem("leviathan_token") : null;
-    const wsUrl     = token ? `${wsBase}?token=${token}` : wsBase;
+    // JWT sent via leviathan_token cookie (set at login) — no query param exposure
+    const wsUrl     = wsBase;
 
     let ws: WebSocket;
     try { ws = new WebSocket(wsUrl); } catch { return; }

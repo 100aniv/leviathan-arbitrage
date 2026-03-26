@@ -87,6 +87,7 @@ class TradeTelegramBot(TelegramBotBase):
         self.register_command("/blacklist", self._cmd_blacklist)
         self.register_command("/params", self._cmd_params)
         self.register_command("/report", self._cmd_report)
+        self.register_command("/balance", self._cmd_balance)
         self.register_command("/help", self._cmd_help)
 
     def _register_all_callbacks(self) -> None:
@@ -128,6 +129,47 @@ class TradeTelegramBot(TelegramBotBase):
 
     async def _cmd_pnl(self, text: str, chat_id: int, message: dict) -> str | None:
         return await self._get_pnl_text()
+
+    async def _cmd_balance(self, text: str, chat_id: int, message: dict) -> str | None:
+        ctx = self._engine_context
+        shadow = getattr(ctx, "shadow_mode", None) if ctx else None
+        if not shadow:
+            return (
+                "💰 가상 잔고\n"
+                "━━━━━━━━━━━━━━━\n"
+                "Shadow 모드 미연결 — 데이터 없음"
+            )
+        tracker = getattr(shadow, "_balance_tracker", None)
+        if not tracker:
+            return (
+                "💰 가상 잔고\n"
+                "━━━━━━━━━━━━━━━\n"
+                "잔고 트래커 없음"
+            )
+        initial = float(tracker._initial)
+        balances = tracker.summary()
+        snapshot = self._get_shadow_snapshot()
+        total_pnl = snapshot.get("total_pnl", 0.0) if snapshot else 0.0
+
+        lines = [
+            "💰 가상 잔고 (Shadow 모드)\n━━━━━━━━━━━━━━━",
+            f"🏦 초기 자본: ${initial:,.2f}",
+            f"📈 총 PnL: ${total_pnl:+,.6f}",
+            "",
+            "📊 거래소별 가상 잔고:",
+        ]
+        if balances:
+            for ex_id, bal_str in sorted(balances.items()):
+                try:
+                    bal = float(bal_str)
+                    diff = bal - initial
+                    icon = "📈" if diff >= 0 else "📉"
+                    lines.append(f"  {icon} {ex_id}: ${bal:,.2f} ({diff:+.2f})")
+                except (ValueError, TypeError):
+                    lines.append(f"  • {ex_id}: {bal_str}")
+        else:
+            lines.append("  아직 거래 없음 (초기 잔고 유지)")
+        return "\n".join(lines)
 
     async def _cmd_strategies(self, text: str, chat_id: int, message: dict) -> str | None:
         return await self._get_strategies_text()

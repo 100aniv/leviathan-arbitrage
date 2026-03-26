@@ -41,8 +41,8 @@ export function useEngineWs(): UseEngineWsReturn {
       if (destroyedRef.current) return;
 
       const baseUrl = getWsUrl();
-      const token = typeof localStorage !== "undefined" ? localStorage.getItem("leviathan_token") : null;
-      const url = token ? `${baseUrl}?token=${token}` : baseUrl;
+      // JWT sent via leviathan_token cookie (set at login) — no query param exposure
+      const url = baseUrl;
       let ws: WebSocket;
       try {
         ws = new WebSocket(url);

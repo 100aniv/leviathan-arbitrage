@@ -174,7 +174,7 @@ class RiskSettings(BaseSettings):
     )
     kill_switch_enabled: bool = Field(default=True)
     circuit_breaker_cooldown_seconds: int = Field(default=300, ge=1)
-    circuit_breaker_consecutive_losses: int = Field(default=5, ge=1)
+    circuit_breaker_consecutive_losses: int = Field(default=3, ge=1)
     circuit_breaker_api_error_rate: Decimal = Field(default=Decimal("0.20"))
     exchange_health_threshold: Decimal = Field(default=Decimal("0.9"))
     max_volatility_multiple: Decimal = Field(

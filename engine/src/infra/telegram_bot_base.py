@@ -388,7 +388,12 @@ class TelegramBotBase:
             return None
 
     async def _poll_updates(self) -> list[dict]:
-        """Long-poll Telegram getUpdates API."""
+        """Long-poll Telegram getUpdates API.
+
+        Security note (ER3-14): Telegram retains updates for 24H. If a bot token is
+        compromised, an attacker can replay getUpdates and read the last 24H of messages.
+        Mitigation: rotate bot tokens via @BotFather immediately on suspected compromise.
+        """
         if not self._enabled or not self._bot_token:
             await asyncio.sleep(5)
             return []
