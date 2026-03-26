@@ -11,6 +11,7 @@ P(rollback) from rolling 30-trade window; cold-start default = 5%.
 """
 from __future__ import annotations
 
+import os
 from collections import deque
 from dataclasses import dataclass
 from decimal import Decimal
@@ -66,7 +67,8 @@ class CostCalculator:
     """
 
     ROLLBACK_WINDOW = 30
-    COLD_START_ROLLBACK_PROB = Decimal("0.05")
+    _ROLLBACK_DISABLED = os.getenv("DISABLE_ROLLBACK_COST", "").lower() in ("true", "1", "yes")
+    COLD_START_ROLLBACK_PROB = Decimal("0") if _ROLLBACK_DISABLED else Decimal("0.05")
 
     def __init__(
         self,
