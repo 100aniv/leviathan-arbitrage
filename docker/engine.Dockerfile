@@ -23,7 +23,7 @@ RUN mkdir -p src && touch src/__init__.py
 
 # Install all dependencies (including dev for test stage)
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir ".[dev]"
+    pip install --no-cache-dir ".[dev,ml]"
 
 # ---------------------------------------------------------------------------
 # Stage 2: development — hot reload + debugpy
