@@ -41,7 +41,7 @@ class EngineContext:
     alert_history: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=5_000))
     runtime_settings: dict[str, Any] = field(default_factory=lambda: {
         "min_edge_bps": 5,
-        "active_exchanges": ["binance", "binance_futures", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone"],
+        "active_exchanges": ["binance", "binance_futures", "bybit", "bybit_futures", "okx", "okx_futures", "bitget", "upbit", "bithumb", "coinone"],
     })
     funding_rates: dict[str, Any] = field(default_factory=dict)
     exchange_status: dict[str, Any] = field(default_factory=dict)
