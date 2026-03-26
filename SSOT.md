@@ -2,8 +2,8 @@
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
 > 마지막 업데이트: 2026-03-25 (SIT-2 클로즈 베타 PASS + SIT-3 종합테스트 진입) | PRD: `.omc/prd.json` (343개 US, 338 passes:true / 5 passes:false)
-> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | SIT 플랜: `.claude/plans/vivid-jingling-valiant.md`
-> **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → **SIT-3 종합테스트** → TF Final → Live
+> GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | **SIT-3 플랜: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오)**
+> **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → **SIT-3 종합테스트** → TF QF 12차 → TF SF → TF PF → TF Final → Live
 
 ---
 
@@ -32,7 +32,7 @@
 > Team roster: `.omc/state/team-roster.json`
 
 **Phase**: SIT-3 종합테스트 (2026-03-25) — 7팀 Agent Teams + Progressive Shadow
-**Tests**: 5,244 passed / 0 failed / 12 skipped
+**Tests**: 5,241 passed / 0 failed / 12 skipped
 **Coverage**: 77%
 **PRD**: 338/343 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 + US-339 SIT-3 잔여)
 **TF Status**: S1~S26 ✅ → TF QF 11차 PASS(S23) → TF SF FAIL(Sharpe 0.53) → S26 회귀 ✅ → SIT-0~2 ✅ → **SIT-3 종합테스트** → TF QF 12차(재검증) → TF SF → TF PF → TF Final → Live
