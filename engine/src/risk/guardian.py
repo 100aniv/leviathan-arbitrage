@@ -141,6 +141,8 @@ class RiskGuardian:
         self.portfolio_risk: Any | None = None
         # US-286: optional DataQualityManager — set externally after construction
         self.data_quality_manager: Any | None = None
+        # SIT-3: FlashGuard — rapid price movement detection, set externally after construction
+        self.flash_guard: Any | None = None
         # US-280: emergency halt flag (set by emergency_pause, read by check #0 via is_halted)
         self._halted: bool = False
 
@@ -165,6 +167,17 @@ class RiskGuardian:
                 rejected_at_check=0,
                 reason="Engine is halted (kill switch active)",
             )
+
+        # CHECK #0.5: FlashGuard — rapid price movement detection (SIT-3)
+        if self.flash_guard is not None:
+            _fg_allowed, _fg_reason = self.flash_guard.check_allowed()
+            if not _fg_allowed:
+                RISK_REJECTIONS_TOTAL.labels(check_number="0.5", reason="flash_guard").inc()
+                return RiskCheckResult(
+                    approved=False,
+                    rejected_at_check=0,
+                    reason=_fg_reason,
+                )
 
         # CHECK #1: Position limit
         existing_position = portfolio.position_sizes.get(proposal.symbol, Decimal("0"))

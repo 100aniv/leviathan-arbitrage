@@ -445,6 +445,8 @@ class ShadowMode:
         )
         # US-300: PortfolioRiskManager for portfolio-level metrics
         self._portfolio_risk = portfolio_risk
+        # SIT-3: FlashGuard — set externally after construction via main.py
+        self._flash_guard: Any | None = None
         # Shadow-local min_edge multiplier (CRISIS 레짐 시 2배 상향, log-only 모드)
         self._shadow_min_edge_factor: float = 1.0
 
@@ -930,6 +932,17 @@ class ShadowMode:
                             return
                 except Exception as exc:
                     logger.debug("dqm_check_error", exchange=exchange_id, symbol=symbol, error=str(exc))
+
+            # SIT-3: FlashGuard price recording — detect rapid price movements
+            if self._flash_guard is not None:
+                try:
+                    _fg_bid = book.best_bid()
+                    _fg_ask = book.best_ask()
+                    if _fg_bid is not None and _fg_ask is not None:
+                        _fg_mid = (float(_fg_bid) + float(_fg_ask)) / 2
+                        self._flash_guard.record_price(symbol, exchange_id, _fg_mid)
+                except Exception:
+                    pass
 
             # Record to TimescaleDB (best_bid / best_ask; skip if missing)
             if self._market_recorder is not None:

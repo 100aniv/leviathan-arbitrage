@@ -146,6 +146,8 @@ class Engine:
         self._portfolio_risk: Any = None
         # US-286: DataQualityManager
         self._data_quality_manager: Any = None
+        # SIT-3: FlashGuard — rapid price movement detection
+        self._flash_guard: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -1137,6 +1139,16 @@ class Engine:
             logger.info("DataQualityManager initialized (%d exchanges)", len(self._exchanges))
         except Exception as exc:
             logger.warning("DataQualityManager init failed (non-fatal): %s", exc)
+
+        # SIT-3: FlashGuard — rapid price movement detection (5min window, 3% threshold)
+        try:
+            from src.risk.flash_guard import FlashGuard
+            self._flash_guard = FlashGuard()
+            if self._risk_guardian is not None:
+                self._risk_guardian.flash_guard = self._flash_guard
+            logger.info("FlashGuard initialized (threshold=3%%, window=300s, cooldown=60s)")
+        except Exception as exc:
+            logger.warning("FlashGuard init failed (non-fatal): %s", exc)
 
         # US-175: ExposureTracker
         try:
@@ -2416,6 +2428,9 @@ class Engine:
             strategy_filter=_shadow_strategy_filter,  # US-299
             portfolio_risk=self._portfolio_risk,  # US-300
         )
+        # SIT-3: Wire FlashGuard into ShadowMode
+        if self._flash_guard is not None:
+            self._shadow_mode._flash_guard = self._flash_guard
 
         # Set all registered strategies to shadow mode and start them
         if self._strategy_manager is not None:
@@ -2519,6 +2534,9 @@ class Engine:
             strategy_filter=_sf,  # US-299
             portfolio_risk=self._portfolio_risk,  # US-300
         )
+        # SIT-3: Wire FlashGuard into ShadowMode
+        if self._flash_guard is not None:
+            shadow._flash_guard = self._flash_guard
 
         if self._strategy_manager is not None:
             for sid in self._strategy_manager.list_strategies():
@@ -2600,6 +2618,9 @@ class Engine:
             strategy_filter=_sf2,  # US-299
             portfolio_risk=self._portfolio_risk,  # US-300
         )
+        # SIT-3: Wire FlashGuard into ShadowMode
+        if self._flash_guard is not None:
+            self._shadow_mode._flash_guard = self._flash_guard
 
         # Set all registered strategies to shadow mode
         if self._strategy_manager is not None:
