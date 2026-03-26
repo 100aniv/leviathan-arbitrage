@@ -173,7 +173,7 @@ class NativeUpbitAdapter(NativeAdapter):
     async def _rest_get_fee_rate(self, symbol: str) -> FeeRate:
         return FeeRate(
             maker=Decimal("0.0005"),
-            taker=Decimal("0.0005"),
+            taker=Decimal("0.00139"),
             symbol=symbol,
             exchange_id=self.exchange_id,
         )

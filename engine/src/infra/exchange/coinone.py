@@ -15,10 +15,10 @@ class CoinoneAdapter(CCXTAdapter):
         super().__init__(exchange_id="coinone", **kwargs)
 
     async def get_fee_rate(self, symbol: str) -> FeeRate:
-        """Coinone standard trading fee: 0.2%."""
+        """Coinone: 0.02% (API 할인 적용)."""
         return FeeRate(
-            maker=Decimal("0.002"),
-            taker=Decimal("0.002"),
+            maker=Decimal("0.0002"),
+            taker=Decimal("0.0002"),
             symbol=symbol,
             exchange_id=self.exchange_id,
         )

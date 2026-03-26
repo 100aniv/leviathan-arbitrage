@@ -31,10 +31,10 @@ class UpbitAdapter(CCXTAdapter):
         return symbol
 
     async def get_fee_rate(self, symbol: str) -> FeeRate:
-        """Upbit charges a flat 0.05% fee on all trades."""
+        """Upbit: Maker 0.05% / Taker 0.139% (공식 수수료)."""
         return FeeRate(
             maker=Decimal("0.0005"),
-            taker=Decimal("0.0005"),
+            taker=Decimal("0.00139"),
             symbol=symbol,
             exchange_id=self.exchange_id,
         )
