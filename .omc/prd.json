@@ -6212,17 +6212,19 @@
     {
       "id": "US-339",
       "phase": "SIT-3",
-      "title": "종합테스트 7팀 Agent Teams + Progressive Shadow",
+      "title": "종합테스트 Canary 72H — 10팀 411시나리오",
       "priority": 0,
       "passes": false,
       "acceptanceCriteria": [
-        "T1~T7 팀 체크리스트 전부 GREEN",
-        "Progressive Shadow 6-Stage PASS (5min→10min→30min→1H→6H→24H)",
-        "AI CLI (codex+gemini) 교차검증 quorum PASS",
-        "리더(Nayeon) 최종 PASS"
+        "411개 시나리오 전부 GREEN (sit3-checklist.json PENDING=0)",
+        "72H Shadow 연속 무중단 (코드 수정 없이)",
+        "AI CLI (codex+gemini+qwen) 교차검증 MUST FIX 0건",
+        "리더(Nayeon/sit3-lead) 최종 PASS",
+        "pytest 5,241+ passed, 0 failed",
+        "check_all 8/9+ OK (TF DRIFT 허용)"
       ],
-      "files": [],
-      "description": "종합테스트 — 15분야 300+시나리오 + 24H Shadow + ralph 루프"
+      "files": [".claude/plans/streamed-dazzling-music.md", ".omc/state/sit3-checklist.json"],
+      "description": "SIT-3 Canary 종합테스트 — 10팀 411시나리오 + 72H Shadow + 하이브리드 리셋 + 96H 하드캡"
     },
     {
       "id": "US-340",
