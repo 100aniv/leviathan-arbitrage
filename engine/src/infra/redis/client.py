@@ -145,8 +145,13 @@ class RedisClient:
 
     # ── Stream operations ──────────────────────────────────────────────────────
 
-    async def xadd(self, name: str, fields: dict, id: str = "*") -> bytes:
-        return await self._redis.xadd(name, fields, id=id)
+    async def xadd(
+        self, name: str, fields: dict, id: str = "*",
+        maxlen: int | None = None, approximate: bool = True,
+    ) -> bytes:
+        return await self._redis.xadd(
+            name, fields, id=id, maxlen=maxlen, approximate=approximate,
+        )
 
     async def xread(
         self,

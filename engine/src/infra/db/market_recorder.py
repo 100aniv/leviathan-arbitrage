@@ -73,8 +73,8 @@ class MarketRecorder:
 
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
-        self._orderbook_queue: asyncio.Queue[_OrderbookRow] = asyncio.Queue()
-        self._execution_queue: asyncio.Queue[_ExecutionRow] = asyncio.Queue()
+        self._orderbook_queue: asyncio.Queue[_OrderbookRow] = asyncio.Queue(maxsize=10000)
+        self._execution_queue: asyncio.Queue[_ExecutionRow] = asyncio.Queue(maxsize=5000)
         self._flush_task: asyncio.Task[None] | None = None
         self._running = False
 

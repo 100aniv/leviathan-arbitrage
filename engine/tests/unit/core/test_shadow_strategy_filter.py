@@ -190,4 +190,4 @@ class TestGetStrategyReport:
         pnls = [0.5, 1.0, -0.3]
         _inject_strategy_trades(shadow, "funding_rate", pnls)
         ss = shadow._stats.by_strategy["funding_rate"]
-        assert ss.pnl_history == pnls
+        assert list(ss.pnl_history) == pnls

@@ -14,6 +14,8 @@ Shadow mode is the final validation before live trading.
 """
 from __future__ import annotations
 
+from collections import deque
+
 import asyncio
 import collections
 import os
@@ -263,8 +265,8 @@ class StrategyStats:
     pnl: float = 0.0
     rejections: int = 0
     partial_fills: int = 0
-    # US-299: per-trade PnL history for Sharpe/MDD calculation
-    pnl_history: list = field(default_factory=list)
+    # US-299: per-trade PnL history for Sharpe/MDD calculation (bounded for 72H)
+    pnl_history: deque = field(default_factory=lambda: deque(maxlen=2000))
 
 
 class ShadowRateLimiter:

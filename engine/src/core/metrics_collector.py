@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
 
@@ -145,12 +145,12 @@ class MetricsCollector:
         self._initial_capital = initial_capital
         self._start_time = time.time()
 
-        # Trade records
-        self._trades: list[TradeRecord] = []
-        self._strategy_trades: dict[str, list[TradeRecord]] = defaultdict(list)
+        # Trade records (bounded for 72H stability)
+        self._trades: deque[TradeRecord] = deque(maxlen=10000)
+        self._strategy_trades: dict[str, deque[TradeRecord]] = defaultdict(lambda: deque(maxlen=5000))
 
         # Equity tracking
-        self._equity_curve: list[float] = [initial_capital]
+        self._equity_curve: deque[float] = deque([initial_capital], maxlen=10000)
         self._peak_equity: float = initial_capital
         self._current_equity: float = initial_capital
 

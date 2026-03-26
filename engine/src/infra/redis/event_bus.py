@@ -36,7 +36,7 @@ class EventBus:
         Returns the Redis message ID (e.g. b"1700000000000-0").
         """
         payload = {"data": json.dumps(event, default=str)}
-        msg_id = await self._client.xadd(stream, payload)
+        msg_id = await self._client.xadd(stream, payload, maxlen=10000, approximate=True)
         logger.debug("Published to %s: %s", stream, msg_id)
         return msg_id
 
