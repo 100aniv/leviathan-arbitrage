@@ -32,7 +32,8 @@ export default function LoginPage() {
       // Also set a cookie so the Next.js middleware can verify auth server-side
       const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
       document.cookie = `leviathan_token=${data.access_token}; path=/; SameSite=Strict${secureFlag}`;
-      router.push("/");
+      // Full page reload to clear RSC cache (router.push uses stale pre-auth cache)
+      window.location.href = "/";
     } catch {
       setError("Network error — engine unreachable");
     } finally {
