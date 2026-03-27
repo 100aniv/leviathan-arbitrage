@@ -76,6 +76,17 @@ async def get_portfolio_summary(request: Request) -> JSONResponse:
     realized = float(ctx.realized_pnl or 0)
     unrealized = float(ctx.unrealized_pnl or 0)
     total_pnl = realized + unrealized
+    total_trades = len(ctx.trade_history)
+
+    # Shadow mode override — ctx.realized_pnl is not populated for shadow trades
+    shadow_mode = getattr(ctx, "shadow_mode", None)
+    if shadow_mode is not None:
+        try:
+            snap = shadow_mode.get_snapshot()
+            total_pnl = float(snap.get("total_pnl", total_pnl))
+            total_trades = int(snap.get("trades_executed", total_trades))
+        except Exception:
+            pass
 
     # Position count
     position_count = 0
@@ -91,6 +102,7 @@ async def get_portfolio_summary(request: Request) -> JSONResponse:
     return JSONResponse({
         "total_balance_usdt": round(total_balance, 2),
         "total_pnl": round(total_pnl, 6),
+        "total_trades": total_trades,
         "pnl_scope": "session",
         "active_positions": position_count,
         "exchange_balances": exchange_balances,
