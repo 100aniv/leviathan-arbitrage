@@ -4,7 +4,7 @@
     "upbit", "bithumb", "coinone",
     "binance_futures", "okx_futures", "bybit_futures"
   ],
-  "disabled_strategies": [],
+  "disabled_strategies": ["triangular_v1"],
   "risk": {
     "max_position_usd": 1000,
     "max_daily_loss_usd": 500,
