@@ -65,7 +65,7 @@ class StatArbConfig(BaseModel):
     enable_cointegration: bool = Field(default=True)
     # US-274: Cost gate — block entry when round-trip cost > expected spread profit
     enable_cost_gate: bool = Field(
-        default_factory=lambda: os.environ.get("ENABLE_COST_GATE", "true").lower() != "false"
+        default=True  # config_loader: trading.json strategy_filters.enable_cost_gate
     )
     # US-231: z-score hardstop (force-exit if |z| exceeds this while in position)
     zscore_hardstop: float = Field(default=3.5, ge=0.0)

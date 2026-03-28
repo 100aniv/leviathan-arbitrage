@@ -90,7 +90,8 @@ class SpotFuturesStrategy(BaseStrategy):
 
         # US-271: Open position tracking for holding timeout
         self._open_positions: dict[str, OpenPosition] = {}
-        self._holding_timeout_enabled = os.environ.get("ENABLE_HOLDING_TIMEOUT", "").lower() == "true"
+        from src.core.config_loader import get_config
+        self._holding_timeout_enabled = get_config("strategy_filters.enable_holding_timeout", default=False)
 
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1
