@@ -58,6 +58,14 @@ DEFAULT_FEES: dict[str, list[FeeConfig]] = {
     "coinone": [
         FeeConfig("coinone", 0, Decimal("0.0002"), Decimal("0.0002")),  # API rate (0.02%)
     ],
+    "mexc": [
+        FeeConfig("mexc", 0, Decimal("0.0000"), Decimal("0.0001")),  # Spot: maker 0%, taker 0.01%
+        FeeConfig("mexc", 1, Decimal("0.0000"), Decimal("0.0000")),  # VIP1: 0%/0%
+    ],
+    "gateio": [
+        FeeConfig("gateio", 0, Decimal("0.0020"), Decimal("0.0020")),  # Spot VIP0: 0.20%/0.20%
+        FeeConfig("gateio", 1, Decimal("0.0016"), Decimal("0.0018")),  # VIP1
+    ],
     "binance_futures": [
         FeeConfig("binance_futures", 0, Decimal("0.0002"), Decimal("0.0005")),  # USDT-M VIP0
         FeeConfig("binance_futures", 1, Decimal("0.0000"), Decimal("0.0004")),  # VIP1
