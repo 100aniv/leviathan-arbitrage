@@ -279,6 +279,8 @@ class ScheduledTuner:
         if not dsn:
             logger.warning("DATABASE_URL not set, falling back to synthetic")
             return optimizer._engine.run_with_synthetic_data(params)
+        # SIT-3: asyncpg DSN → standard postgresql (asyncpg scheme not accepted by sync drivers)
+        dsn = dsn.replace("postgresql+asyncpg://", "postgresql://")
 
         def _load_sync():
             import asyncio
@@ -320,6 +322,7 @@ class ScheduledTuner:
         dsn = os.environ.get("DATABASE_URL", "")
         if not dsn:
             raise InsufficientDataError("DATABASE_URL not set")
+        dsn = dsn.replace("postgresql+asyncpg://", "postgresql://")
 
         MIN_ROWS = int(os.environ.get("TUNER_MIN_REAL_DATA_ROWS", "72"))
 
