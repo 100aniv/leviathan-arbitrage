@@ -387,11 +387,11 @@ class BithumbCollector(BaseCollector):
         return await self.refresh_symbols(self.symbols)
 
     async def _stale_watch_loop(
-        self, check_interval_s: float = 30.0, stale_threshold_s: float = 30.0
+        self, check_interval_s: float = 10.0, stale_threshold_s: float = 15.0
     ) -> None:
-        """Check per-symbol staleness every 30s; re-sync stale symbols with cooldown."""
+        """Check per-symbol staleness every 10s; re-sync stale symbols with cooldown."""
         _last_resync = 0.0
-        _COOLDOWN_S = 60.0  # Minimum interval between batch re-syncs
+        _COOLDOWN_S = 15.0  # SIT-3: 60→15초 (Bithumb stale data 빠른 감지+복구)
         while self._running:
             await asyncio.sleep(check_interval_s)
             now = time.monotonic()
