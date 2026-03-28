@@ -205,7 +205,8 @@ class StatisticalArbStrategy(BaseStrategy):
 
         # US-240: Per-pair trade cooldown (prevent over-trading)
         self._pair_last_trade: dict[tuple[str, str], float] = {}
-        self._trade_cooldown_s: float = float(os.environ.get("STAT_ARB_COOLDOWN_S", "300"))
+        from src.core.config_loader import get_config
+        self._trade_cooldown_s: float = float(get_config("strategy_filters.stat_arb_cooldown_s", default=300))
 
         # US-240: Entry spread tracking for exit PnL calculation
         self._pair_entry_spread: dict[tuple[str, str], float] = {}
