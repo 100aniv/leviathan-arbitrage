@@ -148,6 +148,20 @@ WITHDRAWAL_FEES_USD: dict[str, dict[str, Decimal]] = {
     "bitget_futures": {
         "DEFAULT": Decimal("0.00"),  # internal transfer to spot (free)
     },
+    "mexc": {
+        "BTC": Decimal("1.20"),    # Bitcoin network
+        "ETH": Decimal("0.05"),    # Arbitrum
+        "XRP": Decimal("0.25"),    # XRP Ledger
+        "USDT": Decimal("0.00"),   # TRC20 FREE
+        "DEFAULT": Decimal("0.30"),
+    },
+    "gateio": {
+        "BTC": Decimal("1.50"),    # Bitcoin network
+        "ETH": Decimal("0.08"),    # Arbitrum
+        "XRP": Decimal("0.50"),    # XRP Ledger
+        "USDT": Decimal("1.00"),   # ERC20
+        "DEFAULT": Decimal("0.50"),
+    },
 }
 
 

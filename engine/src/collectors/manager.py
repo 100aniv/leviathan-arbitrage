@@ -17,6 +17,8 @@ from src.collectors.coinone_collector import CoinoneCollector
 from src.collectors.binance_futures_collector import BinanceFuturesCollector
 from src.collectors.okx_futures_collector import OKXFuturesCollector
 from src.collectors.bybit_futures_collector import BybitFuturesCollector
+from src.collectors.mexc_collector import MexcCollector
+from src.collectors.gateio_collector import GateioCollector
 
 logger = structlog.get_logger(__name__)
 
@@ -29,7 +31,7 @@ class CollectorManager:
     """
 
     # Default exchanges to collect from
-    DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone", "binance_futures", "okx_futures", "bybit_futures"]
+    DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget", "mexc", "gateio", "upbit", "bithumb", "coinone", "binance_futures", "okx_futures", "bybit_futures"]
 
     # Korean exchanges that trade primarily in KRW (not USDT)
     KOREAN_EXCHANGES = {"upbit", "bithumb", "coinone"}
@@ -65,6 +67,8 @@ class CollectorManager:
             "bybit": BybitCollector,
             "okx": OKXCollector,
             "bitget": BitgetCollector,
+            "mexc": MexcCollector,
+            "gateio": GateioCollector,
             "upbit": UpbitCollector,
             "bithumb": BithumbCollector,
             "coinone": CoinoneCollector,
