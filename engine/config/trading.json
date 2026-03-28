@@ -46,5 +46,36 @@
     "spot_futures": 5,
     "triangular": 5,
     "cex_dex": 5
+  },
+  "engine": {
+    "env": "dev",
+    "execution_mode": "paper",
+    "data_mode": "shadow",
+    "log_level": "INFO",
+    "api_port": 8000,
+    "ws_port": 8001,
+    "workers": 4,
+    "kill_switch_enabled": true
+  },
+  "strategy_filters": {
+    "funding_zscore_threshold": -1,
+    "funding_ou_min_halflife_s": 60,
+    "min_funding_diff_bps": 2,
+    "funding_min_diff_bps": 2,
+    "stat_arb_z_threshold": 2.0,
+    "stat_arb_cooldown_s": 120,
+    "stat_arb_min_history": 60,
+    "cross_exchange_min_book_depth_usd": 1,
+    "futures_min_book_depth_usd": 1
+  },
+  "shadow": {
+    "disabled_strategies": [],
+    "depth_fraction": 1.0,
+    "max_trade_size": 100
+  },
+  "symbols": {
+    "mode": "auto",
+    "min_exchanges": 3,
+    "min_price_usd": 0.10
   }
 }
