@@ -249,7 +249,7 @@ class TelegramAlerter:
             return fmt.format(val) if val is not None else "N/A"
 
         pnl = data.get("total_pnl")
-        pnl_str = f"${float(pnl):+,.2f}" if pnl is not None else "N/A"
+        pnl_str = f"${float(pnl):+,.6f}" if pnl is not None else "N/A"
         pnl_emoji = "📈" if (pnl is not None and float(pnl) >= 0) else "📉"
 
         win_rate = data.get("win_rate")
@@ -351,7 +351,7 @@ class TelegramAlerter:
             - exchange_status (dict[str, str]): 거래소별 상태 {id: "정상"/"장애"}
         """
         pnl = data.get("total_pnl")
-        pnl_str = f"${float(pnl):+,.2f}" if pnl is not None else "N/A"
+        pnl_str = f"${float(pnl):+,.6f}" if pnl is not None else "N/A"
         pnl_emoji = "📈" if (pnl is not None and float(pnl) >= 0) else "📉"
 
         wr = data.get("win_rate")
@@ -611,7 +611,7 @@ class TelegramAlerter:
               [{strategy, pnl, trades, win_rate}]
         """
         pnl = data.get("total_pnl")
-        pnl_str = f"${float(pnl):+,.2f}" if pnl is not None else "N/A"
+        pnl_str = f"${float(pnl):+,.6f}" if pnl is not None else "N/A"
         pnl_emoji = "📈" if (pnl is not None and float(pnl) >= 0) else "📉"
 
         wr = data.get("win_rate")
@@ -930,7 +930,7 @@ def _format_weekly_report(data: dict[str, Any]) -> str:
             [{strategy, pnl, trades, win_rate}]
     """
     pnl = data.get("total_pnl")
-    pnl_str = f"${float(pnl):+,.2f}" if pnl is not None else "N/A"
+    pnl_str = f"${float(pnl):+,.6f}" if pnl is not None else "N/A"
     pnl_emoji = "📈" if (pnl is not None and float(pnl) >= 0) else "📉"
 
     wr = data.get("win_rate")
