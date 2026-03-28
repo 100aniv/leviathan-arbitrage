@@ -65,13 +65,10 @@ class CrossExchangeStrategy(BaseStrategy):
         super().__init__(strategy_id, cost_calculator)
         self._regime_detector = regime_detector
         if config is None:
+            from src.core.config_loader import get_config
             config = CrossExchangeConfig(
-                max_spread_bps=Decimal(
-                    os.environ.get("CROSS_EXCHANGE_MAX_SPREAD_BPS", "100")
-                ),
-                min_book_depth_usd=Decimal(
-                    os.environ.get("CROSS_EXCHANGE_MIN_BOOK_DEPTH_USD", "500")
-                ),
+                max_spread_bps=Decimal(str(get_config("strategy_filters.cross_exchange_max_spread_bps", default=100))),
+                min_book_depth_usd=Decimal(str(get_config("strategy_filters.cross_exchange_min_book_depth_usd", default=500))),
             )
         self.config = config
         self._latency_tracker = latency_tracker
