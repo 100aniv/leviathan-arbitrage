@@ -60,14 +60,15 @@ class FuturesFuturesStrategy(BaseStrategy):
         super().__init__(strategy_id, cost_calculator)
         self._regime_detector = regime_detector
         if config is None:
+            from src.core.config_loader import get_config
             config = FuturesFuturesConfig(
-                min_spread_bps=Decimal(os.environ.get("FUTURES_MIN_SPREAD_BPS", "15")),
-                min_book_depth_usd=Decimal(os.environ.get("FUTURES_MIN_BOOK_DEPTH_USD", "500")),
-                max_notional_usd=Decimal(os.environ.get("FUTURES_MAX_NOTIONAL_USD", "200")),
-                funding_convergence_weight=Decimal(os.environ.get("FUNDING_CONVERGENCE_WEIGHT", "0.3")),
-                enable_funding_convergence=os.environ.get("ENABLE_FUNDING_CONVERGENCE", "true").lower() == "true",
-                max_book_age_seconds=float(os.environ.get("FUTURES_MAX_BOOK_AGE_S", "5.0")),
-                enable_stale_guard=os.environ.get("ENABLE_STALE_GUARD", "false").lower() == "true",
+                min_spread_bps=Decimal(str(get_config("strategy_filters.futures_min_spread_bps", default=15))),
+                min_book_depth_usd=Decimal(str(get_config("strategy_filters.futures_min_book_depth_usd", default=500))),
+                max_notional_usd=Decimal(str(get_config("strategy_filters.futures_max_notional_usd", default=200))),
+                funding_convergence_weight=Decimal(str(get_config("strategy_filters.funding_convergence_weight", default=0.3))),
+                enable_funding_convergence=get_config("strategy_filters.enable_funding_convergence", default=True),
+                max_book_age_seconds=float(get_config("strategy_filters.futures_max_book_age_s", default=5.0)),
+                enable_stale_guard=get_config("strategy_filters.enable_stale_guard", default=False),
             )
         self.config = config
 
