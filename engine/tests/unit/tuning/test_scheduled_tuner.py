@@ -44,7 +44,7 @@ class TestScheduledTunerInit:
 
 
 class TestOptimizeStrategy:
-    def test_creates_optuna_study_and_calls_optimize(self):
+    def test_creates_optuna_study_and_calls_optimize(self, tmp_path):
         """_optimize_strategy creates an optuna study and calls optimize."""
         mock_study = MagicMock()
         mock_study.best_params = {"min_spread_bps": 5.0}
@@ -63,6 +63,8 @@ class TestOptimizeStrategy:
             mock_optuna.Trial = MagicMock()
 
             tuner = ScheduledTuner(n_trials=5)
+            tuner._params_path = tmp_path / "strategy_params.json"
+            tuner._load_current_params = MagicMock(return_value=None)
             result = tuner._optimize_strategy("cross_exchange")
 
         mock_optuna.create_study.assert_called_once()
@@ -96,6 +98,7 @@ class TestRunOptimization:
         fake_result = {"best_params": {}, "best_value": 0.5}
         tuner._optimize_strategy = MagicMock(return_value=fake_result)
         tuner._report_results = AsyncMock()
+        tuner._load_current_params = MagicMock(return_value=None)
 
         result = await tuner.run_optimization()
 
@@ -115,6 +118,7 @@ class TestRunOptimization:
 
         tuner._optimize_strategy = MagicMock(side_effect=side_effect)
         tuner._report_results = AsyncMock()
+        tuner._load_current_params = MagicMock(return_value=None)
 
         result = await tuner.run_optimization()
 
@@ -175,13 +179,13 @@ class TestStartScheduler:
         )
 
     def test_add_job_is_called(self):
-        """start_scheduler registers a job with APScheduler."""
+        """start_scheduler registers jobs with APScheduler (weekly cron + initial date)."""
         mock_instance, p_flag, p_cls = self._scheduler_patches()
         with p_flag, p_cls:
             tuner = ScheduledTuner()
             tuner.start_scheduler()
 
-        mock_instance.add_job.assert_called_once()
+        assert mock_instance.add_job.call_count >= 2
         mock_instance.start.assert_called_once()
 
     def test_cron_configured_sunday_hour_2(self):
@@ -191,7 +195,11 @@ class TestStartScheduler:
             tuner = ScheduledTuner()
             tuner.start_scheduler()
 
-        _, kwargs = mock_instance.add_job.call_args
+        # add_job is called twice: once for weekly cron, once for initial date trigger
+        assert mock_instance.add_job.call_count >= 2
+        # Find the cron call (first call)
+        cron_call = mock_instance.add_job.call_args_list[0]
+        _, kwargs = cron_call
         assert kwargs.get("day_of_week") == "sun"
         assert kwargs.get("hour") == 2
 
@@ -239,6 +247,7 @@ class TestActivationFilter:
             return_value={"best_params": {}, "best_value": 1.0}
         )
         tuner._report_results = AsyncMock()
+        tuner._load_current_params = MagicMock(return_value=None)
 
         result = await tuner.run_optimization()
 
@@ -252,7 +261,7 @@ class TestActivationFilter:
 
 
 class TestTimescaleDBFallback:
-    def test_timescaledb_fallback_to_synthetic(self):
+    def test_timescaledb_fallback_to_synthetic(self, tmp_path):
         """_optimize_strategy returns valid result even when DataLoader raises."""
         mock_study = MagicMock()
         mock_study.best_params = {"min_spread_bps": 5.0}
@@ -276,6 +285,8 @@ class TestTimescaleDBFallback:
         ):
             mock_optuna.create_study.return_value = mock_study
             tuner = ScheduledTuner(n_trials=3)
+            tuner._params_path = tmp_path / "strategy_params.json"
+            tuner._load_current_params = MagicMock(return_value=None)
             result = tuner._optimize_strategy("cross_exchange")
 
         assert "best_params" in result
@@ -296,6 +307,7 @@ class TestShadowRunnerAutoApply:
             return_value={"best_params": {"min_spread_bps": 5.0}, "best_value": 1.5}
         )
         tuner._report_results = AsyncMock()
+        tuner._load_current_params = MagicMock(return_value=None)
 
         mock_runner = MagicMock()
         mock_runner.apply_decision = AsyncMock(return_value=("APPLY", MagicMock()))
@@ -342,6 +354,7 @@ class TestWFEPositiveFilter:
 
         tuner._optimize_strategy = MagicMock(side_effect=fake_optimize)
         tuner._report_results = AsyncMock()
+        tuner._load_current_params = MagicMock(return_value=None)
 
         result = await tuner.run_optimization()
 
