@@ -53,8 +53,16 @@ class MexcCollector(BaseCollector):
 
     async def start(self) -> None:
         self._running = True
-        self._ping_task = asyncio.create_task(self._json_ping_loop())
-        await super().start()
+        # ping task는 super().start() 후 self._ws가 설정된 뒤 시작
+        self._ping_task = asyncio.create_task(self._start_with_ping())
+
+    async def _start_with_ping(self) -> None:
+        """Start parent WS loop + JSON ping loop in parallel."""
+        ping = asyncio.create_task(self._json_ping_loop())
+        try:
+            await super().start()
+        finally:
+            ping.cancel()
 
     async def stop(self) -> None:
         if self._ping_task:
@@ -66,10 +74,15 @@ class MexcCollector(BaseCollector):
         await super().stop()
 
     async def _json_ping_loop(self) -> None:
-        """MEXC requires JSON PING every 15 seconds to keep WS alive."""
+        """MEXC requires JSON PING every 15s to keep WS alive."""
+        # Wait for WS connection to be established
+        for _ in range(30):
+            if self._ws is not None:
+                break
+            await asyncio.sleep(1)
         while self._running:
             await asyncio.sleep(15)
-            if hasattr(self, '_ws') and self._ws:
+            if self._ws:
                 try:
                     await self._ws.send(json.dumps({"method": "PING"}))
                 except Exception:
@@ -94,6 +107,13 @@ class MexcCollector(BaseCollector):
         # PONG keepalive response — ignore
         if data.get("method") == "PONG":
             return None
+
+        # Debug: log first 3 non-PONG messages to understand format
+        if not hasattr(self, '_debug_count'):
+            self._debug_count = 0
+        if self._debug_count < 3:
+            self._debug_count += 1
+            logger.info("mexc_raw_message", keys=list(data.keys()), sample=str(data)[:200])
 
         # Subscription ack or other control messages — ignore
         channel: str = data.get("c", "")

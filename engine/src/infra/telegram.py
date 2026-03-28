@@ -594,7 +594,10 @@ class TelegramAlerter:
             f"<b>심볼:</b> {data.get('symbol', 'N/A')}",
             f"<b>매수:</b> {data.get('buy_exchange', 'N/A')}",
             f"<b>매도:</b> {data.get('sell_exchange', 'N/A')}",
-            f"<b>스프레드:</b> {data.get('spread_pct', 'N/A')}%",
+            f"<b>스프레드:</b> {data.get('spread_bps', data.get('spread_pct', 'N/A'))} bps",
+            f"<b>수수료:</b> ${float(data.get('fee', 0)):.6f}",
+            f"<b>슬리피지:</b> {float(data.get('slippage_bps', 0)):.2f} bps",
+            f"<b>지연:</b> {int(data.get('latency_ms', 0))}ms",
             f"<b>PnL:</b> {pnl_str}",
         ]
         return await self._send("\n".join(lines))
