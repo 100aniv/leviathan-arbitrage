@@ -190,23 +190,25 @@ class PerformanceAttribution:
         US-282: Called by /api/v1/attribution route.
         """
         if not self._trades:
-            return {"by_strategy": {}, "by_exchange": {}, "by_pair": {}}
+            return {"by_strategy": [], "by_exchange": [], "by_pair": [], "by_hour": []}
 
-        def _to_dict(breakdowns: list) -> dict:
-            return {
-                b.key: {
-                    "total_pnl": round(b.total_pnl, 6),
-                    "trade_count": b.trade_count,
-                    "win_rate": round(b.win_rate, 4),
+        def _to_list(breakdowns: list) -> list:
+            return [
+                {
+                    "key": b.key,
+                    "pnl": round(b.total_pnl, 6),
+                    "trades": b.trade_count,
+                    "wr": round(b.win_rate, 4),
                     "avg_pnl": round(b.avg_pnl, 6),
                 }
                 for b in breakdowns
-            }
+            ]
 
         return {
-            "by_strategy": _to_dict(self.by_strategy()),
-            "by_exchange": _to_dict(self.by_exchange()),
-            "by_pair": _to_dict(self.by_pair()),
+            "by_strategy": _to_list(self.by_strategy()),
+            "by_exchange": _to_list(self.by_exchange()),
+            "by_pair": _to_list(self.by_pair()),
+            "by_hour": _to_list(self.by_hour()),
         }
 
     @staticmethod

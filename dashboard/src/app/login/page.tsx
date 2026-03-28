@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
 
 const BASE_URL = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8000";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

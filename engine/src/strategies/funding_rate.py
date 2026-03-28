@@ -30,9 +30,11 @@ logger = logging.getLogger(__name__)
 class FundingRateConfig(BaseModel):
     """Configuration for FundingRateStrategy."""
 
-    min_funding_diff_bps: Decimal = Field(default=Decimal("10"), ge=Decimal("0"))  # Must exceed round-trip friction
+    min_funding_diff_bps: Decimal = Field(
+        default=Decimal(os.environ.get("MIN_FUNDING_DIFF_BPS", "10")), ge=Decimal("0")
+    )  # Must exceed round-trip friction; env override for tuning
     max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
-    max_holding_periods: int = Field(default=3, ge=1)
+    max_holding_periods: int = Field(default=12, ge=1)  # SIT-3: 3→12 (4일 carry, 업계 표준)
     hedge_ratio: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
     # US-239: Settlement timing — only enter within this many minutes before settlement
     # Default 0 = disabled (backward compatible); set to 30 in production config
@@ -109,14 +111,9 @@ class FundingRateStrategy(BaseStrategy):
             return None
 
 
-        # US-254: Regime check — block new entries in CRISIS mode
-        if self._regime_detector is not None:
-            try:
-                if self._regime_detector.current_regime == "CRISIS":
-                    self._metrics.signals_filtered += 1
-                    return None
-            except Exception:
-                pass  # graceful fallback
+        # US-254: Regime check — SKIP for funding_rate (delta-neutral carry trade)
+        # Funding rate arb is hedged (long+short), so CRISIS regime doesn't apply.
+        # Other strategies (cross_exchange, spot_futures) still respect regime gate.
 
         # US-239: Auto-release positions after settlement
         self._check_settlement_release()
@@ -202,15 +199,21 @@ class FundingRateStrategy(BaseStrategy):
         # would double-count and reject profitable funding rate trades.
         avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
 
-        # Expected income: conservatively assume 1 funding period (8h) collected
-        # max_holding_periods is the CEILING (force-exit), not the expected hold time
+        # Expected income: funding rate arb is a carry trade — income accrues over
+        # multiple settlement periods. Use max_holding_periods as expected hold.
+        # 3 periods = 24h (8h each), typical for funding rate arb
         expected_funding_income = (
-            funding_diff * avg_price * size * Decimal("1")
+            funding_diff * avg_price * size * Decimal(str(self.config.max_holding_periods))
         )
         net_profit = expected_funding_income - total_cost
 
         if net_profit <= Decimal("0"):
             self._metrics.signals_filtered += 1
+            logger.info(
+                "funding_rate.cost_rejected sym=%s diff_bps=%.1f income=%.4f cost=%.4f net=%.4f periods=%d",
+                signal.symbol, float(funding_diff_bps), float(expected_funding_income),
+                float(total_cost), float(net_profit), self.config.max_holding_periods,
+            )
             return None
 
         # US-239: Record open position to prevent duplicate entries

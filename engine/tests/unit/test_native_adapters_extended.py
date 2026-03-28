@@ -494,10 +494,11 @@ class TestUpbitAdapterExtended:
 
     @pytest.mark.asyncio
     async def test_get_fee_rate_flat_0_05_pct(self):
+        """Upbit: Maker 0.05% / Taker 0.139% (SSOT 기준)."""
         adapter = self._make_adapter()
         fee = await adapter.get_fee_rate("BTC/KRW")
         assert fee.maker == Decimal("0.0005")
-        assert fee.taker == Decimal("0.0005")
+        assert fee.taker == Decimal("0.00139")
         assert fee.exchange_id == "upbit"
         assert fee.symbol == "BTC/KRW"
 

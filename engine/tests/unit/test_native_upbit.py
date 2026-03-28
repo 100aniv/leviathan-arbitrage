@@ -371,9 +371,10 @@ class TestRestGetBalances:
 class TestFeeAndPositions:
     @pytest.mark.asyncio
     async def test_fee_rate_upbit(self, adapter):
+        """Upbit: Maker 0.05% / Taker 0.139% (SSOT 기준)."""
         fee = await adapter._rest_get_fee_rate("BTC/KRW")
         assert fee.maker == Decimal("0.0005")
-        assert fee.taker == Decimal("0.0005")
+        assert fee.taker == Decimal("0.00139")
         assert fee.exchange_id == "upbit"
 
     @pytest.mark.asyncio

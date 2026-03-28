@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { getTrades, getStrategies } from "@/lib/api";
+import { getTrades, getStrategies, getMode } from "@/lib/api";
 import { TradeDetail } from "@/components/TradeDetail";
 import type { Trade, Strategy } from "@/types";
 
@@ -16,6 +16,11 @@ export default function TradesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
+  const [engineMode, setEngineMode] = useState<string>("unknown");
+
+  useEffect(() => {
+    getMode().then((m) => setEngineMode(m.execution_mode ?? "unknown")).catch(() => {});
+  }, []);
 
   const fetchTrades = useCallback(async () => {
     try {
@@ -89,7 +94,17 @@ export default function TradesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-mono font-semibold text-terminal-text">Trade History</h2>
+          <h2 className="text-lg font-mono font-semibold text-terminal-text">
+            Trade History
+            <span className={`ml-2 px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
+              engineMode === "live" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
+              engineMode === "shadow" ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" :
+              engineMode === "paper" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" :
+              "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+            }`}>
+              {engineMode}
+            </span>
+          </h2>
           <p className="text-xs font-mono text-terminal-subtle mt-0.5">
             Executed arbitrage trades · auto-refresh every 5s · click row for detail
           </p>

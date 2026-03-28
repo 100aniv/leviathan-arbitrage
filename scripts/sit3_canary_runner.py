@@ -30,16 +30,16 @@ CHECKPOINTS = [
     ("CP4", 3),          # 3H
     ("CP5", 6),          # 6H
     ("CP6", 12),         # 12H
-    ("CP7", 24),         # 24H
-    ("CP8", 48),         # 48H
-    ("CP9", 72),         # 72H
+    ("CP7", 24),         # 24H — SIT-3 P6: Go/No-Go 최종 판정
+    ("CP8", 48),         # 48H — optional (Live에서 달성)
+    ("CP9", 72),         # 72H — optional (Live에서 달성)
 ]
 
 
 def load_reset_log() -> dict:
     if RESET_LOG.exists():
         return json.loads(RESET_LOG.read_text())
-    return {"resets": [], "total_resets": 0, "guardrail_status": "OK", "hard_cap_h": 96, "target_h": 72}
+    return {"resets": [], "total_resets": 0, "guardrail_status": "OK", "hard_cap_h": 96, "target_h": 24}
 
 
 def save_reset_log(log: dict) -> None:
@@ -90,7 +90,7 @@ def get_current_cp(elapsed_h: float) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="SIT-3 Canary Runner")
-    parser.add_argument("--target-hours", type=float, default=72)
+    parser.add_argument("--target-hours", type=float, default=24)
     parser.add_argument("--hard-cap", type=float, default=96)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()

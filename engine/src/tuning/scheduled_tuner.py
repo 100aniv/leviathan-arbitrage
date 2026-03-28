@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -123,6 +124,9 @@ class ScheduledTuner:
             logger.error("optuna is not installed; skipping optimization")
             return {}
 
+        # Devil's Advocate: backup current params before optimization
+        _previous_params = self._load_current_params()
+
         results: dict = {}
         for strategy in self.strategies:
             try:
@@ -135,10 +139,79 @@ class ScheduledTuner:
                 logger.error("Optimization failed for %s: %s", strategy, exc)
                 results[strategy] = {"error": str(exc)}
 
+        # Devil's Advocate: rollback if new params are harmful
+        verdict = await self._evaluate_tuning_impact(results, _previous_params)
+        if verdict == "HARMFUL":
+            logger.warning("tuner_rollback reason=new params worse than previous")
+            await self._rollback_params(_previous_params)
+            return results
+
         await self._apply_shadow_decisions(results)
         await self._write_params(results)
         await self._report_results(results)
         return results
+
+    def _load_current_params(self) -> dict | None:
+        """Load current strategy params for rollback comparison."""
+        if self._params_path.exists():
+            try:
+                return json.loads(self._params_path.read_text())
+            except Exception:
+                return None
+        return None
+
+    async def _evaluate_tuning_impact(self, results: dict, previous: dict | None) -> str:
+        """Evaluate if new tuning improved or degraded performance.
+
+        Returns: PROVEN | NEUTRAL | HARMFUL | BUG
+        """
+        if previous is None:
+            return "NEUTRAL"  # No baseline to compare
+
+        try:
+            # Only compare strategies that ran in the current optimization
+            current_strategies = {
+                k for k, v in results.items()
+                if isinstance(v, dict) and "best_value" in v
+            }
+            if not current_strategies:
+                return "NEUTRAL"
+
+            new_avg = sum(
+                results[s].get("best_value", 0) for s in current_strategies
+            )
+            # Compare only against previous values for the same strategies
+            prev_values = previous.get("_tuner_meta", {}).get("best_values", {})
+            matched_prev = {s: prev_values[s] for s in current_strategies if s in prev_values}
+            if not matched_prev:
+                return "NEUTRAL"
+
+            prev_avg = sum(matched_prev.values())
+
+            if new_avg > prev_avg * 1.05:
+                logger.info("tuner_verdict verdict=PROVEN new=%s prev=%s", new_avg, prev_avg)
+                return "PROVEN"
+            elif new_avg < prev_avg * 0.95:
+                logger.warning("tuner_verdict verdict=HARMFUL new=%s prev=%s", new_avg, prev_avg)
+                return "HARMFUL"
+            else:
+                logger.info("tuner_verdict verdict=NEUTRAL new=%s prev=%s", new_avg, prev_avg)
+                return "NEUTRAL"
+        except Exception as exc:
+            logger.error("tuner_evaluation_error error=%s", exc)
+            return "BUG"
+
+    async def _rollback_params(self, previous: dict | None) -> None:
+        """Rollback to previous params."""
+        if previous is None:
+            return
+        try:
+            self._params_path.write_text(json.dumps(previous, indent=2))
+            logger.info("tuner_params_rolled_back")
+            if self._reload_callback:
+                self._reload_callback()
+        except Exception as exc:
+            logger.error("tuner_rollback_failed error=%s", exc)
 
     def _optimize_strategy(self, strategy: str) -> dict:
         """단일 전략 Optuna 최적화 (n_trials, TPESampler)."""
@@ -317,6 +390,17 @@ class ScheduledTuner:
                     }
             existing["_real_wfe"] = real_wfe_section
 
+        # _tuner_meta: store best_values + timestamp for Devil's Advocate comparison
+        meta = {
+            "best_values": {
+                k: v.get("best_value", 0)
+                for k, v in results.items()
+                if isinstance(v, dict)
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        existing["_tuner_meta"] = meta
+
         # JSON schema validation: all values must be JSON-serialisable numbers/strings
         try:
             serialized = json.dumps(existing, indent=2)
@@ -396,7 +480,7 @@ class ScheduledTuner:
         await self.alerter.send_alert(message, level="INFO")
 
     def start_scheduler(self) -> None:
-        """APScheduler로 매주 일요일 02:00 UTC 스케줄 등록."""
+        """APScheduler로 매주 일요일 02:00 UTC 스케줄 등록 + 엔진 시작 5분 후 초기 실행."""
         if not _APSCHEDULER_AVAILABLE:
             logger.error("apscheduler is not installed; cannot start scheduler")
             return
@@ -408,8 +492,16 @@ class ScheduledTuner:
             day_of_week="sun",
             hour=2,
         )
+        # Initial run 5 minutes after engine start
+        initial_run_time = datetime.now(timezone.utc) + timedelta(minutes=5)
+        self._scheduler.add_job(
+            self.run_optimization,
+            "date",
+            run_date=initial_run_time,
+        )
         self._scheduler.start()
         logger.info("Auto-tuner scheduler started (every Sunday 02:00 UTC)")
+        logger.info("Auto-tuner initial run scheduled in 5 minutes")
 
     def stop(self) -> None:
         """Shutdown the APScheduler instance."""

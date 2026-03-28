@@ -1880,6 +1880,23 @@ class ShadowMode:
         except Exception:
             pass
 
+        # SIT-3 P4: 멀티레그 경로 텔레그램 체결 알림 (기존 2-leg 경로에만 있었음)
+        if self._telegram is not None:
+            try:
+                await self._telegram.send_fill_enhanced({
+                    "strategy": sid,
+                    "symbol": trade_request.legs[0].symbol if trade_request.legs else "unknown",
+                    "buy_exchange": buy_exs[0] if buy_exs else "unknown",
+                    "sell_exchange": sell_exs[0] if sell_exs else "unknown",
+                    "pnl": net_pnl_float,
+                    "spread_bps": 0.0,
+                    "fee": float(total_fees),
+                    "slippage_bps": 0.0,
+                    "latency_ms": int((time.monotonic() - t0) * 1000),
+                })
+            except Exception:
+                pass
+
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.info(
             "shadow_mode.trade_request_executed",

@@ -262,19 +262,24 @@ export default function AttributionPage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  const safeArr = (v: unknown): AttributionBreakdown[] =>
+    Array.isArray(v) ? v : [];
+
   const getItems = (): AttributionBreakdown[] => {
     if (!data) return [];
     switch (activeTab) {
-      case "strategy": return data.by_strategy;
-      case "exchange": return data.by_exchange;
-      case "pair":     return data.by_pair;
-      case "hour":     return data.by_hour;
+      case "strategy": return safeArr(data.by_strategy);
+      case "exchange": return safeArr(data.by_exchange);
+      case "pair":     return safeArr(data.by_pair);
+      case "hour":     return safeArr(data.by_hour);
     }
   };
 
   const items = getItems();
-  const bestStrategy = data?.by_strategy.reduce((a, b) => (b.pnl > a.pnl ? b : a), data.by_strategy[0]);
-  const bestExchange = data?.by_exchange.reduce((a, b) => (b.pnl > a.pnl ? b : a), data.by_exchange[0]);
+  const strategyArr = safeArr(data?.by_strategy);
+  const exchangeArr = safeArr(data?.by_exchange);
+  const bestStrategy = strategyArr.length > 0 ? strategyArr.reduce((a, b) => (b.pnl > a.pnl ? b : a), strategyArr[0]) : null;
+  const bestExchange = exchangeArr.length > 0 ? exchangeArr.reduce((a, b) => (b.pnl > a.pnl ? b : a), exchangeArr[0]) : null;
 
   return (
     <div className="space-y-4">

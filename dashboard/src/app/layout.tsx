@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className="flex min-h-screen bg-terminal-bg text-terminal-text font-sans">
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className="flex min-h-screen bg-terminal-bg text-terminal-text font-sans" suppressHydrationWarning>
         <Sidebar />
         <div className="flex flex-col flex-1 min-w-0">
           {/* MissionControlStrip — mt-14 pushes it below the mobile hamburger (h-14) */}

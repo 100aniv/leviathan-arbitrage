@@ -60,10 +60,11 @@ class TestScheduledTunerStartScheduler:
         with avail_patch, sched_patch:
             tuner.start_scheduler()
 
-        mock_scheduler.add_job.assert_called_once()
-        call_kwargs = mock_scheduler.add_job.call_args[1]
-        assert call_kwargs.get("day_of_week") == "sun"
-        assert call_kwargs.get("hour") == 2
+        # 2 jobs: weekly cron + initial 5-min delayed run (SIT-3 P0-A)
+        assert mock_scheduler.add_job.call_count == 2
+        cron_call = mock_scheduler.add_job.call_args_list[0]
+        assert cron_call[1].get("day_of_week") == "sun"
+        assert cron_call[1].get("hour") == 2
 
     def test_start_scheduler_calls_start(self):
         """start_scheduler calls scheduler.start()."""

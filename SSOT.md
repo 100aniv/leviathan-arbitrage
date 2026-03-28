@@ -32,7 +32,7 @@
 > Team roster: `.omc/state/team-roster.json`
 
 **Phase**: SIT-3 종합테스트 (2026-03-25) — 7팀 Agent Teams + Progressive Shadow
-**Tests**: 5,241 passed / 0 failed / 12 skipped
+**Tests**: 5,252 passed / 0 failed / 12 skipped
 **Coverage**: 77%
 **PRD**: 338/343 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 + US-339 SIT-3 잔여)
 **TF Status**: S1~S26 ✅ → TF QF 11차 PASS(S23) → TF SF FAIL(Sharpe 0.53) → S26 회귀 ✅ → SIT-0~2 ✅ → **SIT-3 종합테스트** → TF QF 12차(재검증) → TF SF → TF PF → TF Final → Live

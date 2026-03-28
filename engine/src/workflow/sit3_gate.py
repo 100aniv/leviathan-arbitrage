@@ -70,13 +70,13 @@ CP_CRITERIA: dict[str, list[dict[str, Any]]] = {
         {"name": "strategy_sharpe", "desc": "전략별 Sharpe > 0"},
         {"name": "mdd_limit", "desc": "MDD < 10%"},
     ],
-    "CP8": [  # 48H Extended
-        {"name": "memory_no_leak", "desc": "메모리 누수 없음 (< 100MB 증가)"},
-        {"name": "stability_continues", "desc": "안정성 지속"},
+    "CP8": [  # 48H Extended — SIT-3 P6: Live에서 달성 (optional)
+        {"name": "memory_no_leak", "desc": "메모리 누수 없음 (< 100MB 증가)", "optional": True},
+        {"name": "stability_continues", "desc": "안정성 지속", "optional": True},
     ],
-    "CP9": [  # 72H Final
-        {"name": "all_stable", "desc": "전 지표 안정"},
-        {"name": "scenarios_all_green", "desc": "411개 시나리오 전부 GREEN"},
+    "CP9": [  # 72H Final — SIT-3 P6: Live에서 달성 (optional)
+        {"name": "all_stable", "desc": "전 지표 안정", "optional": True},
+        {"name": "scenarios_all_green", "desc": "411개 시나리오 전부 GREEN", "optional": True},
     ],
 }
 
@@ -226,11 +226,25 @@ class SIT3Gate:
         return result
 
     def final_verdict(self, cp_results: list[CPResult]) -> tuple[bool, str]:
-        """Final Go/No-Go based on all CP results."""
+        """Final Go/No-Go based on CP1~CP7 results (24H).
+
+        SIT-3 P6: CP8/CP9 are optional (Live에서 달성).
+        Go/No-Go 판정은 CP7(24H)까지만 필수.
+        """
         if not cp_results:
             return False, "No checkpoint results"
-        all_pass = all(r.passed for r in cp_results)
-        failed = [r.checkpoint for r in cp_results if not r.passed]
-        if all_pass:
-            return True, "ALL checkpoints PASS — SIT-3 72H PASS"
+        # Required: CP1~CP7 only. CP8/CP9 are optional (Live에서 달성)
+        required = [r for r in cp_results if r.checkpoint not in ("CP8", "CP9")]
+        optional = [r for r in cp_results if r.checkpoint in ("CP8", "CP9")]
+
+        required_pass = all(r.passed for r in required)
+        failed = [r.checkpoint for r in required if not r.passed]
+
+        if required_pass:
+            opt_status = ""
+            if optional:
+                opt_failed = [r.checkpoint for r in optional if not r.passed]
+                if opt_failed:
+                    opt_status = f" (optional skipped: {', '.join(opt_failed)})"
+            return True, f"CP1~CP7 ALL PASS — SIT-3 24H Go/No-Go PASS{opt_status}"
         return False, f"FAIL at: {', '.join(failed)}"

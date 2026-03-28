@@ -59,6 +59,8 @@ class BithumbCollector(BaseCollector):
         self._stale_task: asyncio.Task | None = None
         # Reusable HTTP client for REST snapshot fetches (US-168)
         self._http_client: httpx.AsyncClient | None = None
+        # Last known valid mid prices for WS delta sanity checks
+        self._last_valid_mid: dict[str, float] = {}
 
     async def start(self) -> None:
         """Start with REST snapshots, then WS stream + per-symbol stale watcher."""
@@ -113,10 +115,10 @@ class BithumbCollector(BaseCollector):
                     if not bids or not asks:
                         continue
 
-                    # Price sanity check: top bid should not be > 10x top ask
+                    # Price sanity check: top bid should not be > 2x top ask
                     top_bid = float(bids[0][0]) if bids else 0
                     top_ask = float(asks[0][0]) if asks else 0
-                    if top_ask > 0 and (top_bid / top_ask > 10 or top_bid / top_ask < 0.1):
+                    if top_ask > 0 and (top_bid / top_ask > 2.0 or top_bid / top_ask < 0.5):
                         logger.warning("bithumb_rest_snapshot_price_insane",
                                      symbol=symbol, bid=top_bid, ask=top_ask)
                         continue
@@ -134,6 +136,8 @@ class BithumbCollector(BaseCollector):
                     if self._on_orderbook:
                         await self._on_orderbook(self.exchange_id, symbol, bids, asks, is_snapshot=True)
                     self._last_update[symbol] = time.monotonic()
+                    # Initialize last valid mid price from REST snapshot
+                    self._last_valid_mid[symbol] = (float(bids[0][0]) + float(asks[0][0])) / 2
                     fetched += 1
 
                     # Rate limit: ~5 req/s for Bithumb public API
@@ -226,8 +230,93 @@ class BithumbCollector(BaseCollector):
             key=lambda x: float(x[0]),
         )[:_SNAPSHOT_DEPTH]
 
+        # Price sanity check: reject if mid price changed > 50% from last known
+        if bids and asks:
+            new_mid = (float(bids[0][0]) + float(asks[0][0])) / 2
+            last_mid = self._last_valid_mid.get(symbol)
+
+            if last_mid is not None and last_mid > 0:
+                change_pct = abs(new_mid - last_mid) / last_mid
+                if change_pct > 0.5:  # >50% change
+                    logger.warning(
+                        "bithumb_ws_price_guard_triggered",
+                        symbol=symbol,
+                        last_mid=last_mid,
+                        new_mid=new_mid,
+                        change_pct=f"{change_pct:.1%}",
+                    )
+                    # Devil's Advocate 2-step: schedule REST re-sync to verify
+                    try:
+                        asyncio.get_running_loop().create_task(
+                            self._two_step_verify(symbol, last_mid)
+                        )
+                    except RuntimeError:
+                        pass  # No running loop (tests/sync context) — skip task creation
+                    return None  # Reject this delta
+
+            # Update last valid mid price
+            self._last_valid_mid[symbol] = new_mid
+
         self._last_update[symbol] = time.monotonic()
         return symbol, bids, asks
+
+    async def _two_step_verify(self, symbol: str, last_mid: float) -> None:
+        """2-step Devil's Advocate verification after WS price guard fires.
+
+        Fetches current REST price to distinguish real flash moves from stale/corrupt
+        WS deltas.
+        - REST price also >50% different → real market move; accept and update.
+        - REST price within normal range → WS delta was corrupt; use REST snapshot.
+        """
+        try:
+            if self._http_client is None:
+                self._http_client = httpx.AsyncClient(timeout=15.0)
+
+            coin = _coin_from_symbol(symbol)
+            resp = await self._http_client.get(
+                f"{_REST_BASE}/public/orderbook/{coin}_KRW",
+                params={"count": _SNAPSHOT_DEPTH},
+            )
+            data = resp.json()
+            if data.get("status") != "0000":
+                logger.warning("bithumb_2step_rest_failed", symbol=symbol)
+                return
+
+            ob_data = data.get("data", {})
+            rest_bids = ob_data.get("bids", [])
+            rest_asks = ob_data.get("asks", [])
+
+            if not rest_bids or not rest_asks:
+                return
+
+            rest_mid = (float(rest_bids[0]["price"]) + float(rest_asks[0]["price"])) / 2
+            rest_change = abs(rest_mid - last_mid) / last_mid if last_mid > 0 else 0
+
+            if rest_change > 0.5:
+                # REST confirms large move → real flash move; accept new price
+                logger.info(
+                    "bithumb_2step_confirmed_real_move",
+                    symbol=symbol,
+                    last_mid=last_mid,
+                    rest_mid=rest_mid,
+                    change_pct=f"{rest_change:.1%}",
+                )
+                self._last_valid_mid[symbol] = rest_mid
+            else:
+                # REST is in normal range → WS delta was corrupt fake spread
+                logger.info(
+                    "bithumb_2step_confirmed_fake_spread",
+                    symbol=symbol,
+                    last_mid=last_mid,
+                    rest_mid=rest_mid,
+                )
+                self._last_valid_mid[symbol] = rest_mid
+
+            # Either way, re-anchor the book from REST
+            await self.refresh_symbols([symbol])
+
+        except Exception as exc:
+            logger.error("bithumb_2step_verify_error", symbol=symbol, error=str(exc))
 
     async def refresh_symbols(self, symbols: list[str]) -> int:
         """Re-fetch REST snapshots for a specific set of symbols in parallel (max 5 concurrent).
@@ -261,7 +350,7 @@ class BithumbCollector(BaseCollector):
                     # Price sanity check (same as _fetch_initial_snapshots)
                     top_bid = float(bids[0][0]) if bids else 0
                     top_ask = float(asks[0][0]) if asks else 0
-                    if top_ask > 0 and (top_bid / top_ask > 10 or top_bid / top_ask < 0.1):
+                    if top_ask > 0 and (top_bid / top_ask > 2.0 or top_bid / top_ask < 0.5):
                         logger.warning("bithumb_refresh_price_insane",
                                      symbol=symbol, bid=top_bid, ask=top_ask)
                         return False
