@@ -11,9 +11,13 @@
     "_note": "Real-data WFE results from TimescaleDB."
   },
   "cross_exchange": {
-    "min_spread_bps": 5.0,
+    "min_spread_bps": 10.183198522582462,
+    "max_position_size": 262.09059604414153,
+    "entry_threshold": 0.0001019049396907595,
+    "exit_threshold": 0.0029905475919608077,
+    "stop_loss_pct": 0.005143016057394924,
     "status": "READY",
-    "wfe": 1.2,
+    "wfe": 6.767502674101813,
     "data_type": "synthetic_gbm"
   },
   "spot_futures": {
@@ -55,7 +59,7 @@
     "status": "READY",
     "wfe": 6.571801936599799,
     "data_type": "synthetic_gbm",
-    "_note": "SIT-3: AutoTuner synthetic 50bps→8bps 복원. 실시장 triangular spread는 0.01-0.10%"
+    "_note": "LOCKED: AutoTuner synthetic 50bps는 실시장과 불일치. 수동 8bps 유지"
   },
   "statistical_arb": {
     "status": "READY",
@@ -87,8 +91,13 @@
   "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 통일, slippage_buffer 5bps 신규, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
   "_tuner_meta": {
     "best_values": {
-      "cross_exchange": 1.2
+      "cross_exchange": 6.767502674101813,
+      "triangular": 6.571801936599799,
+      "spot_futures": 7.578432709803439,
+      "funding_rate": 1.774823934929885,
+      "statistical_arb": 0.0,
+      "futures_futures": 5.926861262589432
     },
-    "timestamp": "2026-03-28T07:53:13.678697+00:00"
+    "timestamp": "2026-03-28T08:44:16.336303+00:00"
   }
 }
