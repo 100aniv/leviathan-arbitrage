@@ -31,13 +31,14 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: SIT-3 종합테스트 (2026-03-25) — 7팀 Agent Teams + Progressive Shadow
+**Phase**: SIT-3 종합테스트 (2026-03-28) — 10팀 413시나리오 + Progressive Shadow + ONNX ML
 **Tests**: 5,252 passed / 0 failed / 12 skipped
-**Coverage**: 77%
+**Coverage**: 76%
 **PRD**: 338/343 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 + US-339 SIT-3 잔여)
 **TF Status**: S1~S26 ✅ → TF QF 11차 PASS(S23) → TF SF FAIL(Sharpe 0.53) → S26 회귀 ✅ → SIT-0~2 ✅ → **SIT-3 종합테스트** → TF QF 12차(재검증) → TF SF → TF PF → TF Final → Live
-**Next**: SIT-3 종합테스트 7팀 체크리스트 + Progressive Shadow → TF QF 12차 재검증
-**계획서**: `.claude/plans/vivid-jingling-valiant.md` (3단계: 완전체→클로즈베타→종합테스트)
+**Next**: SIT-3 업데이트 13 (블로커 10건) 진행 중 → 24H Shadow CP7 Go/No-Go → TF QF 12차
+**계획서**: `.claude/plans/vivid-jingling-valiant.md` | **SIT-3 업데이트**: `.claude/plans/adaptive-conjuring-blanket.md`
+**SIT-3 수정**: P1 stat_arb PnL ✅ | P2 HMM 가드 ✅ | P3 funding carry ✅ | P4 ONNX 활성 ✅ | P7 compliance ✅ | G1 DB기록 ✅ | G2 Redis ✅
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 
