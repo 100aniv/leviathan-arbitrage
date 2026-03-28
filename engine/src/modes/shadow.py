@@ -1788,8 +1788,8 @@ class ShadowMode:
             # Entry: expected_profit=0 → net_pnl = -fees (opening position)
             # Exit: expected_profit=spread_pnl → net_pnl = spread_pnl - fees
             _expected = trade_request.expected_profit_usdt or Decimal("0")
-            # Sanity cap: no single trade can exceed $50 profit (prevents stale data artifacts)
-            _MAX_SINGLE_TRADE_PNL = Decimal("50")
+            # Sanity cap: cross-asset PnL은 이론값이므로 보수적 cap ($10)
+            _MAX_SINGLE_TRADE_PNL = Decimal("10")
             if abs(_expected) > _MAX_SINGLE_TRADE_PNL:
                 logger.warning(
                     "shadow_mode.cross_asset_pnl_capped",

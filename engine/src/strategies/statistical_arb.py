@@ -505,8 +505,8 @@ class StatisticalArbStrategy(BaseStrategy):
         _mean_spread = sum(ps.spreads) / len(ps.spreads) if ps.spreads else 0.0
         _spread_convergence = abs(spread - _mean_spread)  # fractional return
         _position_usd = float(self.config.max_position_size) * mid_b
-        # Cap position USD to prevent inflated PnL on high-price assets
-        _position_usd = min(_position_usd, 5000.0)  # strategy_params max_position_size_usdt
+        # Cap position USD — conservative for Shadow (spread 수렴 보장 아님)
+        _position_usd = min(_position_usd, 1000.0)  # SIT-3: 5000→1000
         expected_spread_profit = (
             Decimal(str(_spread_convergence * _position_usd)) if _spread_convergence > 0 else Decimal("0")
         )
