@@ -46,8 +46,9 @@
 - **futures_futures**: ✅ WR 87-93%, 정상
 - **statistical_arb**: ✅ WR 100%, cap $10 (Shadow 구조 한계 — expected_profit 기반)
 - **triangular**: ⚠️ Bithumb 공개 WS 데이터 품질 문제 (fake spread 304만%). 코드+가드 정상. Live 인증 API 사용 시 해결
-- **cross_exchange**: ⚠️ 리테일 수수료(20bps) > 스프레드(0-3bps). VIP 등급 또는 저수수료 거래소(MEXC/Gate.io) 추가 시 해결
+- **cross_exchange**: ⚠️ 리테일 수수료(20bps) > 스프레드(0-3bps). 한국 IP 저수수료 거래소 없음 (MEXC 차단, Gate.io 20bps). **VIP 등급 달성이 유일한 해결책**. 코드 자체는 정상
 - **cex_dex**: DEX 미연동. Live 후 Uniswap V3 연동 시 활성화
+- **AutoTuner**: `TUNER_DATA_SOURCE=timescaledb` (실 데이터 26K+). synthetic 결과가 real params 덮어쓰기 방지
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 
