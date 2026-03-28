@@ -1806,12 +1806,18 @@ class ShadowMode:
         sell_exs = [l.exchange_id.removeprefix("paper_").removeprefix("sandbox_")
                     for l, _ in trades if l.side == OrderSide.SELL]
         if buy_exs and sell_exs:
-            first_symbol = trade_request.legs[0].symbol
-            transfer_coin = first_symbol.split("/")[0] if "/" in first_symbol else "XRP"
-            try:
-                network_cost = self._fee_model.network_cost(buy_exs[0], sell_exs[0], transfer_coin)
-            except ValueError:
-                network_cost = Decimal("1.00")
+            # SIT-3: 같은 거래소면 network_cost=0 (triangular 등 동일 거래소 내 거래)
+            _buy_base = buy_exs[0].removeprefix("paper_").removeprefix("sandbox_")
+            _sell_base = sell_exs[0].removeprefix("paper_").removeprefix("sandbox_")
+            if _buy_base == _sell_base:
+                network_cost = Decimal("0")
+            else:
+                first_symbol = trade_request.legs[0].symbol
+                transfer_coin = first_symbol.split("/")[0] if "/" in first_symbol else "XRP"
+                try:
+                    network_cost = self._fee_model.network_cost(buy_exs[0], sell_exs[0], transfer_coin)
+                except ValueError:
+                    network_cost = Decimal("1.00")
             net_pnl -= network_cost
 
         # SIT-3 P3: funding_rate carry trade — Shadow 즉시 결산이 carry 수익 미반영.
