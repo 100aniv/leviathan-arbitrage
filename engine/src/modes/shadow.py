@@ -1814,6 +1814,15 @@ class ShadowMode:
                 network_cost = Decimal("1.00")
             net_pnl -= network_cost
 
+        # SIT-3 P3: funding_rate carry trade — Shadow 즉시 결산이 carry 수익 미반영.
+        # metadata에 expected_funding_income이 있으면 carry 시뮬레이션 적용.
+        if trade_request.metadata and "expected_funding_income" in trade_request.metadata:
+            try:
+                carry_income = Decimal(str(trade_request.metadata["expected_funding_income"]))
+                net_pnl = carry_income - total_fees - (network_cost if 'network_cost' in dir() else Decimal("0"))
+            except (ValueError, TypeError):
+                pass
+
         net_pnl_float = float(net_pnl)
 
         # Per-trade loss cap (US-066/US-224): per-strategy hard ceiling

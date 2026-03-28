@@ -499,13 +499,19 @@ class StatisticalArbStrategy(BaseStrategy):
             return None
 
         # US-274: Expected spread profit estimate + cost gate
-        _std = _zscore_std(list(ps.spreads))
-        _notional_approx = float(self.config.max_position_size) * mid_b
+        # SIT-3 P1 Fix: position_size is in asset units (e.g., 1.0 BTC).
+        # Profit = fractional spread convergence × USD position value.
+        # Use mean-reversion distance (|spread - mean|) as fractional return.
+        _mean_spread = sum(ps.spreads) / len(ps.spreads) if ps.spreads else 0.0
+        _spread_convergence = abs(spread - _mean_spread)  # fractional return
+        _position_usd = float(self.config.max_position_size) * mid_b
+        # Cap position USD to prevent inflated PnL on high-price assets
+        _position_usd = min(_position_usd, 5000.0)  # strategy_params max_position_size_usdt
         expected_spread_profit = (
-            Decimal(str(abs(zscore) * _std * _notional_approx)) if _std > 0 else Decimal("0")
+            Decimal(str(_spread_convergence * _position_usd)) if _spread_convergence > 0 else Decimal("0")
         )
         if self.config.enable_cost_gate and self._cost_calculator is not None:
-            _sa = Decimal(str(_notional_approx / mid_a)) if mid_a > 0 else self.config.max_position_size
+            _sa = Decimal(str(_position_usd / mid_a)) if mid_a > 0 else self.config.max_position_size
             _sb = self.config.max_position_size
             _pa, _pb = Decimal(str(mid_a)), Decimal(str(mid_b))
             round_trip_cost = (

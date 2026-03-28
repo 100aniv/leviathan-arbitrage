@@ -275,13 +275,21 @@ class HMMRegimeDetector:
 
         return regime
 
+    # SIT-3 P2: Minimum samples before regime classification
+    MIN_SAMPLES_FOR_REGIME = 30
+
     def detect(self, returns: list[float], spread_std: float = 0.0) -> MarketRegime:
         """Shadow mode 호환 — RegimeDetector.detect() 시그니처 맞춤.
 
         HMM이 학습된 상태면 predict 사용, 아니면 변동성 기반 fallback.
+        SIT-3 P2: 최소 30샘플 전에는 NORMAL 유지 (소수 샘플 CRISIS 방지).
         """
         if not returns:
             return self.current_regime
+
+        # SIT-3 P2: 소수 샘플로 CRISIS 판정 방지
+        if len(returns) < self.MIN_SAMPLES_FOR_REGIME:
+            return self.current_regime  # 기존 상태 유지 (초기=NORMAL)
 
         if self._fitted and self._model is not None:
             arr = np.asarray(returns).reshape(-1, 1)
