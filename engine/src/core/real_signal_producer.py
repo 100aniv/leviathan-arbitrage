@@ -93,9 +93,10 @@ class RealDataSignalProducer:
         # Per-pair Kalman filters for dynamic hedge ratio estimation
         self._stat_arb_kalman: dict[tuple[str, str, str], _KalmanHedgeRatio] = {}
         self._stat_arb_cooldown: dict[tuple[str, str, str], float] = {}
-        self._stat_arb_z_threshold = float(os.environ.get("STAT_ARB_Z_THRESHOLD", "2.5"))
-        self._stat_arb_cooldown_s = float(os.environ.get("STAT_ARB_COOLDOWN_S", "300"))
-        self._stat_arb_min_history = int(os.environ.get("STAT_ARB_MIN_HISTORY", "120"))
+        from src.core.config_loader import get_config
+        self._stat_arb_z_threshold = float(get_config("strategy_filters.stat_arb_z_threshold", default=2.5))
+        self._stat_arb_cooldown_s = float(get_config("strategy_filters.stat_arb_cooldown_s", default=300))
+        self._stat_arb_min_history = int(get_config("strategy_filters.stat_arb_min_history", default=120))
         self._stat_arb_korean = {"upbit", "bithumb", "coinone"}  # skip stale data
         # Bug 1-A: cache latest funding rates so _evaluate_spot_futures can use them
         self._latest_rates: _Rates = {}
@@ -702,7 +703,8 @@ class RealDataSignalProducer:
             if diff <= 0:
                 continue
             # US-229: min funding rate diff filter (default 5 bps = 0.0005)
-            _fr_min_diff = float(os.environ.get("FUNDING_MIN_DIFF_BPS", "5")) / 10000
+            from src.core.config_loader import get_config
+            _fr_min_diff = float(get_config("strategy_filters.funding_min_diff_bps", default=5)) / 10000
             if diff < _fr_min_diff:
                 continue
 
