@@ -1816,12 +1816,16 @@ class ShadowMode:
 
         # SIT-3 P3: funding_rate carry trade — Shadow 즉시 결산이 carry 수익 미반영.
         # metadata에 expected_funding_income이 있으면 carry 시뮬레이션 적용.
+        if "funding_rate" in sid:
+            logger.info("shadow_mode.funding_debug", meta_keys=list(trade_request.metadata.keys()) if trade_request.metadata else "None", sid=sid)
         if trade_request.metadata and "expected_funding_income" in trade_request.metadata:
             try:
                 carry_income = Decimal(str(trade_request.metadata["expected_funding_income"]))
-                net_pnl = carry_income - total_fees - (network_cost if 'network_cost' in dir() else Decimal("0"))
-            except (ValueError, TypeError):
-                pass
+                _nc = network_cost if 'network_cost' in locals() else Decimal("0")
+                net_pnl = carry_income - total_fees - _nc
+                logger.info("shadow_mode.funding_carry_applied", carry=float(carry_income), fees=float(total_fees), nc=float(_nc), net=float(net_pnl))
+            except Exception as _carry_exc:
+                logger.warning("shadow_mode.funding_carry_failed", error=str(_carry_exc), meta=str(trade_request.metadata.get("expected_funding_income")))
 
         net_pnl_float = float(net_pnl)
 

@@ -173,7 +173,16 @@ class FundingRateStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
-        size = min(signal.volume, self.config.max_position_size)
+        # SIT-3: 저가 코인 USD 사이징 보정. carry trade는 충분한 포지션이 있어야 수익.
+        # 기존 base-unit sizing 유지하되, USD 가치가 $100 미만이면 $1000 USD까지 확대.
+        avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
+        base_size = min(signal.volume, self.config.max_position_size)
+        _position_usd = base_size * avg_price if avg_price > 0 else Decimal("0")
+        if _position_usd < Decimal("100") and avg_price > 0:
+            # 저가 코인: $1000 USD 기준으로 사이징 확대
+            size = min(signal.volume, Decimal("1000") / avg_price)
+        else:
+            size = base_size
         # Apply hedge ratio to the long leg size
         long_size = (size * self.config.hedge_ratio).quantize(Decimal("0.00000001"))
 
