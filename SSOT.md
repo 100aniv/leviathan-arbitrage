@@ -38,7 +38,16 @@
 **TF Status**: S1~S26 ✅ → TF QF 11차 PASS(S23) → TF SF FAIL(Sharpe 0.53) → S26 회귀 ✅ → SIT-0~2 ✅ → **SIT-3 종합테스트** → TF QF 12차(재검증) → TF SF → TF PF → TF Final → Live
 **Next**: SIT-3 업데이트 13 (블로커 10건) 진행 중 → 24H Shadow CP7 Go/No-Go → TF QF 12차
 **계획서**: `.claude/plans/vivid-jingling-valiant.md` | **SIT-3 업데이트**: `.claude/plans/adaptive-conjuring-blanket.md`
-**SIT-3 수정**: P1 stat_arb PnL ✅ | P2 HMM 가드 ✅ | P3 funding carry ✅ | P4 ONNX 활성 ✅ | P7 compliance ✅ | G1 DB기록 ✅ | G2 Redis ✅
+**SIT-3 수정**: P1 stat_arb PnL ✅ | P2 HMM 가드 ✅ | P3 funding carry ✅ | P4 ONNX 활성 ✅ | P7 compliance ✅ | G1 DB기록 ✅ | G2 Redis ✅ | funding USD sizing ✅ | triangular network_cost ✅ | PnL .6f ✅ | AutoTuner params 복원 ✅
+
+**전략 현황 (SIT-3 검증):**
+- **funding_rate**: ✅ WR 100%, +$193 (USD sizing + carry sim)
+- **spot_futures**: ✅ WR 40-63%, 정상 수익 (소액 — Live 시 포지션 확대로 개선)
+- **futures_futures**: ✅ WR 87-93%, 정상
+- **statistical_arb**: ✅ WR 100%, cap $10 (Shadow 구조 한계 — expected_profit 기반)
+- **triangular**: ⚠️ Bithumb 공개 WS 데이터 품질 문제 (fake spread 304만%). 코드+가드 정상. Live 인증 API 사용 시 해결
+- **cross_exchange**: ⚠️ 리테일 수수료(20bps) > 스프레드(0-3bps). VIP 등급 또는 저수수료 거래소(MEXC/Gate.io) 추가 시 해결
+- **cex_dex**: DEX 미연동. Live 후 Uniswap V3 연동 시 활성화
 
 > 완료된 Phase S1-S12 상세: [`SSOT_COMPLETE.md`](SSOT_COMPLETE.md)
 
