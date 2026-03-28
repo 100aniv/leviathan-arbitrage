@@ -60,6 +60,35 @@ WHILE NOT 완벽:
 4. 커밋 메시지: "SIT-3: CP{N} {설명}" 또는 "fix: SIT-3 {수정내용}"
 ```
 
+## Auto-Chaining 워크플로우 (업데이트 13)
+
+> 컨텍스트 침식 방지. 각 단계가 다음 단계를 자동 호출. DoD 미충족 시 전이 금지.
+
+```
+/project:sit3-audit → /project:sit3-plan → /project:sit3-execute → /project:sit3-verify
+     ↑                                                                        ↓
+     └────────────────── Fix Loop (FAIL 시) ←──────────────────────────────────┘
+```
+
+### 각 단계 DoD (Definition of Done)
+
+| 단계 | DoD | 다음 |
+|------|-----|------|
+| audit | SSOT Read + checklist 진행률 + check_all + /devils-advocate | plan |
+| plan | FAIL 식별 + 수정 계획 (파일:라인) + /devils-advocate | execute |
+| execute | 코드 수정 + pytest PASS + 문서 동기화 + git commit | verify |
+| verify | Shadow 10min + TeamCreate 10팀 + AI CLI + **Playwright 브라우저** + /devils-advocate + checklist 업데이트 | audit |
+
+### 브라우저 검증 규칙 (curl만으로 PASS 불가)
+- Playwright MCP: 13페이지 실제 렌더링 + 스크린샷
+- 콘솔 에러 0건, 모바일 375px/768px
+- 사용자 플로우: 로그인→대시보드→각 페이지→기능 동작
+- 스크린샷: `.omc/state/sit3-results/screenshots/`
+
+### 전략 완성 우선 규칙
+- 7개 전략 관련 FAIL = 무조건 최우선 수정
+- 전략별: trades>0 + PnL>0 + quant 검증 + 백테스트 + /devils-advocate
+
 ## 참조 파일
 
 | 파일 | 용도 |
