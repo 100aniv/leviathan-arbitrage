@@ -133,6 +133,11 @@ class ONNXSignalScorer:
 
         start = time.perf_counter()
         try:
+            # Validate feature count matches model expectation
+            expected_dim = self._session.get_inputs()[0].shape[1] if self._session else None
+            if expected_dim and features.shape[1] != expected_dim:
+                logger.debug("onnx_scorer: dim mismatch got=%d expected=%d", features.shape[1], expected_dim)
+                return 0.5
             outputs = self._session.run(None, {self._input_name: features})
             # XGBoost classifier outputs: [labels, probabilities]
             # probabilities shape: [{0: prob0, 1: prob1}, ...]
@@ -143,7 +148,7 @@ class ONNXSignalScorer:
             else:
                 score = 0.5
         except Exception as exc:
-            logger.warning("onnx_scorer: predict failed: %s", exc)
+            logger.warning("onnx_scorer: predict failed: %s shape=%s", exc, features.shape)
             score = 0.5
 
         elapsed_ms = (time.perf_counter() - start) * 1000
