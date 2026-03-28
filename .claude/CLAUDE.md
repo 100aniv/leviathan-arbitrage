@@ -258,7 +258,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **이중 슬리피지 금지**: SignalGenerator의 CEXOrderbookSlippage가 유일한 슬리피지 소스. PaperExecutor에 PowerLaw 적용 절대 금지
 - **ENGINE_ENV**: `dev|staging|prod|test`만 허용 (`development` 사용 금지)
 - **KRW 거래소**: upbit, bithumb, coinone은 KRW 페어 자동 매핑. auto-symbols `min_exchanges=3` 필수 (7로 하면 0개)
-- **Bithumb stale data**: 증분 orderbook에서 소형코인 2-10x 가격 오차 → fake spread. SIT-3 P0-B에서 ±50% 가드 + 2단계 REST 검증으로 해결
+- **Bithumb stale data**: 공개 WS 증분 orderbook에서 소형코인 2-10x 가격 오차 → fake spread (304만%). ±50% 가드 + 2단계 REST 검증으로 방어 (코드 정상). Live 인증 API 사용 시 데이터 품질 개선. triangular은 이 가드 때문에 유효 시그널 0건
 - **stat_arb PnL 과대평가 주의**: expected_profit 공식이 position_usd를 5000으로 cap. 변동성 이중 계산 금지
 - **HMM Regime 최소 샘플**: 30샘플 미만 시 NORMAL 유지 (소수 샘플 CRISIS 방지)
 - **funding_rate = carry trade**: Shadow 즉시결산 시 carry income 시뮬레이션 반영 필요. 1기간 PnL만으로 판단 금지
