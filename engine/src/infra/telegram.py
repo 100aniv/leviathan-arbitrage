@@ -11,6 +11,7 @@ US-209: Severity-based rate limiting (EMERGENCY/CRITICAL/WARNING/INFO)
 from __future__ import annotations
 
 import enum
+import html as _html
 import os
 import time
 from collections import deque
@@ -555,9 +556,9 @@ class TelegramAlerter:
             lines = [
                 "🌑 <b>섀도 모드 활성화</b>",
                 "",
-                f"<b>거래소:</b> {data.get('exchanges', 'N/A')}",
-                f"<b>심볼:</b> {data.get('symbols', 'N/A')}",
-                f"<b>라이브게이트:</b> {data.get('live_gate', '비활성')}",
+                f"<b>거래소:</b> {_html.escape(str(data.get('exchanges', 'N/A')))}",
+                f"<b>심볼:</b> {_html.escape(str(data.get('symbols', 'N/A')))}",
+                f"<b>라이브게이트:</b> {_html.escape(str(data.get('live_gate', '비활성')))}",
             ]
         else:
             lines = [
