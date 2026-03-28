@@ -600,9 +600,28 @@ class StrategyBacktestEngine:
         signals = gen(closes, params, rng)
 
         # Run event loop to call async on_signal; pass rng for execution noise
-        trade_pnls, equity_curve = asyncio.run(
-            self._replay(strategy, signals, params, dex_adapter, rng)
-        )
+        # SIT-3 P5: asyncio.run()은 이미 실행 중인 루프에서 실패.
+        # ThreadPoolExecutor 안에서 호출되므로 new_event_loop() 사용.
+        try:
+            loop = asyncio.get_running_loop()
+            # Already in an event loop — use nest_asyncio or new loop in thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                def _run_sync():
+                    _loop = asyncio.new_event_loop()
+                    try:
+                        return _loop.run_until_complete(
+                            self._replay(strategy, signals, params, dex_adapter, rng)
+                        )
+                    finally:
+                        _loop.close()
+                future = pool.submit(_run_sync)
+                trade_pnls, equity_curve = future.result(timeout=120)
+        except RuntimeError:
+            # No running loop — safe to use asyncio.run()
+            trade_pnls, equity_curve = asyncio.run(
+                self._replay(strategy, signals, params, dex_adapter, rng)
+            )
 
         return self._build_result(self._initial_capital, equity_curve, trade_pnls)
 
