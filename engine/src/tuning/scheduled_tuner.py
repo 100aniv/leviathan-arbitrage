@@ -367,8 +367,17 @@ class ScheduledTuner:
             except Exception as exc:
                 logger.warning("Failed to read existing params: %s", exc)
 
+        # SIT-3: param_bridge로 키 매핑 (min_spread_bps→min_profit_bps 등)
+        from src.tuning.param_bridge import _PARAM_MAPPINGS
+
         for strategy, data in ready_strategies.items():
-            entry = dict(data["best_params"])
+            raw_params = dict(data["best_params"])
+            # Apply param_bridge key mapping for the strategy
+            mapping = _PARAM_MAPPINGS.get(strategy, {})
+            entry = {}
+            for raw_key, raw_val in raw_params.items():
+                mapped_key = mapping.get(raw_key, raw_key)  # fallback to raw key
+                entry[mapped_key] = raw_val
             entry["status"] = "READY"
             entry["wfe"] = data.get("best_value", 0.0)
             entry["data_type"] = data.get("data_type", "synthetic_gbm")
