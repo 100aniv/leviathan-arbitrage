@@ -30,20 +30,14 @@ logger = logging.getLogger(__name__)
 class FundingRateConfig(BaseModel):
     """Configuration for FundingRateStrategy."""
 
-    min_funding_diff_bps: Decimal = Field(
-        default=Decimal(os.environ.get("MIN_FUNDING_DIFF_BPS", "10")), ge=Decimal("0")
-    )  # Must exceed round-trip friction; env override for tuning
+    min_funding_diff_bps: Decimal = Field(default=Decimal("2"), ge=Decimal("0"))  # trading.json 우선
     max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
-    max_holding_periods: int = Field(default=12, ge=1)  # SIT-3: 3→12 (4일 carry, 업계 표준)
+    max_holding_periods: int = Field(default=12, ge=1)  # SIT-3: 3→12 (4일 carry)
     hedge_ratio: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
-    # US-239: Settlement timing — only enter within this many minutes before settlement
-    # Default 0 = disabled (backward compatible); set to 30 in production config
     settlement_window_minutes: float = Field(default=0.0, ge=0.0)
-    # US-239: Settlement hours (UTC)
     settlement_hours: list[int] = Field(default_factory=lambda: [0, 8, 16])
-    # US-268: OU Process filter
-    enable_ou_filter: bool = Field(default=bool(os.environ.get("ENABLE_OU_FILTER", "true").lower() != "false"))
-    ou_min_halflife_s: float = Field(default=float(os.environ.get("FUNDING_OU_MIN_HALFLIFE_S", "300.0")))
+    enable_ou_filter: bool = Field(default=True)
+    ou_min_halflife_s: float = Field(default=60.0)  # trading.json strategy_filters 우선
     ou_window: int = Field(default=360)
 
 
@@ -160,7 +154,8 @@ class FundingRateStrategy(BaseStrategy):
             if _std > 0:
                 _z_score = (float(funding_diff_bps) - _mean) / _std
                 # Only enter when z-score > 1.5 (significant deviation)
-                _z_threshold = float(os.environ.get("FUNDING_ZSCORE_THRESHOLD", "1.5"))
+                from src.core.config_loader import get_config
+                _z_threshold = float(get_config("strategy_filters.funding_zscore_threshold", default=-1))
                 if _z_score < _z_threshold:
                     self._metrics.signals_filtered += 1
                     logger.debug(
