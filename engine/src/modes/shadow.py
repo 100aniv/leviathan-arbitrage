@@ -1897,6 +1897,28 @@ class ShadowMode:
             except Exception:
                 pass
 
+        # SIT-3 G1 Fix: multi-leg DB 기록 (기존 2-leg만 record_execution 호출)
+        if self._market_recorder is not None and trades:
+            try:
+                first_leg = trade_request.legs[0] if trade_request.legs else None
+                first_trade = trades[0][1] if trades else None
+                if first_leg and first_trade:
+                    self._market_recorder.record_execution(
+                        strategy_id=sid,
+                        buy_exchange=buy_exs[0] if buy_exs else "unknown",
+                        sell_exchange=sell_exs[0] if sell_exs else "unknown",
+                        symbol=first_leg.symbol,
+                        buy_price=first_trade.price if first_trade.side == "buy" else Decimal("0"),
+                        sell_price=first_trade.price if first_trade.side == "sell" else Decimal("0"),
+                        size=first_trade.amount,
+                        gross_spread_bps=None,
+                        fee_total=total_fees,
+                        slippage_total=Decimal("0"),
+                        net_pnl=net_pnl,
+                    )
+            except Exception as exc:
+                logger.debug("shadow_mode.record_execution_multileg_failed", error=str(exc))
+
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.info(
             "shadow_mode.trade_request_executed",
