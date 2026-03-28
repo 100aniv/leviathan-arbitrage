@@ -369,6 +369,13 @@ class ScheduledTuner:
             entry["status"] = "READY"
             entry["wfe"] = data.get("best_value", 0.0)
             entry["data_type"] = data.get("data_type", "synthetic_gbm")
+            # SIT-3: synthetic 결과는 기존 real params를 덮어쓰지 않음
+            if entry["data_type"] == "synthetic_gbm" and strategy in existing:
+                old_type = existing[strategy].get("data_type", "")
+                if old_type == "real_timescaledb":
+                    logger.info("tuner_skip_synthetic_overwrite", strategy=strategy,
+                                reason="real data params preserved over synthetic")
+                    continue
             existing[strategy] = entry
 
         # Record real-data WFE results into _real_wfe section
