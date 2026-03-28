@@ -1759,8 +1759,10 @@ class ShadowMode:
         # each leg is dollar-neutral by design, so net PnL = -(total fees).
         _is_cross_asset = trade_request.metadata.get("cross_asset") == "true"
         _leg_symbols = {leg.symbol for leg, _ in trades}
-        if not _is_cross_asset and len(_leg_symbols) > 1:
-            _is_cross_asset = True  # fallback detection
+        # SIT-3: triangular은 multi-symbol이지만 cross_asset 아님 (동일 거래소 3-way 루프)
+        _is_triangular = "triangular" in sid
+        if not _is_cross_asset and len(_leg_symbols) > 1 and not _is_triangular:
+            _is_cross_asset = True  # fallback detection (stat_arb 등)
 
         net_pnl = Decimal("0")
         total_fees = Decimal("0")
