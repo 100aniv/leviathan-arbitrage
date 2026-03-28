@@ -7,7 +7,7 @@ import src.tuning.scheduled_tuner as st_mod
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, patch as _patch
 
-from src.tuning.scheduled_tuner import ScheduledTuner
+from src.tuning.scheduled_tuner import ScheduledTuner, InsufficientDataError
 from src.tuning.shadow_runner import ShadowRunner
 from src.tuning.strategy_backtest import STRATEGY_TYPES
 
@@ -44,7 +44,9 @@ class TestScheduledTunerInit:
 
 
 class TestOptimizeStrategy:
-    def test_creates_optuna_study_and_calls_optimize(self, tmp_path):
+    def test_creates_optuna_study_and_calls_optimize(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("TUNER_DATA_SOURCE", raising=False)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
         """_optimize_strategy creates an optuna study and calls optimize."""
         mock_study = MagicMock()
         mock_study.best_params = {"min_spread_bps": 5.0}
@@ -65,6 +67,8 @@ class TestOptimizeStrategy:
             tuner = ScheduledTuner(n_trials=5)
             tuner._params_path = tmp_path / "strategy_params.json"
             tuner._load_current_params = MagicMock(return_value=None)
+            tuner._check_sufficient_real_data = MagicMock(side_effect=InsufficientDataError("test"))
+            tuner._run_with_timescaledb = MagicMock(side_effect=InsufficientDataError("test"))
             result = tuner._optimize_strategy("cross_exchange")
 
         mock_optuna.create_study.assert_called_once()
@@ -261,7 +265,9 @@ class TestActivationFilter:
 
 
 class TestTimescaleDBFallback:
-    def test_timescaledb_fallback_to_synthetic(self, tmp_path):
+    def test_timescaledb_fallback_to_synthetic(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("TUNER_DATA_SOURCE", raising=False)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
         """_optimize_strategy returns valid result even when DataLoader raises."""
         mock_study = MagicMock()
         mock_study.best_params = {"min_spread_bps": 5.0}
@@ -287,6 +293,8 @@ class TestTimescaleDBFallback:
             tuner = ScheduledTuner(n_trials=3)
             tuner._params_path = tmp_path / "strategy_params.json"
             tuner._load_current_params = MagicMock(return_value=None)
+            tuner._check_sufficient_real_data = MagicMock(side_effect=InsufficientDataError("test"))
+            tuner._run_with_timescaledb = MagicMock(side_effect=InsufficientDataError("test"))
             result = tuner._optimize_strategy("cross_exchange")
 
         assert "best_params" in result
