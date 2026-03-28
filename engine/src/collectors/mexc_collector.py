@@ -1,6 +1,8 @@
 """MEXC public orderbook collector via native WebSocket."""
 from __future__ import annotations
 
+import asyncio
+import json
 from typing import Callable, Awaitable
 
 import structlog
@@ -47,6 +49,31 @@ class MexcCollector(BaseCollector):
         on_orderbook: Callable[[str, str, list, list], Awaitable[None]] | None = None,
     ) -> None:
         super().__init__(exchange_id="mexc", symbols=symbols, on_orderbook=on_orderbook)
+        self._ping_task: asyncio.Task | None = None
+
+    async def start(self) -> None:
+        self._running = True
+        self._ping_task = asyncio.create_task(self._json_ping_loop())
+        await super().start()
+
+    async def stop(self) -> None:
+        if self._ping_task:
+            self._ping_task.cancel()
+            try:
+                await self._ping_task
+            except asyncio.CancelledError:
+                pass
+        await super().stop()
+
+    async def _json_ping_loop(self) -> None:
+        """MEXC requires JSON PING every 15 seconds to keep WS alive."""
+        while self._running:
+            await asyncio.sleep(15)
+            if hasattr(self, '_ws') and self._ws:
+                try:
+                    await self._ws.send(json.dumps({"method": "PING"}))
+                except Exception:
+                    pass
 
     # ------------------------------------------------------------------
     # BaseCollector interface
