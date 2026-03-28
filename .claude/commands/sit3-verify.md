@@ -58,6 +58,10 @@
 → 다음: /project:sit3-audit
 ```
 
+### 9. Notion + DevBot
+- Notion에 검증 결과 + CP 상태 업데이트 (연동 시)
+- DevBot으로 CP 도달/FAIL 알림 발송
+
 ## 완료 조건 (DoD)
 - [ ] Shadow 10min+ 실행 (crash=0)
 - [ ] 10팀 TeamCreate 검증 완료 + TeamDelete + 좀비 0건
@@ -65,6 +69,8 @@
 - [ ] Playwright 브라우저 13페이지 검증 + 스크린샷
 - [ ] /devils-advocate 반론 1건 이상
 - [ ] sit3-checklist.json 업데이트
+- [ ] Notion 검증 결과 업데이트 (연동 시)
+- [ ] DevBot CP/FAIL 알림 발송
 - [ ] "→ 다음: /project:sit3-audit" 출력
 
 **DoD 미충족 시 다음 단계 진행 금지.**

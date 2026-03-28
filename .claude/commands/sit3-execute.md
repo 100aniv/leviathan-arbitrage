@@ -32,6 +32,9 @@
 → 다음: /project:sit3-verify
 ```
 
+8. **Notion 업데이트** — 변경 내용 + 진행 상태 Notion 동기화 (연동 시)
+9. **DevBot 알림** — Fix Loop 완료 시 DevBot 텔레그램으로 보고
+
 ## 완료 조건 (DoD)
 - [ ] 코드 수정 완료 (TeamCreate 사용)
 - [ ] pytest PASS (0 failed)
@@ -39,6 +42,8 @@
 - [ ] SSOT + prd + CLAUDE + .env 동기화
 - [ ] git commit + push
 - [ ] checkpoint save
+- [ ] Notion 업데이트 (연동 시)
+- [ ] DevBot 알림 발송
 - [ ] "→ 다음: /project:sit3-verify" 출력
 
 **DoD 미충족 시 다음 단계 진행 금지.**

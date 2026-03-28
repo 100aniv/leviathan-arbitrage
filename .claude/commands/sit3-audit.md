@@ -28,12 +28,16 @@
 → 다음: /project:sit3-plan
 ```
 
+8. **Notion 확인** — Notion 페이지에서 현재 진행 상태 확인 (연동 시)
+9. **DevBot 확인** — DevBot watchdog 상태 + `/go` 재개 필요 여부
+
 ## 완료 조건 (DoD)
 - [ ] SSOT.md Read 완료
 - [ ] SIT-3_WORKFLOW.md Read 완료
 - [ ] checklist 진행률 출력
 - [ ] check_all 실행 + 결과
 - [ ] /devils-advocate 반론 1건 이상
+- [ ] Notion 상태 확인 (연동 시)
 - [ ] "→ 다음: /project:sit3-plan" 출력
 
 **DoD 미충족 시 다음 단계 진행 금지.**

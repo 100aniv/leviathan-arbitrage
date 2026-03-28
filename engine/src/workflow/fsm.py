@@ -60,6 +60,13 @@ TRANSITIONS: dict[tuple[str, str], str] = {
     ("TF_FINAL", "final_pass"): "LIVE",
     ("TF_FINAL", "final_fail"): "TF_SF",  # 코드 변경 시 SF부터
     ("REGRESSION", "regression_complete"): "TF_QF",
+    # SIT-3 Auto-Chaining (업데이트 13)
+    ("SIT3_AUDIT", "audit_done"): "SIT3_PLAN",
+    ("SIT3_PLAN", "plan_done"): "SIT3_EXECUTE",
+    ("SIT3_EXECUTE", "execute_done"): "SIT3_VERIFY",
+    ("SIT3_VERIFY", "verify_pass"): "SIT3_AUDIT",  # 다음 CP 또는 완료
+    ("SIT3_VERIFY", "verify_fail"): "SIT3_AUDIT",  # Fix Loop
+    ("SIT3_AUDIT", "sit3_pass"): "TF_QF",  # 411 GREEN + 24H → TF 진입
 }
 
 # 사람이 읽을 수 있는 상태 설명

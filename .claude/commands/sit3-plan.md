@@ -30,10 +30,13 @@
 → 다음: /project:sit3-execute
 ```
 
+6. **Notion 기록** — 플랜을 Notion 페이지에 기록 (연동 시)
+
 ## 완료 조건 (DoD)
 - [ ] PENDING/FAIL 시나리오 목록 작성
 - [ ] 수정 계획 (파일:라인 수준)
 - [ ] /devils-advocate 반론 + 대응
+- [ ] Notion에 플랜 기록 (연동 시)
 - [ ] "→ 다음: /project:sit3-execute" 출력
 
 **DoD 미충족 시 다음 단계 진행 금지.**

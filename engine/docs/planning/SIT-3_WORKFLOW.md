@@ -89,6 +89,10 @@ WHILE NOT 완벽:
 - 7개 전략 관련 FAIL = 무조건 최우선 수정
 - 전략별: trades>0 + PnL>0 + quant 검증 + 백테스트 + /devils-advocate
 
+### Notion + DevBot 연동 규칙
+- **Notion**: 매 문서 업데이트 시 Notion 페이지 동시 업데이트. checklist 진행률 자동 반영.
+- **DevBot**: Fix Loop 완료/CP 도달/에러 시 텔레그램 자동 알림. `/go`로 워크플로우 재개.
+
 ## 참조 파일
 
 | 파일 | 용도 |

@@ -40,3 +40,6 @@ SIT-3 종합테스트의 전체 진행을 조율하는 QA 리더.
 15. Notion 업데이트: 체크포인트 저장 시 SSOT + checklist + Notion 동시
 16. 브라우저 UI/UX 검증 필수: curl만으로 PASS 불가. Playwright MCP + 스크린샷 증거
 17. 사용자 플로우 전체 재현: 로그인→대시보드→각 페이지→기능→모드 전환→설정
+18. Fix Loop 완료 시 DevBot으로 텔레그램 보고 (수정 내용 + 테스트 결과)
+19. CP 도달 시 DevBot으로 자동 보고 (CP번호 + PASS/FAIL + 핵심 지표)
+20. 에러/장애 시 DevBot watchdog 알림 (엔진 crash, DB 장애, 좀비 프로세스)
