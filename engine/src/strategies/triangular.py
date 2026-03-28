@@ -27,8 +27,9 @@ from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeReq
 logger = logging.getLogger(__name__)
 
 
-_ENABLE_LATENCY_BUDGET = os.environ.get("ENABLE_LATENCY_BUDGET", "false").lower() == "true"
-_TRIANGULAR_MAX_LATENCY_MS = float(os.environ.get("TRIANGULAR_MAX_LATENCY_MS", "500"))
+from src.core.config_loader import get_config as _get_config
+_ENABLE_LATENCY_BUDGET = _get_config("strategy_filters.enable_latency_budget", default=False)
+_TRIANGULAR_MAX_LATENCY_MS = float(_get_config("strategy_filters.triangular_max_latency_ms", default=500))
 
 
 class TriangularConfig(BaseModel):
