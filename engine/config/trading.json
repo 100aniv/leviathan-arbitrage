@@ -62,7 +62,8 @@
     "api_port": 8000,
     "ws_port": 8001,
     "workers": 4,
-    "kill_switch_enabled": true
+    "kill_switch_enabled": true,
+    "tuner_data_source": "timescaledb"
   },
   "strategy_filters": {
     "funding_zscore_threshold": -1,
