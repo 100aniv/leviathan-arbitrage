@@ -1,9 +1,9 @@
 {
   "_meta": {
-    "source": "S26 \uc804\ub7b5 \ub9ac\uc11c\uce58 \uae30\ubc18 \uc7ac\uc124\uacc4 (2026-03-23)",
+    "source": "S26 전략 리서치 기반 재설계 (2026-03-23)",
     "date": "2026-03-23",
     "data_type": "live_shadow",
-    "note": "S26: exa.ai \ubca4\uce58\ub9c8\ud06c + TF SF FAIL \ubd84\uc11d \uae30\ubc18. Shadow Live\uae09(DEPTH_FRACTION=1.0). \uc5c5\uacc4 \uae30\uc900 min 50bps gross spread \u2192 net \uc218\uc775.",
+    "note": "S26: exa.ai 벤치마크 + TF SF FAIL 분석 기반. Shadow Live급(DEPTH_FRACTION=1.0). 업계 기준 min 50bps gross spread → net 수익.",
     "real_wfe_path": "_real_wfe",
     "real_wfe_note": "Populated by ScheduledTuner when TUNER_DATA_SOURCE=timescaledb"
   },
@@ -17,45 +17,45 @@
     "data_type": "synthetic_gbm"
   },
   "spot_futures": {
+    "min_spread_bps": 5,
+    "max_position_size": 7634.1164727867645,
+    "entry_threshold": 0.0013620427453799166,
+    "exit_threshold": 0.0001866435336362988,
+    "stop_loss_pct": 0.005070404564592744,
     "status": "READY",
-    "wfe": 1.52,
-    "min_basis_bps": 5,
-    "max_position_size_usdt": 5000,
-    "entry_threshold": 0.00472,
-    "exit_threshold": 0.00268,
-    "stop_loss_pct": 0.005,
-    "_note": "S26: min_basis 3\u21925bps (\ub3d9\uc77c \uac70\ub798\uc18c \uc218\uc218\ub8cc \ub0ae\uc544 5bps\uba74 \uc218\uc775). position $5484\u2192$5000 \ud1b5\uc77c."
+    "wfe": 7.578432709803439,
+    "data_type": "synthetic_gbm"
   },
   "funding_rate": {
+    "min_spread_bps": 8.735797037704605,
+    "max_position_size": 5002.251410101575,
+    "entry_threshold": 0.00011715937392307068,
+    "exit_threshold": 0.0032931446587915556,
+    "stop_loss_pct": 0.016645099172000764,
     "status": "READY",
-    "wfe": 0.62,
-    "min_funding_diff_bps": 2,
-    "max_position_size_usdt": 5000,
-    "entry_threshold": 0.000482,
-    "exit_threshold": 0.0001,
-    "stop_loss_pct": 0.024,
-    "_note": "S26: position $8928\u2192$5000 \ud1b5\uc77c."
+    "wfe": 1.774823934929885,
+    "data_type": "synthetic_gbm"
   },
   "futures_futures": {
-    "status": "READY",
-    "wfe": 0.6,
     "min_spread_bps": 3,
-    "min_book_depth_usd": 1,
-    "max_position_size_usdt": 1738,
-    "entry_threshold": 0.00121,
-    "exit_threshold": 0.000197,
-    "stop_loss_pct": 0.005,
-    "_note": "S26: min_spread 5\u21923bps (\uc120\ubb3c \uac04 \uc218\uc218\ub8cc \ub0ae\uc74c). book_depth $1\u2192$100."
+    "max_position_size": 8497.517825978573,
+    "entry_threshold": 0.00025557303057935484,
+    "exit_threshold": 6.82596457666553e-05,
+    "stop_loss_pct": 0.00501931310745825,
+    "status": "READY",
+    "wfe": 5.926861262589432,
+    "data_type": "synthetic_gbm"
   },
   "triangular": {
-    "status": "MONITOR",
-    "wfe": 0.94,
-    "min_profit_bps": 3,
-    "max_position_size_usdt": 1000,
-    "entry_threshold": 0.00206,
-    "exit_threshold": 0.000309,
-    "stop_loss_pct": 0.005,
-    "_note": "S26: \uc7a5\uc911(KST 09-21)\ub9cc \ud65c\uc131\ud654 \uad8c\uc7a5. 30ms \ub808\uc774\ud134\uc2dc \ucc28\uc774\ub85c \uae30\ud68c \uc18c\uba78 \uc704\ud5d8."
+    "min_spread_bps": 8,
+    "max_position_size": 6810.6841726392,
+    "entry_threshold": 0.0005221298701815954,
+    "exit_threshold": 9.601259624268907e-05,
+    "stop_loss_pct": 0.0055080901917418075,
+    "status": "READY",
+    "wfe": 6.571801936599799,
+    "data_type": "synthetic_gbm",
+    "_note": "SIT-3: AutoTuner synthetic 50bps→8bps 복원. 실시장 triangular spread는 0.01-0.10%"
   },
   "statistical_arb": {
     "status": "READY",
@@ -64,7 +64,7 @@
     "entry_threshold": 0.000188,
     "exit_threshold": 0.00089,
     "stop_loss_pct": 0.005,
-    "_note": "SIT-3 P3: DISABLED\u2192READY. z=2.5\u21922.0, cooldown=300\u2192120, min_history=120\u219260. 24H Shadow \ud6c4 WFE \uc7ac\ud3c9\uac00."
+    "_note": "SIT-3 P3: DISABLED→READY. z=2.5→2.0, cooldown=300→120, min_history=120→60. 24H Shadow 후 WFE 재평가."
   },
   "cex_dex": {
     "status": "MONITOR",
@@ -84,11 +84,11 @@
     "exit_threshold": 0.0001,
     "stop_loss_pct": 0.005
   },
-  "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 \ud1b5\uc77c, slippage_buffer 5bps \uc2e0\uaddc, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
+  "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 통일, slippage_buffer 5bps 신규, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
   "_tuner_meta": {
     "best_values": {
       "cross_exchange": 1.2
     },
-    "timestamp": "2026-03-28T01:44:14.925993+00:00"
+    "timestamp": "2026-03-28T07:53:13.678697+00:00"
   }
 }
