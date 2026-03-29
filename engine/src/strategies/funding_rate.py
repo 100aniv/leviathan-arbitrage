@@ -173,9 +173,10 @@ class FundingRateStrategy(BaseStrategy):
         avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
         base_size = min(signal.volume, self.config.max_position_size)
         _position_usd = base_size * avg_price if avg_price > 0 else Decimal("0")
-        if _position_usd < Decimal("100") and avg_price > 0:
-            # 저가 코인: $1000 USD 기준으로 사이징 확대
-            size = min(signal.volume, Decimal("1000") / avg_price)
+        _min_pos_usd = self.config.max_position_size * avg_price * Decimal("0.1") if avg_price > 0 else Decimal("1")
+        if _position_usd < _min_pos_usd and avg_price > 0:
+            # 저가 코인: max_position_size까지 확대 (자본 비율 기반)
+            size = min(signal.volume, self.config.max_position_size)
         else:
             size = base_size
         # Apply hedge ratio to the long leg size

@@ -966,37 +966,56 @@ class Engine:
         # Load tuned parameters (READY/MONITOR strategies only)
         tuned = self._load_strategy_params()
 
-        # Build strategy configs from tuned params (fall back to defaults)
+        # Phase H-Final: Dynamic capital-based sizing
+        # All position/depth limits are % of capital, not fixed USD
+        from src.core.config import load_engine_config
+        _ecfg = load_engine_config()
+        _cap_cfg = _ecfg.get("capital", {})
+        _tier = _cap_cfg.get("tier", "alpha")
+        _capital_usd = Decimal(str(
+            _cap_cfg.get("tiers", {}).get(_tier, {}).get("initial_usd", 70)
+        ))
+        _risk_cfg = _ecfg.get("dynamic_risk", {})
+        _base_pos_pct = Decimal(str(_risk_cfg.get("base_position_pct", 3.0))) / Decimal("100")
+        _max_pos_usd = _capital_usd * _base_pos_pct  # e.g., $34 × 3% = $1.02
+        _book_depth_usd = max(Decimal("1"), _capital_usd * Decimal("0.01"))  # 1% of capital, min $1
+
+        logger.info(
+            "Strategy sizing: capital=$%.0f tier=%s max_position=$%.2f book_depth=$%.2f",
+            _capital_usd, _tier, _max_pos_usd, _book_depth_usd,
+        )
+
+        # Build strategy configs from tuned params + dynamic capital sizing
         sf_p = tuned.get("spot_futures", {})
         sf_config = SpotFuturesConfig(
             min_basis_bps=Decimal(str(sf_p.get("min_basis_bps", 15))),
-            max_position_size=Decimal(str(sf_p.get("max_position_size_usdt", 5484))) / _BTC_REFERENCE_PRICE,
+            max_position_size=_max_pos_usd / _BTC_REFERENCE_PRICE,
         ) if sf_p.get("status") in ("READY", "MONITOR") else None
 
         fr_p = tuned.get("funding_rate", {})
         fr_config = FundingRateConfig(
             min_funding_diff_bps=Decimal(str(fr_p.get("min_funding_diff_bps", 5))),
-            max_position_size=Decimal(str(fr_p.get("max_position_size_usdt", 8928))) / _BTC_REFERENCE_PRICE,
+            max_position_size=_max_pos_usd / _BTC_REFERENCE_PRICE,
         ) if fr_p.get("status") in ("READY", "MONITOR") else None
 
         ce_p = tuned.get("cross_exchange", {})
         ce_config = CrossExchangeConfig(
             min_spread_bps=Decimal(str(ce_p.get("min_spread_bps", 10))),
-            max_position_size=Decimal(str(ce_p.get("max_position_size_usdt", 9767))) / _BTC_REFERENCE_PRICE,
-            min_book_depth_usd=Decimal(str(ce_p.get("min_book_depth_usd", 500))),
+            max_position_size=_max_pos_usd / _BTC_REFERENCE_PRICE,
+            min_book_depth_usd=_book_depth_usd,
         ) if ce_p.get("status") in ("READY", "MONITOR") else None
 
         ff_p = tuned.get("futures_futures", {})
         ff_config = FuturesFuturesConfig(
             min_spread_bps=Decimal(str(ff_p.get("min_spread_bps", 8))),
-            max_position_size=Decimal(str(ff_p.get("max_position_size_usdt", 1738))) / _BTC_REFERENCE_PRICE,
-            min_book_depth_usd=Decimal(str(ff_p.get("min_book_depth_usd", 500))),
+            max_position_size=_max_pos_usd / _BTC_REFERENCE_PRICE,
+            min_book_depth_usd=_book_depth_usd,
         ) if ff_p.get("status") in ("READY", "MONITOR") else None
 
         tri_p = tuned.get("triangular", {})
         tri_config = TriangularConfig(
             min_profit_bps=Decimal(str(tri_p.get("min_profit_bps", 10))),
-            max_position_usdt=Decimal(str(tri_p.get("max_position_size_usdt", 1000))),
+            max_position_usdt=_max_pos_usd,
         ) if tri_p.get("status") in ("READY", "MONITOR") else None
 
         strategies = [

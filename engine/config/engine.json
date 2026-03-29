@@ -5,6 +5,15 @@
   "env": "dev",
   "log_level": "INFO",
 
+  "capital": {
+    "tier": "alpha",
+    "tiers": {
+      "alpha": {"initial_usd": 34},
+      "beta": {"initial_usd": 750},
+      "production": {"initial_usd": 5000}
+    }
+  },
+
   "api": {
     "port": 8000,
     "ws_port": 8001,
