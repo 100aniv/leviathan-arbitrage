@@ -71,14 +71,14 @@ function StrategyCard({
           <button
             onClick={handleToggle}
             disabled={toggling}
-            aria-label={strategy.enabled ? 'Pause strategy' : 'Start strategy'}
+            aria-label={strategy.enabled ? '일시정지 strategy' : '시작 strategy'}
             className={`text-[10px] font-mono uppercase tracking-widest px-2 py-1 border transition-colors disabled:opacity-50 ${
               strategy.enabled
                 ? 'border-loss/40 text-loss/80 hover:bg-loss/10 hover:border-loss'
                 : 'border-profit/40 text-profit/80 hover:bg-profit/10 hover:border-profit'
             }`}
           >
-            {toggling ? '···' : strategy.enabled ? 'Pause' : 'Start'}
+            {toggling ? '···' : strategy.enabled ? '일시정지' : '시작'}
           </button>
         </div>
       </div>

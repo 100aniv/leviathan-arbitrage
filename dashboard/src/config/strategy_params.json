@@ -1,0 +1,45 @@
+{
+  "_real_wfe": {
+    "cross_exchange": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 2 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "triangular": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 2 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "spot_futures": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 2 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "funding_rate": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 2 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "statistical_arb": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 2 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "futures_futures": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 2 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    }
+  },
+  "_tuner_meta": {
+    "best_values": {
+      "cross_exchange": 0,
+      "triangular": 0,
+      "spot_futures": 0,
+      "funding_rate": 0,
+      "statistical_arb": 0,
+      "futures_futures": 0
+    },
+    "timestamp": "2026-03-29T03:13:37.384036+00:00"
+  }
+}

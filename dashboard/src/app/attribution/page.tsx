@@ -15,10 +15,10 @@ import type { AttributionBreakdown, AttributionResponse } from "@/types";
 type Tab = "strategy" | "exchange" | "pair" | "hour";
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: "strategy", label: "Strategy" },
-  { key: "exchange", label: "Exchange" },
-  { key: "pair",     label: "Pair"     },
-  { key: "hour",     label: "Hour"     },
+  { key: "strategy", label: "전략" },
+  { key: "exchange", label: "거래소" },
+  { key: "pair",     label: "페어"     },
+  { key: "hour",     label: "시간대"     },
 ];
 
 function fmt(n: number) {
@@ -27,7 +27,7 @@ function fmt(n: number) {
 
 const PIE_COLORS = ['#00ff88', '#3b82f6', '#f59e0b', '#ff4d4d', '#a78bfa', '#34d399', '#fb923c', '#60a5fa'];
 
-function StrategyPieChart({ items }: { items: AttributionBreakdown[] }) {
+function 전략PieChart({ items }: { items: AttributionBreakdown[] }) {
   if (items.length === 0) return null;
 
   const totalAbs = items.reduce((s, i) => s + Math.abs(i.pnl), 0) || 1;
@@ -41,7 +41,7 @@ function StrategyPieChart({ items }: { items: AttributionBreakdown[] }) {
 
   return (
     <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4 space-y-3">
-      <p className="text-xs font-mono text-terminal-subtle uppercase tracking-wider">Strategy Distribution</p>
+      <p className="text-xs font-mono text-terminal-subtle uppercase tracking-wider">전략 Distribution</p>
       <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie
@@ -140,20 +140,20 @@ function Heatmap({
   );
 
   // Show top 8 pairs × top 6 exchanges to keep grid manageable
-  const displayPairs = pairs.slice(0, 8);
-  const displayExchanges = exchanges.slice(0, 6);
+  const display페어s = pairs.slice(0, 8);
+  const display거래소s = exchanges.slice(0, 6);
 
   return (
     <div className="overflow-x-auto">
       <div
         className="inline-grid gap-0.5"
         style={{
-          gridTemplateColumns: `auto repeat(${displayExchanges.length}, minmax(64px, 1fr))`,
+          gridTemplateColumns: `auto repeat(${display거래소s.length}, minmax(64px, 1fr))`,
         }}
       >
         {/* Header row */}
         <div className="text-[9px] font-mono text-terminal-subtle px-1 py-1" />
-        {displayExchanges.map((ex) => (
+        {display거래소s.map((ex) => (
           <div
             key={ex.key}
             className="text-[9px] font-mono text-terminal-subtle text-center px-1 py-1 truncate"
@@ -163,14 +163,14 @@ function Heatmap({
         ))}
 
         {/* Data rows */}
-        {displayPairs.map((pair) => (
+        {display페어s.map((pair) => (
           <React.Fragment key={pair.key}>
             <div
               className="text-[9px] font-mono text-terminal-subtle pr-2 py-1 flex items-center"
             >
               {pair.key}
             </div>
-            {displayExchanges.map((ex) => {
+            {display거래소s.map((ex) => {
               // Approximate cell value: pair pnl × exchange pnl share
               const totalPnl = Math.abs(pair.pnl) + Math.abs(ex.pnl);
               const cellPnl = totalPnl > 0 ? (pair.pnl + ex.pnl) / 2 : 0;
@@ -278,8 +278,8 @@ export default function AttributionPage() {
   const items = getItems();
   const strategyArr = safeArr(data?.by_strategy);
   const exchangeArr = safeArr(data?.by_exchange);
-  const bestStrategy = strategyArr.length > 0 ? strategyArr.reduce((a, b) => (b.pnl > a.pnl ? b : a), strategyArr[0]) : null;
-  const bestExchange = exchangeArr.length > 0 ? exchangeArr.reduce((a, b) => (b.pnl > a.pnl ? b : a), exchangeArr[0]) : null;
+  const best전략 = strategyArr.length > 0 ? strategyArr.reduce((a, b) => (b.pnl > a.pnl ? b : a), strategyArr[0]) : null;
+  const best거래소 = exchangeArr.length > 0 ? exchangeArr.reduce((a, b) => (b.pnl > a.pnl ? b : a), exchangeArr[0]) : null;
 
   return (
     <div className="space-y-4">
@@ -318,13 +318,13 @@ export default function AttributionPage() {
                 color: undefined,
               },
               {
-                label: "Best Strategy",
-                value: bestStrategy?.key ?? "—",
+                label: "Best 전략",
+                value: best전략?.key ?? "—",
                 color: "#00ff88",
               },
               {
-                label: "Best Exchange",
-                value: bestExchange?.key ?? "—",
+                label: "Best 거래소",
+                value: best거래소?.key ?? "—",
                 color: "#00ff88",
               },
             ].map(({ label, value, color }) => (
@@ -366,8 +366,8 @@ export default function AttributionPage() {
             </div>
           ) : (
             <>
-              {/* Strategy PieChart — strategy tab only */}
-              {activeTab === "strategy" && <StrategyPieChart items={items} />}
+              {/* 전략 PieChart — strategy tab only */}
+              {activeTab === "strategy" && <전략PieChart items={items} />}
 
               {/* Waterfall Chart */}
               <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4 space-y-3">
@@ -381,7 +381,7 @@ export default function AttributionPage() {
               {activeTab === "pair" && (
                 <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4 space-y-3">
                   <p className="text-xs font-mono text-terminal-subtle uppercase tracking-wider">
-                    Pair × Exchange Heatmap
+                    페어 × 거래소 Heatmap
                   </p>
                   <Heatmap pairs={data.by_pair} exchanges={data.by_exchange} />
                 </div>

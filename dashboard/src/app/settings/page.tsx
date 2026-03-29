@@ -260,7 +260,7 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* Capital Settings */}
+      {/* 자본 설정 */}
       <section className="bg-terminal-surface border border-terminal-border rounded-lg p-5 space-y-4">
         <h3 className="text-sm font-mono font-semibold text-terminal-text">자본 설정</h3>
         <div className="space-y-3">

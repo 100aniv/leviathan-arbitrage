@@ -84,7 +84,7 @@ export default function StrategiesPage() {
         )}
       </div>
 
-      {/* Health Score Cards — 7 strategies */}
+      {/* 건강도 Cards — 7 strategies */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {STRATEGY_TYPES.map(({ type, label }) => {
           const breakdown = shadow?.by_strategy?.find(

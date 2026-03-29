@@ -62,7 +62,7 @@ export default function ExchangesPage() {
         <div>
           <h2 className="text-lg font-mono font-semibold text-terminal-text">Exchanges</h2>
           <p className="text-xs font-mono text-terminal-subtle mt-0.5">
-            Exchange connectivity · auto-refresh every 5s
+            Exchange connectivity · 자동 새로고침 every 5s
           </p>
         </div>
         {entries.length > 0 && (

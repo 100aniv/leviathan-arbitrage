@@ -180,15 +180,15 @@ export default function TradesPage() {
             <table className="w-full text-xs font-mono">
               <thead>
                 <tr className="border-b border-terminal-border text-terminal-subtle">
-                  <th className="text-left px-4 py-2">Timestamp</th>
-                  <th className="text-left px-4 py-2">Strategy</th>
-                  <th className="text-left px-4 py-2">Symbol</th>
+                  <th className="text-left px-4 py-2">시간</th>
+                  <th className="text-left px-4 py-2">전략</th>
+                  <th className="text-left px-4 py-2">심볼</th>
                   <th className="text-left px-4 py-2">Buy → Sell</th>
                   <th className="text-right px-4 py-2">Size</th>
-                  <th className="text-right px-4 py-2">Entry</th>
-                  <th className="text-right px-4 py-2">Exit</th>
-                  <th className="text-right px-4 py-2">PnL</th>
-                  <th className="text-left px-4 py-2">Status</th>
+                  <th className="text-right px-4 py-2">진입가</th>
+                  <th className="text-right px-4 py-2">청산가</th>
+                  <th className="text-right px-4 py-2">손익</th>
+                  <th className="text-left px-4 py-2">상태</th>
                 </tr>
               </thead>
               <tbody>
