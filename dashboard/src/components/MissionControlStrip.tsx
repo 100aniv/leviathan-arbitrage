@@ -24,12 +24,16 @@ export function MissionControlStrip() {
   );
 
   const equity    = portfolio?.total_balance_usdt ?? 0;
-  const todayPnl  = data?.pnl?.total ?? shadowStats?.total_pnl ?? portfolio?.total_pnl ?? 0;
+  // Shadow mode: prioritize shadow stats over WS (WS sends stale pnl=0, mode=backtest)
+  const isShadow  = shadowStats?.active === true;
+  const todayPnl  = isShadow
+    ? (shadowStats?.total_pnl ?? 0)
+    : (data?.pnl?.total ?? portfolio?.total_pnl ?? 0);
   const killActive = data?.kill_switch ?? false;
-  const mode       = (data?.mode ?? portfolio?.mode ?? '—').toUpperCase();
-  const activeCount = data?.strategies?.filter((s: { enabled: boolean }) => s.enabled).length
-    ?? strategies?.filter(s => s.enabled).length ?? 0;
-  const winRate     = data?.shadow_stats?.win_rate ?? shadowStats?.win_rate;
+  const mode       = (isShadow ? 'shadow' : (data?.mode ?? portfolio?.mode ?? '—')).toUpperCase();
+  const activeCount = strategies?.filter(s => s.enabled).length
+    ?? data?.strategies?.filter((s: { enabled: boolean }) => s.enabled).length ?? 0;
+  const winRate     = shadowStats?.win_rate ?? data?.shadow_stats?.win_rate;
   const pnlPos      = todayPnl >= 0;
 
   return (
