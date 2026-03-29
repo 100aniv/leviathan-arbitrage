@@ -234,18 +234,18 @@ async def get_strategy_metrics(request: Request) -> JSONResponse:
     if ctx.strategy_manager is not None:
         try:
             raw = ctx.strategy_manager.get_all_metrics_summary()
-            # Merge shadow trades/pnl into strategy_manager metrics
-            if shadow_by_strategy:
-                for sid, sm_data in raw.items():
-                    if sid in shadow_by_strategy:
-                        sd = shadow_by_strategy[sid]
-                        if isinstance(sm_data, dict):
-                            sm_data["trades"] = sd.get("trades", 0)
-                            sm_data["pnl"] = sd.get("pnl", 0.0)
-                            sm_data["wins"] = sd.get("wins", 0)
-                            sm_data["losses"] = sd.get("losses", 0)
-                            sm_data["win_rate"] = sd.get("win_rate", 0.0)
-            return JSONResponse({"strategies": raw})
+            # raw may be {"total_*": ..., "strategies": {...}} or flat {sid: {...}}
+            strat_dict = raw.get("strategies", raw) if isinstance(raw, dict) else raw
+            # Merge shadow trades/pnl into strategy metrics
+            if shadow_by_strategy and isinstance(strat_dict, dict):
+                for sid, sd in shadow_by_strategy.items():
+                    if sid in strat_dict and isinstance(strat_dict[sid], dict):
+                        strat_dict[sid]["trades"] = sd.get("trades", 0)
+                        strat_dict[sid]["pnl"] = sd.get("pnl", 0.0)
+                        strat_dict[sid]["wins"] = sd.get("wins", 0)
+                        strat_dict[sid]["losses"] = sd.get("losses", 0)
+                        strat_dict[sid]["win_rate"] = sd.get("win_rate", 0.0)
+            return JSONResponse({"strategies": strat_dict})
         except Exception as exc:
             logger.warning("Failed to get metrics from strategy_manager: %s", exc)
 
