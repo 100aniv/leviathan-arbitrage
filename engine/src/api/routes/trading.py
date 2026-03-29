@@ -102,7 +102,13 @@ async def list_trades(
     ctx = request.app.state.engine_context
     trades = list(ctx.trade_history)
 
-    # Shadow mode: query execution_log from DB when in-memory history is empty
+    # Shadow mode: use shadow_mode._trade_history if ctx.trade_history is empty
+    if not trades:
+        shadow_mode = getattr(ctx, "shadow_mode", None)
+        if shadow_mode is not None and hasattr(shadow_mode, "_trade_history"):
+            trades = list(shadow_mode._trade_history)
+
+    # Fallback: query execution_log from DB when both are empty
     if not trades:
         shadow_mode = getattr(ctx, "shadow_mode", None)
         if shadow_mode is not None and hasattr(shadow_mode, "_db_pool") and shadow_mode._db_pool is not None:

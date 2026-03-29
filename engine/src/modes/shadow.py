@@ -447,6 +447,9 @@ class ShadowMode:
         self._portfolio_risk = portfolio_risk
         # SIT-3: FlashGuard — set externally after construction via main.py
         self._flash_guard: Any | None = None
+        # SIT-3: Trade history for dashboard /trades API (deque, max 10K)
+        from collections import deque as _deque
+        self._trade_history: _deque[dict] = _deque(maxlen=10_000)
         # Shadow-local min_edge multiplier (CRISIS 레짐 시 2배 상향, log-only 모드)
         self._shadow_min_edge_factor: float = 1.0
 
@@ -1532,6 +1535,24 @@ class ShadowMode:
         self._stats.total_pnl += net_pnl_float
         self._compute_drawdown()
 
+        # SIT-3: Record to trade_history for dashboard /trades API
+        from datetime import datetime, timezone
+        self._trade_history.append({
+            "id": f"sh-{self._stats.trades_executed}",
+            "strategy_id": sid,
+            "symbol": signal.symbol,
+            "buy_exchange": buy_ex,
+            "sell_exchange": sell_ex,
+            "side": "arbitrage",
+            "size": float(buy_trade.amount),
+            "entry_price": float(buy_trade.price),
+            "exit_price": float(sell_trade.price),
+            "pnl": net_pnl_float,
+            "fee": float(real_buy_fee + real_sell_fee + network_cost),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "filled",
+        })
+
         # 체결 알림 (시그널 아닌 실제 체결만)
         if self._telegram is not None:
             try:
@@ -1878,6 +1899,25 @@ class ShadowMode:
 
         self._stats.total_pnl += net_pnl_float
         self._compute_drawdown()
+
+        # SIT-3: Record to trade_history for dashboard /trades API (multi-leg)
+        from datetime import datetime, timezone
+        _first_leg = trade_request.legs[0] if trade_request.legs else None
+        self._trade_history.append({
+            "id": f"sh-ml-{self._stats.trades_executed}",
+            "strategy_id": sid,
+            "symbol": _first_leg.symbol if _first_leg else "UNKNOWN",
+            "buy_exchange": next((l.exchange_id for l in trade_request.legs if l.side == OrderSide.BUY), ""),
+            "sell_exchange": next((l.exchange_id for l in trade_request.legs if l.side == OrderSide.SELL), ""),
+            "side": "arbitrage",
+            "size": float(_first_leg.size) if _first_leg else 0,
+            "entry_price": float(_first_leg.price or 0) if _first_leg else 0,
+            "exit_price": float(trade_request.legs[-1].price or 0) if trade_request.legs else 0,
+            "pnl": net_pnl_float,
+            "fee": float(total_fees),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "filled",
+        })
 
         # US-300: PortfolioRiskManager update (multi-leg path)
         if self._portfolio_risk is not None:
