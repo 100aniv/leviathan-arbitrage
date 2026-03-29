@@ -741,7 +741,7 @@ class TestModeSwitch:
         livegate = MagicMock()
         result = MagicMock()
         result.passed = True
-        livegate.evaluate.return_value = result
+        livegate.evaluate = AsyncMock(return_value=result)
         engine._live_gate = livegate
         ctx = _make_context(engine=engine, execution_mode="shadow")
         app = create_app(ctx)

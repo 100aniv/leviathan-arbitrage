@@ -67,10 +67,8 @@ class TestCapitalTierConfig:
 class TestExecutionSettings:
     def test_default_mode_is_paper(self):
         from src.core.config import Settings, ExecutionMode
-        import os
-        with patch.dict("os.environ", {}, clear=False):
-            if "EXECUTION_MODE" in os.environ:
-                del os.environ["EXECUTION_MODE"]
+        # Explicitly set to paper — .env file may have live/shadow from dev sessions
+        with patch.dict("os.environ", {"EXECUTION_MODE": "paper"}, clear=False):
             settings = Settings()
             assert settings.execution_mode == ExecutionMode.PAPER
 

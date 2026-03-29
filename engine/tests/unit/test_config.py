@@ -91,7 +91,8 @@ class TestMonitoringSettings:
 
 
 class TestSettings:
-    def test_loads_from_env(self):
+    def test_loads_from_env(self, monkeypatch):
+        monkeypatch.setenv("EXECUTION_MODE", "paper")
         s = Settings()
         assert s.engine_env == "test"  # set by conftest
         assert "localhost" in s.redis.url
