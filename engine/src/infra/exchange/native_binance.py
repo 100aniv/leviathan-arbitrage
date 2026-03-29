@@ -77,7 +77,7 @@ class BinanceNativeAdapter(NativeAdapter):
         return _REST_SANDBOX_URL if self._sandbox else _REST_URL
 
     def _default_headers(self) -> dict[str, str]:
-        headers: dict[str, str] = {"Content-Type": "application/json"}
+        headers: dict[str, str] = {}
         if self._api_key:
             headers["X-MBX-APIKEY"] = self._api_key
         return headers

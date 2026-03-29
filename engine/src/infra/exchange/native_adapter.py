@@ -295,8 +295,12 @@ class NativeAdapter(abc.ABC):
         ).hexdigest()
 
     def _build_query_string(self, params: dict[str, Any]) -> str:
-        """Build sorted, URL-encoded query string."""
-        return urllib.parse.urlencode(sorted(params.items()))
+        """Build URL-encoded query string (insertion order — not sorted).
+
+        Binance requires signature to match the exact query string sent.
+        httpx sends params in insertion order, so we must sign in the same order.
+        """
+        return urllib.parse.urlencode(params)
 
     def _timestamp_ms(self) -> int:
         """Current timestamp in milliseconds."""
@@ -319,7 +323,9 @@ class NativeAdapter(abc.ABC):
         if not self._http:
             raise RuntimeError(f"{self.exchange_id}: not connected — call connect() first")
 
-        req_headers = dict(headers or {})
+        req_headers = dict(self._default_headers())
+        if headers:
+            req_headers.update(headers)
         if signed:
             req_headers.update(self._auth_headers(method, path, params, data))
 
