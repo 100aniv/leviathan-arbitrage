@@ -726,12 +726,23 @@ class LiveMode:
             if LIVE_EXECUTION_TIME is not None:
                 LIVE_EXECUTION_TIME.observe(time.monotonic() - t0)
 
+            # --- Validate execution result ---
+            if exec_result is not None and hasattr(exec_result, 'status'):
+                from src.execution.executor import ExecutionStatus
+                if exec_result.status != ExecutionStatus.SUCCESS:
+                    logger.warning(
+                        "live_mode.execution_not_success strategy=%s status=%s",
+                        sid, exec_result.status,
+                    )
+                    strat_stats.rejections += 1
+                    return
+
             # --- Record trade result ---
             self._stats.trades_executed += 1
             strat_stats.trades += 1
 
-            # Compute PnL from execution result
-            pnl = self._compute_pnl(trade_request, exec_result)
+            # Compute PnL from ACTUAL fill prices (not estimates)
+            pnl = self._compute_pnl_from_result(exec_result, trade_request)
             self._update_pnl_stats(pnl, sid)
 
             if LIVE_TRADES_TOTAL is not None:
@@ -894,46 +905,63 @@ class LiveMode:
         exchanges = sorted({leg.exchange_id for leg in trade_request.legs})
         return f"{','.join(symbols)}|{','.join(exchanges)}"
 
-    def _compute_pnl(self, trade_request: TradeRequest, exec_result: Any) -> Decimal:
-        """Compute PnL from execution result.
+    def _compute_pnl_from_result(self, exec_result: Any, trade_request: TradeRequest) -> Decimal:
+        """Compute PnL from ACTUAL execution result (fill prices from exchange).
 
-        For live mode, PnL comes from actual fill prices.
-        For paper mode, uses expected profit from trade request.
+        Priority:
+        1. exec_result.realized_pnl (if executor computed it)
+        2. exec_result.legs[].trade (actual fill prices from Binance)
+        3. Fallback to trade_request legs (estimates — last resort)
         """
-        # If executor provides PnL directly (e.g., from ExecutionResult)
+        # 1. Direct PnL from executor
         if exec_result is not None and hasattr(exec_result, 'realized_pnl'):
-            return Decimal(str(exec_result.realized_pnl))
+            rp = exec_result.realized_pnl
+            if rp is not None and rp != 0:
+                return Decimal(str(rp))
 
-        # Compute from legs using fee model
-        net_pnl = Decimal("0")
-        is_cross_asset = trade_request.metadata.get("cross_asset") == "true"
+        # 2. Compute from actual Trade objects in ExecutionResult
+        if exec_result is not None and hasattr(exec_result, 'legs'):
+            net_pnl = Decimal("0")
+            has_trades = False
+            for leg_result in exec_result.legs:
+                trade = getattr(leg_result, 'trade', None)
+                if trade is None:
+                    continue
+                has_trades = True
+                fill_price = Decimal(str(trade.price))
+                fill_amount = Decimal(str(trade.amount))
+                fill_fee = Decimal(str(getattr(trade, 'fee', 0)))
+                notional = fill_price * fill_amount
+                side = getattr(leg_result, 'side', None) or getattr(trade, 'side', None)
+                side_str = str(side).upper() if side else ""
 
-        if is_cross_asset:
-            # Dollar-neutral: PnL = -(fees only)
-            for leg in trade_request.legs:
-                price = leg.price or Decimal("0")
-                notional = price * leg.size
-                ex = leg.exchange_id.removeprefix("paper_").removeprefix("sandbox_")
-                try:
-                    fee = self._fee_model.taker_fee(ex, notional)
-                except ValueError:
-                    fee = notional * Decimal("0.0025")
-                net_pnl -= fee
-        else:
-            for leg in trade_request.legs:
-                price = leg.price or Decimal("0")
-                notional = price * leg.size
-                ex = leg.exchange_id.removeprefix("paper_").removeprefix("sandbox_")
-                try:
-                    fee = self._fee_model.taker_fee(ex, notional)
-                except ValueError:
-                    fee = notional * Decimal("0.0025")
-                if leg.side == OrderSide.SELL:
-                    net_pnl += notional - fee
+                if "SELL" in side_str:
+                    net_pnl += notional - fill_fee
                 else:
-                    net_pnl -= notional + fee
+                    net_pnl -= notional + fill_fee
 
+            if has_trades:
+                return net_pnl
+
+        # 3. Fallback: estimate from trade_request legs
+        net_pnl = Decimal("0")
+        for leg in trade_request.legs:
+            price = leg.price or Decimal("0")
+            notional = price * leg.size
+            ex = leg.exchange_id.removeprefix("paper_").removeprefix("sandbox_")
+            try:
+                fee = self._fee_model.taker_fee(ex, notional)
+            except ValueError:
+                fee = notional * Decimal("0.0025")
+            if leg.side == OrderSide.SELL:
+                net_pnl += notional - fee
+            else:
+                net_pnl -= notional + fee
         return net_pnl
+
+    def _compute_pnl(self, trade_request: TradeRequest, exec_result: Any) -> Decimal:
+        """Legacy wrapper — delegates to _compute_pnl_from_result."""
+        return self._compute_pnl_from_result(exec_result, trade_request)
 
     def _update_pnl_stats(self, pnl: Decimal, strategy_id: str) -> None:
         """Update cumulative PnL, drawdown, and per-strategy stats."""

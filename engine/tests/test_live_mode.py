@@ -36,10 +36,17 @@ def mock_signal_generator():
 
 @pytest.fixture
 def mock_executor():
+    from src.execution.executor import ExecutionStatus
     executor = AsyncMock()
-    executor.execute_same_exchange = AsyncMock(return_value=MagicMock(realized_pnl=0.01))
-    executor.execute_cross_exchange = AsyncMock(return_value=MagicMock(realized_pnl=0.02))
-    executor.execute_multi_leg = AsyncMock(return_value=MagicMock(realized_pnl=0.005))
+    executor.execute_same_exchange = AsyncMock(return_value=MagicMock(
+        status=ExecutionStatus.SUCCESS, realized_pnl=0.01, legs=[],
+    ))
+    executor.execute_cross_exchange = AsyncMock(return_value=MagicMock(
+        status=ExecutionStatus.SUCCESS, realized_pnl=0.02, legs=[],
+    ))
+    executor.execute_multi_leg = AsyncMock(return_value=MagicMock(
+        status=ExecutionStatus.SUCCESS, realized_pnl=0.005, legs=[],
+    ))
     return executor
 
 
@@ -314,8 +321,9 @@ class TestTradeExecution:
 
     @pytest.mark.asyncio
     async def test_execute_updates_stats(self, make_live_mode, mock_executor):
+        from src.execution.executor import ExecutionStatus
         mock_executor.execute_cross_exchange = AsyncMock(
-            return_value=MagicMock(realized_pnl=0.05)
+            return_value=MagicMock(status=ExecutionStatus.SUCCESS, realized_pnl=0.05, legs=[])
         )
 
         tr = make_trade_request()

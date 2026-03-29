@@ -206,13 +206,21 @@ class NativeAdapter(abc.ABC):
         start = time.monotonic()
         try:
             trade = await self._rest_place_order(order)
-            self._health.record_api_latency((time.monotonic() - start) * 1000)
+            latency_ms = (time.monotonic() - start) * 1000
+            self._health.record_api_latency(latency_ms)
             self._health.record_order_fill(True)
+            logger.info(
+                "order_placed exchange=%s order_id=%s symbol=%s side=%s qty=%s price=%s fee=%s latency_ms=%.1f",
+                self.exchange_id, trade.trade_id, order.symbol,
+                order.side.value if hasattr(order.side, 'value') else order.side,
+                str(trade.amount), str(trade.price), str(trade.fee), latency_ms,
+            )
             return trade
         except Exception as e:
             self._health.record_error()
             self._health.record_order_fill(False)
-            logger.error("Place order error %s: %s", self.exchange_id, e)
+            logger.error("order_failed exchange=%s symbol=%s side=%s error=%s",
+                         self.exchange_id, order.symbol, order.side, e)
             raise
 
     async def cancel_order(self, order_id: str, symbol: str | None = None) -> bool:
