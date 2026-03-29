@@ -99,6 +99,7 @@ class TestSettings:
 
     def test_prod_requires_binance_key(self, monkeypatch):
         monkeypatch.setenv("ENGINE_ENV", "prod")
+        monkeypatch.setenv("EXECUTION_MODE", "paper")
         monkeypatch.setenv("BINANCE_API_KEY", "")
         monkeypatch.setenv("OKX_API_KEY", "some_key")
         with pytest.raises(Exception, match="Production requires"):
@@ -106,6 +107,7 @@ class TestSettings:
 
     def test_prod_requires_okx_key(self, monkeypatch):
         monkeypatch.setenv("ENGINE_ENV", "prod")
+        monkeypatch.setenv("EXECUTION_MODE", "paper")
         monkeypatch.setenv("BINANCE_API_KEY", "real_key")
         monkeypatch.setenv("OKX_API_KEY", "")
         with pytest.raises(Exception, match="Production requires"):
@@ -113,6 +115,7 @@ class TestSettings:
 
     def test_prod_ok_with_all_keys(self, monkeypatch):
         monkeypatch.setenv("ENGINE_ENV", "prod")
+        monkeypatch.setenv("EXECUTION_MODE", "paper")
         monkeypatch.setenv("BINANCE_API_KEY", "real_binance_key")
         monkeypatch.setenv("OKX_API_KEY", "real_okx_key")
         s = Settings()
@@ -120,6 +123,7 @@ class TestSettings:
 
     def test_dev_env_no_keys_required(self, monkeypatch):
         monkeypatch.setenv("ENGINE_ENV", "dev")
+        monkeypatch.setenv("EXECUTION_MODE", "paper")
         monkeypatch.setenv("BINANCE_API_KEY", "")
         s = Settings()
         assert s.engine_env == "dev"

@@ -568,37 +568,34 @@ class TestOnExecutionResult:
 
 class TestStartBackgroundTasks:
     @pytest.mark.asyncio
-    async def test_synthetic_mode_starts_orderbook_feed(self):
-        from src.core.config import ExecutionMode
+    async def test_backtest_mode_starts_orderbook_feed(self):
+        """EngineMode.BACKTEST → orderbook_feed + multi_signal tasks."""
         engine = _make_engine()
         engine._settings = MagicMock()
-        engine._settings.execution_mode = ExecutionMode.PAPER
         engine._strategy_manager = AsyncMock()
         engine._trade_consumer = AsyncMock()
         engine.context.ws_manager = None
 
         created_tasks = []
-        original_create_task = asyncio.create_task
 
         def mock_create_task(coro, name=None):
             task = MagicMock()
             task.done.return_value = True
             created_tasks.append(name or "unknown")
-            coro.close()  # prevent coroutine warning
+            coro.close()
             return task
 
-        with patch.dict(os.environ, {"DATA_MODE": DataMode.SYNTHETIC}):
+        with patch.dict(os.environ, {"ENGINE_MODE": "backtest", "EXECUTION_MODE": "paper"}):
             with patch("asyncio.create_task", side_effect=mock_create_task):
                 await engine._start_background_tasks()
 
         assert "orderbook_feed" in created_tasks
 
     @pytest.mark.asyncio
-    async def test_real_public_mode_starts_real_data_feed(self):
-        from src.core.config import ExecutionMode
+    async def test_paper_mode_starts_paper_task(self):
+        """EngineMode.PAPER → paper_mode (old shadow) task."""
         engine = _make_engine()
         engine._settings = MagicMock()
-        engine._settings.execution_mode = ExecutionMode.PAPER
         engine._strategy_manager = AsyncMock()
         engine._trade_consumer = AsyncMock()
         engine.context.ws_manager = None
@@ -612,18 +609,17 @@ class TestStartBackgroundTasks:
             coro.close()
             return task
 
-        with patch.dict(os.environ, {"DATA_MODE": DataMode.REAL_PUBLIC}):
+        with patch.dict(os.environ, {"ENGINE_MODE": "paper", "EXECUTION_MODE": "paper"}):
             with patch("asyncio.create_task", side_effect=mock_create_task):
                 await engine._start_background_tasks()
 
-        assert "real_data_feed" in created_tasks
+        assert "paper_mode" in created_tasks
 
     @pytest.mark.asyncio
-    async def test_shadow_mode_starts_shadow_task(self):
-        from src.core.config import ExecutionMode
+    async def test_shadow_mode_starts_canary_task(self):
+        """EngineMode.SHADOW → shadow_canary (LiveMode small capital) task."""
         engine = _make_engine()
         engine._settings = MagicMock()
-        engine._settings.execution_mode = ExecutionMode.PAPER
         engine._strategy_manager = AsyncMock()
         engine._trade_consumer = AsyncMock()
         engine.context.ws_manager = None
@@ -637,18 +633,17 @@ class TestStartBackgroundTasks:
             coro.close()
             return task
 
-        with patch.dict(os.environ, {"DATA_MODE": DataMode.SHADOW}):
+        with patch.dict(os.environ, {"ENGINE_MODE": "shadow", "EXECUTION_MODE": "paper"}):
             with patch("asyncio.create_task", side_effect=mock_create_task):
                 await engine._start_background_tasks()
 
-        assert "shadow_mode" in created_tasks
+        assert "shadow_canary" in created_tasks
 
     @pytest.mark.asyncio
     async def test_background_tasks_always_includes_core_loops(self):
-        from src.core.config import ExecutionMode
+        """Core loops (trade_consumer, health_check, reconcile) run in ALL modes."""
         engine = _make_engine()
         engine._settings = MagicMock()
-        engine._settings.execution_mode = ExecutionMode.PAPER
         engine._strategy_manager = AsyncMock()
         engine._trade_consumer = AsyncMock()
         engine.context.ws_manager = None
@@ -662,11 +657,11 @@ class TestStartBackgroundTasks:
             coro.close()
             return task
 
-        with patch.dict(os.environ, {"DATA_MODE": DataMode.SYNTHETIC}):
+        with patch.dict(os.environ, {"ENGINE_MODE": "backtest", "EXECUTION_MODE": "paper"}):
             with patch("asyncio.create_task", side_effect=mock_create_task):
                 await engine._start_background_tasks()
 
-        assert "strategy_mgr" in created_tasks
+        # strategy_mgr only runs in LIVE mode (others use direct routing)
         assert "trade_consumer" in created_tasks
         assert "health_check" in created_tasks
         assert "reconcile" in created_tasks

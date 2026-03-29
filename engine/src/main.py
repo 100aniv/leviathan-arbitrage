@@ -1698,14 +1698,29 @@ class Engine:
 
     async def _start_background_tasks(self) -> None:
         import os
-        # US-G01: EXECUTION_MODE=live → DATA_MODE 자동 매핑
-        _exec_mode = os.getenv("EXECUTION_MODE", "paper").lower()
-        _default_data = "real_authenticated" if _exec_mode == "live" else os.getenv("DATA_MODE", DataMode.SYNTHETIC)
-        self._data_mode = os.getenv("DATA_MODE", _default_data).lower()
-        if _exec_mode == "live" and self._data_mode != "real_authenticated":
-            logger.warning("EXECUTION_MODE=live but DATA_MODE=%s — overriding to real_authenticated", self._data_mode)
-            self._data_mode = "real_authenticated"
+        from src.core.config import EngineMode, resolve_engine_mode, load_engine_config
 
+        # Phase H-2: Resolve unified EngineMode (backtest/paper/shadow/live)
+        # Priority: ENGINE_MODE env > engine.json > legacy EXECUTION_MODE+DATA_MODE
+        _engine_cfg = load_engine_config()
+        self._engine_mode = resolve_engine_mode(
+            execution_mode=os.getenv("EXECUTION_MODE"),
+            data_mode=os.getenv("DATA_MODE"),
+            engine_mode=os.getenv("ENGINE_MODE", _engine_cfg.get("mode")),
+        )
+
+        # Legacy compatibility: set _data_mode for code that still reads it
+        _mode_to_data = {
+            EngineMode.BACKTEST: DataMode.SYNTHETIC,
+            EngineMode.PAPER: DataMode.SHADOW,
+            EngineMode.SHADOW: DataMode.REAL_AUTHENTICATED,
+            EngineMode.LIVE: DataMode.REAL_AUTHENTICATED,
+        }
+        self._data_mode = _mode_to_data.get(self._engine_mode, DataMode.SYNTHETIC)
+
+        logger.info("engine_mode=%s (legacy data_mode=%s)", self._engine_mode, self._data_mode)
+
+        # Common background tasks (all modes)
         tasks = [
             asyncio.create_task(self._trade_consumer_loop(), name="trade_consumer"),
             asyncio.create_task(self._health_check_loop(), name="health_check"),
@@ -1714,58 +1729,60 @@ class Engine:
             asyncio.create_task(self._dashboard_feed_loop(), name="dashboard_feed"),
         ]
 
-        # Shadow mode: route_signal() provides direct in-process routing, no Redis loop needed
-        # Live/Paper modes: Redis Streams consume loop required
-        if self._data_mode != DataMode.SHADOW:
+        # --- Single-axis mode routing (Phase H-2) ---
+        if self._engine_mode == EngineMode.BACKTEST:
+            # Backtest: historical data replay + SimExecutor
             tasks.append(
-                asyncio.create_task(self._strategy_manager_loop(), name="strategy_mgr")
+                asyncio.create_task(self._orderbook_feed_loop(), name="orderbook_feed")
             )
-        else:
-            logger.info("Shadow mode: StrategyManager Redis consume loop skipped (using direct routing)")
+            tasks.append(
+                asyncio.create_task(self._paper_signal_simulator_loop(), name="multi_signal")
+            )
+            logger.info("EngineMode: BACKTEST — synthetic data + SimExecutor")
 
-        if self._data_mode == DataMode.SHADOW:
-            # Shadow mode: real data + paper execution + full metrics
+        elif self._engine_mode == EngineMode.PAPER:
+            # Paper: live WS data + SimExecutor (= old shadow mode)
+            # Direct in-process routing (no Redis consumer loop)
             strategy_validation = os.getenv("STRATEGY_VALIDATION", "").lower() == "true"
             shadow_progressive = os.getenv("SHADOW_PROGRESSIVE", "false").lower() == "true"
             if strategy_validation:
                 tasks.append(
                     asyncio.create_task(self._strategy_validation_loop(), name="strategy_validation")
                 )
-                logger.info("Data mode: SHADOW (STRATEGY_VALIDATION) — starting StrategyValidationOrchestrator")
+                logger.info("EngineMode: PAPER (STRATEGY_VALIDATION)")
             elif shadow_progressive:
                 tasks.append(
                     asyncio.create_task(self._progressive_shadow_loop(), name="progressive_shadow")
                 )
-                logger.info("Data mode: SHADOW (PROGRESSIVE) — starting ProgressiveShadowOrchestrator")
+                logger.info("EngineMode: PAPER (PROGRESSIVE)")
             else:
                 tasks.append(
-                    asyncio.create_task(self._shadow_mode_loop(), name="shadow_mode")
+                    asyncio.create_task(self._shadow_mode_loop(), name="paper_mode")
                 )
-                logger.info("Data mode: SHADOW — starting Shadow Mode orchestrator")
-        elif self._data_mode == DataMode.REAL_PUBLIC:
-            # Real public WebSocket data — no API keys, observation mode
+                logger.info("EngineMode: PAPER — live WS data + SimExecutor")
+
+        elif self._engine_mode == EngineMode.SHADOW:
+            # Shadow: live WS data + AtomicExecutor small capital (canary)
             tasks.append(
-                asyncio.create_task(self._real_data_feed_loop(), name="real_data_feed")
+                asyncio.create_task(self._live_mode_loop(), name="shadow_canary")
             )
-            logger.info("Data mode: REAL_PUBLIC — starting WebSocket collectors")
-        elif self._data_mode == DataMode.REAL_AUTHENTICATED:
-            # US-169: Live mode — real authenticated data + AtomicExecutor routing
+            logger.info("EngineMode: SHADOW — live WS data + AtomicExecutor (canary)")
+
+        elif self._engine_mode == EngineMode.LIVE:
+            # Live: live WS data + AtomicExecutor full capital
+            tasks.append(
+                asyncio.create_task(self._strategy_manager_loop(), name="strategy_mgr")
+            )
             tasks.append(
                 asyncio.create_task(self._live_mode_loop(), name="live_mode")
             )
-            logger.info("Data mode: REAL_AUTHENTICATED — starting live mode")
+            logger.info("EngineMode: LIVE — live WS data + AtomicExecutor (full)")
+
         else:
-            # Synthetic paper mode — use PaperExchangeAdapter orderbook feed
-            mode = self._settings.execution_mode if self._settings else ExecutionMode.PAPER
-            if mode in (ExecutionMode.PAPER, ExecutionMode.SANDBOX):
-                tasks.append(
-                    asyncio.create_task(self._orderbook_feed_loop(), name="orderbook_feed")
-                )
-                # Multi-strategy signal simulator for paper mode
-                tasks.append(
-                    asyncio.create_task(self._paper_signal_simulator_loop(), name="multi_signal")
-                )
-            logger.info("Data mode: %s", self._data_mode)
+            logger.warning("Unknown engine_mode=%s — falling back to BACKTEST", self._engine_mode)
+            tasks.append(
+                asyncio.create_task(self._orderbook_feed_loop(), name="orderbook_feed")
+            )
 
         # Phase S21: TelegramCommandHandler removed (Dev봇에 통합됨)
         # TradeBot poll loop (InfraBot/DevBot → bot-gateway)

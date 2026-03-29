@@ -90,10 +90,67 @@ _load_dynaconf_defaults()
 
 
 class ExecutionMode(StrEnum):
-    """Engine execution mode."""
-    PAPER = "paper"       # No API keys, synthetic data, InMemoryEventBus
-    SANDBOX = "sandbox"   # Testnet API keys, real data, paper execution
-    LIVE = "live"         # Real API keys, real data, real execution
+    """Engine execution mode (legacy — use EngineMode for new code)."""
+    PAPER = "paper"
+    SANDBOX = "sandbox"
+    LIVE = "live"
+
+
+class EngineMode(StrEnum):
+    """Unified engine mode (Phase H-2 — industry standard 4-stage).
+
+    Backtest → Paper → Shadow → Live
+
+    Strategy/signal code is identical across all modes.
+    Only DataFeed and Executor differ per mode.
+    """
+    BACKTEST = "backtest"   # Historical data + SimExecutor
+    PAPER = "paper"         # Live WS data + SimExecutor (= old "shadow")
+    SHADOW = "shadow"       # Live WS data + AtomicExecutor small capital (canary)
+    LIVE = "live"           # Live WS data + AtomicExecutor full capital
+
+
+def resolve_engine_mode(
+    execution_mode: str | None = None,
+    data_mode: str | None = None,
+    engine_mode: str | None = None,
+) -> EngineMode:
+    """Resolve EngineMode from legacy or new config (backward compatible).
+
+    Priority: ENGINE_MODE > (EXECUTION_MODE + DATA_MODE mapping)
+
+    Legacy mapping:
+      paper + synthetic      → BACKTEST
+      paper + shadow         → PAPER
+      paper + real_public    → PAPER
+      live + real_authenticated → LIVE
+      sandbox + *            → SHADOW
+    """
+    import os
+
+    # New config takes priority
+    em = engine_mode or os.getenv("ENGINE_MODE", "")
+    if em:
+        try:
+            return EngineMode(em.lower())
+        except ValueError:
+            pass
+
+    # Legacy fallback
+    exec_m = (execution_mode or os.getenv("EXECUTION_MODE", "paper")).lower()
+    data_m = (data_mode or os.getenv("DATA_MODE", "synthetic")).lower()
+
+    if exec_m == "live":
+        return EngineMode.LIVE
+    if exec_m == "sandbox":
+        return EngineMode.SHADOW
+    # exec_m == "paper"
+    if data_m == "shadow":
+        return EngineMode.PAPER
+    if data_m in ("real_public", "real_authenticated"):
+        return EngineMode.PAPER
+    # synthetic or unknown
+    return EngineMode.BACKTEST
 
 
 class CapitalTierConfig(BaseSettings):
@@ -318,6 +375,11 @@ class Settings(BaseSettings):
     execution_mode: ExecutionMode = Field(
         default=ExecutionMode.PAPER, alias="EXECUTION_MODE"
     )
+    # Phase H-2: Unified engine mode (backtest/paper/shadow/live)
+    engine_mode: EngineMode | None = Field(
+        default=None, alias="ENGINE_MODE",
+        description="Unified mode. Takes priority over EXECUTION_MODE+DATA_MODE."
+    )
     capital: CapitalTierConfig = Field(default_factory=CapitalTierConfig)
 
     redis: RedisSettings = Field(default_factory=RedisSettings)
@@ -373,4 +435,25 @@ def load_trading_config() -> dict:
     except (json.JSONDecodeError, OSError) as exc:
         import logging
         logging.getLogger(__name__).warning("Failed to load trading.json: %s", exc)
+        return {}
+
+
+# Path: engine/config/engine.json
+_ENGINE_JSON_PATH = Path(__file__).parent.parent.parent / "config" / "engine.json"
+
+
+def load_engine_config() -> dict:
+    """Load engine runtime config from config/engine.json.
+
+    Contains mode, risk params, exchange list, strategy params — non-secret.
+    Returns empty dict if missing (backward compatible with .env-only setup).
+    """
+    if not _ENGINE_JSON_PATH.exists():
+        return {}
+    try:
+        with _ENGINE_JSON_PATH.open(encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, OSError) as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to load engine.json: %s", exc)
         return {}

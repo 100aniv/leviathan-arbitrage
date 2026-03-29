@@ -1,0 +1,81 @@
+{
+  "_comment": "LEVIATHAN Engine Configuration — Runtime settings (non-secret). Secrets stay in .env",
+
+  "mode": "paper",
+  "env": "dev",
+  "log_level": "INFO",
+
+  "api": {
+    "port": 8000,
+    "ws_port": 8001,
+    "workers": 4
+  },
+
+  "exchanges": {
+    "active": ["binance", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone", "binance_futures", "bybit_futures", "okx_futures"],
+    "symbols": ["auto"],
+    "symbol_min_exchanges": 3
+  },
+
+  "risk": {
+    "max_position_usd": 5000,
+    "max_daily_loss_usd": 15,
+    "max_net_exposure_per_asset": 5000,
+    "min_edge_bps": 0,
+    "min_price_usd": 0.10,
+    "max_rollback_threshold": 0.02,
+    "kill_switch_enabled": true
+  },
+
+  "paper": {
+    "_comment": "Paper mode: live WS data + SimExecutor (old 'shadow')",
+    "depth_fraction": 1.0,
+    "max_trade_size": 100,
+    "disabled_strategies": [],
+    "max_loss_per_trade_usd": 10,
+    "progressive_enabled": false
+  },
+
+  "shadow": {
+    "_comment": "Shadow mode: live WS data + AtomicExecutor small capital (canary)",
+    "max_position_usd": 10,
+    "exchanges": ["binance", "binance_futures"],
+    "daily_loss_limit_usd": 15
+  },
+
+  "live": {
+    "_comment": "Live mode: full capital AtomicExecutor",
+    "max_position_usd": 5000,
+    "exchanges": ["binance", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone", "binance_futures", "bybit_futures", "okx_futures"]
+  },
+
+  "live_gate": {
+    "sharpe_threshold": 2.5,
+    "mdd_threshold": 0.05,
+    "min_signals_per_day": 100,
+    "evaluation_days": 7,
+    "bypass": false,
+    "continuous_enabled": true
+  },
+
+  "strategy_params": {
+    "_comment": "See config/strategy_params.json for per-strategy tuning"
+  },
+
+  "funding_rate": {
+    "zscore_threshold": -1,
+    "ou_min_halflife_s": 60,
+    "min_diff_bps": 2
+  },
+
+  "statistical_arb": {
+    "z_threshold": 2.0,
+    "cooldown_s": 120,
+    "min_history": 60
+  },
+
+  "book_depth": {
+    "cross_exchange_min_usd": 1,
+    "futures_min_usd": 1
+  }
+}

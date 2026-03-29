@@ -33,6 +33,8 @@ def event_loop_policy() -> asyncio.DefaultEventLoopPolicy:
 def set_test_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Force test environment variables so Settings() works without a real .env."""
     monkeypatch.setenv("ENGINE_ENV", "test")
+    monkeypatch.setenv("EXECUTION_MODE", "paper")
+    monkeypatch.setenv("ENGINE_MODE", "backtest")
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/15")
     monkeypatch.setenv(
         "DATABASE_URL",
