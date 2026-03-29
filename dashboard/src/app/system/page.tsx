@@ -254,9 +254,9 @@ export default function SystemPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-mono font-semibold text-terminal-text">System Health</h2>
+          <h2 className="text-lg font-mono font-semibold text-terminal-text">시스템 상태</h2>
           <p className="text-xs font-mono text-terminal-subtle mt-1">
-            Engine status, connectivity, and diagnostics
+            엔진 상태, 연결, 진단
           </p>
         </div>
         {!isLoading && !hasError && (
@@ -475,7 +475,7 @@ export default function SystemPage() {
       {/* Resource usage */}
       <div className="bg-terminal-surface border border-terminal-border p-4">
         <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle block mb-4">
-          Resource Usage
+          리소스 사용량
         </span>
         {resourcesLoading && !resources ? (
           <div className="space-y-3">

@@ -448,9 +448,9 @@ export default function SettingsPage() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
-          {/* Emergency Stop */}
+          {/* 비상 정지 */}
           <div className="flex-1 bg-terminal-surface border border-loss/30 rounded p-4 space-y-2">
-            <p className="text-xs font-mono font-semibold text-terminal-text">Emergency Stop</p>
+            <p className="text-xs font-mono font-semibold text-terminal-text">비상 정지</p>
             <p className="text-[10px] font-mono text-terminal-subtle">
               Kill Switch를 즉시 활성화합니다. 모든 거래가 즉시 중단됩니다.
             </p>
@@ -459,7 +459,7 @@ export default function SettingsPage() {
               disabled={dangerLoading}
               className="mt-1 px-4 py-2 text-xs font-mono rounded border border-loss/60 text-loss hover:bg-loss/15 disabled:opacity-40 transition-colors"
             >
-              {dangerLoading ? "처리 중…" : "Emergency Stop"}
+              {dangerLoading ? "처리 중…" : "비상 정지"}
             </button>
           </div>
 
@@ -483,7 +483,7 @@ export default function SettingsPage() {
       {/* Confirm Dialogs */}
       <ConfirmDialog
         isOpen={dialog?.kind === "emergency-stop"}
-        title="Emergency Stop"
+        title="비상 정지"
         message="Kill Switch를 즉시 활성화합니다. 엔진의 모든 거래 실행이 즉시 중단됩니다. 재시작하려면 엔진을 수동으로 재부팅해야 합니다."
         confirmLabel="지금 중단"
         cancelLabel="취소"

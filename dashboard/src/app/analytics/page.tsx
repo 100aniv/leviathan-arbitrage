@@ -232,7 +232,7 @@ export default function AnalyticsPage() {
       <div>
         <h2 className="text-lg font-mono font-semibold text-terminal-text">Analytics</h2>
         <p className="text-xs font-mono text-terminal-subtle mt-0.5">
-          Strategy performance metrics · auto-refresh every 5s
+          전략 성과 지표 · 5초마다 자동 새로고침
         </p>
       </div>
 
@@ -241,12 +241,12 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
             {
-              label: "Total PnL",
+              label: "총 손익",
               value: `${totalPnl >= 0 ? "+" : ""}$${totalPnl.toFixed(4)}`,
               color: totalPnl >= 0 ? "#00ff88" : "#ff4d4d",
             },
-            { label: "Total Trades",  value: totalTrades.toLocaleString(),   color: undefined },
-            { label: "Total Signals", value: totalSignals.toLocaleString(), color: undefined },
+            { label: "총 거래",  value: totalTrades.toLocaleString(),   color: undefined },
+            { label: "총 시그널", value: totalSignals.toLocaleString(), color: undefined },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-terminal-surface border border-terminal-border rounded-lg p-4">
               <p className="text-terminal-subtle text-xs font-mono">{label}</p>

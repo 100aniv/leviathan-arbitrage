@@ -95,7 +95,7 @@ export default function TradesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-mono font-semibold text-terminal-text">
-            Trade History
+            거래 내역
             <span className={`ml-2 px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
               engineMode === "live" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
               engineMode === "shadow" ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" :
@@ -106,7 +106,7 @@ export default function TradesPage() {
             </span>
           </h2>
           <p className="text-xs font-mono text-terminal-subtle mt-0.5">
-            Executed arbitrage trades · auto-refresh every 5s · click row for detail
+            실행된 아비트라지 거래 · 5초마다 자동 새로고침 · 행 클릭 시 상세 보기
           </p>
         </div>
       </div>
@@ -131,7 +131,7 @@ export default function TradesPage() {
           onChange={(e) => setSelectedStrategy(e.target.value)}
           className="bg-terminal-bg border border-terminal-border text-terminal-text text-xs font-mono px-2 py-1 focus:outline-none focus:border-accent"
         >
-          <option value="">All Strategies</option>
+          <option value="">전체 전략</option>
           {strategies.map((s) => (
             <option key={s.id} value={s.id}>{s.id}</option>
           ))}
@@ -141,7 +141,7 @@ export default function TradesPage() {
           onChange={(e) => setSelectedExchange(e.target.value)}
           className="bg-terminal-bg border border-terminal-border text-terminal-text text-xs font-mono px-2 py-1 focus:outline-none focus:border-accent"
         >
-          <option value="">All Exchanges</option>
+          <option value="">전체 거래소</option>
           {exchanges.map((ex) => (
             <option key={ex} value={ex}>{ex}</option>
           ))}
@@ -157,7 +157,7 @@ export default function TradesPage() {
           onClick={handleExportCsv}
           className="ml-auto px-3 py-1 text-xs font-mono border border-terminal-border text-terminal-subtle hover:text-terminal-text hover:border-accent transition-colors"
         >
-          Export CSV
+          CSV 내보내기
         </button>
       </div>
 
@@ -173,7 +173,7 @@ export default function TradesPage() {
           </div>
         ) : trades.length === 0 ? (
           <div className="p-8 text-center text-terminal-subtle text-xs font-mono">
-            No trades found
+            거래 내역이 없습니다
           </div>
         ) : (
           <div className="overflow-x-auto">

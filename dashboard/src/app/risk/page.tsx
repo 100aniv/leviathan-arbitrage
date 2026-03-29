@@ -41,7 +41,7 @@ export default function RiskPage() {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-mono font-semibold text-terminal-text">Risk Dashboard</h2>
+            <h2 className="text-lg font-mono font-semibold text-terminal-text">리스크 대시보드</h2>
             <span
               className={`text-[9px] font-mono ${connected ? 'text-profit' : 'text-loss'}`}
               title={connected ? 'Engine connected' : 'Engine disconnected'}
@@ -49,7 +49,7 @@ export default function RiskPage() {
               {connected ? '● LIVE' : '● OFFLINE'}
             </span>
           </div>
-          <p className="text-xs font-mono text-terminal-subtle mt-1">Exposure, drawdown, and emergency controls</p>
+          <p className="text-xs font-mono text-terminal-subtle mt-1">노출도, 낙폭, 비상 제어</p>
 
           {/* Live WS status row */}
           <div className="flex items-center gap-4 mt-1">

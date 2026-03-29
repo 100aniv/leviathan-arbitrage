@@ -55,7 +55,7 @@ export function MissionControlStrip() {
 
       {/* EQUITY */}
       <div className="flex items-center gap-1.5 px-3 border-r border-terminal-border/50 h-full">
-        <span className="text-[9px] font-mono text-terminal-subtle hidden sm:block">EQ</span>
+        <span className="text-[9px] font-mono text-terminal-subtle hidden sm:block" title="총 자산 가치">자산</span>
         <span className="text-[10px] font-mono text-terminal-text tabular-nums">
           {equity > 0
             ? `$${equity.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
@@ -65,7 +65,7 @@ export function MissionControlStrip() {
 
       {/* TODAY PnL */}
       <div className="flex items-center gap-1.5 px-3 border-r border-terminal-border/50 h-full">
-        <span className="text-[9px] font-mono text-terminal-subtle hidden sm:block">PNL</span>
+        <span className="text-[9px] font-mono text-terminal-subtle hidden sm:block" title="오늘 총 손익 (Shadow 모드 시뮬레이션)">손익</span>
         <span className={`text-[10px] font-mono tabular-nums ${pnlPos ? 'text-profit' : 'text-loss'}`}>
           {pnlPos ? '+' : ''}{todayPnl.toFixed(2)}
         </span>
@@ -73,7 +73,7 @@ export function MissionControlStrip() {
 
       {/* WIN% */}
       <div className="flex items-center gap-1.5 px-3 border-r border-terminal-border/50 h-full hidden md:flex">
-        <span className="text-[9px] font-mono text-terminal-subtle">WIN</span>
+        <span className="text-[9px] font-mono text-terminal-subtle" title="승률 — 수익 거래 비율">승률</span>
         <span className="text-[10px] font-mono text-terminal-text tabular-nums">
           {winRate != null ? `${(winRate * 100).toFixed(0)}%` : '—'}
         </span>
@@ -81,7 +81,7 @@ export function MissionControlStrip() {
 
       {/* ACTIVE strategies */}
       <div className="flex items-center gap-1.5 px-3 border-r border-terminal-border/50 h-full hidden md:flex">
-        <span className="text-[9px] font-mono text-terminal-subtle">STRAT</span>
+        <span className="text-[9px] font-mono text-terminal-subtle" title="활성 전략 수 / 전체 전략 수">전략</span>
         <span className="text-[10px] font-mono text-terminal-text tabular-nums">
           {activeCount}/7
         </span>

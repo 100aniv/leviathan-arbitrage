@@ -46,7 +46,7 @@ const PIE_COLORS = [
   '#a855f7', '#06b6d4', '#f97316', '#ec4899',
 ];
 
-// ─── Drawdown Chart ───────────────────────────────────────────────────────────
+// ─── 드로다운 Chart ───────────────────────────────────────────────────────────
 
 function DrawdownChart({ data }: { data: DrawdownPoint[] }) {
   if (data.length === 0) {
@@ -92,7 +92,7 @@ function DrawdownChart({ data }: { data: DrawdownPoint[] }) {
             fontSize: 11,
             fontFamily: 'JetBrains Mono, monospace',
           }}
-          formatter={(v: number | undefined) => [v != null ? `${v.toFixed(3)}%` : '—', 'Drawdown']}
+          formatter={(v: number | undefined) => [v != null ? `${v.toFixed(3)}%` : '—', '드로다운']}
         />
         <ReferenceLine y={0} stroke="#333" strokeDasharray="3 3" />
         <Area
@@ -248,16 +248,16 @@ export default function PortfolioPage() {
     <div className="space-y-4">
       <h2 className="text-lg font-mono font-semibold text-terminal-text">Portfolio</h2>
 
-      {/* Equity Curve */}
+      {/* 에쿼티 커브 */}
       <EquityCurve data={curve} metrics={metrics ?? undefined} />
 
       {/* Risk Metric Cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {[
-          { label: 'Sharpe Ratio', value: metrics?.sharpe_ratio?.toFixed(2) ?? '—' },
-          { label: 'Max Drawdown', value: metrics ? `${metrics.max_drawdown_pct.toFixed(2)}%` : '—' },
-          { label: 'Calmar Ratio', value: metrics?.calmar_ratio?.toFixed(2) ?? '—' },
-          { label: 'Win Rate',     value: metrics ? `${(metrics.win_rate * 100).toFixed(1)}%` : '—' },
+          { label: '샤프 비율', value: metrics?.sharpe_ratio?.toFixed(2) ?? '—' },
+          { label: '최대 낙폭', value: metrics ? `${metrics.max_drawdown_pct.toFixed(2)}%` : '—' },
+          { label: '칼마 비율', value: metrics?.calmar_ratio?.toFixed(2) ?? '—' },
+          { label: '승률',     value: metrics ? `${(metrics.win_rate * 100).toFixed(1)}%` : '—' },
         ].map(({ label, value }) => (
           <div key={label} className="bg-terminal-surface border border-terminal-border p-3">
             <div className="text-[10px] font-mono text-terminal-subtle uppercase tracking-wider">{label}</div>
@@ -266,9 +266,9 @@ export default function PortfolioPage() {
         ))}
       </div>
 
-      {/* Asset Allocation — Donut Chart */}
+      {/* 자산 배분 — Donut Chart */}
       <div className="bg-terminal-surface border border-terminal-border p-4">
-        <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">Asset Allocation</span>
+        <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">자산 배분</span>
         {summary?.exchange_balances && summary.exchange_balances.length > 0 ? (
           <div className="flex items-center gap-6 mt-3">
             <div className="w-48 h-48 shrink-0">
@@ -311,14 +311,14 @@ export default function PortfolioPage() {
           </div>
         ) : (
           <div className="flex items-center justify-center h-24 mt-2">
-            <span className="text-xs font-mono text-terminal-subtle">거래소 연결 대기 중</span>
+            <span className="text-xs font-mono text-terminal-subtle">거래소 연결 대기 중...</span>
           </div>
         )}
       </div>
 
-      {/* Daily Returns */}
+      {/* 일별 수익 */}
       <div className="bg-terminal-surface border border-terminal-border p-4">
-        <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">Daily Returns</span>
+        <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">일별 수익</span>
         {dailyReturns.length > 0 ? (
           <div className="mt-3">
             <ResponsiveContainer width="100%" height={100}>
@@ -363,10 +363,10 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      {/* Drawdown Chart */}
+      {/* 드로다운 Chart */}
       <div className="bg-terminal-surface border border-terminal-border p-4">
         <div className="mb-3">
-          <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">Drawdown</span>
+          <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">드로다운</span>
           {metrics && (
             <span className="ml-2 text-[10px] font-mono text-terminal-subtle">
               최대 <span style={{ color: '#ff4d4d' }}>{metrics.max_drawdown_pct.toFixed(2)}%</span>
