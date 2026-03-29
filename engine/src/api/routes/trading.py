@@ -39,7 +39,16 @@ def _get_positions(ctx: Any) -> list[dict[str, Any]]:
 
 
 def _get_pnl(ctx: Any) -> dict[str, float]:
-    """Get PnL from real PositionManager or fallback to context values."""
+    """Get PnL from real PositionManager, shadow stats, or fallback to context values."""
+    # Shadow mode: use shadow stats for PnL
+    shadow_mode = getattr(ctx, "shadow_mode", None)
+    if shadow_mode is not None and hasattr(shadow_mode, "_stats"):
+        stats = shadow_mode._stats
+        return {
+            "realized_pnl": stats.total_pnl,
+            "unrealized_pnl": 0.0,
+            "total_pnl": stats.total_pnl,
+        }
     if ctx.position_manager is not None:
         try:
             positions = list(ctx.position_manager.get_all_positions())
@@ -92,6 +101,63 @@ async def list_trades(
     """Return trade history with optional filters."""
     ctx = request.app.state.engine_context
     trades = list(ctx.trade_history)
+
+    # Shadow mode: query execution_log from DB when in-memory history is empty
+    if not trades:
+        shadow_mode = getattr(ctx, "shadow_mode", None)
+        if shadow_mode is not None and hasattr(shadow_mode, "_db_pool") and shadow_mode._db_pool is not None:
+            try:
+                pool = shadow_mode._db_pool.pool if hasattr(shadow_mode._db_pool, "pool") else shadow_mode._db_pool
+                clauses = ["1=1"]
+                params: list[Any] = []
+                idx = 1
+                if strategy:
+                    clauses.append(f"strategy_id = ${idx}")
+                    params.append(strategy)
+                    idx += 1
+                if exchange:
+                    clauses.append(f"(buy_exchange = ${idx} OR sell_exchange = ${idx})")
+                    params.append(exchange)
+                    idx += 1
+                if symbol:
+                    clauses.append(f"symbol = ${idx}")
+                    params.append(symbol)
+                    idx += 1
+                if from_date:
+                    clauses.append(f"ts >= ${idx}::timestamptz")
+                    params.append(from_date)
+                    idx += 1
+                if to_date:
+                    to_cmp = to_date if "T" in to_date else f"{to_date}T23:59:59.999999"
+                    clauses.append(f"ts <= ${idx}::timestamptz")
+                    params.append(to_cmp)
+                    idx += 1
+                where = " AND ".join(clauses)
+                query = f"SELECT * FROM execution_log WHERE {where} ORDER BY ts DESC LIMIT {limit}"
+                async with pool.acquire() as conn:
+                    rows = await conn.fetch(query, *params)
+                trades = [
+                    {
+                        "id": str(i),
+                        "strategy_id": r["strategy_id"],
+                        "symbol": r["symbol"],
+                        "buy_exchange": r["buy_exchange"],
+                        "sell_exchange": r["sell_exchange"],
+                        "side": "arbitrage",
+                        "size": float(r["size"]),
+                        "entry_price": float(r["buy_price"]),
+                        "exit_price": float(r["sell_price"]),
+                        "pnl": float(r["net_pnl"]) if r["net_pnl"] is not None else 0.0,
+                        "fee": float(r["fee_total"]) if r["fee_total"] is not None else 0.0,
+                        "timestamp": r["ts"].isoformat(),
+                        "status": r["status"],
+                    }
+                    for i, r in enumerate(rows)
+                ]
+                return JSONResponse(trades)
+            except Exception as exc:
+                logger.warning("Failed to query execution_log: %s", exc)
+
     if strategy:
         trades = [t for t in trades if t.get("strategy_id") == strategy]
     if exchange:
@@ -101,7 +167,6 @@ async def list_trades(
     if from_date:
         trades = [t for t in trades if t.get("timestamp", "") >= from_date]
     if to_date:
-        # Append end-of-day time if only date provided (e.g. "2026-03-12" → "2026-03-12T23:59:59.999999")
         to_cmp = to_date if "T" in to_date else f"{to_date}T23:59:59.999999"
         trades = [t for t in trades if t.get("timestamp", "") <= to_cmp]
     trades = sorted(trades, key=lambda t: t.get("timestamp", ""), reverse=True)
@@ -153,12 +218,22 @@ async def get_strategy_metrics(request: Request) -> JSONResponse:
 async def get_status(request: Request) -> JSONResponse:
     """Return overall engine status."""
     ctx = request.app.state.engine_context
+    mode = ctx.execution_mode
+    shadow_mode = getattr(ctx, "shadow_mode", None)
+    if shadow_mode is not None and hasattr(shadow_mode, "_stats"):
+        mode = "shadow"
+    strategy_count = len(ctx.strategies)
+    if strategy_count == 0 and ctx.strategy_manager is not None:
+        try:
+            strategy_count = len(ctx.strategy_manager.list_strategies())
+        except Exception:
+            pass
     return JSONResponse({
         "running": ctx.running,
         "kill_switch_active": ctx.kill_switch_active,
         "environment": ctx.environment,
-        "execution_mode": ctx.execution_mode,
-        "strategy_count": len(ctx.strategies),
+        "execution_mode": mode,
+        "strategy_count": strategy_count,
         "position_count": len(ctx.positions),
         "connection_count": ctx.ws_manager.connection_count if ctx.ws_manager else 0,
     })

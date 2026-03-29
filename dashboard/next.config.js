@@ -24,6 +24,14 @@ const nextConfig = {
     NEXT_PUBLIC_ENGINE_URL: engineUrl,
     NEXT_PUBLIC_WS_URL:     wsUrl,
   },
+  async rewrites() {
+    return [
+      {
+        source: "/engine-api/:path*",
+        destination: `${engineUrl}/:path*`,
+      },
+    ];
+  },
   async headers() {
     return [
       {

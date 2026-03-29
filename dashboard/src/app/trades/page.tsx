@@ -19,7 +19,7 @@ export default function TradesPage() {
   const [engineMode, setEngineMode] = useState<string>("unknown");
 
   useEffect(() => {
-    getMode().then((m) => setEngineMode(m.execution_mode ?? "unknown")).catch(() => {});
+    getMode().then((m) => setEngineMode(m.mode ?? m.execution_mode ?? "unknown")).catch(() => {});
   }, []);
 
   const fetchTrades = useCallback(async () => {

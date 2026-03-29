@@ -110,7 +110,7 @@ class IPWhitelistMiddleware(BaseHTTPMiddleware):
 # Rate Limit Middleware
 # ---------------------------------------------------------------------------
 
-_RATE_LIMIT_REQUESTS = 100
+_RATE_LIMIT_REQUESTS = 300
 _RATE_LIMIT_WINDOW = 60  # seconds
 
 

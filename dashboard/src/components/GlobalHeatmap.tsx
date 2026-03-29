@@ -228,7 +228,7 @@ export function GlobalHeatmap() {
           <span className={`text-[9px] font-mono uppercase ${isLiveData ? 'text-accent' : 'text-terminal-subtle'}`}>
             {isLiveData ? '◆ API' : '◇ STATIC'}
           </span>
-          <span className="text-[10px] font-mono text-terminal-subtle tabular-nums">
+          <span className="text-[10px] font-mono text-terminal-subtle tabular-nums" suppressHydrationWarning>
             {updatedAt.toLocaleTimeString()}
           </span>
         </div>

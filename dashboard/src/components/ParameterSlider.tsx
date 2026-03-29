@@ -14,7 +14,7 @@ interface ParameterSliderProps {
   onChange?: (id: string, value: number) => void;
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_ENGINE_URL ?? 'http://localhost:8000';
+const BASE_URL = typeof window !== "undefined" ? "/engine-api" : (process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8000");
 const DEBOUNCE_MS = 300;
 
 export function ParameterSlider({

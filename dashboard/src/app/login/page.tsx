@@ -2,7 +2,7 @@
 
 import { useState, FormEvent } from "react";
 
-const BASE_URL = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8000";
+const BASE_URL = typeof window !== "undefined" ? "/engine-api" : (process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8000");
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");

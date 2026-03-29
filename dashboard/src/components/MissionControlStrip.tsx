@@ -2,8 +2,8 @@
 
 import { useEngineWs } from '@/hooks/useEngineWs';
 import { useApi } from '@/hooks/useApi';
-import { getPortfolioSummary } from '@/lib/api';
-import type { PortfolioSummaryResponse } from '@/types';
+import { getPortfolioSummary, getShadowStats, getStrategies } from '@/lib/api';
+import type { PortfolioSummaryResponse, ShadowStats, Strategy } from '@/types';
 
 export function MissionControlStrip() {
   const { connected, data } = useEngineWs();
@@ -12,13 +12,24 @@ export function MissionControlStrip() {
     getPortfolioSummary,
     { refreshInterval: 10000 },
   );
+  const { data: shadowStats } = useApi<ShadowStats>(
+    '/shadow-stats',
+    getShadowStats,
+    { refreshInterval: 10000 },
+  );
+  const { data: strategies } = useApi<Strategy[]>(
+    '/strategies',
+    getStrategies,
+    { refreshInterval: 30000 },
+  );
 
   const equity    = portfolio?.total_balance_usdt ?? 0;
-  const todayPnl  = data?.pnl?.total ?? portfolio?.daily_pnl ?? 0;
+  const todayPnl  = data?.pnl?.total ?? shadowStats?.total_pnl ?? portfolio?.total_pnl ?? 0;
   const killActive = data?.kill_switch ?? false;
   const mode       = (data?.mode ?? portfolio?.mode ?? '—').toUpperCase();
-  const activeCount = data?.strategies?.filter(s => s.enabled).length ?? 0;
-  const winRate     = data?.shadow_stats?.win_rate;
+  const activeCount = data?.strategies?.filter((s: { enabled: boolean }) => s.enabled).length
+    ?? strategies?.filter(s => s.enabled).length ?? 0;
+  const winRate     = data?.shadow_stats?.win_rate ?? shadowStats?.win_rate;
   const pnlPos      = todayPnl >= 0;
 
   return (

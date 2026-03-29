@@ -2469,6 +2469,8 @@ class Engine:
 
         await self._shadow_mode.start()
         self.context.shadow_mode = self._shadow_mode
+        self.context.shadow_active = True
+        self.context.execution_mode = "shadow"
         logger.info("Shadow Mode started: %s for %s", exchanges, symbols)
 
         # ER5-04: Warm-start restore — load previous shadow stats from DB
@@ -2694,6 +2696,10 @@ class Engine:
                 )
             except Exception as exc:
                 logger.warning("LiveGate init failed (non-fatal): %s", exc)
+
+        self.context.shadow_mode = self._shadow_mode
+        self.context.shadow_active = True
+        self.context.execution_mode = "shadow"
 
         orchestrator = ProgressiveShadowOrchestrator(
             shadow_mode=self._shadow_mode,

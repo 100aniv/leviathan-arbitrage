@@ -12,6 +12,7 @@ export async function middleware(request: NextRequest) {
     PUBLIC_PATHS.has(pathname) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/") ||
+    pathname.startsWith("/engine-api/") ||
     pathname.startsWith("/favicon")
   ) {
     return NextResponse.next();

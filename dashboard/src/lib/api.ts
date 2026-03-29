@@ -22,8 +22,11 @@ import type {
   SystemResources,
 } from "@/types";
 
-const BASE_URL =
+const ENGINE_DIRECT =
   process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8000";
+// Client-side: use Next.js rewrite proxy to avoid CORS; SSR: direct
+const BASE_URL =
+  typeof window !== "undefined" ? "/engine-api" : ENGINE_DIRECT;
 
 function getAuthHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};

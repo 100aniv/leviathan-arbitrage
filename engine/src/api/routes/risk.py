@@ -45,10 +45,17 @@ async def trigger_kill_switch(body: KillSwitchRequest, request: Request) -> JSON
 async def engine_mode(request: Request) -> JSONResponse:
     """Return current engine execution mode — public endpoint for dashboard status bar."""
     ctx = request.app.state.engine_context
+    mode = ctx.execution_mode
+    shadow_active = getattr(ctx, "shadow_active", False)
+    # Auto-detect shadow mode from runtime state
+    shadow_mode = getattr(ctx, "shadow_mode", None)
+    if shadow_mode is not None and hasattr(shadow_mode, "_stats"):
+        mode = "shadow"
+        shadow_active = True
     return JSONResponse({
-        "mode": ctx.execution_mode,
-        "data_mode": getattr(ctx, "data_mode", "synthetic"),
-        "shadow_active": getattr(ctx, "shadow_active", False),
+        "mode": mode,
+        "data_mode": getattr(ctx, "data_mode", "real" if shadow_active else "synthetic"),
+        "shadow_active": shadow_active,
         "live_gate_eligible": getattr(ctx, "live_gate_eligible", False),
     })
 
