@@ -63,7 +63,9 @@
     "ws_port": 8001,
     "workers": 4,
     "kill_switch_enabled": true,
-    "tuner_data_source": "timescaledb"
+    "tuner_data_source": "timescaledb",
+    "max_position_usd": 37,
+    "max_daily_loss_usd": 50
   },
   "strategy_filters": {
     "funding_zscore_threshold": -1,
@@ -77,7 +79,9 @@
     "futures_min_book_depth_usd": 1
   },
   "shadow": {
-    "disabled_strategies": [],
+    "disabled_strategies": [
+      "cross_exchange_v1"
+    ],
     "depth_fraction": 1.0,
     "max_trade_size": 100
   },

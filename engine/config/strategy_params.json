@@ -8,21 +8,47 @@
     "real_wfe_note": "Populated by ScheduledTuner when TUNER_DATA_SOURCE=timescaledb"
   },
   "_real_wfe": {
-    "_note": "Real-data WFE results from TimescaleDB."
+    "_note": "Real-data WFE results from TimescaleDB.",
+    "cross_exchange": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "triangular": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "spot_futures": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "funding_rate": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "statistical_arb": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "futures_futures": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    }
   },
   "cross_exchange": {
-    "min_spread_bps": 10.183198522582462,
-    "max_position_size": 262.09059604414153,
-    "entry_threshold": 0.0001019049396907595,
-    "exit_threshold": 0.0029905475919608077,
-    "stop_loss_pct": 0.005143016057394924,
+    "min_spread_bps": 5.0,
     "status": "READY",
-    "wfe": 6.767502674101813,
+    "wfe": 1.2,
     "data_type": "synthetic_gbm"
   },
   "spot_futures": {
-    "min_spread_bps": 5,
-    "max_position_size": 7634.1164727867645,
+    "min_spread_bps": 16.521210151176234,
+    "max_position_size": 50,
     "entry_threshold": 0.0013620427453799166,
     "exit_threshold": 0.0001866435336362988,
     "stop_loss_pct": 0.005070404564592744,
@@ -32,7 +58,7 @@
   },
   "funding_rate": {
     "min_spread_bps": 8.735797037704605,
-    "max_position_size": 5002.251410101575,
+    "max_position_size": 50,
     "entry_threshold": 0.00011715937392307068,
     "exit_threshold": 0.0032931446587915556,
     "stop_loss_pct": 0.016645099172000764,
@@ -41,8 +67,8 @@
     "data_type": "synthetic_gbm"
   },
   "futures_futures": {
-    "min_spread_bps": 3,
-    "max_position_size": 8497.517825978573,
+    "min_spread_bps": 47.50987042361101,
+    "max_position_size": 50,
     "entry_threshold": 0.00025557303057935484,
     "exit_threshold": 6.82596457666553e-05,
     "stop_loss_pct": 0.00501931310745825,
@@ -51,20 +77,19 @@
     "data_type": "synthetic_gbm"
   },
   "triangular": {
-    "min_spread_bps": 8,
-    "max_position_size": 6810.6841726392,
+    "min_spread_bps": 49.98657167949043,
+    "max_position_size": 50,
     "entry_threshold": 0.0005221298701815954,
     "exit_threshold": 9.601259624268907e-05,
     "stop_loss_pct": 0.0055080901917418075,
     "status": "READY",
     "wfe": 6.571801936599799,
-    "data_type": "synthetic_gbm",
-    "_note": "LOCKED: AutoTuner synthetic 50bps는 실시장과 불일치. 수동 8bps 유지"
+    "data_type": "synthetic_gbm"
   },
   "statistical_arb": {
     "status": "READY",
     "wfe": 0.0,
-    "max_position_size_usdt": 3000,
+    "max_position_size_usdt": 37,
     "entry_threshold": 0.000188,
     "exit_threshold": 0.00089,
     "stop_loss_pct": 0.005,
@@ -74,7 +99,7 @@
     "status": "MONITOR",
     "wfe": 1.19,
     "min_edge_bps": 4.2,
-    "max_position_size_usdt": 1687,
+    "max_position_size_usdt": 37,
     "entry_threshold": 0.000512,
     "exit_threshold": 6.33e-05,
     "stop_loss_pct": 0.005
@@ -83,7 +108,7 @@
     "status": "MONITOR",
     "wfe": 0.0,
     "min_spread_bps": 3,
-    "max_position_size_usdt": 5000,
+    "max_position_size_usdt": 37,
     "entry_threshold": 0.0005,
     "exit_threshold": 0.0001,
     "stop_loss_pct": 0.005
@@ -91,13 +116,8 @@
   "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 통일, slippage_buffer 5bps 신규, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
   "_tuner_meta": {
     "best_values": {
-      "cross_exchange": 6.767502674101813,
-      "triangular": 6.571801936599799,
-      "spot_futures": 7.578432709803439,
-      "funding_rate": 1.774823934929885,
-      "statistical_arb": 0.0,
-      "futures_futures": 5.926861262589432
+      "cross_exchange": 1.2
     },
-    "timestamp": "2026-03-28T08:44:16.336303+00:00"
+    "timestamp": "2026-03-29T02:44:43.030428+00:00"
   }
 }
