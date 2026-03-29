@@ -189,11 +189,20 @@ class BinanceNativeAdapter(NativeAdapter):
             "symbol": _symbol_to_binance(order.symbol),
             "side": side,
             "type": order_type,
-            "quantity": str(order.amount),
         }
-        if order.order_type == OrderType.LIMIT and order.price is not None:
-            params["price"] = str(order.price)
+        if order.order_type == OrderType.LIMIT:
+            params["quantity"] = str(order.amount)
+            if order.price is not None:
+                params["price"] = str(order.price)
             params["timeInForce"] = "GTC"
+        else:
+            # MARKET order: use quoteOrderQty (USD) for BUY to avoid LOT_SIZE issues
+            # For SELL, must use quantity (base asset)
+            if side == "BUY" and order.price and order.price > 0:
+                quote_qty = order.amount * order.price
+                params["quoteOrderQty"] = str(round(float(quote_qty), 2))
+            else:
+                params["quantity"] = str(order.amount)
         if order.client_order_id:
             params["newClientOrderId"] = order.client_order_id
 
