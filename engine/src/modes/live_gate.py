@@ -16,6 +16,7 @@ Failure blocks live mode activation + sends Telegram alert with reasons.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -384,11 +385,69 @@ class LiveGate:
             except asyncio.CancelledError:
                 raise
 
+    async def _db_load_pass_state(self) -> tuple[bool, datetime | None]:
+        """Load live_gate_passed state from engine_state DB table."""
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT value, updated_at FROM engine_state WHERE key = 'live_gate_passed'"
+                )
+                if row and row["value"] == "true":
+                    return True, row["updated_at"]
+        except Exception as exc:
+            logger.warning("live_gate_db_load_error", error=str(exc))
+        return False, None
+
+    async def _db_save_pass_state(self) -> None:
+        """Persist live_gate_passed=true with timestamp to engine_state."""
+        _CREATE = """
+            CREATE TABLE IF NOT EXISTS engine_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """
+        _UPSERT = """
+            INSERT INTO engine_state (key, value, updated_at)
+            VALUES ('live_gate_passed', 'true', NOW())
+            ON CONFLICT (key) DO UPDATE SET value = 'true', updated_at = NOW()
+        """
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute(_CREATE)
+                await conn.execute(_UPSERT)
+        except Exception as exc:
+            logger.warning("live_gate_db_save_error", error=str(exc))
+
     async def enforce_or_fallback(self) -> bool:
         """Evaluate LiveGate 6-check. Return True if live-eligible, False to fallback.
 
-        US-246: Called by Engine before entering live mode.
+        US-246 / US-F01:
+        1. LIVE_GATE_BYPASS=true → return True + Telegram warning (소액 테스트 전용)
+        2. DB에 live_gate_passed=true 저장된 경우 → 재평가 없이 즉시 eligible 반환
+        3. 전체 6-check 평가 실행
+        4. PASS 시 DB에 live_gate_passed=true + 타임스탬프 저장
         """
+        # --- AC3: BYPASS ---
+        if os.getenv("LIVE_GATE_BYPASS", "false").lower() == "true":
+            logger.warning("live_gate_bypass_active")
+            if self._telegram is not None:
+                try:
+                    await self._telegram.send_alert(
+                        "⚠️ LIVE_GATE_BYPASS=true 활성화 — 소액 테스트 전용. LiveGate 우회 중.",
+                        level="warning",
+                    )
+                except Exception:
+                    pass
+            return True
+
+        # --- AC1: DB 복원 ---
+        passed, ts = await self._db_load_pass_state()
+        if passed:
+            logger.info("live_gate_enforcement_restored_from_db", passed_at=str(ts))
+            return True
+
+        # --- 전체 평가 ---
         result = await self.evaluate()
         if result is None or not result.eligible:
             logger.warning(
@@ -405,6 +464,9 @@ class LiveGate:
                 except Exception:
                     pass
             return False
+
+        # --- AC1: PASS → DB 저장 ---
+        await self._db_save_pass_state()
         logger.info("live_gate_enforcement_passed", eligible=True)
         return True
 

@@ -356,6 +356,10 @@ class ShadowStats:
     losing_pnl_sum: float = 0.0
     # Per-strategy breakdown
     by_strategy: dict[str, StrategyStats] = field(default_factory=dict)
+    # US-F03: Session tracking
+    session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    session_start: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    daily_pnl: float = 0.0  # resets at 00:00 UTC
 
 
 # ---------------------------------------------------------------------------
@@ -1533,6 +1537,7 @@ class ShadowMode:
             result_label = "loss"
 
         self._stats.total_pnl += net_pnl_float
+        self._stats.daily_pnl += net_pnl_float  # US-F03
         self._compute_drawdown()
 
         # SIT-3: Record to trade_history for dashboard /trades API
@@ -1898,6 +1903,7 @@ class ShadowMode:
             result_label = "loss"
 
         self._stats.total_pnl += net_pnl_float
+        self._stats.daily_pnl += net_pnl_float  # US-F03
         self._compute_drawdown()
 
         # SIT-3: Record to trade_history for dashboard /trades API (multi-leg)
@@ -2277,6 +2283,7 @@ class ShadowMode:
                     })
 
                 stats.last_daily_summary = now
+                stats.daily_pnl = 0.0  # US-F03: reset daily PnL at midnight UTC
                 logger.info(
                     "shadow_mode.daily_summary_sent",
                     date=summary_data["date"],

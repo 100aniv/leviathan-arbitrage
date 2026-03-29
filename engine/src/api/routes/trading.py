@@ -48,6 +48,11 @@ def _get_pnl(ctx: Any) -> dict[str, float]:
             "realized_pnl": stats.total_pnl,
             "unrealized_pnl": 0.0,
             "total_pnl": stats.total_pnl,
+            # US-F03: session/daily breakdown
+            "session_pnl": stats.total_pnl,
+            "cumulative_pnl": stats.total_pnl,
+            "daily_pnl": getattr(stats, "daily_pnl", 0.0),
+            "session_id": getattr(stats, "session_id", ""),
         }
     if ctx.position_manager is not None:
         try:

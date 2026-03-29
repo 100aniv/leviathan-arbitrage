@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import logging
+import os
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -71,6 +74,26 @@ async def update_settings(request: Request, body: SettingsUpdate) -> JSONRespons
     })
 
 
+def _update_env_file(key: str, value: str) -> bool:
+    """Update a key=value in engine/.env file. Returns True on success."""
+    env_path = Path(__file__).parents[3] / ".env"
+    if not env_path.exists():
+        logger.warning("Engine .env not found at %s", env_path)
+        return False
+    try:
+        content = env_path.read_text()
+        pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
+        if pattern.search(content):
+            content = pattern.sub(f"{key}={value}", content)
+        else:
+            content = content.rstrip("\n") + f"\n{key}={value}\n"
+        env_path.write_text(content)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to update .env %s: %s", key, exc)
+        return False
+
+
 @router.patch("/settings/mode", dependencies=[Depends(require_auth)])
 async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
     """Switch execution mode. Live mode requires LiveGate check."""
@@ -78,6 +101,19 @@ async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
     valid_modes = {"backtest", "paper", "shadow", "live"}
     if body.mode not in valid_modes:
         raise HTTPException(status_code=400, detail=f"Invalid mode. Must be one of: {valid_modes}")
+
+    # US-F02: Check open positions before allowing mode switch
+    if ctx.position_manager is not None:
+        try:
+            open_positions = list(ctx.position_manager.get_all_positions())
+            if open_positions:
+                return JSONResponse(status_code=403, content={
+                    "error": "포지션 청산 후 전환하세요",
+                    "open_positions": len(open_positions),
+                    "current_mode": getattr(ctx, "execution_mode", "shadow"),
+                })
+        except Exception as exc:
+            logger.warning("Position check failed: %s", exc)
 
     livegate_result = None
     if body.mode == "live":
@@ -110,10 +146,32 @@ async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
                 "current_mode": ctx.execution_mode,
             })
 
+    prev_mode = getattr(ctx, "execution_mode", "shadow")
     ctx.execution_mode = body.mode
+
+    # US-F02: Persist EXECUTION_MODE to .env
+    env_updated = _update_env_file("EXECUTION_MODE", body.mode)
+
+    # US-F02: Send Telegram notification
+    restart_required = body.mode == "live" or prev_mode == "live"
+    engine = getattr(ctx, "engine", None)
+    telegram = getattr(engine, "_telegram", None) if engine else None
+    if telegram is not None:
+        try:
+            msg = (
+                f"⚙️ 모드 전환: {prev_mode.upper()} → {body.mode.upper()}\n"
+                f"{'🔴 엔진 재시작 필요' if restart_required else '✅ 런타임 전환 완료'}"
+            )
+            await telegram.send_alert(msg, level="INFO")
+        except Exception as exc:
+            logger.warning("Mode change telegram notification failed: %s", exc)
+
     return JSONResponse({
         "mode": ctx.execution_mode,
         "livegate": livegate_result,
+        "env_updated": env_updated,
+        "restart_required": restart_required,
+        "message": "엔진 재시작 필요" if restart_required else "런타임 전환 완료",
     })
 
 

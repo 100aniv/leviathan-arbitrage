@@ -64,8 +64,12 @@
     "workers": 4,
     "kill_switch_enabled": true,
     "tuner_data_source": "timescaledb",
-    "max_position_usd": 37,
-    "max_daily_loss_usd": 5000
+    "max_position_usd": 10,
+    "max_daily_loss_usd": 15,
+    "active_exchanges": [
+      "binance",
+      "binance_futures"
+    ]
   },
   "strategy_filters": {
     "funding_zscore_threshold": -1,
@@ -80,7 +84,9 @@
   },
   "shadow": {
     "disabled_strategies": [
-      "cross_exchange_v1"
+      "cross_exchange_v1",
+      "cex_dex_v1",
+      "triangular_v1"
     ],
     "depth_fraction": 1.0,
     "max_trade_size": 100
@@ -89,5 +95,42 @@
     "mode": "auto",
     "min_exchanges": 3,
     "min_price_usd": 0.1
+  },
+  "strategy_exchange_requirements": {
+    "cross_exchange_v1": {
+      "min_exchanges": 2,
+      "required_types": ["spot"],
+      "description": "거래소 간 가격 차이를 이용한 차익거래"
+    },
+    "spot_futures_v1": {
+      "min_exchanges": 1,
+      "required_types": ["futures"],
+      "same_exchange": true,
+      "description": "현물-선물 베이시스 차익거래"
+    },
+    "futures_futures_v1": {
+      "min_exchanges": 2,
+      "required_types": ["futures"],
+      "description": "선물 간 가격 차이 차익거래"
+    },
+    "triangular_v1": {
+      "min_exchanges": 1,
+      "same_exchange": true,
+      "description": "동일 거래소 내 3자 순환 차익거래"
+    },
+    "funding_rate_v1": {
+      "min_exchanges": 1,
+      "required_types": ["futures"],
+      "description": "펀딩레이트 캐리 트레이드"
+    },
+    "statistical_arb_v1": {
+      "min_exchanges": 1,
+      "description": "통계적 페어 트레이딩 (공적분 기반)"
+    },
+    "cex_dex_v1": {
+      "min_exchanges": 1,
+      "required_types": ["dex"],
+      "description": "CEX-DEX 간 차익거래"
+    }
   }
 }

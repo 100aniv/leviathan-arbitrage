@@ -6,6 +6,18 @@ import { getStrategies, toggleStrategy } from '@/lib/api';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import type { Strategy } from '@/types';
 
+// ─── Strategy Metadata ────────────────────────────────────────────────────────
+
+const STRATEGY_INFO: Record<string, { description: string; requiredExchanges: string }> = {
+  cross_exchange_v1:  { description: '거래소 간 가격 차이를 이용한 차익거래',       requiredExchanges: 'Spot 거래소 2개 이상' },
+  spot_futures_v1:    { description: '현물-선물 베이시스 차익거래',                  requiredExchanges: '동일 거래소 Futures 필요' },
+  futures_futures_v1: { description: '선물 간 가격 차이 차익거래',                   requiredExchanges: 'Futures 거래소 2개 이상' },
+  triangular_v1:      { description: '동일 거래소 내 3자 순환 차익거래',             requiredExchanges: 'KRW 페어 보유 거래소 1개' },
+  funding_rate_v1:    { description: '펀딩레이트 캐리 트레이드',                     requiredExchanges: 'Futures 거래소 1개 이상' },
+  statistical_arb_v1: { description: '통계적 페어 트레이딩 (공적분 기반)',           requiredExchanges: '거래소 2개 이상' },
+  cex_dex_v1:         { description: 'CEX-DEX 간 차익거래',                         requiredExchanges: 'DEX 연동 필요 (미구현)' },
+};
+
 // ─── Strategy Card ────────────────────────────────────────────────────────────
 
 function StrategyCard({
@@ -63,6 +75,11 @@ function StrategyCard({
               {exchangeB ? ` ↔ ${exchangeB}` : ''}
               {symbolStr ? ` · ${symbolStr}` : ''}
             </div>
+            {STRATEGY_INFO[strategy.type] && (
+              <div className="text-[9px] font-mono text-terminal-muted mt-0.5 truncate">
+                {STRATEGY_INFO[strategy.type].description}
+              </div>
+            )}
           </div>
         </div>
 
@@ -106,8 +123,27 @@ function StrategyCard({
 
       {/* Expanded details */}
       {expanded && (
-        <div className="border-t border-terminal-border/40 p-3 bg-terminal-surface/50">
-          <div className="grid grid-cols-2 gap-y-1 text-[11px] font-mono">
+        <div className="border-t border-terminal-border/40 p-3 bg-terminal-surface/50 space-y-2">
+          {/* Strategy description + required exchanges */}
+          {STRATEGY_INFO[strategy.type] && (
+            <div className="space-y-1">
+              <div className="text-[10px] font-mono text-terminal-text">
+                {STRATEGY_INFO[strategy.type].description}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">필요:</span>
+                <span className="text-[9px] font-mono text-accent/80 border border-accent/20 rounded px-1.5 py-0.5">
+                  {STRATEGY_INFO[strategy.type].requiredExchanges}
+                </span>
+                {!strategy.enabled && (
+                  <span className="text-[9px] font-mono text-loss/80 border border-loss/20 rounded px-1.5 py-0.5">
+                    거래소 미연결
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-y-1 text-[11px] font-mono border-t border-terminal-border/20 pt-2">
             <div>
               <span className="text-terminal-subtle">ID: </span>
               <span className="text-terminal-text">{strategy.id}</span>

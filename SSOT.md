@@ -36,7 +36,7 @@
 **Coverage**: 76%
 **PRD**: 338/343 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 + US-339 SIT-3 잔여)
 **TF Status**: S1~S26 ✅ → TF QF 11차 PASS(S23) → TF SF FAIL(Sharpe 0.53) → S26 회귀 ✅ → SIT-0~2 ✅ → **SIT-3 1시간 PASS** → TF QF 12차 → TF SF → TF PF → TF Final → Live
-**Next**: SIT-3 PASS → QF 1시간 → SF 1시간 → Final → Live (거래소당 5만원 소액)
+**Next**: **Phase F 구현 중** (LiveGate 재설계 + 대시보드 모드전환 + PnL세션 + 전략매핑 + UX) → Live 전환
 **계획서**: `.claude/plans/vivid-jingling-valiant.md` | **SIT-3 업데이트**: `.claude/plans/adaptive-conjuring-blanket.md`
 **SIT-3 수정 (20커밋)**: CORS 85→0 ✅ | Shadow API 정합성 ✅ | MCS PNL/STRAT/MODE ✅ | Trades 실시간 ✅ | Attribution/Portfolio/Analytics 데이터 ✅ | PnL 가짜데이터 제거 ✅ | 도넛 차트 ✅ | Telegram 409 해결 ✅ | DB 73GB→67MB ✅ | 한글화 ✅ | 오토체인 워크플로우 ✅ | Architect 검증 4건 ✅ | 소액 Live 한도 설정 ✅
 **API 키**: Binance ✅ Upbit ✅ Bithumb ✅ Coinone ✅ (OKX/Bybit/Bitget 미설정)
