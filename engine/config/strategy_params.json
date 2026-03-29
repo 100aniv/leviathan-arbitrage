@@ -77,7 +77,7 @@
     "data_type": "synthetic_gbm"
   },
   "triangular": {
-    "min_spread_bps": 49.98657167949043,
+    "min_spread_bps": 15.0,
     "max_position_size": 50,
     "entry_threshold": 0.0005221298701815954,
     "exit_threshold": 9.601259624268907e-05,

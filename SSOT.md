@@ -31,14 +31,15 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: SIT-3 종합테스트 (2026-03-28) — **410/410 GREEN** + 24H Shadow 진행중
+**Phase**: SIT-3 종합테스트 (2026-03-29) — SIT-3 1시간 PASS + QF 진입 준비
 **Tests**: 5,252 passed / 0 failed / 12 skipped
 **Coverage**: 76%
 **PRD**: 338/343 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 + US-339 SIT-3 잔여)
-**TF Status**: S1~S26 ✅ → TF QF 11차 PASS(S23) → TF SF FAIL(Sharpe 0.53) → S26 회귀 ✅ → SIT-0~2 ✅ → **SIT-3 종합테스트** → TF QF 12차(재검증) → TF SF → TF PF → TF Final → Live
-**Next**: SIT-3 업데이트 13 (블로커 10건) 진행 중 → 24H Shadow CP7 Go/No-Go → TF QF 12차
+**TF Status**: S1~S26 ✅ → TF QF 11차 PASS(S23) → TF SF FAIL(Sharpe 0.53) → S26 회귀 ✅ → SIT-0~2 ✅ → **SIT-3 1시간 PASS** → TF QF 12차 → TF SF → TF PF → TF Final → Live
+**Next**: SIT-3 PASS → QF 1시간 → SF 1시간 → Final → Live (거래소당 5만원 소액)
 **계획서**: `.claude/plans/vivid-jingling-valiant.md` | **SIT-3 업데이트**: `.claude/plans/adaptive-conjuring-blanket.md`
-**SIT-3 수정**: P1 stat_arb PnL ✅ | P2 HMM 가드 ✅ | P3 funding carry ✅ | P4 ONNX 활성 ✅ | P7 compliance ✅ | G1 DB기록 ✅ | G2 Redis ✅ | funding USD sizing ✅ | triangular network_cost ✅ | PnL .6f ✅ | AutoTuner params 복원 ✅
+**SIT-3 수정 (20커밋)**: CORS 85→0 ✅ | Shadow API 정합성 ✅ | MCS PNL/STRAT/MODE ✅ | Trades 실시간 ✅ | Attribution/Portfolio/Analytics 데이터 ✅ | PnL 가짜데이터 제거 ✅ | 도넛 차트 ✅ | Telegram 409 해결 ✅ | DB 73GB→67MB ✅ | 한글화 ✅ | 오토체인 워크플로우 ✅ | Architect 검증 4건 ✅ | 소액 Live 한도 설정 ✅
+**API 키**: Binance ✅ Upbit ✅ Bithumb ✅ Coinone ✅ (OKX/Bybit/Bitget 미설정)
 
 **전략 현황 (SIT-3 검증):**
 - **funding_rate**: ✅ WR 100%, +$193 (USD sizing + carry sim)

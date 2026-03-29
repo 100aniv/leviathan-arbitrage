@@ -240,11 +240,11 @@ async def get_strategy_metrics(request: Request) -> JSONResponse:
                     if sid in shadow_by_strategy:
                         sd = shadow_by_strategy[sid]
                         if isinstance(sm_data, dict):
-                            sm_data.setdefault("trades", sd.get("trades", 0))
-                            sm_data.setdefault("pnl", sd.get("pnl", 0.0))
-                            sm_data.setdefault("wins", sd.get("wins", 0))
-                            sm_data.setdefault("losses", sd.get("losses", 0))
-                            sm_data.setdefault("win_rate", sd.get("win_rate", 0.0))
+                            sm_data["trades"] = sd.get("trades", 0)
+                            sm_data["pnl"] = sd.get("pnl", 0.0)
+                            sm_data["wins"] = sd.get("wins", 0)
+                            sm_data["losses"] = sd.get("losses", 0)
+                            sm_data["win_rate"] = sd.get("win_rate", 0.0)
             return JSONResponse({"strategies": raw})
         except Exception as exc:
             logger.warning("Failed to get metrics from strategy_manager: %s", exc)
