@@ -323,9 +323,7 @@ class NativeAdapter(abc.ABC):
         if not self._http:
             raise RuntimeError(f"{self.exchange_id}: not connected — call connect() first")
 
-        req_headers = dict(self._default_headers())
-        if headers:
-            req_headers.update(headers)
+        req_headers = dict(headers or {})
         if signed:
             req_headers.update(self._auth_headers(method, path, params, data))
 
