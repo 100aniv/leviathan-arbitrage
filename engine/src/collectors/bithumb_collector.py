@@ -90,7 +90,7 @@ class BithumbCollector(BaseCollector):
         logger.info("bithumb_rest_snapshot_start", symbols=len(self.symbols))
         fetched = 0
         try:
-            if self._http_client is None:
+            if self._http_client is None or self._http_client.is_closed:
                 self._http_client = httpx.AsyncClient(timeout=15.0)
             client = self._http_client
             for symbol in self.symbols:
@@ -269,7 +269,7 @@ class BithumbCollector(BaseCollector):
         - REST price within normal range → WS delta was corrupt; use REST snapshot.
         """
         try:
-            if self._http_client is None:
+            if self._http_client is None or self._http_client.is_closed:
                 self._http_client = httpx.AsyncClient(timeout=15.0)
 
             coin = _coin_from_symbol(symbol)
@@ -372,7 +372,7 @@ class BithumbCollector(BaseCollector):
                     logger.warning("bithumb_refresh_symbol_error", symbol=symbol, error=str(exc))
                     return False
 
-        if self._http_client is None:
+        if self._http_client is None or self._http_client.is_closed:
             self._http_client = httpx.AsyncClient(timeout=15.0)
         results = await asyncio.gather(*[_fetch_one(self._http_client, s) for s in symbols])
 
