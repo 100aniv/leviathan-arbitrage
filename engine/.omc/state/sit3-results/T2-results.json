@@ -1,0 +1,82 @@
+[
+  {
+    "id": "T2-001",
+    "status": "PASS",
+    "evidence": "collector_connected exchange=binance at 2026-03-26 14:35:25"
+  },
+  {
+    "id": "T2-002",
+    "status": "PASS",
+    "evidence": "collector_connected exchange=binance_futures at 2026-03-26 14:35:25"
+  },
+  {
+    "id": "T2-003",
+    "status": "PASS",
+    "evidence": "collector_connected exchange=bybit at 2026-03-26 14:35:25"
+  },
+  {
+    "id": "T2-004",
+    "status": "PASS",
+    "evidence": "collector_connected exchange=bybit_futures at 2026-03-26 14:35:25"
+  },
+  {
+    "id": "T2-005",
+    "status": "PASS",
+    "evidence": "collector_connected exchange=okx at 2026-03-26 14:35:26"
+  },
+  {
+    "id": "T2-006",
+    "status": "PASS",
+    "evidence": "collector_connected exchange=okx_futures at 2026-03-26 14:35:25"
+  },
+  {
+    "id": "T2-007",
+    "status": "PASS",
+    "evidence": "collector_connected exchange=bitget at 2026-03-26 14:35:25"
+  },
+  {
+    "id": "T2-008",
+    "status": "PASS",
+    "evidence": "collector_connected exchange=upbit at 2026-03-26 14:35:25"
+  },
+  {
+    "id": "T2-009",
+    "status": "PASS",
+    "evidence": "collector_connected exchange=bithumb at 2026-03-26 14:37:32"
+  },
+  {
+    "id": "T2-010",
+    "status": "PASS",
+    "evidence": "collector_connected exchange=coinone at 2026-03-26 14:35:25"
+  },
+  {
+    "id": "T2-011",
+    "status": "FAIL",
+    "evidence": "API /api/v1/exchanges returns 8/10 exchanges (health=1.0): binance,binance_futures,bybit,okx,bitget,upbit,bithumb,coinone. Missing from health API: bybit_futures, okx_futures (both connected per logs)"
+  },
+  {
+    "id": "T2-012",
+    "status": "PASS",
+    "evidence": "symbol_discovery_complete common=177 min_exchanges=3 (upbit=243, bithumb=452 raw; 177 common > threshold 50)"
+  },
+  {
+    "id": "T2-016",
+    "status": "PASS",
+    "evidence": "shadow_mode.data_quality_rejected exchange=bithumb reasons=[stale_data] score=0.3 symbol=PYTH/USDT; shadow_mode.stale_cross_validation_rejected exchange=coinone symbol=LPT/USDT (multiple entries)"
+  },
+  {
+    "id": "T2-017",
+    "status": "PASS",
+    "evidence": "data_quality_anomaly_detected exchange=bithumb symbol=ARDR/USDT z_score=87.77; exchange=okx_futures symbol=POL/USDT z_score=19.8; exchange=binance symbol=NXPC/USDT z_score=9.51 (5+ anomalies detected)"
+  },
+  {
+    "id": "T2-019",
+    "status": "PASS",
+    "evidence": "log pattern price_update|orderbook_update: 0 hits (log verbosity not at INFO for this event). Prometheus leviathan_collector_messages_total: upbit=12930, coinone=13178, binance=7996, bybit=24065, bitget=8101, okx=11339, bithumb=5770, bybit_futures=12152, okx_futures=4479, binance_futures=1770 — total=101,780 messages across 10 exchanges >> 1000/5min threshold"
+  },
+  {
+    "id": "T2-020",
+    "status": "FAIL",
+    "evidence": "Prometheus ws_message_latency histogram median: bitget=0.25-0.5s, bybit=>1s, bybit_futures=>1s, okx=>1s, okx_futures=>1s, upbit=>1s. All exchanges exceed 100ms threshold. Note: metric measures exchange_timestamp→local_receipt including clock skew. Metric infrastructure confirmed operational (6 exchanges reporting histogram data)."
+  }
+]

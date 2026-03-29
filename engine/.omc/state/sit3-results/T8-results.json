@@ -1,0 +1,123 @@
+{
+  "team": "T8",
+  "name": "Telegram & Notifications",
+  "timestamp": "2026-03-26T00:00:00Z",
+  "summary": {
+    "total": 8,
+    "passed": 6,
+    "failed": 1,
+    "skipped": 1,
+    "verdict": "CONDITIONAL_PASS"
+  },
+  "environment": {
+    "containers": {
+      "leviathan-engine": "Up 10 minutes (healthy)",
+      "leviathan-bot-gateway": "Up 6 hours (healthy)"
+    },
+    "notes": "TRADE_TELEGRAM_BOT_TOKEN not configured in test env → TradeBot disabled at runtime"
+  },
+  "test_cases": [
+    {
+      "id": "T8-001",
+      "name": "TradeBot 시작 (poll_loop)",
+      "command": "docker logs leviathan-engine --tail 500 | grep -i 'TradeTelegramBot'",
+      "expected": "TradeTelegramBot enabled + poll_loop 태스크 생성",
+      "actual": "Docker 로그에서 런타임 증거 없음. 코드 wiring 확인: main.py:562 TradeTelegramBot 초기화, main.py:1757 poll_loop 태스크 등록. TRADE_TELEGRAM_BOT_TOKEN 미설정 → 봇 disabled 상태로 시작",
+      "evidence": {
+        "code_wiring": "engine/src/main.py:562 TradeTelegramBot 초기화, main.py:1757 poll_loop task 등록",
+        "runtime_log": "없음 (토큰 미설정 → disabled)"
+      },
+      "status": "FAIL",
+      "reason": "런타임 enabled 증거 없음 — TRADE_TELEGRAM_BOT_TOKEN 미설정으로 비활성화"
+    },
+    {
+      "id": "T8-011",
+      "name": "DevBot 시작",
+      "command": "docker logs leviathan-bot-gateway --tail 200 | grep -i 'DevBot'",
+      "expected": "DevBot status=enabled 로그",
+      "actual": "2026-03-26 09:05:52 [info] bot_gateway_init bot=DevBot status=enabled",
+      "evidence": {
+        "runtime_log": "bot_gateway_init bot=DevBot status=enabled"
+      },
+      "status": "PASS"
+    },
+    {
+      "id": "T8-015",
+      "name": "InfraBot 시작",
+      "command": "docker logs leviathan-bot-gateway --tail 200 | grep -i 'InfraBot'",
+      "expected": "InfraBot status=enabled 로그",
+      "actual": "2026-03-26 09:05:52 [info] bot_gateway_init bot=InfraBot status=enabled",
+      "evidence": {
+        "runtime_log": "bot_gateway_init bot=InfraBot status=enabled"
+      },
+      "status": "PASS"
+    },
+    {
+      "id": "T8-021",
+      "name": "체결 알림 (send_fill_enhanced / send_fill_kr)",
+      "command": "docker logs leviathan-engine | grep 'send_fill' + grep source code",
+      "expected": "send_fill_kr 호출 경로 존재",
+      "actual": "trades=0으로 런타임 호출 없음. 코드 wiring: main.py:1561-1572 execution_result.status=='success' 시 send_fill_kr 호출. telegram_trade_bot.py:667 send_fill_kr, :672 send_fill_enhanced 정의",
+      "evidence": {
+        "code_wiring": "main.py:1572 asyncio.ensure_future(self._trade_bot.send_fill_kr(fill_data))",
+        "method_def": "telegram_trade_bot.py:667 send_fill_kr, :672 send_fill_enhanced"
+      },
+      "status": "PASS",
+      "reason": "코드 wiring 정상. trades=0으로 런타임 호출 없음 (환경 제한)"
+    },
+    {
+      "id": "T8-022",
+      "name": "한글 알림 형식 (send_alert_kr)",
+      "command": "grep -rn 'send_alert_kr' engine/src/infra/telegram*.py",
+      "expected": "send_alert_kr 함수 + 한글 템플릿 다수",
+      "actual": "telegram.py:390 send_alert_kr 구현. 12개 alert_type 한글 템플릿: kill_switch, circuit_breaker, db_failure, signal_found, shadow_start, shadow_daily_breakdown, krw_soft_block, krw_killswitch, krw_recovered, position_discrepancy, position_tracking_fail, inventory_critical",
+      "evidence": {
+        "code": "telegram.py:390-507 send_alert_kr 12개 KR 템플릿 확인",
+        "delegation": "telegram_trade_bot.py:659-661 send_alert_kr → self._alerter.send_alert_kr 위임"
+      },
+      "status": "PASS"
+    },
+    {
+      "id": "T8-029",
+      "name": "알림 응답 시간 < 2초",
+      "command": "TradeBot /status 명령 응답 시간 측정",
+      "expected": "< 2초 응답",
+      "actual": "TRADE_TELEGRAM_BOT_TOKEN 미설정으로 측정 불가",
+      "evidence": {},
+      "status": "SKIP",
+      "reason": "토큰 미설정 환경에서 실측 불가"
+    },
+    {
+      "id": "T8-033",
+      "name": "레이트 리미팅",
+      "command": "grep -rn '_check_rate_limit' engine/src/infra/telegram_bot_base.py",
+      "expected": "_check_rate_limit 구현 + sliding window",
+      "actual": "telegram_bot_base.py:421 _check_rate_limit 구현. 슬라이딩 윈도우 20 msg/60초. send_message(:148), send_photo(:206) 두 경로 모두 rate limit 적용",
+      "evidence": {
+        "code": "telegram_bot_base.py:421 '\"Sliding-window rate limiter — max 20 messages per 60 seconds.\"'",
+        "applied_at": "send_message:148, send_photo:206"
+      },
+      "status": "PASS"
+    },
+    {
+      "id": "T8-035",
+      "name": "미인가 사용자 거부",
+      "command": "grep -rn '_authorize\\|Unauthorized\\|allowed_chat' engine/src/infra/telegram_bot_base.py",
+      "expected": "_authorize() + 미인가 chat_id 거부",
+      "actual": "telegram_bot_base.py:350 _authorize() 구현. _allowed_chat_ids set으로 관리(:100). 미인가 chat_id → message handler:299 거부, callback handler:331 'Unauthorized' 응답",
+      "evidence": {
+        "code": "telegram_bot_base.py:350 _authorize, :299/:330 message/callback handler에서 auth check",
+        "reject_msg": "answer_callback_query(callback_query['id'], 'Unauthorized')"
+      },
+      "status": "PASS"
+    }
+  ],
+  "issues": [
+    {
+      "id": "T8-001-FAIL",
+      "severity": "MEDIUM",
+      "description": "TradeBot TRADE_TELEGRAM_BOT_TOKEN 미설정 → 런타임 비활성화. 코드 wiring은 정상.",
+      "recommendation": "테스트 환경 .env에 TRADE_TELEGRAM_BOT_TOKEN 설정 필요"
+    }
+  ]
+}

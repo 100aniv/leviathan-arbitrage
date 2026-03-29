@@ -1,0 +1,102 @@
+{
+  "generated_at": "2026-03-27T00:44:12.819919",
+  "method": "docker-logs + /metrics + check_all",
+  "source": "leviathan-engine Docker container",
+  "results": {
+    "T2_pass_converted": 19,
+    "T2_fail_kept": 3,
+    "T10_pass_converted": 8,
+    "T10_fail_kept": 16,
+    "total_converted_to_pass": 27,
+    "total_still_fail": 19
+  },
+  "fail_reasons": {
+    "T2-018": "Bithumb fake_spread 필터 로그 없음 (bithumb REST 연결 불안정)",
+    "T2-026": "단일 메모리 스냅샷만 수집 (5min 델타 측정 불가)",
+    "T2-028": "네트워크 대역폭 메트릭 없음",
+    "T10-001": "Signal 라우팅 확인, PnL→DB→Dashboard 단계 미확인",
+    "T10-005": "API JWT 인증 필요 → DB→API 체인 검증 불가",
+    "T10-006": "/kill Telegram 명령 실행 증거 없음",
+    "T10-007": "Settings 변경 반영 로그 없음",
+    "T10-008": "Paper→Shadow 모드 전환 로그 없음",
+    "T10-009": "Paper→Backtest 전환 로그 없음",
+    "T10-010": "모드 전환 중 주문 처리 로그 없음",
+    "T10-012": "DB 장애 시뮬레이션 없음",
+    "T10-013": "Redis 장애 시뮬레이션 없음",
+    "T10-020": "sharpe=0.00 < 2.5 (startup, 거래 없음)",
+    "T10-022": "signals_per_day=0 < 100 (startup)",
+    "T10-025": "exchange health=0.45 < 0.95 (paper exchange)",
+    "T10-030": "T1-results.json 없음",
+    "T10-031": "T3/T4-results.json 없음",
+    "T10-032": "T6/T7-results.json 없음",
+    "T10-033": "T5/T8-results.json 없음"
+  },
+  "per_team_summary": {
+    "T1": {
+      "pass": 25,
+      "fail": 0,
+      "skip": 0,
+      "total": 25
+    },
+    "T2": {
+      "pass": 25,
+      "fail": 3,
+      "skip": 2,
+      "total": 30
+    },
+    "T3": {
+      "pass": 34,
+      "fail": 0,
+      "skip": 1,
+      "total": 35
+    },
+    "T4": {
+      "pass": 28,
+      "fail": 0,
+      "skip": 0,
+      "total": 28
+    },
+    "T5": {
+      "pass": 30,
+      "fail": 0,
+      "skip": 0,
+      "total": 30
+    },
+    "T6": {
+      "pass": 50,
+      "fail": 0,
+      "skip": 0,
+      "total": 50
+    },
+    "T7": {
+      "pass": 20,
+      "fail": 0,
+      "skip": 0,
+      "total": 20
+    },
+    "T8": {
+      "pass": 34,
+      "fail": 0,
+      "skip": 1,
+      "total": 35
+    },
+    "T9": {
+      "pass": 25,
+      "fail": 0,
+      "skip": 0,
+      "total": 25
+    },
+    "T10": {
+      "pass": 13,
+      "fail": 17,
+      "skip": 5,
+      "total": 35
+    }
+  },
+  "overall": {
+    "total_pass": 284,
+    "total_fail": 20,
+    "total_skip": 9,
+    "pass_rate": "90.7%"
+  }
+}

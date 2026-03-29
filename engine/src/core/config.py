@@ -257,6 +257,10 @@ class LiveGateSettings(BaseSettings):
         default=24,
         description="Hours between auto-evaluations",
     )
+    bypass: bool = Field(
+        default=False,
+        description="Bypass LiveGate for small-amount testing. Set LIVE_GATE_BYPASS=true.",
+    )
 
 
 class ExecutionSettings(BaseSettings):

@@ -1,0 +1,86 @@
+{
+  "team": "T7",
+  "name": "API/Auth 검증",
+  "timestamp": "2026-03-26T14:40:32Z",
+  "environment": {
+    "session": "qa-api-auth-t7-1774535997",
+    "service": "FastAPI engine @ localhost:8000",
+    "session_cleanup": "DONE"
+  },
+  "test_cases": [
+    {
+      "id": "T7-001",
+      "name": "JWT 생성 (올바른 자격증명)",
+      "command": "POST /api/auth/login {username:admin, password:leviathan}",
+      "expected": "access_token 반환 + token_type:bearer",
+      "actual": "{\"access_token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\"token_type\":\"bearer\"}",
+      "status": "PASS"
+    },
+    {
+      "id": "T7-002",
+      "name": "JWT 검증 (유효 토큰 통과)",
+      "command": "GET /api/v1/status Authorization: Bearer <valid_token>",
+      "expected": "200 OK + status 데이터 반환",
+      "actual": "{\"running\":true,\"kill_switch_active\":false,\"environment\":\"dev\",\"execution_mode\":\"paper\",\"strategy_count\":5,\"position_count\":0,\"connection_count\":0}",
+      "status": "PASS"
+    },
+    {
+      "id": "T7-003",
+      "name": "JWT 만료/무효 토큰 거부",
+      "command": "GET /api/v1/status Authorization: Bearer invalid_token_here",
+      "expected": "401 또는 오류 응답",
+      "actual": "{\"detail\":\"Invalid token\"}",
+      "status": "PASS"
+    },
+    {
+      "id": "T7-005",
+      "name": "JWT 없이 접근 → 401",
+      "command": "GET /api/v1/status (no Authorization header)",
+      "expected": "HTTP 401",
+      "actual": "HTTP 401",
+      "status": "PASS"
+    },
+    {
+      "id": "T7-007",
+      "name": "CORS preflight",
+      "command": "OPTIONS /api/v1/status Origin: http://localhost:3000",
+      "expected": "200 OK + CORS 헤더 포함",
+      "actual": "HTTP 200, access-control-allow-origin: http://localhost:3000, access-control-allow-methods: DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT, access-control-allow-credentials: true",
+      "status": "PASS"
+    },
+    {
+      "id": "T7-011",
+      "name": "API 버전 관리 (/api/v1/ prefix)",
+      "command": "코드 검사: engine/src/api/routes/*.py",
+      "expected": "모든 라우터가 /api/v1/ prefix 사용",
+      "actual": "12개 라우터 전부 prefix=/api/v1 또는 /api/v1/<name> 사용 확인. /health는 공개 엔드포인트로 의도적 예외",
+      "status": "PASS"
+    },
+    {
+      "id": "T7-014",
+      "name": "동시 요청 처리 (10건)",
+      "command": "10x concurrent GET /health",
+      "expected": "모두 200 OK",
+      "actual": "200 200 200 200 200 200 200 200 200 200 (10/10 성공)",
+      "status": "PASS"
+    },
+    {
+      "id": "T7-020",
+      "name": "헬스체크 미인증 접근",
+      "command": "GET /health (JWT 없이)",
+      "expected": "200 OK (인증 불필요)",
+      "actual": "{\"status\":\"ok\"}",
+      "status": "PASS"
+    }
+  ],
+  "summary": {
+    "total": 8,
+    "passed": 8,
+    "failed": 0,
+    "verdict": "PASS"
+  },
+  "cleanup": {
+    "session_killed": true,
+    "artifacts_removed": true
+  }
+}

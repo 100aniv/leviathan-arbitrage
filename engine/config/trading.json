@@ -65,7 +65,7 @@
     "kill_switch_enabled": true,
     "tuner_data_source": "timescaledb",
     "max_position_usd": 10,
-    "max_daily_loss_usd": 5000,
+    "max_daily_loss_usd": 15,
     "active_exchanges": [
       "binance",
       "binance_futures"

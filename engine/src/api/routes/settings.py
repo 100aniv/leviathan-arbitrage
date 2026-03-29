@@ -39,6 +39,14 @@ async def get_settings(request: Request) -> JSONResponse:
         {"id": sid, "type": s.get("type", sid), "enabled": s.get("enabled", True)}
         for sid, s in ctx.strategies.items()
     ]
+    # US-F04: Load strategy-exchange requirements from trading.json
+    from src.core.config import load_trading_config
+    try:
+        tcfg = load_trading_config()
+        strategy_reqs = tcfg.get("strategy_exchange_requirements", {})
+    except Exception:
+        strategy_reqs = {}
+
     return JSONResponse({
         "min_edge_bps": ctx.runtime_settings.get("min_edge_bps", 5),
         "active_strategies": active_strategies,
@@ -47,6 +55,7 @@ async def get_settings(request: Request) -> JSONResponse:
         "capital_per_exchange_usd": ctx.runtime_settings.get("capital_per_exchange_usd", 70),
         "max_position_usd": ctx.runtime_settings.get("max_position_usd", 5000),
         "max_daily_loss_usd": ctx.runtime_settings.get("max_daily_loss_usd", 500),
+        "strategy_exchange_requirements": strategy_reqs,
     })
 
 

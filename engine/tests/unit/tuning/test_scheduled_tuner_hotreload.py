@@ -129,6 +129,8 @@ class TestRunOptimizationHotReload:
             return_value={"best_params": {"min_spread_bps": 5.0}, "best_value": 1.2}
         )
         tuner._report_results = AsyncMock()
+        # Isolate from on-disk params to prevent Devil's Advocate rollback interference
+        tuner._load_current_params = MagicMock(return_value=None)
 
         mock_runner = MagicMock()
         mock_runner.apply_decision = AsyncMock(return_value=("APPLY", MagicMock()))
@@ -146,6 +148,8 @@ class TestRunOptimizationHotReload:
             return_value={"best_params": {}, "best_value": -0.5}  # negative WFE
         )
         tuner._report_results = AsyncMock()
+        # Isolate from on-disk params
+        tuner._load_current_params = MagicMock(return_value=None)
 
         apply_called = []
 

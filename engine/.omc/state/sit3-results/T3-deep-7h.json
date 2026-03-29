@@ -1,0 +1,132 @@
+{
+  "report": "T3 Signal Pipeline 심층 재검증 (7H+ 런타임)",
+  "generated_at": "2026-03-27T00:00:00Z",
+  "runtime_hours": 7,
+
+  "1_signal_total": {
+    "signal_routed_count": 8800,
+    "note": "7H 동안 signal_routed 로그 총 횟수"
+  },
+
+  "2_strategy_distribution": {
+    "cross_exchange_spot": 4706,
+    "spot_futures_basis": 2267,
+    "triangular": 1829,
+    "futures_futures_spread": 26,
+    "funding_rate_arb": 13,
+    "total": 8841,
+    "note": "uniq -c 합산. signal_routed 8800과 소수 오차는 grep 패턴 차이"
+  },
+
+  "3_rejection_reasons": {
+    "min_edge_rejected": {
+      "count": 0,
+      "note": "해당 키워드 로그 없음 — AdaptiveThreshold로 거부 처리 (별도 keyword)"
+    },
+    "spread_too_wide": {
+      "count": 3187,
+      "source": "cross_exchange 전략",
+      "note": "spread_pct > max_spread_bps=100. 정상 시장 필터링"
+    },
+    "fake_spread_rejected": {
+      "count": 379,
+      "source": "triangular 전략",
+      "example_spread_pct": 3122151.6139,
+      "path_example": ["USDT", "SOL", "ETH"],
+      "note": "312만% 가짜 스프레드 — Bithumb stale data 필터 정상 작동"
+    }
+  },
+
+  "4_dqm_statistics": {
+    "data_quality_rejected_total": 812152,
+    "note": "원시 마켓 데이터 레벨 거부. signal_routed 8800과 구분 (데이터 입수 단계 필터)"
+  },
+
+  "5_hmm_regime": {
+    "current_regime": "MarketRegime.NORMAL",
+    "samples": 60,
+    "pnl_at_check": -12.095212649418292,
+    "last_log": "2026-03-26 22:35:33",
+    "note": "NORMAL 레짐 정상 유지. HMM 5분 주기 체크 확인"
+  },
+
+  "6_ml_canary": {
+    "log_entries": 0,
+    "status": "INACTIVE",
+    "note": "canary 키워드 로그 전무 — ML Canary 아직 미실행 상태"
+  },
+
+  "7_adaptive_threshold": {
+    "dynamic_bps": 10.04,
+    "max_cap_bps": 10.00,
+    "static_baseline_bps": 5.00,
+    "status": "CAPPED",
+    "new_edge_bps": 0.0,
+    "trades": 26,
+    "win_rate": 0.0,
+    "last_log": "2026-03-26 22:35:39",
+    "note": "CRITICAL: dynamic(10.04) > max(10.00) → capped. win_rate=0.0으로 threshold 최대치 상승. 가용 edge=0.0bps < 10bps → 신규 신호 전부 거부. 회복 불가 데드락 상태"
+  },
+
+  "8_pricehub_metrics": {
+    "shadow_arb_v1": {
+      "processed_total": 6717013,
+      "sum_seconds": 1759.48,
+      "avg_latency_ms": 0.262,
+      "pct_under_1ms": 98.4
+    },
+    "cross_exchange_spot": {
+      "processed_total": 282634
+    },
+    "note": "shadow_arb_v1 압도적 처리량. cross_exchange_spot 282K 처리 (signal_count 기준)"
+  },
+
+  "9_actual_trades": {
+    "triangular_v1": {
+      "trades_total": 26,
+      "result": "loss",
+      "pnl_usd": -12.095212649418292,
+      "exchange_pair": "binance_futures-binance_futures"
+    },
+    "cross_exchange_spot": { "trades_total": 0 },
+    "spot_futures_basis": { "trades_total": 0 },
+    "futures_futures_spread": { "trades_total": 0 },
+    "funding_rate_arb": { "trades_total": 0 }
+  },
+
+  "analysis": {
+    "root_cause": "AdaptiveThreshold 데드락",
+    "chain": [
+      "triangular 초기 26 trades 전부 손실",
+      "win_rate=0.0 → AdaptiveThreshold dynamic 상승",
+      "dynamic(10.04) > max(10.00) → capped at 10bps",
+      "시장 실제 가용 edge=0.0bps (수수료 초과)",
+      "모든 신규 신호: available_edge(0) < threshold(10) → 거부",
+      "trades=0 고착 → win_rate 개선 불가 → 데드락 유지"
+    ],
+    "secondary_issues": [
+      "ML Canary 미실행 (7H 동안 로그 전무)",
+      "cross_exchange spread_too_wide 3,187건 (수수료 > 스프레드 구조적 문제)",
+      "triangular fake_spread 379건은 정상 필터링 (Bithumb stale data 방어)"
+    ],
+    "pipeline_health": {
+      "data_ingestion": "PASS (DQM 정상 필터링)",
+      "signal_routing": "PASS (8,800 routed)",
+      "hmm_regime": "PASS (NORMAL 유지)",
+      "adaptive_threshold": "FAIL (데드락 — win_rate=0 → max cap → 회복 불가)",
+      "ml_canary": "FAIL (7H 미실행)",
+      "trade_execution": "FAIL (pnl=-12.095, trades=26 all loss)"
+    }
+  },
+
+  "verdict": {
+    "T3_status": "CONDITIONAL_PASS",
+    "signal_pipeline_functional": true,
+    "trades_generating_profit": false,
+    "blockers": [
+      "AdaptiveThreshold 데드락: 수동 리셋 또는 threshold 하향 필요",
+      "ML Canary 미실행: canary 파이프라인 기동 확인 필요",
+      "triangular PnL -12.095 USD: 음수 수렴 — 전략 파라미터 재검토 필요"
+    ]
+  }
+}
