@@ -312,11 +312,8 @@ class LiveMode:
         )
 
         logger.info(
-            "live_mode.init",
-            execution_mode=execution_mode,
-            symbols=self._symbols,
-            exchanges=self._exchanges,
-            executor_type=type(executor).__name__,
+            "live_mode.init execution_mode=%s symbols=%s exchanges=%s executor=%s",
+            execution_mode, self._symbols, self._exchanges, type(executor).__name__,
         )
 
     # -----------------------------------------------------------------------

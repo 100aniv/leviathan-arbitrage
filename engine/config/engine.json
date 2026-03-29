@@ -1,7 +1,7 @@
 {
   "_comment": "LEVIATHAN Engine Configuration — Runtime settings (non-secret). Secrets stay in .env",
 
-  "mode": "paper",
+  "mode": "shadow",
   "env": "dev",
   "log_level": "INFO",
 
@@ -18,9 +18,11 @@
   },
 
   "risk": {
-    "max_position_usd": 5000,
-    "max_daily_loss_usd": 15,
-    "max_net_exposure_per_asset": 5000,
+    "_comment": "퍼센티지 기반 동적 한도 (자본 대비 %)",
+    "use_percentage": true,
+    "max_position_pct": 3.0,
+    "max_daily_loss_pct": 5.0,
+    "max_net_exposure_pct": 10.0,
     "min_edge_bps": 0,
     "min_price_usd": 0.10,
     "max_rollback_threshold": 0.02,
@@ -28,24 +30,26 @@
   },
 
   "paper": {
-    "_comment": "Paper mode: live WS data + SimExecutor (old 'shadow')",
+    "_comment": "Paper mode: live WS data + SimExecutor",
     "depth_fraction": 1.0,
-    "max_trade_size": 100,
+    "max_trade_size_pct": 2.0,
     "disabled_strategies": [],
-    "max_loss_per_trade_usd": 10,
+    "max_loss_per_trade_pct": 1.0,
     "progressive_enabled": false
   },
 
   "shadow": {
     "_comment": "Shadow mode: live WS data + AtomicExecutor small capital (canary)",
-    "max_position_usd": 10,
-    "exchanges": ["binance", "binance_futures"],
-    "daily_loss_limit_usd": 15
+    "capital_pct": 5.0,
+    "max_position_pct": 3.0,
+    "max_daily_loss_pct": 5.0,
+    "exchanges": ["binance", "binance_futures"]
   },
 
   "live": {
     "_comment": "Live mode: full capital AtomicExecutor",
-    "max_position_usd": 5000,
+    "max_position_pct": 3.0,
+    "max_daily_loss_pct": 5.0,
     "exchanges": ["binance", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone", "binance_futures", "bybit_futures", "okx_futures"]
   },
 

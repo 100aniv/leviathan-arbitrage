@@ -213,7 +213,7 @@ class Engine:
 
         # US-155: Cancel open orders in live mode before disconnecting
         if (self._settings is not None
-                and self._settings.execution_mode.value == "live"
+                and self._settings.execution_mode == "live"
                 and self._exchanges):
             await self._cancel_open_orders()
 
@@ -379,10 +379,10 @@ class Engine:
         try:
             self._settings = get_settings()
             self.context.environment = self._settings.engine_env
-            self.context.execution_mode = self._settings.execution_mode.value
+            self.context.execution_mode = self._settings.execution_mode
             logger.info("Config loaded — env=%s mode=%s capital_tier=%s",
                         self._settings.engine_env,
-                        self._settings.execution_mode.value,
+                        self._settings.execution_mode,
                         self._settings.capital.tier)
         except Exception as exc:
             logger.warning("Config load failed (using defaults): %s", exc)
@@ -446,17 +446,20 @@ class Engine:
     # ------------------------------------------------------------------
 
     async def _init_infrastructure(self) -> None:
-        mode = self._settings.execution_mode if self._settings else ExecutionMode.PAPER
+        from src.core.config import EngineMode, resolve_engine_mode, load_engine_config
+
+        # Phase H-2: resolve mode from config/engine.json (not .env)
+        _engine_cfg = load_engine_config()
+        self._engine_mode = resolve_engine_mode(
+            engine_mode=_engine_cfg.get("mode"),
+        )
 
         # Bug 1-F: initialize shared HTTP client for FundingRateCollector
         import httpx
         self._http_client = httpx.AsyncClient(timeout=10.0)
 
-        if mode == ExecutionMode.PAPER:
-            from src.infra.redis.memory_bus import InMemoryEventBus
-            self._event_bus = InMemoryEventBus()
-            logger.info("InMemoryEventBus initialized (paper mode)")
-        else:
+        # EventBus: only LIVE mode uses Redis, all others use InMemory (direct routing)
+        if self._engine_mode == EngineMode.LIVE:
             try:
                 from src.infra.redis.client import RedisClient
                 from src.infra.redis.event_bus import EventBus
@@ -464,11 +467,15 @@ class Engine:
                 await redis_client.connect()
                 self._redis_client = redis_client
                 self._event_bus = EventBus(redis_client)
-                logger.info("Redis EventBus initialized")
+                logger.info("Redis EventBus initialized (live mode)")
             except Exception as exc:
                 logger.warning("Redis init failed, falling back to InMemoryEventBus: %s", exc)
                 from src.infra.redis.memory_bus import InMemoryEventBus
                 self._event_bus = InMemoryEventBus()
+        else:
+            from src.infra.redis.memory_bus import InMemoryEventBus
+            self._event_bus = InMemoryEventBus()
+            logger.info("InMemoryEventBus initialized (engine_mode=%s)", self._engine_mode)
 
         # --- TimescaleDB + MarketRecorder ---
         await self._init_database()
@@ -631,14 +638,13 @@ class Engine:
     # ------------------------------------------------------------------
 
     async def _init_exchanges(self) -> None:
-        mode = self._settings.execution_mode if self._settings else ExecutionMode.PAPER
+        from src.core.config import EngineMode
         capital = self._settings.capital.initial_capital if self._settings else Decimal("70")
 
-        if mode == ExecutionMode.PAPER:
+        # Phase H-2: route by EngineMode from config/engine.json
+        if self._engine_mode in (EngineMode.BACKTEST, EngineMode.PAPER):
             await self._init_paper_exchanges(capital)
-        elif mode == ExecutionMode.SANDBOX:
-            await self._init_sandbox_exchanges()
-        else:
+        elif self._engine_mode in (EngineMode.SHADOW, EngineMode.LIVE):
             await self._init_live_exchanges()
 
         logger.info("Initialized %d exchange adapters: %s",
@@ -694,18 +700,21 @@ class Engine:
             # TODO: Phase 6 — create CCXTAdapters with sandbox=True
 
     async def _init_live_exchanges(self) -> None:
-        use_native = (
-            self._settings.trading.use_native_adapters if self._settings else False
-        )
+        from src.core.config import load_engine_config
+
+        # Phase H-2: Shadow uses shadow.exchanges, Live uses live.exchanges from config
+        _engine_cfg = load_engine_config()
+        _mode_cfg = _engine_cfg.get(self._engine_mode.value, {})
+        _cfg_exchanges = _mode_cfg.get("exchanges")
+
         exchanges = (
-            self._settings.trading.active_exchanges if self._settings
-            else ["binance", "bybit", "okx", "bitget"]
+            _cfg_exchanges
+            or (self._settings.trading.active_exchanges if self._settings
+                else ["binance", "bybit", "okx", "bitget"])
         )
-        if use_native:
-            await self._init_native_exchanges(exchanges, sandbox=False)
-        else:
-            logger.info("Live exchange initialization — CCXTAdapter")
-            # TODO: create CCXTAdapters with real credentials
+
+        # Native adapters are the default for shadow/live (ccxt-free)
+        await self._init_native_exchanges(exchanges, sandbox=False)
 
     async def _init_native_exchanges(self, exchanges: list[str], sandbox: bool) -> None:
         """Create and connect native (ccxt-free) adapters for each exchange."""
@@ -2064,8 +2073,17 @@ class Engine:
         from src.core.multi_signal import MultiStrategySignalProducer
         from src.modes.live import LiveMode, LiveGateFailed
 
+        from src.core.config import load_engine_config
+
+        _engine_cfg = load_engine_config()
+        _mode_cfg = _engine_cfg.get(self._engine_mode.value, {}) if hasattr(self, '_engine_mode') else {}
+
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-        exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
+        # Phase H-2: use mode-specific exchanges from config/engine.json
+        exchanges = _mode_cfg.get("exchanges") or (
+            self._settings.trading.active_exchanges if self._settings
+            else ["binance", "bybit", "okx", "bitget"]
+        )
 
         # Create MultiStrategySignalProducer
         self._multi_signal_producer = MultiStrategySignalProducer(
@@ -2083,9 +2101,8 @@ class Engine:
         except Exception as exc:
             logger.warning("FundingRateCollector init failed (non-fatal): %s", exc)
 
-        # Determine execution mode from env
-        _exec_mode = os.getenv("EXECUTION_MODE", "paper").lower()
-        execution_mode = "live" if _exec_mode == "live" else "paper"
+        # Phase H-2: execution mode from EngineMode (config/engine.json)
+        execution_mode = self._engine_mode.value if hasattr(self, '_engine_mode') else "paper"
 
         self._live_mode = LiveMode(
             signal_generator=self._signal_generator,
@@ -2118,10 +2135,12 @@ class Engine:
             while self.state.running:
                 await asyncio.sleep(5.0)
         except LiveGateFailed:
-            logger.warning("LiveGate failed — falling back to Shadow mode")
+            logger.warning("LiveGate failed — falling back to Paper mode")
             await self._shadow_mode_loop()
         except asyncio.CancelledError:
             pass
+        except Exception as exc:
+            logger.error("_live_mode_loop FATAL error: %s", exc, exc_info=True)
         finally:
             if hasattr(self, "_live_mode") and self._live_mode is not None:
                 await self._live_mode.stop()

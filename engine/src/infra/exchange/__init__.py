@@ -77,15 +77,27 @@ def create_native_adapter(
     Raises:
         ValueError: If exchange_id is not supported.
     """
-    cls = _NATIVE_ADAPTER_MAP.get(exchange_id.lower())
+    eid = exchange_id.lower()
+    # Phase H-2: futures exchanges (e.g. "binance_futures") → base adapter + market_type
+    market_type = "spot"
+    base_eid = eid
+    if eid.endswith("_futures"):
+        base_eid = eid.removesuffix("_futures")
+        market_type = "futures"
+
+    cls = _NATIVE_ADAPTER_MAP.get(base_eid)
     if cls is None:
         supported = sorted(_NATIVE_ADAPTER_MAP.keys())
         raise ValueError(
             f"Unsupported exchange '{exchange_id}'. Supported: {supported}"
         )
-    return cls(
+    adapter = cls(
         api_key=api_key,
         api_secret=api_secret,
         passphrase=passphrase,
         sandbox=sandbox,
     )
+    # Set market_type for futures (adapter must support it)
+    if market_type == "futures" and hasattr(adapter, "_market_type"):
+        adapter._market_type = market_type
+    return adapter
