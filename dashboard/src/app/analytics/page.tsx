@@ -30,7 +30,7 @@ function SharpeChart({ data }: { data: StrategyBar[] }) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 text-xs font-mono text-terminal-subtle">
-        Shadow 데이터 없음 — Shadow Mode 실행 후 표시됩니다
+        데이터 없음 — Paper / Shadow Mode 실행 후 표시됩니다
       </div>
     );
   }
@@ -87,7 +87,7 @@ function PnLHeatmap({ cells }: { cells: HeatCell[] }) {
   if (cells.every((c) => c.value === 0)) {
     return (
       <div className="flex items-center justify-center h-32 text-xs font-mono text-terminal-subtle">
-        귀속 데이터 없음 — Shadow 운영 후 표시됩니다
+        귀속 데이터 없음 — Paper / Shadow 운영 후 표시됩니다
       </div>
     );
   }

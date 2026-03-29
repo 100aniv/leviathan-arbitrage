@@ -52,7 +52,7 @@ function DrawdownChart({ data }: { data: DrawdownPoint[] }) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-28 text-xs font-mono text-terminal-subtle">
-        에쿼티 커브 데이터 없음 — Shadow/Live 운영 후 표시됩니다
+        에쿼티 커브 데이터 없음 — Paper/Shadow/Live 운영 후 표시됩니다
       </div>
     );
   }
@@ -333,7 +333,7 @@ export default function PortfolioPage() {
           </div>
         ) : (
           <div className="flex items-center justify-center h-24 mt-2">
-            <span className="text-xs font-mono text-terminal-subtle">Shadow/Live 운영 이후 누적 데이터가 표시됩니다</span>
+            <span className="text-xs font-mono text-terminal-subtle">Paper/Shadow/Live 운영 이후 누적 데이터가 표시됩니다</span>
           </div>
         )}
       </div>

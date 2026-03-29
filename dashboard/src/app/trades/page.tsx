@@ -98,7 +98,7 @@ export default function TradesPage() {
             거래 내역
             <span className={`ml-2 px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
               engineMode === "live" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
-              engineMode === "shadow" ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" :
+              engineMode === "shadow" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" :
               engineMode === "paper" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" :
               "bg-gray-500/20 text-gray-400 border border-gray-500/30"
             }`}>

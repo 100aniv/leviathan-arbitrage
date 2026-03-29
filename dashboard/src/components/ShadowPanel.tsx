@@ -104,10 +104,10 @@ function InactiveState() {
   return (
     <div className="flex flex-col items-center justify-center py-8 gap-2">
       <span className="text-[10px] font-mono text-terminal-subtle uppercase tracking-[0.2em]">
-        ○ Shadow mode inactive
+        ○ Paper mode inactive
       </span>
       <p className="text-[10px] font-mono text-terminal-subtle/60">
-        Start the engine in shadow mode to see live stats
+        Start the engine in Paper or Shadow mode to see live stats
       </p>
     </div>
   );
@@ -116,8 +116,9 @@ function InactiveState() {
 // ─── Shadow Panel ─────────────────────────────────────────────────────────────
 
 const MODE_TITLES: Record<string, string> = {
-  shadow: '시뮬레이션 모니터',
-  paper: '연습 모니터',
+  backtest: '백테스트 모니터',
+  paper: '페이퍼 모니터',
+  shadow: 'Canary 모니터',
   live: '실거래 모니터',
 };
 
@@ -180,7 +181,7 @@ export function ShadowPanel({ wsStats, mode }: ShadowPanelProps = {}) {
           <span
             className={`text-[10px] font-mono ${isActive ? 'text-profit animate-pulse' : 'text-terminal-subtle'}`}
           >
-            {isActive ? '● SHADOW RUNNING' : '○ INACTIVE'}
+            {isActive ? '● RUNNING' : '○ INACTIVE'}
           </span>
         </div>
       </div>

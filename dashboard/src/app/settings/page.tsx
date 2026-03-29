@@ -42,10 +42,10 @@ const MODE_LABELS: Record<string, string> = {
 };
 
 const MODE_DESCRIPTIONS: Record<string, string> = {
-  backtest: "과거 데이터로 전략 성능 검증 (오프라인)",
-  paper: "가상 자본으로 전략 로직 검증 (시장 영향 없음)",
-  shadow: "실시간 시장 데이터로 전략 시뮬레이션 (주문 없음)",
-  live: "실제 자본으로 거래 실행 — LiveGate 통과 필요",
+  backtest: "과거 데이터 + SimExecutor — 오프라인 전략 성능 검증",
+  paper: "실시간 WS + SimExecutor — 실제 시장 데이터 기반 가상 거래 (주문 없음)",
+  shadow: "실시간 WS + AtomicExecutor 소액 Canary — 실제 소액 거래 실행",
+  live: "실시간 WS + AtomicExecutor 전액 — LiveGate 통과 필요",
 };
 
 type FeedbackState = { type: "success" | "error"; message: string } | null;
@@ -53,6 +53,7 @@ type FeedbackState = { type: "success" | "error"; message: string } | null;
 type Dialog =
   | { kind: "emergency-stop" }
   | { kind: "reset-defaults" }
+  | { kind: "mode-change"; mode: "backtest" | "paper" | "shadow" | "live" }
   | null;
 
 export default function SettingsPage() {
@@ -87,16 +88,23 @@ export default function SettingsPage() {
     setTimeout(() => setFeedback(null), 3000);
   }
 
-  async function handleSelectMode(mode: "backtest" | "paper" | "shadow" | "live") {
+  function handleSelectMode(mode: "backtest" | "paper" | "shadow" | "live") {
+    if (settings?.execution_mode === mode) return;
+    setDialog({ kind: "mode-change", mode });
+  }
+
+  async function confirmModeChange(mode: "backtest" | "paper" | "shadow" | "live") {
+    setDialog(null);
     const prevMode = settings?.execution_mode;
-    // Optimistic UI: 즉시 모드 표시 변경
     setSettings((prev) => prev ? { ...prev, execution_mode: mode } : prev);
     setModeSaving(true);
     try {
       await updateMode(mode);
-      showFeedback("success", `실행 모드가 "${MODE_LABELS[mode]}"로 변경되었습니다.`);
+      const msg = mode === "live"
+        ? `"Live" 모드로 변경되었습니다. 엔진 재시작이 필요합니다.`
+        : `실행 모드가 "${MODE_LABELS[mode]}"로 변경되었습니다.`;
+      showFeedback("success", msg);
     } catch {
-      // 실패 시 롤백
       setSettings((prev) => prev ? { ...prev, execution_mode: prevMode } : prev);
       showFeedback("error", "실행 모드 변경에 실패했습니다.");
     } finally {
@@ -499,6 +507,20 @@ export default function SettingsPage() {
         cancelLabel="취소"
         danger="warning"
         onConfirm={handleResetDefaults}
+        onCancel={() => setDialog(null)}
+      />
+      <ConfirmDialog
+        isOpen={dialog?.kind === "mode-change"}
+        title={`모드 전환: ${dialog?.kind === "mode-change" ? MODE_LABELS[dialog.mode] : ""}`}
+        message={
+          dialog?.kind === "mode-change" && dialog.mode === "live"
+            ? `실행 모드를 "Live"로 전환합니다.\n\n⚠ 엔진 재시작이 필요합니다. 2~5초 다운타임이 발생하며, LiveGate 조건을 통과해야 거래가 시작됩니다.\n\n실제 자본으로 거래가 실행됩니다. 계속하시겠습니까?`
+            : `실행 모드를 "${dialog?.kind === "mode-change" ? MODE_LABELS[dialog.mode] : ""}"로 전환합니다.\n\n엔진 재시작이 필요합니다. 계속하시겠습니까?`
+        }
+        confirmLabel="전환"
+        cancelLabel="취소"
+        danger={dialog?.kind === "mode-change" && dialog.mode === "live" ? "critical" : "warning"}
+        onConfirm={() => dialog?.kind === "mode-change" && confirmModeChange(dialog.mode)}
         onCancel={() => setDialog(null)}
       />
     </div>

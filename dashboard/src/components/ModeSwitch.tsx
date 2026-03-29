@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { fetchApi } from '@/lib/api';
 
 const MODE_CONFIG: Record<string, { en: string; ko: string; color: string }> = {
-  shadow: { en: 'SHADOW', ko: '시뮬레이션', color: 'text-accent' },
-  paper:  { en: 'PAPER',  ko: '연습',       color: 'text-yellow-400' },
-  live:   { en: 'LIVE',   ko: '실거래',     color: 'text-loss' },
+  backtest: { en: 'BACKTEST', ko: '백테스트', color: 'text-terminal-subtle' },
+  paper:    { en: 'PAPER',    ko: '페이퍼',   color: 'text-accent' },
+  shadow:   { en: 'SHADOW',   ko: 'Canary',   color: 'text-yellow-400' },
+  live:     { en: 'LIVE',     ko: '실거래',   color: 'text-loss' },
 };
 
 interface ModeSwitchProps {

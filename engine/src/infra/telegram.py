@@ -444,9 +444,9 @@ class TelegramAlerter:
             ]
         elif alert_type == "shadow_start":
             lines = [
-                "🌑 <b>섀도 모드 시작</b>",
+                "🟢 <b>Paper 모드 시작</b>",
                 "",
-                "<b>모드:</b> 실데이터 + 페이퍼 실행",
+                "<b>모드:</b> 실시간 WS + SimExecutor",
             ]
         elif alert_type == "shadow_daily_breakdown":
             lines = ["📊 <b>전략별 성과</b>", ""]
@@ -546,15 +546,25 @@ class TelegramAlerter:
                 f"<b>심볼:</b> {data.get('symbols', 'N/A')}",
             ]
         elif alert_type == "live_mode_start":
+            _exec_mode = data.get("execution_mode", "").lower()
+            _mode_labels = {
+                "backtest": "⚪ [BACKTEST]",
+                "paper": "🟢 [PAPER]",
+                "shadow": "🟡 [SHADOW]",
+                "live": "🔴 [LIVE]",
+            }
+            _mode_tag = _mode_labels.get(_exec_mode, f"[{_exec_mode.upper()}]") if _exec_mode else "🚀"
             lines = [
-                "🚀 <b>라이브 모드 시작</b>",
+                f"{_mode_tag} <b>엔진 시작</b>",
                 "",
+                f"<b>모드:</b> {_exec_mode.upper() or 'N/A'}",
                 f"<b>거래소:</b> {data.get('exchanges', 'N/A')}",
                 f"<b>심볼:</b> {data.get('symbols', 'N/A')}",
+                f"<b>실행기:</b> {data.get('executor', 'N/A')}",
             ]
         elif alert_type == "shadow_mode_start":
             lines = [
-                "🌑 <b>섀도 모드 활성화</b>",
+                "🟢 <b>Paper 모드 활성화</b>",
                 "",
                 f"<b>거래소:</b> {_html.escape(str(data.get('exchanges', 'N/A')))}",
                 f"<b>심볼:</b> {_html.escape(str(data.get('symbols', 'N/A')))}",

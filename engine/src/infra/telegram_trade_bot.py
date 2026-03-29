@@ -111,7 +111,7 @@ class TradeTelegramBot(TelegramBotBase):
                 "━━━━━━━━━━━━━━━\n"
                 f"📡 모드: {mode}\n"
                 f"🔴 Kill Switch: {'활성' if kill else '비활성'}\n"
-                "📊 Shadow: 데이터 없음"
+                "📊 Paper: 데이터 없음"
             )
         pnl = snapshot.get("total_pnl", 0.0)
         trades = snapshot.get("trades_executed", 0)
@@ -137,7 +137,7 @@ class TradeTelegramBot(TelegramBotBase):
             return (
                 "💰 가상 잔고\n"
                 "━━━━━━━━━━━━━━━\n"
-                "Shadow 모드 미연결 — 데이터 없음"
+                "Paper 모드 미연결 — 데이터 없음"
             )
         tracker = getattr(shadow, "_balance_tracker", None)
         if not tracker:
@@ -152,7 +152,7 @@ class TradeTelegramBot(TelegramBotBase):
         total_pnl = snapshot.get("total_pnl", 0.0) if snapshot else 0.0
 
         lines = [
-            "💰 가상 잔고 (Shadow 모드)\n━━━━━━━━━━━━━━━",
+            "💰 가상 잔고 (Paper 모드)\n━━━━━━━━━━━━━━━",
             f"🏦 초기 자본: ${initial:,.2f}",
             f"📈 총 PnL: ${total_pnl:+,.6f}",
             "",
@@ -500,7 +500,7 @@ class TradeTelegramBot(TelegramBotBase):
         """수동 일일 리포트 즉시 생성."""
         snapshot = self._get_shadow_snapshot()
         if not snapshot:
-            return "📊 리포트 생성 불가 — Shadow 데이터 없음"
+            return "📊 리포트 생성 불가 — Paper 데이터 없음"
 
         pnl = snapshot.get("total_pnl", 0.0)
         trades = snapshot.get("trades_executed", 0)
@@ -683,8 +683,16 @@ class TradeTelegramBot(TelegramBotBase):
         slippage = data.get("slippage_bps", 0.0)
         latency = data.get("latency_ms", 0)
 
-        # Mode prefix: caller passes full prefix (e.g. "🟣 [SHADOW]") or fallback to env
-        mode = data.get("mode") or f"[{os.getenv('EXECUTION_MODE', 'paper').upper()}]"
+        # Mode prefix: caller passes full prefix or we derive from EXECUTION_MODE env
+        _mode_prefixes = {
+            "backtest": "⚪ [BACKTEST]",
+            "paper": "🟢 [PAPER]",
+            "shadow": "🟡 [SHADOW]",
+            "live": "🔴 [LIVE]",
+        }
+        _raw_mode = os.getenv("EXECUTION_MODE", "paper").lower()
+        _default_prefix = _mode_prefixes.get(_raw_mode, f"[{_raw_mode.upper()}]")
+        mode = data.get("mode") or _default_prefix
         mode_prefix = f"{mode} "
 
         icon = "💰" if pnl > 0 else "💸"
