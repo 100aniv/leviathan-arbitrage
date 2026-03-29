@@ -861,6 +861,7 @@ class LiveMode:
                 leg1_order=orders[0],
                 leg2_order=orders[1],
                 strategy_id=sid,
+                min_edge=Decimal("0"),
             )
         else:
             # Fallback: sequential single-leg execution
