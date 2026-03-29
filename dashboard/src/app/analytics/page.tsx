@@ -147,6 +147,7 @@ export default function AnalyticsPage() {
   const [error, setError] = useState<string | null>(null);
   const [sharpeData, setSharpeData] = useState<StrategyBar[]>([]);
   const [heatCells, setHeatCells] = useState<HeatCell[]>([]);
+  const [shadowTotals, setShadowTotals] = useState<{pnl: number; trades: number; wr: number} | null>(null);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -168,6 +169,15 @@ export default function AnalyticsPage() {
         getAttribution().catch(() => null),
         getDailyReturns().catch(() => null),
       ]);
+
+      // Shadow totals for summary cards (ground truth)
+      if (shadow) {
+        setShadowTotals({
+          pnl: shadow.total_pnl ?? 0,
+          trades: shadow.trades_executed ?? 0,
+          wr: shadow.win_rate ?? 0,
+        });
+      }
 
       // Sharpe bar — use shadow by_strategy sorted by PnL
       if (shadow?.by_strategy && shadow.by_strategy.length > 0) {
@@ -222,8 +232,9 @@ export default function AnalyticsPage() {
   }, [fetchMetrics, fetchChartData]);
 
   const strategies = Object.values(metrics);
-  const totalPnl = strategies.reduce((s, m) => s + m.pnl, 0);
-  const totalTrades = strategies.reduce((s, m) => s + ((m as any).trades || m.fills || 0), 0);
+  // Use shadow stats as ground truth for totals (strategy_manager metrics diverge)
+  const totalPnl = shadowTotals?.pnl ?? strategies.reduce((s, m) => s + m.pnl, 0);
+  const totalTrades = shadowTotals?.trades ?? strategies.reduce((s, m) => s + ((m as any).trades || m.fills || 0), 0);
   const totalSignals = strategies.reduce((s, m) => s + (m.signals_received || (m as any).trade_requests || 0), 0);
 
   return (
