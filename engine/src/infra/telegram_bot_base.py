@@ -413,9 +413,9 @@ class TelegramBotBase:
                 return []
             self._consecutive_errors = 0
             return data.get("result", [])
-        except Exception:
+        except Exception as exc:
             self._consecutive_errors += 1
-            logger.warning("telegram_poll_error", bot=self._bot_name, errors=self._consecutive_errors)
+            logger.warning("telegram_poll_error", bot=self._bot_name, errors=self._consecutive_errors, error=str(exc)[:200])
             return []
 
     def _check_rate_limit(self) -> bool:

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
-  AreaChart, Area,
+  AreaChart, Area, PieChart, Pie, Cell,
 } from 'recharts';
 import { EquityCurve } from '@/components/EquityCurve';
 import { getPortfolioMetrics, getPortfolioSummary, getEquityCurve, getPositions, getDailyReturns, getShadowStats } from '@/lib/api';
@@ -266,29 +266,54 @@ export default function PortfolioPage() {
         ))}
       </div>
 
-      {/* Asset Allocation bar */}
+      {/* Asset Allocation — Donut Chart */}
       <div className="bg-terminal-surface border border-terminal-border p-4">
         <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">Asset Allocation</span>
-        <div className="flex h-6 mt-3 overflow-hidden border border-terminal-border">
-          {summary?.exchange_balances?.map((eb, i) => (
-            <div
-              key={eb.exchange_id}
-              style={{ width: `${eb.pct_of_total * 100}%`, backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
-              className="h-full transition-all"
-              title={`${eb.exchange_id}: $${eb.balance_usdt.toLocaleString()} (${(eb.pct_of_total * 100).toFixed(1)}%)`}
-            />
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-3 mt-2">
-          {summary?.exchange_balances?.map((eb, i) => (
-            <div key={eb.exchange_id} className="flex items-center gap-1.5">
-              <div className="w-2 h-2" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-              <span className="text-[10px] font-mono text-terminal-subtle">
-                {eb.exchange_id} ${eb.balance_usdt.toLocaleString()}
-              </span>
+        {summary?.exchange_balances && summary.exchange_balances.length > 0 ? (
+          <div className="flex items-center gap-6 mt-3">
+            <div className="w-48 h-48 shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={summary.exchange_balances.map(eb => ({
+                      name: eb.exchange_id,
+                      value: eb.balance_usdt,
+                      pct: eb.pct_of_total,
+                    }))}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={75}
+                    paddingAngle={2}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {summary.exchange_balances.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 0, fontSize: 11, fontFamily: 'JetBrains Mono' }}
+                    formatter={(value: number, name: string) => [`$${value.toLocaleString()}`, name]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-          ))}
-        </div>
+            <div className="flex flex-col gap-1.5 flex-1">
+              {summary.exchange_balances.map((eb, i) => (
+                <div key={eb.exchange_id} className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  <span className="text-[10px] font-mono text-terminal-text flex-1 truncate">{eb.exchange_id}</span>
+                  <span className="text-[10px] font-mono text-terminal-subtle tabular-nums">{(eb.pct_of_total * 100).toFixed(1)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-24 mt-2">
+            <span className="text-xs font-mono text-terminal-subtle">거래소 연결 대기 중</span>
+          </div>
+        )}
       </div>
 
       {/* Daily Returns */}
