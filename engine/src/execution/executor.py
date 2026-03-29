@@ -21,7 +21,7 @@ from src.risk.kill_switch import halt_local, is_halted
 logger = logging.getLogger(__name__)
 
 # Health score threshold (Amendment 4 step 1)
-_HEALTH_THRESHOLD = 0.9
+_HEALTH_THRESHOLD = 0.7  # Phase H-Final: 0.9→0.7 (소액 alpha 초기 연결 시 0.85)
 # Partial fill acceptance threshold
 _PARTIAL_FILL_THRESHOLD = Decimal("0.80")
 # Blueprint compliance: LEG_TIMEOUT_MS from environment (.env or system)
