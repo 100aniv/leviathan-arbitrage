@@ -223,8 +223,13 @@ async def get_portfolio_metrics(request: Request) -> JSONResponse:
         snapshot = shadow.get_snapshot() if hasattr(shadow, 'get_snapshot') else {}
         metrics["total_pnl"] = float(snapshot.get("total_pnl", 0))
         metrics["win_rate"] = float(snapshot.get("win_rate", 0))
-        metrics["total_trades"] = int(snapshot.get("total_trades", 0))
-        metrics["max_drawdown_pct"] = float(snapshot.get("max_drawdown", 0)) * 100
+        # snapshot uses "trades_executed" key (not "total_trades")
+        metrics["total_trades"] = int(snapshot.get("trades_executed", snapshot.get("total_trades", 0)))
+        # max_drawdown_pct (0~1 range) preferred; fall back to max_drawdown * 100
+        if "max_drawdown_pct" in snapshot:
+            metrics["max_drawdown_pct"] = float(snapshot["max_drawdown_pct"]) * 100
+        else:
+            metrics["max_drawdown_pct"] = float(snapshot.get("max_drawdown", 0)) * 100
 
         # Calmar = annualized return / max drawdown (requires ≥1 day of session data)
         mdd = metrics["max_drawdown_pct"]

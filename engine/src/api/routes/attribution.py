@@ -47,6 +47,17 @@ def _build_trade_record(trade: dict[str, Any]) -> TradeRecord | None:
         return None
 
 
+def _build_attribution_from_shadow(shadow_mode: Any) -> "PerformanceAttribution":
+    """Build ephemeral PerformanceAttribution from shadow _trade_history."""
+    attribution = PerformanceAttribution()
+    trade_history = getattr(shadow_mode, "_trade_history", [])
+    for trade in trade_history:
+        record = _build_trade_record(trade)
+        if record is not None:
+            attribution.add_trade(record)
+    return attribution
+
+
 @router.get("/attribution", dependencies=[Depends(require_auth)])
 async def get_attribution(request: Request) -> JSONResponse:
     """Return PnL attribution breakdown across all dimensions."""
@@ -63,6 +74,13 @@ async def get_attribution(request: Request) -> JSONResponse:
                 attribution.add_trade(record)
     # Live instance already accumulates on_fill — do NOT re-add from trade_history
 
+    # Shadow mode fallback: if attribution is empty and shadow has trade history, use it
+    shadow_mode = getattr(ctx, "shadow_mode", None)
+    if shadow_mode is not None and hasattr(shadow_mode, "_trade_history"):
+        attr_summary = attribution.summary()
+        if attr_summary.get("total_trades", 0) == 0 and len(shadow_mode._trade_history) > 0:
+            attribution = _build_attribution_from_shadow(shadow_mode)
+
     # US-282: use get_report() with backward-compatible top-level fields
     try:
         report = attribution.get_report()
@@ -71,6 +89,13 @@ async def get_attribution(request: Request) -> JSONResponse:
         report.setdefault("total_trades", summary.get("total_trades", 0))
         report.setdefault("total_pnl", summary.get("total_pnl", 0.0))
         report.setdefault("win_rate", summary.get("win_rate", 0.0))
+        # Enrich with shadow stats when available for accurate totals
+        if shadow_mode is not None and hasattr(shadow_mode, "_stats"):
+            stats = shadow_mode._stats
+            total_trades = stats.trades_executed
+            report["total_trades"] = total_trades
+            report["total_pnl"] = round(stats.total_pnl, 6)
+            report["win_rate"] = round(stats.trades_won / total_trades, 4) if total_trades > 0 else 0.0
         return JSONResponse(report)
     except AttributeError:
         return JSONResponse(attribution.summary())

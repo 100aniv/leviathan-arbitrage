@@ -195,28 +195,81 @@ async def get_trade_detail(request: Request, trade_id: str) -> JSONResponse:
     raise HTTPException(status_code=404, detail="Trade not found")
 
 
+def _get_shadow_by_strategy(ctx: Any) -> dict[str, dict]:
+    """Return shadow by_strategy data keyed by strategy_id, or empty dict."""
+    shadow_mode = getattr(ctx, "shadow_mode", None)
+    if shadow_mode is None:
+        return {}
+    snapshot = {}
+    try:
+        snapshot = shadow_mode.get_snapshot() if hasattr(shadow_mode, "get_snapshot") else {}
+    except Exception:
+        pass
+    result: dict[str, dict] = {}
+    for entry in snapshot.get("by_strategy", []):
+        sid = entry.get("strategy_id", "")
+        if sid:
+            result[sid] = entry
+    return result
+
+
 @router.get("/strategy-metrics", dependencies=[Depends(require_auth)])
 async def get_strategy_metrics(request: Request) -> JSONResponse:
     """Return per-strategy metrics summary."""
     ctx = request.app.state.engine_context
+    shadow_by_strategy = _get_shadow_by_strategy(ctx)
+
     if ctx.strategy_manager is not None:
         try:
-            return JSONResponse({"strategies": ctx.strategy_manager.get_all_metrics_summary()})
+            raw = ctx.strategy_manager.get_all_metrics_summary()
+            # Merge shadow trades/pnl into strategy_manager metrics
+            if shadow_by_strategy:
+                for sid, sm_data in raw.items():
+                    if sid in shadow_by_strategy:
+                        sd = shadow_by_strategy[sid]
+                        if isinstance(sm_data, dict):
+                            sm_data.setdefault("trades", sd.get("trades", 0))
+                            sm_data.setdefault("pnl", sd.get("pnl", 0.0))
+                            sm_data.setdefault("wins", sd.get("wins", 0))
+                            sm_data.setdefault("losses", sd.get("losses", 0))
+                            sm_data.setdefault("win_rate", sd.get("win_rate", 0.0))
+            return JSONResponse({"strategies": raw})
         except Exception as exc:
             logger.warning("Failed to get metrics from strategy_manager: %s", exc)
-    # Fallback: build basic metrics from context.strategies
-    metrics = {
-        sid: {
+
+    # Fallback: build basic metrics from context.strategies, merged with shadow data
+    metrics: dict[str, dict] = {}
+    for sid, s in ctx.strategies.items():
+        sd = shadow_by_strategy.get(sid, {})
+        metrics[sid] = {
             "id": sid,
             "type": s.get("type", "unknown"),
             "enabled": s.get("enabled", True),
             "signals_received": s.get("signals_received", 0),
             "trade_requests": s.get("trade_requests_generated", 0),
             "fills": s.get("fills_received", 0),
-            "pnl": s.get("pnl", 0.0),
+            "pnl": sd.get("pnl", s.get("pnl", 0.0)),
+            "trades": sd.get("trades", 0),
+            "wins": sd.get("wins", 0),
+            "losses": sd.get("losses", 0),
+            "win_rate": sd.get("win_rate", 0.0),
         }
-        for sid, s in ctx.strategies.items()
-    }
+    # Include shadow-only strategies not in ctx.strategies
+    for sid, sd in shadow_by_strategy.items():
+        if sid not in metrics:
+            metrics[sid] = {
+                "id": sid,
+                "type": "unknown",
+                "enabled": True,
+                "signals_received": 0,
+                "trade_requests": 0,
+                "fills": 0,
+                "pnl": sd.get("pnl", 0.0),
+                "trades": sd.get("trades", 0),
+                "wins": sd.get("wins", 0),
+                "losses": sd.get("losses", 0),
+                "win_rate": sd.get("win_rate", 0.0),
+            }
     return JSONResponse({"strategies": metrics})
 
 
