@@ -1,7 +1,7 @@
 {
   "_comment": "LEVIATHAN Engine Configuration — Runtime settings (non-secret). Secrets stay in .env",
 
-  "mode": "shadow",
+  "mode": "live",
   "env": "dev",
   "log_level": "INFO",
 

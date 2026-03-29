@@ -372,13 +372,14 @@ class Settings(BaseSettings):
     engine_env: Literal["dev", "staging", "prod", "test"] = Field(
         default="dev", alias="ENGINE_ENV"
     )
-    execution_mode: ExecutionMode = Field(
-        default=ExecutionMode.PAPER, alias="EXECUTION_MODE"
+    execution_mode: str = Field(
+        default="paper", alias="EXECUTION_MODE",
+        description="Legacy — use engine_mode from config/engine.json instead."
     )
     # Phase H-2: Unified engine mode (backtest/paper/shadow/live)
     engine_mode: EngineMode | None = Field(
         default=None, alias="ENGINE_MODE",
-        description="Unified mode. Takes priority over EXECUTION_MODE+DATA_MODE."
+        description="Unified mode from config/engine.json. The single source of truth for mode."
     )
     capital: CapitalTierConfig = Field(default_factory=CapitalTierConfig)
 

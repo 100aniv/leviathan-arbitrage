@@ -1,9 +1,9 @@
 {
   "_meta": {
-    "source": "S26 전략 리서치 기반 재설계 (2026-03-23)",
+    "source": "S26 \uc804\ub7b5 \ub9ac\uc11c\uce58 \uae30\ubc18 \uc7ac\uc124\uacc4 (2026-03-23)",
     "date": "2026-03-23",
     "data_type": "live_shadow",
-    "note": "S26: exa.ai 벤치마크 + TF SF FAIL 분석 기반. Shadow Live급(DEPTH_FRACTION=1.0). 업계 기준 min 50bps gross spread → net 수익.",
+    "note": "S26: exa.ai \ubca4\uce58\ub9c8\ud06c + TF SF FAIL \ubd84\uc11d \uae30\ubc18. Shadow Live\uae09(DEPTH_FRACTION=1.0). \uc5c5\uacc4 \uae30\uc900 min 50bps gross spread \u2192 net \uc218\uc775.",
     "real_wfe_path": "_real_wfe",
     "real_wfe_note": "Populated by ScheduledTuner when TUNER_DATA_SOURCE=timescaledb"
   },
@@ -11,32 +11,32 @@
     "_note": "Real-data WFE results from TimescaleDB.",
     "cross_exchange": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "triangular": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "spot_futures": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "funding_rate": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "statistical_arb": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "futures_futures": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 1 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     }
   },
@@ -93,7 +93,7 @@
     "entry_threshold": 0.000188,
     "exit_threshold": 0.00089,
     "stop_loss_pct": 0.005,
-    "_note": "SIT-3 P3: DISABLED→READY. z=2.5→2.0, cooldown=300→120, min_history=120→60. 24H Shadow 후 WFE 재평가."
+    "_note": "SIT-3 P3: DISABLED\u2192READY. z=2.5\u21922.0, cooldown=300\u2192120, min_history=120\u219260. 24H Shadow \ud6c4 WFE \uc7ac\ud3c9\uac00."
   },
   "cex_dex": {
     "status": "MONITOR",
@@ -113,11 +113,11 @@
     "exit_threshold": 0.0001,
     "stop_loss_pct": 0.005
   },
-  "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 통일, slippage_buffer 5bps 신규, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
+  "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 \ud1b5\uc77c, slippage_buffer 5bps \uc2e0\uaddc, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
   "_tuner_meta": {
     "best_values": {
       "cross_exchange": 1.2
     },
-    "timestamp": "2026-03-29T02:44:43.030428+00:00"
+    "timestamp": "2026-03-29T11:50:36.001095+00:00"
   }
 }
