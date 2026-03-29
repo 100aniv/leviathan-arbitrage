@@ -65,7 +65,7 @@
     "kill_switch_enabled": true,
     "tuner_data_source": "timescaledb",
     "max_position_usd": 10,
-    "max_daily_loss_usd": 15,
+    "max_daily_loss_usd": 5000,
     "active_exchanges": [
       "binance",
       "binance_futures"
@@ -99,18 +99,24 @@
   "strategy_exchange_requirements": {
     "cross_exchange_v1": {
       "min_exchanges": 2,
-      "required_types": ["spot"],
+      "required_types": [
+        "spot"
+      ],
       "description": "거래소 간 가격 차이를 이용한 차익거래"
     },
     "spot_futures_v1": {
       "min_exchanges": 1,
-      "required_types": ["futures"],
+      "required_types": [
+        "futures"
+      ],
       "same_exchange": true,
       "description": "현물-선물 베이시스 차익거래"
     },
     "futures_futures_v1": {
       "min_exchanges": 2,
-      "required_types": ["futures"],
+      "required_types": [
+        "futures"
+      ],
       "description": "선물 간 가격 차이 차익거래"
     },
     "triangular_v1": {
@@ -120,7 +126,9 @@
     },
     "funding_rate_v1": {
       "min_exchanges": 1,
-      "required_types": ["futures"],
+      "required_types": [
+        "futures"
+      ],
       "description": "펀딩레이트 캐리 트레이드"
     },
     "statistical_arb_v1": {
@@ -129,7 +137,9 @@
     },
     "cex_dex_v1": {
       "min_exchanges": 1,
-      "required_types": ["dex"],
+      "required_types": [
+        "dex"
+      ],
       "description": "CEX-DEX 간 차익거래"
     }
   }
