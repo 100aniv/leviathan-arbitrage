@@ -39,7 +39,8 @@ def _get_strategy_list(ctx: Any) -> list[dict[str, Any]]:
                      for k, v in s.metrics.model_dump().items()}
                     if s and hasattr(s, "metrics") else {}
                 )
-                # Merge shadow trades/pnl/wins/losses into metrics
+                # Merge shadow trades/pnl/wins/losses — unconditional assignment
+                # (setdefault would be silently dropped when StrategyManager populates zeros)
                 sd = shadow_map.get(sid, {})
                 if sd:
                     metrics["trades"] = sd.get("trades", 0)
@@ -49,6 +50,7 @@ def _get_strategy_list(ctx: Any) -> list[dict[str, Any]]:
                     t = sd.get("trades", 0)
                     w = sd.get("wins", 0)
                     metrics["win_rate"] = w / t if t > 0 else 0.0
+                    metrics["total_realized_pnl_usdt"] = sd.get("pnl", 0.0)
                 strategies.append({
                     "id": sid,
                     "type": getattr(s, "STRATEGY_TYPE", "unknown"),

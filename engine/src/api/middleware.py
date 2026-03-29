@@ -117,7 +117,7 @@ _RATE_LIMIT_WINDOW = 60  # seconds
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Simple in-memory sliding-window rate limiter for /api/v1/* routes.
 
-    Allows up to 100 requests per 60-second window per IP.
+    Allows up to 300 requests per 60-second window per IP.
     Returns 429 when exceeded.
     """
 

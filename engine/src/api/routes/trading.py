@@ -192,6 +192,18 @@ async def get_trade_detail(request: Request, trade_id: str) -> JSONResponse:
             detail.setdefault("net_pnl", detail.get("pnl", 0.0))
             detail.setdefault("expected_pnl", 0.0)
             return JSONResponse(detail)
+    # Fallback: search shadow_mode._trade_history
+    shadow_mode = getattr(ctx, "shadow_mode", None)
+    if shadow_mode is not None and hasattr(shadow_mode, "_trade_history"):
+        for trade in shadow_mode._trade_history:
+            if trade.get("id") == trade_id:
+                detail = dict(trade)
+                detail.setdefault("reason", "Shadow mode execution")
+                detail.setdefault("spread_bps", 0.0)
+                detail.setdefault("fee_usd", detail.get("fee", 0.0))
+                detail.setdefault("net_pnl", detail.get("pnl", 0.0))
+                detail.setdefault("expected_pnl", 0.0)
+                return JSONResponse(detail)
     raise HTTPException(status_code=404, detail="Trade not found")
 
 

@@ -193,7 +193,8 @@ export default function AnalyticsPage() {
         );
 
         // Last 7 daily returns (fill missing with 0)
-        const last7 = dailyReturns?.returns?.slice(-7) ?? [];
+        const rawReturns = Array.isArray(dailyReturns) ? dailyReturns : dailyReturns?.returns ?? [];
+      const last7 = rawReturns.slice(-7);
         const dayPnls = Array.from({ length: 7 }, (_, i) => last7[i]?.pnl ?? 0);
 
         const cells: HeatCell[] = [];
