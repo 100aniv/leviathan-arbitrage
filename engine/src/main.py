@@ -2035,136 +2035,79 @@ class Engine:
                 await self._collector_manager.stop()
 
     async def _live_mode_loop(self) -> None:
-        """US-169: Live mode — real authenticated data + AtomicExecutor signal routing.
+        """Phase H: Live mode — direct in-process routing via LiveMode class.
 
-        Mirrors _real_data_feed_loop but additionally:
-        - Creates a MultiStrategySignalProducer for all 8 strategy types
-        - Runs TriangularScanner on every orderbook update (US-170)
-        - Routes signals to AtomicExecutor via the event bus (TradeRequestConsumer handles it)
+        Uses the same proven architecture as ShadowMode:
+        - Direct StrategyManager.route_signal() (no Redis dependency)
+        - DI executor: PaperExecutor for validation, AtomicExecutor for live
+        - All signal producers wired (cross_exchange, multi-strategy, real_signal)
+        - LiveGate with safe Shadow fallback (not silent return)
         """
-        from src.collectors.manager import CollectorManager
+        from src.collectors.funding_rate_collector import FundingRateCollector
         from src.core.multi_signal import MultiStrategySignalProducer
-        from src.core.rust_bridge import get_orderbook_class
+        from src.modes.live import LiveMode, LiveGateFailed
 
-        CoreOrderBook = get_orderbook_class()
-        all_books: dict[str, CoreOrderBook] = {}
+        symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
+        exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
 
+        # Create MultiStrategySignalProducer
         self._multi_signal_producer = MultiStrategySignalProducer(
             event_bus=self._event_bus,
             latency_tracker=getattr(self, "_latency_tracker", None),
         )
 
-        # US-246: LiveGate enforce_or_fallback before starting live data
-        # US-G01: LiveGate 미초기화 시 경고만 (소액 테스트 허용)
-        if self._live_gate is None:
-            logger.warning(
-                "live_gate_not_initialized — proceeding without LiveGate (소액 테스트 모드)",
+        # Create FundingRateCollector
+        funding_rate_collector = None
+        try:
+            funding_rate_collector = FundingRateCollector(
+                symbols=symbols,
+                http_client=getattr(self, "_http_client", None),
             )
-        from src.modes.live_gate import LiveGate
-        if isinstance(self._live_gate, LiveGate):
-            try:
-                eligible = await self._live_gate.enforce_or_fallback()
-                if not eligible:
-                    logger.warning("live_gate_enforcement_fallback_to_shadow — switching to shadow mode")
-                    self._data_mode = DataMode.SHADOW
-                    return
-            except Exception as exc:
-                logger.warning("live_gate_enforce_or_fallback_error error=%s", exc)
-                self._data_mode = DataMode.SHADOW
-                return
+        except Exception as exc:
+            logger.warning("FundingRateCollector init failed (non-fatal): %s", exc)
 
-        # US-G01: Start all registered strategies in LIVE mode (shadow_mode=False)
-        # Without this, strategies remain is_active=False and StrategyManager._dispatch()
-        # skips them, resulting in 0 trade requests reaching AtomicExecutor.
-        if self._strategy_manager is not None:
-            for sid in self._strategy_manager.list_strategies():
-                s = self._strategy_manager.get_strategy(sid)
-                if s:
-                    s.shadow_mode = False
-            for sid in self._strategy_manager.list_strategies():
-                try:
-                    await self._strategy_manager.start_strategy(sid)
-                except Exception as exc:
-                    logger.warning("Live strategy %s start failed: %s", sid, exc)
-            logger.info(
-                "Live mode: %d strategies started (shadow_mode=False)",
-                len(self._strategy_manager.list_strategies()),
-            )
+        # Determine execution mode from env
+        _exec_mode = os.getenv("EXECUTION_MODE", "paper").lower()
+        execution_mode = "live" if _exec_mode == "live" else "paper"
 
-        async def on_orderbook(exchange_id: str, symbol: str, bids: list, asks: list, **kwargs) -> None:
-            core_book = CoreOrderBook(symbol=symbol, exchange=exchange_id)
-            core_book.apply_snapshot(
-                [(b[0], b[1]) for b in bids],
-                [(a[0], a[1]) for a in asks],
-            )
-            all_books[exchange_id] = core_book
-
-            if self._market_recorder:
-                best_bid = core_book.best_bid()
-                best_ask = core_book.best_ask()
-                if best_bid and best_ask:
-                    self._market_recorder.record_orderbook(
-                        exchange=exchange_id, symbol=symbol,
-                        bids=bids[:20], asks=asks[:20],
-                        best_bid=best_bid, best_ask=best_ask,
-                    )
-
-            # US-170: TriangularScanner
-            if self._triangular_scanner is not None:
-                try:
-                    cycles = self._triangular_scanner.on_orderbook_update(
-                        exchange_id=exchange_id, symbol=symbol, book=core_book
-                    )
-                    for cycle in cycles:
-                        asyncio.create_task(
-                            self._multi_signal_producer.produce_triangular_signal(cycle)
-                        )
-                except Exception as exc:
-                    logger.debug("TriangularScanner (live) error: %s", exc)
-
-            # Feed SignalGenerator → event bus → TradeRequestConsumer → AtomicExecutor
-            if self._signal_generator and len(all_books) >= 2:
-                try:
-                    await self._signal_generator.on_orderbook_update(
-                        book=core_book, books=all_books,
-                    )
-                except Exception as exc:
-                    logger.warning("Live signal generation error: %s", exc)
-
-            # MultiStrategySignalProducer for additional strategy types
-            if len(all_books) >= 2:
-                try:
-                    await self._multi_signal_producer.on_orderbook_update(
-                        exchange_id=exchange_id, symbol=symbol,
-                        book=core_book, all_books=all_books,
-                    )
-                except Exception:
-                    pass
-
-
-        symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-        exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
-
-        self._collector_manager = CollectorManager(
-            symbols=symbols, exchanges=exchanges, on_orderbook=on_orderbook,
+        self._live_mode = LiveMode(
+            signal_generator=self._signal_generator,
+            executor=self._executor,
+            strategy_manager=self._strategy_manager,
+            symbols=symbols,
+            exchanges=exchanges,
+            multi_signal_producer=self._multi_signal_producer,
+            funding_rate_collector=funding_rate_collector,
+            market_recorder=self._market_recorder,
+            telegram=self._telegram,
+            live_gate=self._live_gate,
+            risk_guardian=self._risk_guardian,
+            kill_switch=getattr(self, "_kill_switch", None),
+            circuit_breaker=self._circuit_breaker,
+            regime_detector=self._regime_detector,
+            event_bus=self._event_bus,
+            db_pool=self._db_pool,
+            data_quality_manager=self._data_quality_manager,
+            flash_guard=getattr(self, "_flash_guard", None),
+            portfolio_risk=getattr(self, "_portfolio_risk", None),
+            execution_mode=execution_mode,
         )
-        await self._collector_manager.start()
-        logger.info("Live mode collectors started: %s for %s", exchanges, symbols)
-
-        if self._telegram and self._telegram._enabled:
-            await self._telegram.send_alert_kr("live_mode_start", {
-                "exchanges": ", ".join(exchanges),
-                "symbols": ", ".join(symbols),
-            })
 
         try:
+            await self._live_mode.start()
+            self.context.execution_mode = execution_mode
+
+            # Keep alive until cancelled
             while self.state.running:
                 await asyncio.sleep(5.0)
+        except LiveGateFailed:
+            logger.warning("LiveGate failed — falling back to Shadow mode")
+            await self._shadow_mode_loop()
         except asyncio.CancelledError:
             pass
         finally:
-            if self._collector_manager:
-                await self._collector_manager.stop()
+            if hasattr(self, "_live_mode") and self._live_mode is not None:
+                await self._live_mode.stop()
 
     async def _regime_detect_loop(self) -> None:
         """US-173: 60s periodic regime detection using recent PnL returns."""

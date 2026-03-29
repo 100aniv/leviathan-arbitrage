@@ -31,16 +31,18 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: SIT-3 종합테스트 (2026-03-29) — SIT-3 1시간 PASS + QF 진입 준비
-**Tests**: 5,252 passed / 0 failed / 12 skipped
+**Phase**: Phase H — Live Mode 파이프라인 전면 구현 (2026-03-29)
+**Tests**: 5,274 passed / 0 failed / 12 skipped (LiveMode 22 tests 추가)
 **Coverage**: 76%
 **PRD**: 338/343 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 + US-339 SIT-3 잔여)
-**TF Status**: S1~S26 ✅ → TF QF 11차 PASS(S23) → TF SF FAIL(Sharpe 0.53) → S26 회귀 ✅ → SIT-0~2 ✅ → **SIT-3 1시간 PASS** → TF QF 12차 → TF SF → TF PF → TF Final → Live
-**Next**: **LIVE 가동 중** (Binance 소액 $34, spot $14 + futures $20) — Phase F 완료, 30 commits
+**TF Status**: S1~S26 ✅ → TF QF 11차 PASS(S23) → TF SF FAIL(Sharpe 0.53) → S26 회귀 ✅ → SIT-0~2 ✅ → **SIT-3 1시간 PASS** → **Phase H: LiveMode 구현** → TF QF 12차 → TF SF → TF PF → TF Final → Live
+**Next**: Phase H Stage B-Step 2 검증 → Stage C Go/No-Go → LiveMode + PaperExecutor Shadow 10min → 소액 Live 전환
 **Live 설정**: max_position=$10, daily_loss=$15, exchanges=binance+binance_futures
+**Live 파이프라인**: LiveMode 클래스 (ShadowMode 미러링, 직접 인-프로세스 라우팅, DI executor)
 **모니터링**: 텔레그램 TradeBot 알림 + 대시보드 + Shadow 병행
-**계획서**: `.claude/plans/vivid-jingling-valiant.md` | **SIT-3 업데이트**: `.claude/plans/adaptive-conjuring-blanket.md`
+**계획서**: `.claude/plans/playful-booping-avalanche.md` (Phase H 플랜)
 **SIT-3 수정 (20커밋)**: CORS 85→0 ✅ | Shadow API 정합성 ✅ | MCS PNL/STRAT/MODE ✅ | Trades 실시간 ✅ | Attribution/Portfolio/Analytics 데이터 ✅ | PnL 가짜데이터 제거 ✅ | 도넛 차트 ✅ | Telegram 409 해결 ✅ | DB 73GB→67MB ✅ | 한글화 ✅ | 오토체인 워크플로우 ✅ | Architect 검증 4건 ✅ | 소액 Live 한도 설정 ✅
+**Phase H 변경**: LiveMode 클래스 신규 (`engine/src/modes/live.py`, 673줄) — ShadowMode 미러링 직접 인-프로세스 라우팅으로 Live 파이프라인 전면 재구현. 6개 근본 원인 해결 (RC-1~6). main.py `_live_mode_loop()` 리팩터링. 22 단위 테스트 추가.
 **API 키**: Binance ✅ Upbit ✅ Bithumb ✅ Coinone ✅ (OKX/Bybit/Bitget 미설정)
 
 **전략 현황 (SIT-3 검증):**
