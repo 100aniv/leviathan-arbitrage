@@ -65,7 +65,7 @@
     "kill_switch_enabled": true,
     "tuner_data_source": "timescaledb",
     "max_position_usd": 37,
-    "max_daily_loss_usd": 50
+    "max_daily_loss_usd": 5000
   },
   "strategy_filters": {
     "funding_zscore_threshold": -1,
