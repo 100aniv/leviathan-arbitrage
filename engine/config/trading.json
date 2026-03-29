@@ -107,6 +107,7 @@
     "spot_futures_v1": {
       "min_exchanges": 1,
       "required_types": [
+        "spot",
         "futures"
       ],
       "same_exchange": true,

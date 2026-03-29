@@ -113,7 +113,12 @@ async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
                     "current_mode": getattr(ctx, "execution_mode", "shadow"),
                 })
         except Exception as exc:
-            logger.warning("Position check failed: %s", exc)
+            # Codex CRITICAL: fail-closed — 포지션 조회 실패 시 전환 차단
+            logger.warning("Position check failed (blocking mode switch): %s", exc)
+            return JSONResponse(status_code=503, content={
+                "error": "포지션 조회 실패 — 안전을 위해 모드 전환 차단",
+                "current_mode": getattr(ctx, "execution_mode", "shadow"),
+            })
 
     livegate_result = None
     if body.mode == "live":
@@ -121,7 +126,7 @@ async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
         engine = getattr(ctx, "engine", None)
         if engine and hasattr(engine, "_live_gate"):
             try:
-                result = engine._live_gate.evaluate()
+                result = await engine._live_gate.evaluate()
                 livegate_result = {
                     "passed": result.passed if hasattr(result, 'passed') else False,
                     "checks": {}
