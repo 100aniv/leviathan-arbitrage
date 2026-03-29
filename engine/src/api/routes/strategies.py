@@ -16,20 +16,44 @@ router = APIRouter(prefix="/api/v1/strategies")
 
 def _get_strategy_list(ctx: Any) -> list[dict[str, Any]]:
     """Get strategy list from real StrategyManager or fallback to dict."""
+    # Collect shadow by_strategy data for merging
+    shadow_map: dict[str, dict] = {}
+    shadow_mode = getattr(ctx, "shadow_mode", None)
+    if shadow_mode is not None:
+        try:
+            snapshot = shadow_mode.get_snapshot() if hasattr(shadow_mode, "get_snapshot") else {}
+            for entry in snapshot.get("by_strategy", []):
+                sid = entry.get("strategy_id", "")
+                if sid:
+                    shadow_map[sid] = entry
+        except Exception:
+            pass
+
     if ctx.strategy_manager is not None:
         try:
             strategies = []
             for sid in ctx.strategy_manager.list_strategies():
                 s = ctx.strategy_manager.get_strategy(sid)
+                metrics = (
+                    {k: float(v) if hasattr(v, "as_tuple") else v
+                     for k, v in s.metrics.model_dump().items()}
+                    if s and hasattr(s, "metrics") else {}
+                )
+                # Merge shadow trades/pnl/wins/losses into metrics
+                sd = shadow_map.get(sid, {})
+                if sd:
+                    metrics["trades"] = sd.get("trades", 0)
+                    metrics["pnl"] = sd.get("pnl", 0.0)
+                    metrics["wins"] = sd.get("wins", 0)
+                    metrics["losses"] = sd.get("losses", 0)
+                    t = sd.get("trades", 0)
+                    w = sd.get("wins", 0)
+                    metrics["win_rate"] = w / t if t > 0 else 0.0
                 strategies.append({
                     "id": sid,
                     "type": getattr(s, "STRATEGY_TYPE", "unknown"),
                     "enabled": s.is_active if s else False,
-                    "metrics": (
-                        {k: float(v) if hasattr(v, "as_tuple") else v
-                         for k, v in s.metrics.model_dump().items()}
-                        if s and hasattr(s, "metrics") else {}
-                    ),
+                    "metrics": metrics,
                 })
             return strategies
         except Exception as exc:

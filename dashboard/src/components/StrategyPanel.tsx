@@ -18,10 +18,13 @@ function StrategyCard({
   const [expanded, setExpanded] = useState(false);
   const [toggling, setToggling] = useState(false);
   const status = strategy.enabled ? 'active' : 'stopped';
-  const m = strategy.metrics ?? {};
-  const winRateVal = m.win_rate != null ? `${(m.win_rate * 100).toFixed(1)}%` : '—';
-  const tradesVal  = m.fills != null ? String(Math.floor(m.fills)) : '—';
-  const pnl        = m.pnl ?? null;
+  const m = strategy.metrics ?? {} as any;
+  const trades = m.trades || m.trade_requests_generated || m.fills || 0;
+  const wins = m.wins || 0;
+  const wr = trades > 0 ? (wins / trades) * 100 : (m.win_rate != null ? m.win_rate * 100 : 0);
+  const winRateVal = trades > 0 || m.win_rate != null ? `${wr.toFixed(1)}%` : '—';
+  const tradesVal  = trades > 0 ? String(trades) : (m.fills > 0 ? String(m.fills) : '—');
+  const pnl        = m.total_realized_pnl_usdt ?? m.pnl ?? null;
   const pnlVal     = pnl != null ? `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}` : '—';
   const displayName = String(strategy.name ?? strategy.type);
   const exchangeA   = strategy.exchange_a ? String(strategy.exchange_a) : '';

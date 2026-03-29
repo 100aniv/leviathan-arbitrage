@@ -34,18 +34,9 @@ const COLORS = {
 
 const MAX_POINTS = 120;
 
+// No seed data — show only real data from API/WS
 function genSeedData(): PnLPoint[] {
-  const now = Date.now();
-  return Array.from({ length: 60 }, (_, i) => {
-    const t = new Date(now - (60 - i) * 2000);
-    const base = Math.sin(i * 0.18) * 400 + i * 10;
-    return {
-      time: t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      total:      parseFloat(base.toFixed(2)),
-      realized:   parseFloat((base * 0.72).toFixed(2)),
-      unrealized: parseFloat((base * 0.28).toFixed(2)),
-    };
-  });
+  return [];
 }
 
 function fmt(v: number) {
@@ -72,8 +63,9 @@ export function PnLChart({ wsPnl }: PnLChartProps = {}) {
       }
     : null;
 
-  // Prefer WS data when available; fall back to REST poll
-  const livePoint = wsPnl ?? restPoint;
+  // Prefer WS data when it has real values; fall back to REST when WS is all zeros
+  const wsHasData = wsPnl && (wsPnl.total !== 0 || wsPnl.realized !== 0 || wsPnl.unrealized !== 0);
+  const livePoint = wsHasData ? wsPnl : (restPoint ?? wsPnl);
 
   useEffect(() => {
     if (!livePoint) return;
