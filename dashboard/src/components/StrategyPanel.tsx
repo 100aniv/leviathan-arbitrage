@@ -24,7 +24,7 @@ function StrategyCard({
   const wr = trades > 0 ? (wins / trades) * 100 : (m.win_rate != null ? m.win_rate * 100 : 0);
   const winRateVal = trades > 0 || m.win_rate != null ? `${wr.toFixed(1)}%` : '—';
   const tradesVal  = trades > 0 ? String(trades) : (m.fills > 0 ? String(m.fills) : '—');
-  const pnl        = m.total_realized_pnl_usdt ?? m.pnl ?? null;
+  const pnl        = (m.pnl && m.pnl !== 0) ? m.pnl : (m.total_realized_pnl_usdt ?? m.pnl ?? null);
   const pnlVal     = pnl != null ? `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}` : '—';
   const displayName = String(strategy.name ?? strategy.type);
   const exchangeA   = strategy.exchange_a ? String(strategy.exchange_a) : '';
