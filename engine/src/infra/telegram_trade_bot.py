@@ -683,9 +683,9 @@ class TradeTelegramBot(TelegramBotBase):
         slippage = data.get("slippage_bps", 0.0)
         latency = data.get("latency_ms", 0)
 
-        # Mode prefix: caller passes "mode" or fallback to EXECUTION_MODE env
-        mode = data.get("mode") or os.getenv("EXECUTION_MODE", "paper").upper()
-        mode_prefix = f"[{mode}] "
+        # Mode prefix: caller passes full prefix (e.g. "🟣 [SHADOW]") or fallback to env
+        mode = data.get("mode") or f"[{os.getenv('EXECUTION_MODE', 'paper').upper()}]"
+        mode_prefix = f"{mode} "
 
         icon = "💰" if pnl > 0 else "💸"
         text = (

@@ -1103,10 +1103,20 @@ class Engine:
 
         try:
             from src.risk.guardian import RiskGuardian
+            _risk_cfg = (load_trading_config() or {}).get("risk", {})
+            _use_pct = _risk_cfg.get("use_percentage", False)
+            if _use_pct and "max_position_pct" in _risk_cfg:
+                _max_pos_pct = Decimal(str(_risk_cfg["max_position_pct"])) / Decimal("100")
+            else:
+                _max_pos_pct = Decimal("0.10")  # fallback: 10%
             self._risk_guardian = RiskGuardian(
                 circuit_breaker=self._circuit_breaker,
+                max_position_pct=_max_pos_pct,
             )
-            logger.info("RiskGuardian initialized with 9 pre-trade checks")
+            logger.info(
+                "RiskGuardian initialized with 9 pre-trade checks, max_position_pct=%.1f%%",
+                float(_max_pos_pct) * 100,
+            )
         except Exception as exc:
             logger.warning("RiskGuardian init failed: %s", exc)
 
@@ -2059,6 +2069,23 @@ class Engine:
                 self._data_mode = DataMode.SHADOW
                 return
 
+        # US-G01: Start all registered strategies in LIVE mode (shadow_mode=False)
+        # Without this, strategies remain is_active=False and StrategyManager._dispatch()
+        # skips them, resulting in 0 trade requests reaching AtomicExecutor.
+        if self._strategy_manager is not None:
+            for sid in self._strategy_manager.list_strategies():
+                s = self._strategy_manager.get_strategy(sid)
+                if s:
+                    s.shadow_mode = False
+            for sid in self._strategy_manager.list_strategies():
+                try:
+                    await self._strategy_manager.start_strategy(sid)
+                except Exception as exc:
+                    logger.warning("Live strategy %s start failed: %s", sid, exc)
+            logger.info(
+                "Live mode: %d strategies started (shadow_mode=False)",
+                len(self._strategy_manager.list_strategies()),
+            )
 
         async def on_orderbook(exchange_id: str, symbol: str, bids: list, asks: list) -> None:
             core_book = CoreOrderBook(symbol=symbol, exchange=exchange_id)
