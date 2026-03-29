@@ -14,30 +14,30 @@ import clsx from "clsx";
 
 const NAV_GROUPS = [
   {
-    label: "모니터링",
+    label: "MONITOR",
     items: [
-      { href: "/",          label: "대시보드",    icon: LayoutDashboard, tip: "전체 현황 요약" },
-      { href: "/portfolio", label: "포트폴리오",  icon: Wallet,          tip: "자산 배분 및 수익률" },
+      { href: "/",          label: "Overview",    icon: LayoutDashboard, tip: "전체 현황 요약 — PnL, 전략, 리스크" },
+      { href: "/portfolio", label: "Portfolio",   icon: Wallet,          tip: "자산 배분 및 수익률 분석" },
     ],
   },
   {
-    label: "분석",
+    label: "ANALYZE",
     items: [
-      { href: "/strategies",  label: "전략 관리",   icon: Zap,        tip: "7개 전략 상태 및 제어" },
-      { href: "/analytics",   label: "성과 분석",   icon: BarChart3,  tip: "전략별 수익 순위 및 히트맵" },
-      { href: "/alerts",      label: "알림",        icon: Bell,       tip: "시스템 경고 및 알림" },
-      { href: "/trades",      label: "거래 내역",   icon: History,    tip: "체결 이력 및 필터" },
-      { href: "/attribution", label: "수익 귀속",   icon: PieChart,   tip: "전략/거래소/페어별 수익 분석" },
-      { href: "/funding",     label: "펀딩 레이트", icon: TrendingUp, tip: "거래소별 펀딩 레이트 현황" },
-      { href: "/exchanges",   label: "거래소",      icon: Globe,      tip: "10개 거래소 연결 상태" },
+      { href: "/strategies",  label: "Strategies",  icon: Zap,        tip: "7개 전략 상태 및 제어" },
+      { href: "/analytics",   label: "Analytics",   icon: BarChart3,  tip: "전략별 수익 순위 및 히트맵" },
+      { href: "/alerts",      label: "Alerts",      icon: Bell,       tip: "시스템 경고 및 알림" },
+      { href: "/trades",      label: "Trades",      icon: History,    tip: "체결 이력 및 필터" },
+      { href: "/attribution", label: "Attribution", icon: PieChart,   tip: "전략/거래소/페어별 수익 분석" },
+      { href: "/funding",     label: "Funding",     icon: TrendingUp, tip: "거래소별 펀딩 레이트 현황" },
+      { href: "/exchanges",   label: "Exchanges",   icon: Globe,      tip: "10개 거래소 연결 상태" },
     ],
   },
   {
-    label: "관리",
+    label: "MANAGE",
     items: [
-      { href: "/settings", label: "설정",      icon: Settings,   tip: "운영 모드, 자본, 파라미터" },
-      { href: "/system",   label: "시스템",    icon: Server,     tip: "엔진 상태, 리소스, Docker" },
-      { href: "/risk",     label: "리스크",    icon: ShieldAlert, tip: "MDD, 킬스위치, 서킷브레이커" },
+      { href: "/settings", label: "Settings", icon: Settings,    tip: "운영 모드, 자본, 파라미터 설정" },
+      { href: "/system",   label: "System",   icon: Server,      tip: "엔진 상태, 리소스, Docker" },
+      { href: "/risk",     label: "Risk",     icon: ShieldAlert,  tip: "MDD, 킬스위치, 서킷브레이커" },
     ],
   },
 ];
