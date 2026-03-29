@@ -1698,7 +1698,13 @@ class Engine:
 
     async def _start_background_tasks(self) -> None:
         import os
-        self._data_mode = os.getenv("DATA_MODE", DataMode.SYNTHETIC).lower()
+        # US-G01: EXECUTION_MODE=live → DATA_MODE 자동 매핑
+        _exec_mode = os.getenv("EXECUTION_MODE", "paper").lower()
+        _default_data = "real_authenticated" if _exec_mode == "live" else os.getenv("DATA_MODE", DataMode.SYNTHETIC)
+        self._data_mode = os.getenv("DATA_MODE", _default_data).lower()
+        if _exec_mode == "live" and self._data_mode != "real_authenticated":
+            logger.warning("EXECUTION_MODE=live but DATA_MODE=%s — overriding to real_authenticated", self._data_mode)
+            self._data_mode = "real_authenticated"
 
         tasks = [
             asyncio.create_task(self._trade_consumer_loop(), name="trade_consumer"),
@@ -2049,13 +2055,11 @@ class Engine:
         )
 
         # US-246: LiveGate enforce_or_fallback before starting live data
-        # Block live mode if LiveGate is absent (not initialized) — fail-safe
+        # US-G01: LiveGate 미초기화 시 경고만 (소액 테스트 허용)
         if self._live_gate is None:
-            logger.error(
-                "live_gate_not_initialized — blocking live mode, falling back to shadow",
+            logger.warning(
+                "live_gate_not_initialized — proceeding without LiveGate (소액 테스트 모드)",
             )
-            self._data_mode = DataMode.SHADOW
-            return
         from src.modes.live_gate import LiveGate
         if isinstance(self._live_gate, LiveGate):
             try:
@@ -2087,7 +2091,7 @@ class Engine:
                 len(self._strategy_manager.list_strategies()),
             )
 
-        async def on_orderbook(exchange_id: str, symbol: str, bids: list, asks: list) -> None:
+        async def on_orderbook(exchange_id: str, symbol: str, bids: list, asks: list, **kwargs) -> None:
             core_book = CoreOrderBook(symbol=symbol, exchange=exchange_id)
             core_book.apply_snapshot(
                 [(b[0], b[1]) for b in bids],
@@ -2136,6 +2140,7 @@ class Engine:
                     )
                 except Exception:
                     pass
+
 
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
         exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
