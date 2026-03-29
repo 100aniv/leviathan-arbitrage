@@ -6,7 +6,7 @@ import {
   AreaChart, Area,
 } from 'recharts';
 import { EquityCurve } from '@/components/EquityCurve';
-import { getPortfolioMetrics, getPortfolioSummary, getEquityCurve, getPositions } from '@/lib/api';
+import { getPortfolioMetrics, getPortfolioSummary, getEquityCurve, getPositions, getDailyReturns, getShadowStats } from '@/lib/api';
 import type { Position } from '@/types';
 
 interface PortfolioMetrics {
@@ -198,19 +198,31 @@ export default function PortfolioPage() {
   const [curve,     setCurve]     = useState<CurvePoint[]>([]);
   const [drawdown,  setDrawdown]  = useState<DrawdownPoint[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [dailyReturns, setDailyReturns] = useState<{date: string; pnl: number}[]>([]);
+  const [shadowByStrategy, setShadowByStrategy] = useState<{strategy_id: string; trades: number; pnl: number}[]>([]);
 
   useEffect(() => {
     async function load() {
       try {
-        const [metricsData, summaryData, curveData, positionsData] = await Promise.all([
+        const [metricsData, summaryData, curveData, positionsData, dailyData, shadowData] = await Promise.all([
           getPortfolioMetrics().catch(() => null),
           getPortfolioSummary().catch(() => null),
           getEquityCurve().catch(() => null),
           getPositions().catch(() => null),
+          getDailyReturns().catch(() => null),
+          getShadowStats().catch(() => null),
         ]);
         if (metricsData) setMetrics(metricsData as PortfolioMetrics);
         if (summaryData) setSummary(summaryData);
         if (positionsData) setPositions(positionsData);
+        if (dailyData) {
+          const returns = Array.isArray(dailyData) ? dailyData : (dailyData as any)?.returns ?? [];
+          setDailyReturns(returns);
+        }
+        if (shadowData?.by_strategy) {
+          const bs = Array.isArray(shadowData.by_strategy) ? shadowData.by_strategy : [];
+          setShadowByStrategy(bs);
+        }
 
         if (curveData?.curve && curveData.curve.length > 0) {
           const pts = curveData.curve;
@@ -279,15 +291,52 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      {/* Daily Returns placeholder */}
+      {/* Daily Returns */}
       <div className="bg-terminal-surface border border-terminal-border p-4">
         <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">Daily Returns</span>
-        <div className="flex items-center justify-center h-24 mt-2">
-          <span className="text-xs font-mono text-terminal-subtle">
-            Shadow/Live 운영 이후 누적 데이터가 표시됩니다
-          </span>
-        </div>
+        {dailyReturns.length > 0 ? (
+          <div className="mt-3">
+            <ResponsiveContainer width="100%" height={100}>
+              <AreaChart data={dailyReturns} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                <XAxis dataKey="date" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: '#666' }} axisLine={false} tickLine={false} tickFormatter={(v: string) => v.slice(5)} />
+                <YAxis tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: '#666' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v.toFixed(0)}`} width={45} />
+                <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 0, fontSize: 11, fontFamily: 'JetBrains Mono' }} formatter={(v: number) => [`$${v.toFixed(2)}`, 'PnL']} />
+                <ReferenceLine y={0} stroke="#333" strokeDasharray="3 3" />
+                <Area type="monotone" dataKey="pnl" stroke="#00ff88" strokeWidth={1.5} fill="rgba(0,255,136,0.1)" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-24 mt-2">
+            <span className="text-xs font-mono text-terminal-subtle">Shadow/Live 운영 이후 누적 데이터가 표시됩니다</span>
+          </div>
+        )}
       </div>
+
+      {/* Strategy PnL Breakdown */}
+      {shadowByStrategy.length > 0 && (
+        <div className="bg-terminal-surface border border-terminal-border p-4">
+          <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">전략별 수익 기여</span>
+          <div className="mt-3 space-y-2">
+            {shadowByStrategy.sort((a, b) => b.pnl - a.pnl).map((s) => {
+              const maxPnl = Math.max(...shadowByStrategy.map(x => Math.abs(x.pnl)), 0.01);
+              const w = Math.min(Math.abs(s.pnl) / maxPnl * 100, 100);
+              return (
+                <div key={s.strategy_id} className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-terminal-subtle w-28 shrink-0 truncate">{s.strategy_id.replace(/_v\d+$/, '')}</span>
+                  <div className="flex-1 h-4 bg-terminal-muted/20 overflow-hidden">
+                    <div className="h-full transition-all" style={{ width: `${w}%`, backgroundColor: s.pnl >= 0 ? '#00ff88' : '#ff4d4d', opacity: 0.7 }} />
+                  </div>
+                  <span className="text-[10px] font-mono tabular-nums w-20 text-right" style={{ color: s.pnl >= 0 ? '#00ff88' : '#ff4d4d' }}>
+                    {s.pnl >= 0 ? '+' : ''}${s.pnl.toFixed(2)}
+                  </span>
+                  <span className="text-[9px] font-mono text-terminal-subtle w-12 text-right">{s.trades}t</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Drawdown Chart */}
       <div className="bg-terminal-surface border border-terminal-border p-4">

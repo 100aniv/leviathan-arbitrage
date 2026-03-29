@@ -31,12 +31,32 @@ def _get_exchange_balances(ctx: Any) -> list[dict[str, Any]]:
                 except (ValueError, TypeError):
                     pass
 
-    # Source 2: exchange_status balance field (fallback for Paper/Live)
+    # Source 2: Shadow trade history — aggregate PnL per exchange as activity proxy
+    if not balances and shadow_mode is not None and hasattr(shadow_mode, "_trade_history"):
+        ex_pnl: dict[str, float] = {}
+        for t in shadow_mode._trade_history:
+            for ex_key in ("buy_exchange", "sell_exchange"):
+                ex = t.get(ex_key, "")
+                if ex:
+                    ex_pnl[ex] = ex_pnl.get(ex, 0.0) + abs(t.get("pnl", 0.0)) / 2
+        if ex_pnl:
+            balances = ex_pnl
+
+    # Source 3: exchange_status balance field (fallback for Paper/Live)
     if not balances and ctx.exchange_status:
         for ex_id, status in ctx.exchange_status.items():
             bal = status.get("balance", {}) if isinstance(status, dict) else {}
             usdt = bal.get("USDT", bal.get("usdt", 0.0))
             balances[ex_id] = float(usdt)
+
+    # Source 4: Connected exchanges as equal allocation (final fallback)
+    if not balances and ctx.exchange_status:
+        connected = [ex for ex, s in ctx.exchange_status.items()
+                     if isinstance(s, dict) and s.get("connected", False)]
+        if connected:
+            per_ex = 100_000.0 / len(connected)
+            for ex in connected:
+                balances[ex] = per_ex
 
     # Build response with connection info
     result = []

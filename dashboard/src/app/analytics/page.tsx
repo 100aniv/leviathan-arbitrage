@@ -222,8 +222,8 @@ export default function AnalyticsPage() {
 
   const strategies = Object.values(metrics);
   const totalPnl = strategies.reduce((s, m) => s + m.pnl, 0);
-  const totalTrades = strategies.reduce((s, m) => s + m.fills, 0);
-  const totalSignals = strategies.reduce((s, m) => s + m.signals_received, 0);
+  const totalTrades = strategies.reduce((s, m) => s + ((m as any).trades || m.fills || 0), 0);
+  const totalSignals = strategies.reduce((s, m) => s + (m.signals_received || (m as any).trade_requests || 0), 0);
 
   return (
     <div className="space-y-4">
@@ -244,8 +244,8 @@ export default function AnalyticsPage() {
               value: `${totalPnl >= 0 ? "+" : ""}$${totalPnl.toFixed(4)}`,
               color: totalPnl >= 0 ? "#00ff88" : "#ff4d4d",
             },
-            { label: "Total Fills",   value: totalTrades.toString(),   color: undefined },
-            { label: "Total Signals", value: totalSignals.toString(), color: undefined },
+            { label: "Total Trades",  value: totalTrades.toLocaleString(),   color: undefined },
+            { label: "Total Signals", value: totalSignals.toLocaleString(), color: undefined },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-terminal-surface border border-terminal-border rounded-lg p-4">
               <p className="text-terminal-subtle text-xs font-mono">{label}</p>
@@ -335,9 +335,9 @@ export default function AnalyticsPage() {
 
                 <div className="grid grid-cols-3 gap-2 pt-1 border-t border-terminal-border/50">
                   {[
-                    { label: "Signals",  value: m.signals_received.toString() },
-                    { label: "Requests", value: m.trade_requests.toString() },
-                    { label: "Fills",    value: m.fills.toString() },
+                    { label: "Trades",   value: ((m as any).trades || m.fills || 0).toString() },
+                    { label: "Wins",     value: ((m as any).wins || 0).toString() },
+                    { label: "WR",       value: ((m as any).win_rate ? `${((m as any).win_rate * 100).toFixed(0)}%` : `${m.trade_requests > 0 ? ((m.fills / m.trade_requests) * 100).toFixed(0) : 0}%`) },
                   ].map(({ label, value }) => (
                     <div key={label}>
                       <p className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">{label}</p>
