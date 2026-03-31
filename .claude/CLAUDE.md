@@ -204,23 +204,35 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 ## 팀 구조 (7팀 + TF)
 
 > 팀은 기능별 정의, Stage가 필요한 팀을 호출. Stage B-Step 1만 TeamCreate, 나머지 Agent() 서브에이전트.
+> **에이전트 파일**: `.claude/agents/leviathan-*.md` (역할 기반 정의)
 
-| 팀 | Stage | 에이전트 | 역할 |
-|----|-------|---------|------|
-| ① AESPA (기획) | A | Karina(architect/opus), NingNing(analyst), Winter(critic/opus), Giselle(planner) | Entry Gate 정합성, 요구사항, 기획비판, PLAN.md |
-| ② IVE (개발) | B-Step 1 | Yujin/Gaeul/Leeseo/Liz(executor), Wonyoung(test-engineer), Rei(designer) | TeamCreate 협업, 최대 6명 |
-| ②-B Assembly Gate | C-Step 1 | Assembly Verifier(verifier/sonnet) | **조립검증**: init chain + signal flow + dead wiring + config audit (독립 에이전트, 코드리뷰 전 필수) |
-| ③ BLACKPINK (코드리뷰) | C-Step 3 | Jennie(code-reviewer/opus), Jisoo(security-reviewer) | 코드리뷰+통합추적+Shadow교차평가, 보안 (Assembly Gate PASS 후에만 진행) |
-| ④ NewJeans (테스트) | B-Step 2 | Minji(shadow-tester), Hanni(qa-tester/haiku), Danielle(scientist/haiku), Haerin(browser-verifier), Hyein(debugger) | Shadow 13항목 복합지표, QA, 모니터링 |
-| ⑤ LE SSERAFIM (릴리스) | C-Step 5~6 | Karina(architect/opus), Sakura(ssot-keeper/sonnet) | Phase완료리뷰(7항목)+Go/No-Go, SSOT+git push |
-| ⑥ ITZY (퀀트) | A+B | Yeji(quant-validator/opus), Ryujin(scientist), Lia(ml-pipeline), Chaeryeong(dex-specialist), Yuna(analyst) | 수학 검증, ML, DEX |
-| ⑦ Fix 루프 | L1+ | Joy(debugger), Irene(build-fixer), Wendy(code-simplifier/opus) | 에스컬레이션 시 활성화 |
-| TF TWICE | QF/SF/PF/Final | Nayeon(TF리더), Karina, Jeongyeon, Momo, Sana, Mina, Dahyun, Chaeyoung, Tzuyu (9명+Jisoo차출) | 상용화 최종 검증 (4-Round) |
+| 팀 | Stage | 에이전트 파일 | 역할 |
+|----|-------|-------------|------|
+| ① Planning (기획) | A | `leviathan-planner` | Entry Gate 정합성, 요구사항, 기획비판, PLAN.md |
+| ② Execution (개발) | B-Step 1 | `leviathan-executor` | TeamCreate 협업, 최대 6명 |
+| ②-B Assembly Gate | C-Step 1 | `leviathan-assembler` | **조립검증**: init chain + signal flow + dead wiring + config audit |
+| ③ Review (코드리뷰) | C-Step 2~3 | `leviathan-reviewer` | 코드리뷰+보안+멀티모델 quorum (Assembly Gate PASS 후에만) |
+| ④ QA (테스트) | B-Step 2 | `leviathan-qa` | Shadow 13항목 복합지표, QA, 브라우저 검증 |
+| ⑤ Release (릴리스) | C-Step 5~6 | `leviathan-release` | Phase완료리뷰(7항목)+Go/No-Go, SSOT+git push |
+| ⑥ Quant (검증) | A+B | `leviathan-quant` | 수학 검증, ML(HMM/XGBoost/ONNX), DEX |
+| ⑦ Fix Loop | L1+ | `leviathan-fix` | 에스컬레이션 시 활성화 (Type W/P/B) |
+| TF | QF/SF/PF/Final | `sit3-lead` + 전팀 | 상용화 최종 검증 (4-Round) |
 
 **사이클**: Stage A(기획)→B(구현+검증)→C(리뷰+릴리스+사장님승인)→다음Phase
 
 ## 커스텀 에이전트 (.claude/agents/)
 
+**역할 기반 (harness 생성):**
+- `leviathan-planner` — Stage A 기획/아키텍처/Entry Gate (opus)
+- `leviathan-executor` — Stage B 구현/테스트 (sonnet, TeamCreate 최대 6명)
+- `leviathan-assembler` — C-Step 1 Assembly Gate 조립 검증 (sonnet)
+- `leviathan-reviewer` — C-Step 2~3 코드리뷰+보안+멀티모델 quorum (opus)
+- `leviathan-qa` — B-Step 2 Shadow 13항목+QA+브라우저 (sonnet)
+- `leviathan-release` — C-Step 5~6 Go/No-Go+SSOT+git push (opus)
+- `leviathan-quant` — 수학/ML/DEX 검증 (opus)
+- `leviathan-fix` — L1+ Fix Loop: Type W/P/B (sonnet)
+
+**도메인 특화 (기존 유지):**
 - `quant-validator` — 슬리피지/마찰력/수익성 수학 검증 + ML 모델 수학 검증
 - `shadow-tester` — Shadow 모드 실 실행 및 결과 분석 + ML Canary 검증
 - `ssot-keeper` — SSOT.md 유일 관리자
@@ -268,7 +280,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **cancel_order**: order.symbol 전달 필수 (Binance rollback). TypeError fallback for legacy adapters
 - **friction prefix**: cost_calculator가 `paper_`/`sandbox_` prefix 자동 strip
 - **passes:true 거짓 양성 금지**: 코드 존재만으로 완료 판정 금지. Shadow 10min 런타임에서 해당 기능 호출 증거(로그/메트릭) 필수. dead code(정의만 있고 호출 안 됨) = passes:false
-- **ANTI-STALL (멈춤 방지)**: 모든 응답에 텍스트 1줄 + tool call 병행 (텍스트 없으면 stop hook이 루프 종료 #30625). "다음 세션에서 하자" 응답 금지 (#34238). TeamCreate 30초 무응답 시 TeamDelete → Agent() fallback (#33043).
+- **GATE 강제 (gstack 철학)**: 게이트 미충족 시 멈춤 허용. 물리적 증거 파일(로그/메트릭/체결 기록) 없으면 다음 Phase 진입 금지. "완료"는 코드 존재가 아니라 런타임 증거로만 판정. TeamCreate 30초 무응답 시 TeamDelete → Agent() fallback (#33043).
 
 ## 플랜 파일 (유저 레벨 — 레포 밖)
 
