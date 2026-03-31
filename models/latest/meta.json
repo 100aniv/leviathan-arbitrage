@@ -1,0 +1,9 @@
+{
+  "version": "v001",
+  "model_name": "xgb_signal_3f",
+  "n_features": 3,
+  "feature_names": [],
+  "opset_version": 15,
+  "exported_at": "2026-03-28T04:18:04.027840+00:00",
+  "file_size_bytes": 37101
+}

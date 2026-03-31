@@ -1,7 +1,7 @@
 {
-  "tool_name": "Read",
-  "tool_input_preview": "{\"file_path\":\"/Users/100aniv/Development/arbitrage_OMC/engine/src/api/settings.py\",\"offset\":100,\"limit\":40}",
-  "error": "File does not exist. Note: your current working directory is /Users/100aniv/Development/arbitrage_OMC/engine.",
-  "timestamp": "2026-03-29T07:25:48.205Z",
-  "retry_count": 2
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"sleep 60 && echo \\\"=== SHADOW CANARY 1min ===\\\" && grep -c \\\"live_mode\\\\.\\\" /tmp/leviathan-shadow-canary.log 2>/dev/null && echo \\\"---\\\" && grep \\\"live_mode\\\\.\\\" /tmp/leviathan-shadow-cana...",
+  "error": "Exit code 1\n=== SHADOW CANARY 1min ===\n0",
+  "timestamp": "2026-03-29T12:02:38.470Z",
+  "retry_count": 1
 }

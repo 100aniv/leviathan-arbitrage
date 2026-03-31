@@ -202,16 +202,34 @@
   },
   "hotPaths": [
     {
+      "path": "src/modes/live.py",
+      "accessCount": 67,
+      "lastAccessed": 1774785810946,
+      "type": "file"
+    },
+    {
       "path": "src/modes/shadow.py",
-      "accessCount": 31,
-      "lastAccessed": 1774769164242,
+      "accessCount": 47,
+      "lastAccessed": 1774776687574,
       "type": "file"
     },
     {
       "path": "src/main.py",
-      "accessCount": 21,
-      "lastAccessed": 1774769157428,
+      "accessCount": 44,
+      "lastAccessed": 1774785656775,
       "type": "file"
+    },
+    {
+      "path": "src/infra/telegram.py",
+      "accessCount": 18,
+      "lastAccessed": 1774784326957,
+      "type": "directory"
+    },
+    {
+      "path": "src/infra/telegram_trade_bot.py",
+      "accessCount": 12,
+      "lastAccessed": 1774784326249,
+      "type": "directory"
     },
     {
       "path": "tests/unit/tuning/test_scheduled_tuner.py",
@@ -220,9 +238,21 @@
       "type": "directory"
     },
     {
-      "path": "src/infra/telegram.py",
+      "path": "src/core/config.py",
+      "accessCount": 9,
+      "lastAccessed": 1774785090587,
+      "type": "directory"
+    },
+    {
+      "path": "tests/test_live_mode.py",
+      "accessCount": 9,
+      "lastAccessed": 1774788713996,
+      "type": "file"
+    },
+    {
+      "path": "src",
       "accessCount": 8,
-      "lastAccessed": 1774688007644,
+      "lastAccessed": 1774785482651,
       "type": "directory"
     },
     {
@@ -230,6 +260,12 @@
       "accessCount": 7,
       "lastAccessed": 1774769163215,
       "type": "file"
+    },
+    {
+      "path": ".env",
+      "accessCount": 7,
+      "lastAccessed": 1774784922352,
+      "type": "directory"
     },
     {
       "path": "src/collectors/mexc_collector.py",
@@ -256,16 +292,28 @@
       "type": "file"
     },
     {
-      "path": "src",
-      "accessCount": 5,
-      "lastAccessed": 1774769155788,
-      "type": "directory"
-    },
-    {
       "path": "",
       "accessCount": 5,
       "lastAccessed": 1774769163822,
       "type": "directory"
+    },
+    {
+      "path": "tests/unit/test_api_server_routes.py",
+      "accessCount": 5,
+      "lastAccessed": 1774778346106,
+      "type": "directory"
+    },
+    {
+      "path": "src/strategies/manager.py",
+      "accessCount": 4,
+      "lastAccessed": 1774776633347,
+      "type": "directory"
+    },
+    {
+      "path": "src/api/routes/settings.py",
+      "accessCount": 4,
+      "lastAccessed": 1774784116392,
+      "type": "file"
     },
     {
       "path": "tests/unit/test_collector_manager.py",
@@ -292,27 +340,9 @@
       "type": "directory"
     },
     {
-      "path": "src/strategies/manager.py",
+      "path": "src/infra",
       "accessCount": 3,
-      "lastAccessed": 1774768224361,
-      "type": "directory"
-    },
-    {
-      "path": "src/core/config.py",
-      "accessCount": 3,
-      "lastAccessed": 1774768249569,
-      "type": "directory"
-    },
-    {
-      "path": "src/api/routes/settings.py",
-      "accessCount": 3,
-      "lastAccessed": 1774769147182,
-      "type": "file"
-    },
-    {
-      "path": "src/infra/telegram_trade_bot.py",
-      "accessCount": 2,
-      "lastAccessed": 1774685568318,
+      "lastAccessed": 1774784069939,
       "type": "directory"
     },
     {
@@ -346,10 +376,16 @@
       "type": "file"
     },
     {
-      "path": "src/infra",
-      "accessCount": 1,
-      "lastAccessed": 1774685566895,
+      "path": "src/strategies/base.py",
+      "accessCount": 2,
+      "lastAccessed": 1774776679041,
       "type": "directory"
+    },
+    {
+      "path": "config/trading.json",
+      "accessCount": 2,
+      "lastAccessed": 1774781525741,
+      "type": "file"
     },
     {
       "path": "src/tuning/scheduled_tuner.py",
@@ -376,18 +412,6 @@
       "type": "directory"
     },
     {
-      "path": "src/strategies/base.py",
-      "accessCount": 1,
-      "lastAccessed": 1774764645284,
-      "type": "directory"
-    },
-    {
-      "path": ".env",
-      "accessCount": 1,
-      "lastAccessed": 1774764645827,
-      "type": "directory"
-    },
-    {
       "path": "src/execution/trade_consumer.py",
       "accessCount": 1,
       "lastAccessed": 1774764654102,
@@ -398,12 +422,6 @@
       "accessCount": 1,
       "lastAccessed": 1774764664805,
       "type": "directory"
-    },
-    {
-      "path": "config/trading.json",
-      "accessCount": 1,
-      "lastAccessed": 1774768207203,
-      "type": "file"
     },
     {
       "path": "src/workflow/checkpoint_engine.py",
@@ -470,6 +488,18 @@
       "accessCount": 1,
       "lastAccessed": 1774769258515,
       "type": "file"
+    },
+    {
+      "path": "src/core/models.py",
+      "accessCount": 1,
+      "lastAccessed": 1774776075421,
+      "type": "directory"
+    },
+    {
+      "path": "src/collectors/manager.py",
+      "accessCount": 1,
+      "lastAccessed": 1774776698369,
+      "type": "directory"
     }
   ],
   "userDirectives": []

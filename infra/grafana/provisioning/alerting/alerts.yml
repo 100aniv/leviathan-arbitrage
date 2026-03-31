@@ -1,0 +1,82 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: LEVIATHAN Core Alerts
+    folder: LEVIATHAN
+    interval: 1m
+    rules:
+      - uid: engine-down
+        title: Engine Container Down
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: up{job="engine"} == 0
+              intervalMs: 15000
+              maxDataPoints: 43200
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "LEVIATHAN Engine is DOWN"
+
+      - uid: high-memory
+        title: Engine High Memory Usage
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: process_resident_memory_bytes{job="engine"} > 1073741824
+              intervalMs: 15000
+              maxDataPoints: 43200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Engine memory exceeds 1GB"
+
+      - uid: high-cpu
+        title: Engine High CPU Usage
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: rate(process_cpu_seconds_total{job="engine"}[5m]) > 0.8
+              intervalMs: 15000
+              maxDataPoints: 43200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Engine CPU > 80%"
+
+      - uid: circuit-breaker-open
+        title: Circuit Breaker OPEN
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: circuit_breaker_state == 2
+              intervalMs: 15000
+              maxDataPoints: 43200
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit Breaker is OPEN — trading halted"

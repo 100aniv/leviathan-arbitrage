@@ -1,56 +1,5 @@
-name: leviathan
-
-# Development overrides — applied automatically when running `docker compose up`
-# Adds volume mounts for hot reload and debug ports.
-
 services:
-  engine:
-    build:
-      target: development
-    environment:
-      - ENGINE_ENV=dev
-      - ENGINE_LOG_LEVEL=DEBUG
-      - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONUNBUFFERED=1
+  bot-gateway:
     volumes:
-      # Hot-reload: mount source code into the container
-      - ./engine/src:/app/src:ro
-      - ./engine/tests:/app/tests:ro
-    ports:
-      - "8000:8000"
-      - "8001:8001"
-      - "5678:5678"    # debugpy remote debug port
-    command: >
-      python -m debugpy --listen 0.0.0.0:5678
-      /app/src/main.py
-
-  dashboard:
-    build:
-      target: development
-    environment:
-      - NODE_ENV=development
-    volumes:
-      - ./dashboard:/app:delegated
-      - /app/node_modules
-      - /app/.next
-    command: npm run dev
-
-  redis:
-    ports:
-      - "6379:6379"
-
-  timescaledb:
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: leviathan
-      POSTGRES_PASSWORD: leviathan
-      POSTGRES_DB: leviathan
-
-  prometheus:
-    ports:
-      - "9090:9090"
-
-  grafana:
-    ports:
-      - "3001:3001"
+      - ./engine:/app:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro

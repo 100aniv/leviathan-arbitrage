@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1773843985753,
+  "lastScanned": 1774949235501,
   "projectRoot": "/Users/100aniv/Development/arbitrage_OMC",
   "techStack": {
     "languages": [
@@ -41,11 +41,20 @@
   },
   "customNotes": [],
   "directoryMap": {
+    "config": {
+      "path": "config",
+      "purpose": "Configuration files",
+      "fileCount": 1,
+      "lastAccessed": 1774949235421,
+      "keyFiles": [
+        "strategy_params.json"
+      ]
+    },
     "dashboard": {
       "path": "dashboard",
       "purpose": null,
-      "fileCount": 16,
-      "lastAccessed": 1773843985734,
+      "fileCount": 17,
+      "lastAccessed": 1774949235429,
       "keyFiles": [
         "README.md",
         "jest.config.ts",
@@ -58,7 +67,7 @@
       "path": "docker",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1773843985735,
+      "lastAccessed": 1774949235433,
       "keyFiles": [
         "dashboard.Dockerfile",
         "engine.Dockerfile",
@@ -69,7 +78,7 @@
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 6,
-      "lastAccessed": 1773843985736,
+      "lastAccessed": 1774949235435,
       "keyFiles": [
         "QUANT_MANIFESTO.md",
         "config_reference_ko.md",
@@ -81,28 +90,37 @@
     "engine": {
       "path": "engine",
       "purpose": null,
-      "fileCount": 11,
-      "lastAccessed": 1773843985736,
+      "fileCount": 13,
+      "lastAccessed": 1774949235444,
       "keyFiles": [
         "=4.1",
+        "README.md",
         "alembic.ini",
         "coverage.xml",
-        "pyproject.toml",
-        "run_cross_validation.py"
+        "pyproject.toml"
       ]
     },
     "infra": {
       "path": "infra",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1773843985736,
+      "lastAccessed": 1774949235466,
       "keyFiles": []
+    },
+    "models": {
+      "path": "models",
+      "purpose": "Data models",
+      "fileCount": 1,
+      "lastAccessed": 1774949235475,
+      "keyFiles": [
+        "versions.json"
+      ]
     },
     "reports": {
       "path": "reports",
       "purpose": null,
       "fileCount": 8,
-      "lastAccessed": 1773843985737,
+      "lastAccessed": 1774949235496,
       "keyFiles": [
         "cross_validation_results.json",
         "tune_cex_dex_final.json",
@@ -114,323 +132,167 @@
     "scripts": {
       "path": "scripts",
       "purpose": "Build/utility scripts",
-      "fileCount": 1,
-      "lastAccessed": 1773843985737,
+      "fileCount": 6,
+      "lastAccessed": 1774949235496,
       "keyFiles": [
-        "backup_db.sh"
+        "backup_db.sh",
+        "db-cleanup.sh",
+        "prod-up.sh",
+        "sit3_canary_runner.py",
+        "sync_env.sh"
       ]
     },
-    "engine/config": {
-      "path": "engine/config",
-      "purpose": "Configuration files",
-      "fileCount": 5,
-      "lastAccessed": 1773843985739,
-      "keyFiles": [
-        "shadow_mode.json",
-        "strategy_activation.json",
-        "strategy_params.json"
-      ]
+    "test-results": {
+      "path": "test-results",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1774949235497,
+      "keyFiles": []
     }
   },
   "hotPaths": [
     {
       "path": "engine/src/main.py",
-      "accessCount": 173,
-      "lastAccessed": 1773928237791,
-      "type": "file"
-    },
-    {
-      "path": ".claude/commands/leviathan.md",
-      "accessCount": 161,
-      "lastAccessed": 1773928651643,
-      "type": "file"
-    },
-    {
-      "path": "SSOT.md",
-      "accessCount": 94,
-      "lastAccessed": 1773927801847,
+      "accessCount": 10,
+      "lastAccessed": 1774962347534,
       "type": "file"
     },
     {
       "path": "engine/src",
-      "accessCount": 89,
-      "lastAccessed": 1773927827270,
-      "type": "directory"
-    },
-    {
-      "path": ".claude/CLAUDE.md",
-      "accessCount": 58,
-      "lastAccessed": 1773928557564,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/core/signal.py",
-      "accessCount": 49,
-      "lastAccessed": 1773927823402,
-      "type": "file"
-    },
-    {
-      "path": "",
-      "accessCount": 34,
-      "lastAccessed": 1773925236024,
-      "type": "directory"
-    },
-    {
-      "path": "engine/src/strategies/statistical_arb.py",
-      "accessCount": 22,
-      "lastAccessed": 1773923878772,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/tuning/adaptive_threshold.py",
-      "accessCount": 19,
-      "lastAccessed": 1773928230495,
-      "type": "file"
-    },
-    {
-      "path": ".claude/settings.local.json",
-      "accessCount": 14,
-      "lastAccessed": 1773924227816,
-      "type": "file"
-    },
-    {
-      "path": ".claude/agents/shadow-tester.md",
-      "accessCount": 13,
-      "lastAccessed": 1773924022304,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/triangular.py",
-      "accessCount": 13,
-      "lastAccessed": 1773927545320,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/tuning/regime_detector.py",
-      "accessCount": 10,
-      "lastAccessed": 1773924018588,
-      "type": "file"
-    },
-    {
-      "path": "docs/strategies_ko.md",
-      "accessCount": 9,
-      "lastAccessed": 1773911213627,
-      "type": "file"
-    },
-    {
-      "path": "docs",
-      "accessCount": 6,
-      "lastAccessed": 1773919752895,
-      "type": "directory"
-    },
-    {
-      "path": "engine/src/strategies/spot_futures.py",
-      "accessCount": 6,
-      "lastAccessed": 1773923863839,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/cross_exchange.py",
-      "accessCount": 6,
-      "lastAccessed": 1773923987917,
-      "type": "file"
-    },
-    {
-      "path": ".claude/hooks/assembly-gate.sh",
-      "accessCount": 6,
-      "lastAccessed": 1773924032739,
-      "type": "file"
-    },
-    {
-      "path": ".claude/hooks/shadow-evidence-gate.sh",
-      "accessCount": 6,
-      "lastAccessed": 1773924033128,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/ml/hmm_trainer.py",
-      "accessCount": 6,
-      "lastAccessed": 1773927832641,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/ml/feature_pipeline.py",
-      "accessCount": 5,
-      "lastAccessed": 1773920533372,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/funding_rate.py",
-      "accessCount": 5,
-      "lastAccessed": 1773923844149,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/futures_futures.py",
       "accessCount": 4,
-      "lastAccessed": 1773847219827,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/ml/onnx_runtime.py",
-      "accessCount": 4,
-      "lastAccessed": 1773920532861,
-      "type": "file"
-    },
-    {
-      "path": "docs/QUANT_MANIFESTO.md",
-      "accessCount": 3,
-      "lastAccessed": 1773847232675,
-      "type": "file"
-    },
-    {
-      "path": "engine",
-      "accessCount": 3,
-      "lastAccessed": 1773850122132,
+      "lastAccessed": 1774962328387,
       "type": "directory"
     },
     {
-      "path": "GPT_opinion.md",
+      "path": "SSOT.md",
+      "accessCount": 4,
+      "lastAccessed": 1774962490511,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/core/config.py",
       "accessCount": 3,
-      "lastAccessed": 1773851208183,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/tuning/scheduled_tuner.py",
-      "accessCount": 3,
-      "lastAccessed": 1773920549303,
-      "type": "file"
-    },
-    {
-      "path": "engine/.env",
-      "accessCount": 3,
-      "lastAccessed": 1773925231721,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/cex_dex.py",
-      "accessCount": 2,
-      "lastAccessed": 1773844423898,
-      "type": "file"
-    },
-    {
-      "path": "docs/checklists/tf-quarter-final_20260318.md",
-      "accessCount": 2,
-      "lastAccessed": 1773844707756,
-      "type": "file"
-    },
-    {
-      "path": "docs/checklists/tf-semi-final_20260317.md",
-      "accessCount": 2,
-      "lastAccessed": 1773844707857,
-      "type": "file"
-    },
-    {
-      "path": "docs/planning/Phase-S10_PLAN.md",
-      "accessCount": 2,
-      "lastAccessed": 1773846747967,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/infra/metrics.py",
-      "accessCount": 2,
-      "lastAccessed": 1773846808091,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/latency_arb.py",
-      "accessCount": 2,
-      "lastAccessed": 1773846813301,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/base.py",
-      "accessCount": 2,
-      "lastAccessed": 1773847232787,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/strategies/manager.py",
-      "accessCount": 2,
-      "lastAccessed": 1773849960656,
-      "type": "file"
-    },
-    {
-      "path": "engine/config/strategy_activation.json",
-      "accessCount": 1,
-      "lastAccessed": 1773844402076,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/infra/dex/uniswap_v3.py",
-      "accessCount": 1,
-      "lastAccessed": 1773844424871,
-      "type": "file"
-    },
-    {
-      "path": "engine/src/infra/dex/gas_oracle.py",
-      "accessCount": 1,
-      "lastAccessed": 1773844424981,
+      "lastAccessed": 1774962327569,
       "type": "file"
     },
     {
       "path": "engine/src/execution/trade_consumer.py",
-      "accessCount": 1,
-      "lastAccessed": 1773844435351,
+      "accessCount": 3,
+      "lastAccessed": 1774962333455,
       "type": "file"
     },
     {
-      "path": "engine/src/friction/dex_cost.py",
-      "accessCount": 1,
-      "lastAccessed": 1773844509675,
+      "path": "engine/config/engine.json",
+      "accessCount": 2,
+      "lastAccessed": 1774962347720,
       "type": "file"
     },
     {
-      "path": "engine/src/dex/mock_adapter.py",
-      "accessCount": 1,
-      "lastAccessed": 1773844510076,
+      "path": "engine/config/trading.json",
+      "accessCount": 2,
+      "lastAccessed": 1774962347984,
       "type": "file"
     },
     {
-      "path": ".claude/agents/quant-validator.md",
-      "accessCount": 1,
-      "lastAccessed": 1773844704304,
+      "path": "engine/src/modes/live.py",
+      "accessCount": 2,
+      "lastAccessed": 1774962484901,
       "type": "file"
     },
     {
-      "path": ".claude/agents/ssot-keeper.md",
+      "path": "",
+      "accessCount": 2,
+      "lastAccessed": 1774962885467,
+      "type": "directory"
+    },
+    {
+      "path": "engine/.env",
       "accessCount": 1,
-      "lastAccessed": 1773844704714,
+      "lastAccessed": 1774962315181,
       "type": "file"
     },
     {
-      "path": ".claude/agents/browser-verifier.md",
+      "path": "config/strategy_params.json",
       "accessCount": 1,
-      "lastAccessed": 1773844705173,
+      "lastAccessed": 1774962315314,
       "type": "file"
     },
     {
-      "path": "docs/planning/Phase-S13_PLAN.md",
+      "path": "engine/src/execution/executor.py",
       "accessCount": 1,
-      "lastAccessed": 1773844706125,
+      "lastAccessed": 1774962317220,
       "type": "file"
     },
     {
-      "path": "docs/review/Phase-S8_REVIEW.md",
+      "path": "engine/src/strategies/base.py",
       "accessCount": 1,
-      "lastAccessed": 1773844706573,
+      "lastAccessed": 1774962317318,
       "type": "file"
     },
     {
-      "path": "docs/review/Phase-S4_REVIEW.md",
+      "path": "engine/src/infra/exchange/native_adapter.py",
       "accessCount": 1,
-      "lastAccessed": 1773844716562,
+      "lastAccessed": 1774962317612,
       "type": "file"
     },
     {
-      "path": "docs/review/Phase-S2_REVIEW.md",
+      "path": "engine/src/execution/paper_adapter.py",
       "accessCount": 1,
-      "lastAccessed": 1773844716702,
+      "lastAccessed": 1774962317864,
+      "type": "file"
+    },
+    {
+      "path": "docker-compose.override.yml",
+      "accessCount": 1,
+      "lastAccessed": 1774962319552,
+      "type": "file"
+    },
+    {
+      "path": "docker-compose.yml",
+      "accessCount": 1,
+      "lastAccessed": 1774962319665,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/strategies/triangular.py",
+      "accessCount": 1,
+      "lastAccessed": 1774962320255,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/strategies/cross_exchange.py",
+      "accessCount": 1,
+      "lastAccessed": 1774962320548,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/core/config_loader.py",
+      "accessCount": 1,
+      "lastAccessed": 1774962321188,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/execution",
+      "accessCount": 1,
+      "lastAccessed": 1774962325689,
+      "type": "directory"
+    },
+    {
+      "path": "engine/src/strategies",
+      "accessCount": 1,
+      "lastAccessed": 1774962326216,
+      "type": "directory"
+    },
+    {
+      "path": "engine/config/shadow_mode.json",
+      "accessCount": 1,
+      "lastAccessed": 1774962333659,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/modes/shadow.py",
+      "accessCount": 1,
+      "lastAccessed": 1774962333900,
       "type": "file"
     }
   ],

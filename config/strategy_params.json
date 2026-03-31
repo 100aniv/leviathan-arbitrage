@@ -1,1 +1,128 @@
-../engine/config/strategy_params.json
+{
+  "_meta": {
+    "source": "S26 \uc804\ub7b5 \ub9ac\uc11c\uce58 \uae30\ubc18 \uc7ac\uc124\uacc4 (2026-03-23)",
+    "date": "2026-03-23",
+    "data_type": "live_shadow",
+    "note": "S26: exa.ai \ubca4\uce58\ub9c8\ud06c + TF SF FAIL \ubd84\uc11d \uae30\ubc18. Shadow Live\uae09(DEPTH_FRACTION=1.0). \uc5c5\uacc4 \uae30\uc900 min 50bps gross spread \u2192 net \uc218\uc775.",
+    "real_wfe_path": "_real_wfe",
+    "real_wfe_note": "Populated by ScheduledTuner when TUNER_DATA_SOURCE=timescaledb"
+  },
+  "_real_wfe": {
+    "_note": "Real-data WFE results from TimescaleDB.",
+    "cross_exchange": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "triangular": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "spot_futures": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "funding_rate": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "statistical_arb": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    },
+    "futures_futures": {
+      "status": "INSUFFICIENT_DATA",
+      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "data_type": "real_timescaledb"
+    }
+  },
+  "cross_exchange": {
+    "min_spread_bps": 5.0,
+    "status": "READY",
+    "wfe": 1.2,
+    "data_type": "synthetic_gbm"
+  },
+  "spot_futures": {
+    "min_spread_bps": 16.521210151176234,
+    "max_position_size": 7634.1164727867645,
+    "entry_threshold": 0.0013620427453799166,
+    "exit_threshold": 0.0001866435336362988,
+    "stop_loss_pct": 0.005070404564592744,
+    "status": "READY",
+    "wfe": 7.578432709803439,
+    "data_type": "synthetic_gbm"
+  },
+  "funding_rate": {
+    "min_spread_bps": 8.735797037704605,
+    "max_position_size": 5002.251410101575,
+    "entry_threshold": 0.00011715937392307068,
+    "exit_threshold": 0.0032931446587915556,
+    "stop_loss_pct": 0.016645099172000764,
+    "status": "READY",
+    "wfe": 1.774823934929885,
+    "data_type": "synthetic_gbm"
+  },
+  "futures_futures": {
+    "min_spread_bps": 47.50987042361101,
+    "max_position_size": 8497.517825978573,
+    "entry_threshold": 0.00025557303057935484,
+    "exit_threshold": 6.82596457666553e-05,
+    "stop_loss_pct": 0.00501931310745825,
+    "status": "READY",
+    "wfe": 5.926861262589432,
+    "data_type": "synthetic_gbm"
+  },
+  "triangular": {
+    "min_spread_bps": 49.98657167949043,
+    "max_position_size": 6810.6841726392,
+    "entry_threshold": 0.0005221298701815954,
+    "exit_threshold": 9.601259624268907e-05,
+    "stop_loss_pct": 0.0055080901917418075,
+    "status": "READY",
+    "wfe": 6.571801936599799,
+    "data_type": "synthetic_gbm"
+  },
+  "statistical_arb": {
+    "status": "READY",
+    "wfe": 0.0,
+    "max_position_size_usdt": 3000,
+    "entry_threshold": 0.000188,
+    "exit_threshold": 0.00089,
+    "stop_loss_pct": 0.005,
+    "_note": "SIT-3 P3: DISABLED\u2192READY. z=2.5\u21922.0, cooldown=300\u2192120, min_history=120\u219260. 24H Shadow \ud6c4 WFE \uc7ac\ud3c9\uac00."
+  },
+  "cex_dex": {
+    "status": "MONITOR",
+    "wfe": 1.19,
+    "min_edge_bps": 4.2,
+    "max_position_size_usdt": 1687,
+    "entry_threshold": 0.000512,
+    "exit_threshold": 6.33e-05,
+    "stop_loss_pct": 0.005
+  },
+  "latency_arb": {
+    "status": "MONITOR",
+    "wfe": 0.0,
+    "min_spread_bps": 3,
+    "max_position_size_usdt": 5000,
+    "entry_threshold": 0.0005,
+    "exit_threshold": 0.0001,
+    "stop_loss_pct": 0.005
+  },
+  "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 \ud1b5\uc77c, slippage_buffer 5bps \uc2e0\uaddc, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
+  "_tuner_meta": {
+    "best_values": {
+      "cross_exchange": 0,
+      "triangular": 0,
+      "spot_futures": 0,
+      "funding_rate": 0,
+      "statistical_arb": 0,
+      "futures_futures": 0
+    },
+    "timestamp": "2026-03-29T08:59:03.953980+00:00"
+  }
+}

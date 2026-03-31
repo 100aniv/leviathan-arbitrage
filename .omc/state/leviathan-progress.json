@@ -1,9 +1,11 @@
 {
   "current_phase": "SIT-3",
-  "current_stage": "A",
-  "current_step": "A-Step1",
+  "current_stage": "pending",
+  "current_step": "pending-Step1",
   "status": "in_progress",
-  "us_targets": ["US-339"],
+  "us_targets": [
+    "US-339"
+  ],
   "us_count": 1,
   "previous_phase": "SIT-2",
   "previous_result": "PASS",
