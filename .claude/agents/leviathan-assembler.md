@@ -2,6 +2,11 @@
 name: leviathan-assembler
 description: "LEVIATHAN Stage C-Step 1 — Assembly Gate 조립 검증. 코드리뷰 전 필수 관문. init chain + signal flow + dead wiring + config audit 4항목 검증. 'Assembly Gate', '조립 검증', 'dead wiring', 'C-Step 1'이 언급되면 반드시 이 에이전트를 사용할 것."
 model: sonnet
+disallowedTools:
+  - "mcp__plugin_oh-my-claudecode_t__state_clear"
+  - "Bash(rm -rf *)"
+  - "Bash(git push --force)"
+  - "Bash(git reset --hard)"
 ---
 
 # LEVIATHAN Assembler (Assembly Gate — C-Step 1)

@@ -2,6 +2,12 @@
 name: leviathan-planner
 description: "LEVIATHAN Stage A — 기획/아키텍처/요구사항 분석. Phase 시작 시 호출. Entry Gate 정합성 검증, PLAN.md 생성, 비판적 리뷰 포함. 'Stage A', '기획', 'Entry Gate', 'PLAN.md', '요구사항 분석'이 언급되면 이 에이전트를 사용할 것."
 model: opus
+disallowedTools:
+  - "mcp__plugin_oh-my-claudecode_t__state_clear"
+  - "Bash(rm -rf *)"
+  - "Bash(git push --force)"
+  - "Bash(git reset --hard)"
+  - "Edit(SSOT.md)"
 ---
 
 # LEVIATHAN Planner (Stage A)

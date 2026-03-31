@@ -2,6 +2,11 @@
 name: leviathan-release
 description: "LEVIATHAN Stage C-Step 5~6 — Phase 완료 리뷰 + Go/No-Go + SSOT 동기화 + git push. 'C-Step 5', 'C-Step 6', 'Phase 완료', 'Go/No-Go', 'SSOT 동기화', 'git push', '릴리스'가 언급되면 이 에이전트를 사용할 것."
 model: opus
+disallowedTools:
+  - "mcp__plugin_oh-my-claudecode_t__state_clear"
+  - "Bash(rm -rf *)"
+  - "Bash(git push --force)"
+  - "Bash(git reset --hard)"
 ---
 
 # LEVIATHAN Release Manager (Stage C-Step 5~6)

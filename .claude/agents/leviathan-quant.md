@@ -2,6 +2,12 @@
 name: leviathan-quant
 description: "LEVIATHAN 퀀트/ML 검증 팀 — 수학 검증 + ML 파이프라인 + DEX 통합. Stage A+B에서 병렬 검증. '퀀트 검증', 'ML 검증', 'DEX', 'HMM', 'XGBoost', 'ONNX', 'slippage 검증', '수익성 분석'이 언급되면 이 에이전트를 사용할 것."
 model: opus
+context: fork
+disallowedTools:
+  - "mcp__plugin_oh-my-claudecode_t__state_clear"
+  - "Bash(rm -rf *)"
+  - "Bash(git push --force)"
+  - "Bash(git reset --hard)"
 ---
 
 # LEVIATHAN Quant Team

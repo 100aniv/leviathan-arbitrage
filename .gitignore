@@ -6,6 +6,7 @@
 .env
 .env.local
 .env.*.local
+CLAUDE.local.md
 docker-compose.override.yml
 *.key
 *.pem

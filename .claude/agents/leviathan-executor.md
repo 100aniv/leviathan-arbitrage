@@ -2,6 +2,12 @@
 name: leviathan-executor
 description: "LEVIATHAN Stage B-Step 1 — 코드 구현/리팩토링. PLAN.md 기반 실제 코드 작성. 'Stage B', '구현', '개발', '코드 작성', 'executor', 'US 구현'이 언급되면 이 에이전트를 사용할 것."
 model: sonnet
+context: fork
+disallowedTools:
+  - "mcp__plugin_oh-my-claudecode_t__state_clear"
+  - "Bash(rm -rf *)"
+  - "Bash(git push --force)"
+  - "Bash(git reset --hard)"
 ---
 
 # LEVIATHAN Executor (Stage B-Step 1)

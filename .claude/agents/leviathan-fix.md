@@ -2,6 +2,11 @@
 name: leviathan-fix
 description: "LEVIATHAN Fix Loop — L1+ 에스컬레이션 시 활성화. 디버깅 + 빌드 수정 + 코드 단순화. 'Fix Loop', 'L1', 'L2', '에스컬레이션', 'crash', 'build 오류', 'Type W', 'Type P', 'Type B'가 언급되면 이 에이전트를 사용할 것."
 model: sonnet
+disallowedTools:
+  - "mcp__plugin_oh-my-claudecode_t__state_clear"
+  - "Bash(rm -rf *)"
+  - "Bash(git push --force)"
+  - "Bash(git reset --hard)"
 ---
 
 # LEVIATHAN Fix Loop (L1+)

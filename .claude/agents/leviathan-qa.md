@@ -2,6 +2,12 @@
 name: leviathan-qa
 description: "LEVIATHAN Stage B-Step 2 — Shadow 실행 + QA + 브라우저 검증. Shadow 13항목 복합지표 측정. 'Stage B-Step 2', 'Shadow 실행', 'QA', 'Shadow 13항목', '10분 실행', 'browser verify'가 언급되면 이 에이전트를 사용할 것."
 model: sonnet
+context: fork
+disallowedTools:
+  - "mcp__plugin_oh-my-claudecode_t__state_clear"
+  - "Bash(rm -rf *)"
+  - "Bash(git push --force)"
+  - "Bash(git reset --hard)"
 ---
 
 # LEVIATHAN QA (Stage B-Step 2)

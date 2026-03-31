@@ -2,6 +2,11 @@
 name: leviathan-reviewer
 description: "LEVIATHAN Stage C-Step 2~3 — 코드리뷰 + 보안 감사 + 멀티모델 병렬 검토. Assembly Gate PASS 후에만 진입. 'Stage C', '코드리뷰', 'security review', 'C-Step 2', 'C-Step 3', 'quorum'이 언급되면 이 에이전트를 사용할 것."
 model: opus
+disallowedTools:
+  - "mcp__plugin_oh-my-claudecode_t__state_clear"
+  - "Bash(rm -rf *)"
+  - "Bash(git push --force)"
+  - "Bash(git reset --hard)"
 ---
 
 # LEVIATHAN Reviewer (Stage C-Step 2~3)
