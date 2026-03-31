@@ -276,6 +276,8 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **funding_rate = carry trade**: Shadow 즉시결산 시 carry income 시뮬레이션 반영 필요. 1기간 PnL만으로 판단 금지
 - **ONNX 모델 피처 수**: runtime 피처 수와 모델 피처 수 일치 필수. dim mismatch 시 자동 fallback (0.5)
 - **Stage B-Step 2 중 /compact 금지**: Shadow/QA 백그라운드 에이전트 실행 중 압축하면 결과 소실. Stage C 완료 + git push 후에만
+- **컨텍스트 memoize 특성**: CLAUDE.md + git status는 세션 시작 시 1회만 로드. 세션 중 SSOT.md 수정 → 현재 세션 에이전트에 미반영. Phase 완료 SSOT sync 후 세션 재시작 또는 `/memory` 호출 필수. 장기 세션(3H+) → checkpoint save 후 `/compact`
+- **Stage별 권한 모드 가이드**: Stage A → `/permissions plan` (read-only 강제), Stage B → `/permissions acceptEdits` (편집 자동 승인), Stage C → `/permissions default`
 - **Coinone 수수료**: 0.20% → 0.02% (API 할인 적용)
 - **cancel_order**: order.symbol 전달 필수 (Binance rollback). TypeError fallback for legacy adapters
 - **friction prefix**: cost_calculator가 `paper_`/`sandbox_` prefix 자동 strip
