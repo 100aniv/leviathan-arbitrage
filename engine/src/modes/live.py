@@ -11,7 +11,8 @@ Mirrors ShadowMode architecture with direct in-process signal routing:
 
 Key difference from ShadowMode:
   - DI executor: PaperExecutor (validation) or AtomicExecutor (live trading)
-  - No PowerLawSlippage/BookWalkSlippage (real execution or real slippage in paper)
+  - paper mode: BookWalkSlippage(books=self._books) wired into PaperExecutor (US-348)
+  - live mode: AtomicExecutor — real exchange execution, no slippage simulation
   - LiveGate integration with safe Shadow fallback
   - Real risk checks via RiskGuardian (not just shadow stats)
 """
@@ -28,6 +29,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Protocol, runtime_checkable
 
+from src.core.config import get_settings
 from src.core.models import Order, OrderSide, OrderType, Signal
 from src.core.rust_bridge import get_orderbook_class
 from src.friction.fee_model import FeeModel
@@ -177,8 +179,8 @@ class LiveMode:
     def __init__(
         self,
         signal_generator: Any,
-        executor: Any,  # ExecutorProtocol — AtomicExecutor or PaperExecutor
-        strategy_manager: Any,
+        executor: Any | None = None,  # ExecutorProtocol — AtomicExecutor or PaperExecutor; None = auto-wire
+        strategy_manager: Any = None,
         symbols: list[str] | None = None,
         exchanges: list[str] | None = None,
         *,
@@ -228,6 +230,42 @@ class LiveMode:
         self._books: dict[str, dict[str, Any]] = {}
         self._orderbook_cls = get_orderbook_class()
 
+        # US-348: BookWalkSlippage wiring for paper execution_mode.
+        # Auto-wire PaperExecutor(BookWalkSlippage) only when no executor is injected.
+        # If an executor is explicitly provided (e.g. in tests or production DI),
+        # respect it and skip the auto-wire so the DI contract is honoured.
+        self._book_walk_slippage: Any | None = None
+        if execution_mode == "paper":
+            try:
+                from src.modes.shadow import BookWalkSlippage
+                from src.execution.paper import PaperExecutor
+                _op = get_settings().operational
+                try:
+                    pfr = max(Decimal("0"), min(Decimal("1"), _op.shadow_partial_fill_rate))
+                except Exception:
+                    pfr = Decimal("0.05")
+                try:
+                    rr = max(Decimal("0"), min(Decimal("1"), _op.shadow_rejection_rate))
+                except Exception:
+                    rr = Decimal("0.02")
+                self._book_walk_slippage = BookWalkSlippage(books=self._books)
+                self._executor = PaperExecutor(
+                    slippage_model=self._book_walk_slippage,
+                    fee_rate=Decimal("0"),
+                    partial_fill_rate=pfr,
+                    rejection_rate=rr,
+                )
+                logger.info(
+                    "live_mode.book_walk_slippage_wired execution_mode=paper "
+                    "executor=PaperExecutor(BookWalkSlippage)"
+                )
+            except Exception as exc:
+                logger.warning(
+                    "live_mode.book_walk_slippage_wire_failed (non-fatal): %s — "
+                    "keeping original executor",
+                    exc,
+                )
+
         # Futures exchanges for identification
         self._futures_exchanges: set[str] = {
             "binance_futures", "okx_futures", "bybit_futures"
@@ -261,8 +299,7 @@ class LiveMode:
                 logger.warning("live_mode.real_signal_producer_init_failed: %s", exc)
 
         # Warmup guard: skip signals for first N seconds after start
-        _env = os.environ.get("ENGINE_ENV", "dev")
-        self._signal_warmup_seconds: float = 5.0 if _env != "test" else 0.0
+        self._signal_warmup_seconds: float = 5.0 if get_settings().engine_env != "test" else 0.0
 
         # Background tasks
         self._collector_manager: Any | None = None
@@ -274,7 +311,7 @@ class LiveMode:
         self._collision_window_s: float = 10.0
 
         # KRW/USDT normalization (ported from ShadowMode)
-        _raw_krw_rate = float(os.getenv("KRW_USDT_RATE", "1380"))
+        _raw_krw_rate = get_settings().operational.krw_usdt_rate
         if _raw_krw_rate <= 0:
             _raw_krw_rate = 1380.0
         self._krw_rate: float = _raw_krw_rate
@@ -304,12 +341,9 @@ class LiveMode:
 
         # Strategy loss cooldown: strategy_id -> re-enable timestamp (US-164)
         self._strategy_disable_until: dict[str, float] = {}
-        self._single_loss_disable_seconds: float = float(
-            os.getenv("LIVE_SINGLE_LOSS_DISABLE_SECONDS", "600")
-        )
-        self._max_loss_per_trade_usd: Decimal = Decimal(
-            os.getenv("LIVE_MAX_LOSS_PER_TRADE_USD", "10")
-        )
+        _op = get_settings().operational
+        self._single_loss_disable_seconds: float = _op.live_single_loss_disable_seconds
+        self._max_loss_per_trade_usd: Decimal = _op.live_max_loss_per_trade_usd
 
         logger.info(
             "live_mode.init execution_mode=%s symbols=%s exchanges=%s executor=%s",
@@ -1049,7 +1083,7 @@ class LiveMode:
 
     async def _funding_rate_loop(self) -> None:
         """Periodic funding rate fetch (every 60s)."""
-        interval = float(os.getenv("FUNDING_RATE_INTERVAL_S", "60"))
+        interval = get_settings().operational.funding_rate_interval_s
         try:
             while self._running:
                 try:

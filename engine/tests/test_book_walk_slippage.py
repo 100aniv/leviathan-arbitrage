@@ -271,3 +271,68 @@ def test_shadow_mode_uses_book_walk_slippage():
     sm = ShadowMode(signal_generator=sg)
 
     assert isinstance(sm._paper_executor.slippage_model, BookWalkSlippage)
+
+
+def test_live_mode_paper_uses_book_walk_slippage():
+    """US-348: LiveMode paper execution_mode wires BookWalkSlippage into PaperExecutor."""
+    from src.modes.shadow import BookWalkSlippage
+    from src.execution.paper import PaperExecutor
+    from src.modes.live import LiveMode
+
+    sg = MagicMock()
+    sm = MagicMock()
+    lm = LiveMode(
+        signal_generator=sg,
+        executor=MagicMock(),  # original executor — should be replaced for paper mode
+        strategy_manager=sm,
+        execution_mode="paper",
+    )
+
+    # AC1 생성: BookWalkSlippage instance created
+    assert lm._book_walk_slippage is not None
+    assert isinstance(lm._book_walk_slippage, BookWalkSlippage)
+
+    # AC2 주입: executor replaced with PaperExecutor
+    assert isinstance(lm._executor, PaperExecutor)
+    assert isinstance(lm._executor.slippage_model, BookWalkSlippage)
+
+    # AC3 호출: slippage model references the same live _books dict
+    assert lm._book_walk_slippage._books is lm._books
+
+
+def test_live_mode_live_keeps_original_executor():
+    """US-348: LiveMode live execution_mode keeps the injected AtomicExecutor (no slippage sim)."""
+    from src.modes.live import LiveMode
+    from src.execution.paper import PaperExecutor
+
+    sg = MagicMock()
+    sm = MagicMock()
+    original_executor = MagicMock()
+    lm = LiveMode(
+        signal_generator=sg,
+        executor=original_executor,
+        strategy_manager=sm,
+        execution_mode="live",
+    )
+
+    # live mode must NOT replace executor with PaperExecutor
+    assert lm._executor is original_executor
+    assert lm._book_walk_slippage is None
+    assert not isinstance(lm._executor, PaperExecutor)
+
+
+def test_live_mode_paper_books_reference_is_shared():
+    """US-348: BookWalkSlippage._books is the same object as LiveMode._books (live reference)."""
+    from src.modes.live import LiveMode
+    from src.modes.shadow import BookWalkSlippage
+
+    lm = LiveMode(
+        signal_generator=MagicMock(),
+        executor=MagicMock(),
+        strategy_manager=MagicMock(),
+        execution_mode="paper",
+    )
+
+    # Mutate _books after construction — slippage model must see the update
+    lm._books["BTC/USDT"] = {"binance": MagicMock()}
+    assert "BTC/USDT" in lm._book_walk_slippage._books

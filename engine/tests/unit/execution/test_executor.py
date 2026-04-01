@@ -231,8 +231,8 @@ async def test_same_exchange_leg_failure_rollback(
 async def test_cross_exchange_health_check_fails(
     executor: AtomicExecutor, exchange_a: MagicMock, exchange_b: MagicMock
 ) -> None:
-    """Rejects if either exchange health_score <= 0.9."""
-    exchange_b.health_score = 0.8  # below threshold
+    """Rejects if either exchange health_score <= threshold (currently 0.7)."""
+    exchange_b.health_score = 0.5  # below threshold
     leg1 = make_order("binance", OrderSide.BUY)
     leg2 = make_order("okx", OrderSide.SELL)
     result = await executor.execute_cross_exchange(
@@ -389,8 +389,8 @@ async def test_race_halted_engine_rejects(executor: AtomicExecutor) -> None:
 async def test_race_exchange_health_degraded_during_validation(
     executor: AtomicExecutor, exchange_a: MagicMock
 ) -> None:
-    """RC-CROSS-2: Exchange health degrades to 0.8 during pre-validation."""
-    exchange_a.health_score = 0.8
+    """RC-CROSS-2: Exchange health degrades below threshold during pre-validation."""
+    exchange_a.health_score = 0.5
     leg1 = make_order("binance", OrderSide.BUY)
     leg2 = make_order("okx", OrderSide.SELL)
     result = await executor.execute_cross_exchange(

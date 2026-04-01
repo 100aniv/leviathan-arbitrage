@@ -33,6 +33,8 @@ load_dotenv()  # Load .env before any os.getenv() calls
 from src.api.server import EngineContext, create_app
 from src.core.config import ExecutionMode, Settings, get_settings, load_trading_config
 
+_s = get_settings().operational  # module-level operational settings shortcut
+
 try:
     from src.tuning.scheduled_tuner import ScheduledTuner
     _HAS_TUNER = True
@@ -43,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 # Dynamic BTC reference price — read from env var, used for USDT→BTC position size conversion.
 # Defaults to $50,000. Override via BTC_REFERENCE_PRICE env var for live/testnet.
-_BTC_REFERENCE_PRICE = Decimal(os.environ.get("BTC_REFERENCE_PRICE", "50000"))
+_BTC_REFERENCE_PRICE = _s.btc_reference_price
 
 
 class DataMode:
@@ -426,9 +428,8 @@ class Engine:
             )
 
         # US-241: Append triangular cross-pairs for cross-pair arbitrage
-        cross_pairs_env = os.environ.get(
-            "TRIANGULAR_CROSS_PAIRS", "ETH/BTC,SOL/BTC,SOL/ETH"
-        )
+        _op = getattr(self._settings, "operational", None)
+        cross_pairs_env = getattr(_op, "triangular_cross_pairs", None) if _op else None
         if cross_pairs_env and self._settings:
             cross_pairs = [p.strip() for p in cross_pairs_env.split(",") if p.strip()]
             existing = set(self._settings.trading.symbols)
@@ -488,8 +489,7 @@ class Engine:
 
     async def _init_database(self) -> None:
         """Initialize TimescaleDB connection pool, run schema migration, start MarketRecorder."""
-        import os
-        dsn = os.getenv("DATABASE_URL", "")
+        dsn = get_settings().operational.database_url
         if not dsn:
             logger.warning("DATABASE_URL not set — using default dev credentials")
             dsn = "postgresql://leviathan:leviathan@localhost:5432/leviathan"
@@ -536,18 +536,18 @@ class Engine:
                 logger.warning("PerformanceAttribution init failed (non-fatal): %s", exc)
 
             # US-284-a: CapitalAllocator init
-            import os as _os
-            if _os.getenv("CAPITAL_ALLOCATOR_ENABLED", "true").lower() != "false":
+            _op = get_settings().operational
+            if _op.capital_allocator_enabled:
                 try:
                     from src.core.capital_allocator import CapitalAllocator
-                    _max_pos = float(_os.getenv("MAX_POSITION_USD", "10000"))
+                    _max_pos = _op.max_position_usd
                     self._capital_allocator = CapitalAllocator(total_capital=_max_pos * 10)
                     logger.info("CapitalAllocator initialized: total_capital=%.0f", _max_pos * 10)
                 except Exception as exc:
                     logger.warning("CapitalAllocator init failed (non-fatal): %s", exc)
 
             # US-277/278: PortfolioRiskManager init
-            if _os.getenv("PORTFOLIO_RISK_ENABLED", "true").lower() != "false":
+            if _op.portfolio_risk_enabled:
                 try:
                     from src.core.portfolio_risk import PortfolioRiskManager
                     self._portfolio_risk = PortfolioRiskManager()
@@ -594,7 +594,7 @@ class Engine:
         if not _HAS_TUNER:
             logger.info("ScheduledTuner not available (optuna/apscheduler not installed)")
             return
-        if os.environ.get("ENABLE_INLINE_TUNER", "").lower() not in ("true", "1", "yes"):
+        if get_settings().operational.enable_inline_tuner.lower() not in ("true", "1", "yes"):
             logger.info("Inline tuner disabled (ENABLE_INLINE_TUNER not set)")
             return
         try:
@@ -642,9 +642,20 @@ class Engine:
         capital = self._settings.capital.initial_capital if self._settings else Decimal("70")
 
         # Phase H-2: route by EngineMode from config/engine.json
-        if self._engine_mode in (EngineMode.BACKTEST, EngineMode.PAPER):
+        # Use getattr fallback for test scenarios where full _init_infrastructure hasn't run
+        _engine_mode = getattr(self, "_engine_mode", None)
+        if _engine_mode is None:
+            # Derive from execution_mode when _engine_mode is not yet initialised
+            from src.core.config import ExecutionMode
+            _exec = getattr(self._settings, "execution_mode", None) if self._settings else None
+            _engine_mode = (
+                EngineMode.PAPER
+                if _exec in (ExecutionMode.PAPER, None)
+                else EngineMode.LIVE
+            )
+        if _engine_mode in (EngineMode.BACKTEST, EngineMode.PAPER):
             await self._init_paper_exchanges(capital)
-        elif self._engine_mode in (EngineMode.SHADOW, EngineMode.LIVE):
+        elif _engine_mode in (EngineMode.SHADOW, EngineMode.LIVE):
             await self._init_live_exchanges()
 
         logger.info("Initialized %d exchange adapters: %s",
@@ -704,7 +715,8 @@ class Engine:
 
         # Phase H-2: Shadow uses shadow.exchanges, Live uses live.exchanges from config
         _engine_cfg = load_engine_config()
-        _mode_cfg = _engine_cfg.get(self._engine_mode.value, {})
+        _em = getattr(self, "_engine_mode", None)
+        _mode_cfg = _engine_cfg.get(_em.value, {}) if _em is not None else {}
         _cfg_exchanges = _mode_cfg.get("exchanges")
 
         exchanges = (
@@ -767,10 +779,11 @@ class Engine:
             logger.warning("CostCalculator init failed, using stub: %s", exc)
             self._cost_calculator = None
 
-        min_edge_bps = int(os.environ.get("MIN_EDGE_BPS", "5"))
-        max_spread_pct = float(os.environ.get("MAX_SPREAD_PCT", "0.05"))
-        cooldown_sec = float(os.environ.get("SIGNAL_COOLDOWN_SEC", "2.0"))
-        min_price_usd = Decimal(os.environ.get("MIN_PRICE_USD", "0.10"))
+        _op = get_settings().operational
+        min_edge_bps = _op.min_edge_bps
+        max_spread_pct = _op.max_spread_pct
+        cooldown_sec = _op.signal_cooldown_sec
+        min_price_usd = _op.min_price_usd
         # US-326/327: load slippage_buffer + active_hours from strategy_params.json
         _ce_params = self._load_strategy_params().get("cross_exchange", {})
         _slippage_buf = Decimal(str(_ce_params.get("slippage_buffer_bps", 0)))
@@ -781,13 +794,13 @@ class Engine:
             max_spread_pct=Decimal(str(max_spread_pct)),
             cooldown_seconds=cooldown_sec,
             min_price_usd=min_price_usd,
-            min_volume_usd=Decimal(os.environ.get("SIGNAL_MIN_VOLUME_USD", "0")),
+            min_volume_usd=_op.signal_min_volume_usd,
             slippage_buffer_bps=_slippage_buf,  # US-326
             active_hours_kst=_active_hours,  # US-327
         )
         stale_detector = StaleOrderbookDetector(
-            deviation_pct=float(os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10")),
-            blacklist_ttl_s=float(os.getenv("STALE_BLACKLIST_TTL_S", "300")),
+            deviation_pct=_op.stale_cross_deviation_pct,
+            blacklist_ttl_s=_op.stale_blacklist_ttl_s,
         )
         # US-131: RegimeDetector — try HMM first, fall back to threshold-based
         self._regime_detector = None
@@ -891,7 +904,7 @@ class Engine:
         logger.info(
             "Signal pipeline initialized min_edge_bps=%s max_spread_pct=%s stale_deviation_pct=%s"
             " regime_detector=%s ml_scorer=%s",
-            min_edge_bps, max_spread_pct, os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10"),
+            min_edge_bps, max_spread_pct, get_settings().operational.stale_cross_deviation_pct,
             type(self._regime_detector).__name__ if self._regime_detector else "None",
             type(ml_scorer).__name__ if ml_scorer else "None",
         )
@@ -1073,11 +1086,11 @@ class Engine:
         US-242: When DEX_RPC_URL is unset but SHADOW_MOCK_DEX=true, returns a
         MockDEXAdapter that derives prices from CEX mid-prices.
         """
-        import os
-        dex_rpc = os.getenv("DEX_RPC_URL", "")
+        _op = get_settings().operational
+        dex_rpc = _op.dex_rpc_url
         if not dex_rpc:
             # US-242: Check for mock DEX adapter in shadow mode
-            if os.getenv("SHADOW_MOCK_DEX", "").lower() == "true":
+            if _op.shadow_mock_dex:
                 try:
                     from src.dex.mock_adapter import MockDEXAdapter
                     adapter = MockDEXAdapter()
@@ -1086,7 +1099,7 @@ class Engine:
                 except Exception as exc:
                     logger.warning("MockDEXAdapter init failed: %s", exc)
             return None
-        pool = os.getenv("DEX_POOL_ADDRESS", "")
+        pool = _op.dex_pool_address
         if not pool:
             logger.info("DEX_RPC_URL set but DEX_POOL_ADDRESS missing")
             return None
@@ -1269,7 +1282,7 @@ class Engine:
             logger.info("DynamicSizer wired to SignalGenerator")
 
         # US-133: AtomicOrderExecutor (IOC) — initialize for live execution mode
-        execution_mode_env = os.getenv("EXECUTION_MODE", "paper").lower()
+        execution_mode_env = get_settings().operational.execution_mode.lower()
         if execution_mode_env == "live":
             try:
                 from src.execution.atomic import AtomicOrderExecutor
@@ -1296,11 +1309,12 @@ class Engine:
             from src.core.inventory_rebalancer import InventoryRebalancer
             from src.core.balance_tracker import BalanceTracker
             self._balance_tracker = BalanceTracker()
+            _op = get_settings().operational
             self._rebalancer = InventoryRebalancer(
                 tracker=self._balance_tracker,
-                deviation_threshold=float(os.getenv("REBALANCER_DEVIATION_THRESHOLD", "0.30")),
-                check_interval_s=float(os.getenv("REBALANCER_CHECK_INTERVAL_S", "14400")),
-                min_transfer_usd=float(os.getenv("REBALANCER_MIN_TRANSFER_USD", "50")),
+                deviation_threshold=_op.rebalancer_deviation_threshold,
+                check_interval_s=_op.rebalancer_check_interval_s,
+                min_transfer_usd=_op.rebalancer_min_transfer_usd,
             )
             # Connect exchange balance feeds (US-QF: balance_feed NOT_CONNECTED 해소)
             if self._exchanges:
@@ -1725,16 +1739,16 @@ class Engine:
     # ------------------------------------------------------------------
 
     async def _start_background_tasks(self) -> None:
-        import os
         from src.core.config import EngineMode, resolve_engine_mode, load_engine_config
 
         # Phase H-2: Resolve unified EngineMode (backtest/paper/shadow/live)
         # Priority: ENGINE_MODE env > engine.json > legacy EXECUTION_MODE+DATA_MODE
         _engine_cfg = load_engine_config()
+        _op = get_settings().operational
         self._engine_mode = resolve_engine_mode(
-            execution_mode=os.getenv("EXECUTION_MODE"),
-            data_mode=os.getenv("DATA_MODE"),
-            engine_mode=os.getenv("ENGINE_MODE", _engine_cfg.get("mode")),
+            execution_mode=_op.execution_mode or None,
+            data_mode=_op.data_mode or None,
+            engine_mode=get_settings().engine_mode.value if get_settings().engine_mode else _engine_cfg.get("mode"),
         )
 
         # Legacy compatibility: set _data_mode for code that still reads it
@@ -1771,8 +1785,8 @@ class Engine:
         elif self._engine_mode == EngineMode.PAPER:
             # Paper: live WS data + SimExecutor (= old shadow mode)
             # Direct in-process routing (no Redis consumer loop)
-            strategy_validation = os.getenv("STRATEGY_VALIDATION", "").lower() == "true"
-            shadow_progressive = os.getenv("SHADOW_PROGRESSIVE", "false").lower() == "true"
+            strategy_validation = get_settings().operational.strategy_validation
+            shadow_progressive = get_settings().operational.shadow_progressive
             if strategy_validation:
                 tasks.append(
                     asyncio.create_task(self._strategy_validation_loop(), name="strategy_validation")
@@ -1863,9 +1877,9 @@ class Engine:
 
         # US-280: LiveGate continuous monitor (all modes)
         if self._live_gate is not None:
-            import os as _os
-            if _os.getenv("LIVE_GATE_CONTINUOUS_ENABLED", "true").lower() != "false":
-                _lg_interval = int(_os.getenv("LIVE_GATE_MONITOR_INTERVAL_S", "60"))
+            _op = get_settings().operational
+            if _op.live_gate_continuous_enabled:
+                _lg_interval = _op.live_gate_monitor_interval_s
                 tasks.append(asyncio.create_task(
                     self._live_gate.start_continuous_monitor(
                         interval_s=_lg_interval,
@@ -2203,7 +2217,7 @@ class Engine:
         Reads current win_rate from shadow stats (if available) or trade history,
         calls AdaptiveThreshold.adjust(), and updates SignalConfig.min_edge.
         """
-        INTERVAL_S = float(os.environ.get("ADAPTIVE_THRESHOLD_INTERVAL_S", "3600"))
+        INTERVAL_S = get_settings().operational.adaptive_threshold_interval_s
         while self.state.running:
             try:
                 # Bug 1-C: adjust() first so the first run is not delayed by INTERVAL_S
@@ -2456,7 +2470,7 @@ class Engine:
         _shadow_kill_switch = _KillSwitch()
 
         # US-299: optional per-strategy filter from env var (comma-separated signal IDs)
-        _shadow_strategy_filter_raw = os.environ.get("SHADOW_STRATEGY_FILTER", "").strip()
+        _shadow_strategy_filter_raw = get_settings().operational.shadow_strategy_filter.strip()
         _shadow_strategy_filter = (
             [s.strip() for s in _shadow_strategy_filter_raw.split(",") if s.strip()]
             if _shadow_strategy_filter_raw else None
@@ -2586,7 +2600,7 @@ class Engine:
         )
 
         # US-299: optional per-strategy filter from env var (comma-separated signal IDs)
-        _sf_raw = os.environ.get("SHADOW_STRATEGY_FILTER", "").strip()
+        _sf_raw = get_settings().operational.shadow_strategy_filter.strip()
         _sf = [s.strip() for s in _sf_raw.split(",") if s.strip()] if _sf_raw else None
 
         shadow = ShadowMode(
@@ -2670,7 +2684,7 @@ class Engine:
         )
 
         # US-299: optional per-strategy filter from env var (comma-separated signal IDs)
-        _sf2_raw = os.environ.get("SHADOW_STRATEGY_FILTER", "").strip()
+        _sf2_raw = get_settings().operational.shadow_strategy_filter.strip()
         _sf2 = [s.strip() for s in _sf2_raw.split(",") if s.strip()] if _sf2_raw else None
 
         self._shadow_mode = ShadowMode(
@@ -2870,7 +2884,7 @@ class Engine:
             logger.warning("compliance_startup_audit_error error=%s", exc)
 
     async def _reconcile_loop(self) -> None:
-        interval = float(os.environ.get("RECONCILIATION_INTERVAL_S", str(self.RECONCILE_INTERVAL)))
+        interval = get_settings().operational.reconciliation_interval_s
         while self.state.running:
             try:
                 await asyncio.sleep(interval)
@@ -3154,11 +3168,12 @@ async def main() -> None:
     app = create_app(context)
     engine = Engine(context=context)
 
-    host = os.getenv("API_HOST", "0.0.0.0")
+    _op = get_settings().operational
+    host = _op.api_host
     server_config = uvicorn.Config(
         app=app,
         host=host,
-        port=int(os.getenv("PORT", "8000")),
+        port=_op.api_port,
         log_level="info",
     )
     server = uvicorn.Server(server_config)

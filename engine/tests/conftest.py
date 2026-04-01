@@ -30,8 +30,11 @@ def event_loop_policy() -> asyncio.DefaultEventLoopPolicy:
 
 
 @pytest.fixture(autouse=True)
-def set_test_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def set_test_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
     """Force test environment variables so Settings() works without a real .env."""
+    import src.core.config as _config  # noqa: PLC0415
+
+    _config._settings = None  # Reset singleton before test
     monkeypatch.setenv("ENGINE_ENV", "test")
     monkeypatch.setenv("EXECUTION_MODE", "paper")
     monkeypatch.setenv("ENGINE_MODE", "backtest")
@@ -47,6 +50,10 @@ def set_test_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OKX_PASSPHRASE", "test_passphrase")
     monkeypatch.setenv("BYBIT_API_KEY", "test_key")
     monkeypatch.setenv("BYBIT_API_SECRET", "test_secret")
+    # Ensure .env production overrides don't leak into unit/integration tests
+    monkeypatch.delenv("DISABLE_ROLLBACK_COST", raising=False)
+    yield
+    _config._settings = None  # Reset after test to prevent pollution
 
 
 # ---------------------------------------------------------------------------

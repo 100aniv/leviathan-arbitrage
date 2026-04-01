@@ -22,6 +22,7 @@ import os
 import random
 import time
 import uuid
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -30,6 +31,7 @@ from typing import Any
 import httpx
 import structlog
 
+from src.core.config import get_settings
 from src.core.models import Order, OrderSide, OrderType, Signal
 from src.core.order_book import OrderBook
 from src.core.rust_bridge import get_orderbook_class
@@ -77,7 +79,7 @@ class PowerLawSlippage(SlippageModel):
 
     def __init__(self, k: float | None = None, gamma: float = 0.5) -> None:
         super().__init__(base_slippage_pct=Decimal("0.001"))
-        self._k = k if k is not None else float(os.getenv("POWERLAW_SLIPPAGE_K", "0.0"))
+        self._k = k if k is not None else get_settings().operational.powerlaw_slippage_k
         self._gamma = gamma
 
     def apply(
@@ -124,12 +126,9 @@ class BookWalkSlippage(SlippageModel):
     ) -> None:
         super().__init__(base_slippage_pct=Decimal("0"))
         self._books = books
-        self._fallback_bps = fallback_bps or Decimal(
-            os.getenv("SHADOW_FALLBACK_SLIPPAGE_BPS", "10")
-        )
-        self._depth_penalty = depth_penalty_multiplier or float(
-            os.getenv("SHADOW_DEPTH_PENALTY_MULTIPLIER", "2.0")
-        )
+        _op = get_settings().operational
+        self._fallback_bps = fallback_bps or _op.shadow_fallback_slippage_bps
+        self._depth_penalty = depth_penalty_multiplier or _op.shadow_depth_penalty_multiplier
         self._current_exchange: str = ""
         self._current_symbol: str = ""
 
@@ -200,12 +199,9 @@ class VirtualBalanceTracker:
     """
 
     def __init__(self, initial_balance_usdt: Decimal | None = None) -> None:
-        self._initial: Decimal = initial_balance_usdt or Decimal(
-            os.getenv("SHADOW_INITIAL_BALANCE_USDT", "10000000")
-        )
-        self._threshold_pct: Decimal = Decimal(
-            os.getenv("SHADOW_REBALANCE_THRESHOLD_PCT", "0.10")
-        )
+        _op = get_settings().operational
+        self._initial: Decimal = initial_balance_usdt or _op.shadow_initial_balance_usdt
+        self._threshold_pct: Decimal = _op.shadow_rebalance_threshold_pct
         self._balances: dict[str, Decimal] = {}
 
     def get_balance(self, exchange_id: str) -> Decimal:
@@ -370,6 +366,13 @@ class ShadowStats:
 class ShadowMode:
     """Shadow Mode orchestrator.
 
+    .. deprecated::
+        ShadowMode is deprecated as of Phase I.
+        New code should use LiveMode with paper execution (EngineMode.LIVE +
+        LIVE_GATE_BYPASS=true for canary testing).
+        This class is retained for backward compatibility and SIT-3 progressive
+        shadow validation only. Do not use in new implementations.
+
     Lifecycle: init → start() → [runs continuously] → stop()
 
     Attributes:
@@ -435,6 +438,16 @@ class ShadowMode:
                                metrics (correlation, VaR, MDD). None = no-op (backward
                                compatible).
         """
+        # DEPRECATED: ShadowMode is deprecated as of Phase I.
+        # New code should use LiveMode with paper execution (EngineMode.LIVE +
+        # LIVE_GATE_BYPASS=true for canary testing).
+        # This class is retained for SIT-3 progressive_shadow validation only.
+        warnings.warn(
+            "ShadowMode is deprecated as of Phase I. "
+            "Use EngineMode.LIVE with LIVE_GATE_BYPASS=true for canary testing.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._signal_generator = signal_generator
         self._multi_signal_producer = multi_signal_producer
         self._funding_rate_collector = funding_rate_collector
@@ -463,12 +476,13 @@ class ShadowMode:
         # CEXOrderbookSlippage, so PaperExecutor must NOT add more (double-count).
         # FeeModel in _execute_shadow_trade handles per-exchange fees separately.
         # Parse env vars with validation (clamp to [0, 1], fallback on invalid)
+        _op = get_settings().operational
         try:
-            pfr = max(Decimal("0"), min(Decimal("1"), Decimal(os.environ.get("SHADOW_PARTIAL_FILL_RATE", "0.05"))))
+            pfr = max(Decimal("0"), min(Decimal("1"), _op.shadow_partial_fill_rate))
         except Exception:
             pfr = Decimal("0.05")
         try:
-            rr = max(Decimal("0"), min(Decimal("1"), Decimal(os.environ.get("SHADOW_REJECTION_RATE", "0.02"))))
+            rr = max(Decimal("0"), min(Decimal("1"), _op.shadow_rejection_rate))
         except Exception:
             rr = Decimal("0.02")
         # Orderbook store must be initialized before PaperExecutor so
@@ -484,8 +498,8 @@ class ShadowMode:
         )
 
         # Inter-leg execution delay simulation (SG-2)
-        self._leg_delay_min_ms = float(os.environ.get("SHADOW_LEG_DELAY_MIN_MS", "50"))
-        self._leg_delay_max_ms = float(os.environ.get("SHADOW_LEG_DELAY_MAX_MS", "300"))
+        self._leg_delay_min_ms = _op.shadow_leg_delay_min_ms
+        self._leg_delay_max_ms = _op.shadow_leg_delay_max_ms
 
         self._fee_model = FeeModel()
         self._market_recorder = market_recorder
@@ -501,8 +515,7 @@ class ShadowMode:
         self._balance_tracker = VirtualBalanceTracker()
         self._rate_limiter = ShadowRateLimiter()
         # S10 fix: warmup guard for SignalGenerator path (disabled in test mode)
-        _env = os.environ.get("ENGINE_ENV", "dev")
-        self._signal_warmup_seconds: float = 5.0 if _env != "test" else 0.0
+        self._signal_warmup_seconds: float = 5.0 if get_settings().engine_env != "test" else 0.0
 
         # Background tasks
         self._daily_task: asyncio.Task[None] | None = None
@@ -513,7 +526,7 @@ class ShadowMode:
         self._orderbook_cls = get_orderbook_class()
 
         # KRW/USDT dynamic rate (fetched from Upbit+Bithumb every 30s)
-        _raw_krw_rate = float(os.getenv("KRW_USDT_RATE", "1380"))
+        _raw_krw_rate = get_settings().operational.krw_usdt_rate
         if _raw_krw_rate <= 0:
             logger.warning(
                 "shadow_mode.invalid_krw_rate", raw=_raw_krw_rate, fallback=1380.0
@@ -544,10 +557,11 @@ class ShadowMode:
         self._futures_exchanges: set[str] = {"binance_futures", "okx_futures", "bybit_futures"}
 
         # US-066: Stale orderbook defense — cross-validation + blacklist
+        _op = get_settings().operational
         from src.core.stale_detector import StaleOrderbookDetector
         self._stale_detector = StaleOrderbookDetector(
-            deviation_pct=float(os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10")),
-            blacklist_ttl_s=float(os.getenv("STALE_BLACKLIST_TTL_S", "300")),
+            deviation_pct=_op.stale_cross_deviation_pct,
+            blacklist_ttl_s=_op.stale_blacklist_ttl_s,
         )
 
         # US-182: LatencyTracker for latency arb signal evaluation
@@ -567,7 +581,7 @@ class ShadowMode:
             )
 
         # US-066/US-156: Strategy blacklist — comma-separated strategy IDs to disable
-        _disabled_raw = os.environ.get("SHADOW_DISABLED_STRATEGIES", "")
+        _disabled_raw = get_settings().operational.shadow_disabled_strategies
         _disabled_base: set[str] = {
             s.strip() for s in _disabled_raw.split(",") if s.strip()
         }
@@ -589,10 +603,9 @@ class ShadowMode:
 
         # US-066/US-224: Per-trade loss cap (hard ceiling on single-trade loss)
         # US-224: per-strategy caps via STRATEGY_LOSS_CAP_JSON or SHADOW_MAX_LOSS_PER_TRADE_USD
-        self._max_loss_per_trade_usd: Decimal = Decimal(
-            os.getenv("SHADOW_MAX_LOSS_PER_TRADE_USD", "10")
-        )
-        _loss_cap_json = os.getenv("STRATEGY_LOSS_CAP_JSON", "")
+        _op = get_settings().operational
+        self._max_loss_per_trade_usd: Decimal = _op.shadow_max_loss_per_trade_usd
+        _loss_cap_json = _op.strategy_loss_cap_json
         _default_caps: dict[str, float] = {
             "futures_futures": 1.0,
             "cross_exchange": 5.0,
@@ -611,9 +624,7 @@ class ShadowMode:
         # US-164: Temporary strategy disable map — strategy_id -> re-enable timestamp
         # Default 0 (disabled); set SHADOW_SINGLE_LOSS_DISABLE_SECONDS=600 in prod
         self._strategy_disable_until: dict[str, float] = {}
-        self._single_loss_disable_seconds: float = float(
-            os.getenv("SHADOW_SINGLE_LOSS_DISABLE_SECONDS", "0")
-        )
+        self._single_loss_disable_seconds: float = get_settings().operational.shadow_single_loss_disable_seconds
 
         # US-066: Background task handle for periodic Bithumb REST refresh
         self._delta_refresh_task: asyncio.Task[None] | None = None
@@ -900,6 +911,16 @@ class ShadowMode:
                 book.apply_snapshot(bid_tuples, ask_tuples)
                 self._books[symbol][exchange_id] = book
 
+            # Store futures books alongside spot books — only when multi_signal_producer
+            # is active (spot_futures / futures_futures strategies need it)
+            if exchange_id in self._futures_exchanges and self._multi_signal_producer is not None:
+                if symbol not in self._futures_books:
+                    self._futures_books[symbol] = {}
+                self._futures_books[symbol][exchange_id] = book
+
+            # Track exchange update timestamps for latency arb
+            self._exchange_update_times[exchange_id] = time.monotonic()
+
             # Cross-exchange price validation (US-066) — reject stale/drifted books
             if not self._stale_detector.check_cross_exchange(
                 exchange_id, symbol, book, self._books
@@ -1047,14 +1068,6 @@ class ShadowMode:
                         exchange=exchange_id, symbol=symbol, error=str(exc),
                     )
 
-                # Store futures books separately for spot_futures/futures_futures
-                if exchange_id in self._futures_exchanges:
-                    if symbol not in self._futures_books:
-                        self._futures_books[symbol] = {}
-                    self._futures_books[symbol][exchange_id] = book
-
-                # Track exchange update timestamps for latency arb
-                self._exchange_update_times[exchange_id] = time.monotonic()
 
                 # Evaluate multi-strategy signals
                 await self._evaluate_multi_strategies(exchange_id, symbol, book)
@@ -1256,7 +1269,7 @@ class ShadowMode:
         HTTP errors are logged and suppressed; the loop continues regardless.
         Never raises — exceptions are caught and logged.
         """
-        interval = float(os.getenv("BITHUMB_REFRESH_INTERVAL_S", "60"))
+        interval = get_settings().operational.bithumb_refresh_interval_s
         try:
             while self._running:
                 await asyncio.sleep(interval)
@@ -1286,7 +1299,7 @@ class ShadowMode:
         with the recorded PnL. Logs warnings on drift but never raises.
         US-258-a: Also triggers ShadowMiniTuner after 2h elapsed.
         """
-        interval = float(os.getenv("SHADOW_RECONCILE_INTERVAL_S", "60"))
+        interval = get_settings().operational.shadow_reconcile_interval_s
         try:
             while self._running:
                 await asyncio.sleep(interval)

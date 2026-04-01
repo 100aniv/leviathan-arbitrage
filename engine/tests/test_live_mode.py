@@ -73,7 +73,7 @@ def make_live_mode(mock_signal_generator, mock_executor, mock_strategy_manager):
             strategy_manager=mock_strategy_manager,
             symbols=["BTC/USDT"],
             exchanges=["binance", "upbit"],
-            execution_mode="paper",
+            execution_mode="live",  # live: mock executor is used directly; paper: auto-wires PaperExecutor
         )
         defaults.update(overrides)
         return LiveMode(**defaults)

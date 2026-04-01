@@ -186,6 +186,38 @@ class PaperExecutor:
                 total -= t.price * t.amount + t.fee
         return total
 
+    async def execute_cross_exchange(
+        self,
+        leg1_order: Order,
+        leg2_order: Order,
+        strategy_id: str = "",
+        min_edge: "Decimal" = None,  # type: ignore[assignment]
+    ) -> None:
+        """Simulate cross-exchange execution — delegates to execute() per leg."""
+        await self.execute(leg1_order)
+        await self.execute(leg2_order)
+
+    async def execute_same_exchange(
+        self,
+        exchange_id: str,
+        leg1_order: Order,
+        leg2_order: Order,
+        strategy_id: str = "",
+    ) -> None:
+        """Simulate same-exchange 2-leg execution — delegates to execute() per leg."""
+        await self.execute(leg1_order)
+        await self.execute(leg2_order)
+
+    async def execute_multi_leg(
+        self,
+        exchange_id: str,
+        orders: "list[Order]",
+        strategy_id: str = "",
+    ) -> None:
+        """Simulate multi-leg execution — delegates to execute() per order."""
+        for order in orders:
+            await self.execute(order)
+
     def reset(self) -> None:
         """Clear all recorded trade history."""
         self._history.clear()
