@@ -48,7 +48,7 @@
   },
 
   "shadow": {
-    "_comment": "Shadow mode: live WS data + AtomicExecutor small capital (canary)",
+    "_comment": "DEPRECATED as of Phase I — use 'live' with capital.tier='alpha' for small capital mode",
     "capital_pct": 5.0,
     "max_position_pct": 3.0,
     "max_daily_loss_pct": 5.0,
@@ -56,7 +56,8 @@
   },
 
   "live": {
-    "_comment": "Live mode: full capital AtomicExecutor",
+    "_comment": "Live mode (Phase I+): small capital = capital.tiers.alpha, full = production. Replaces shadow mode.",
+    "capital_pct": 5.0,
     "max_position_pct": 3.0,
     "max_daily_loss_pct": 5.0,
     "exchanges": ["binance", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone", "binance_futures", "bybit_futures", "okx_futures"]

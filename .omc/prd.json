@@ -6174,7 +6174,11 @@
         "send_alert 호출 0건 (shadow.py + main.py)",
         "pytest PASS"
       ],
-      "files": ["engine/src/infra/telegram.py", "engine/src/modes/shadow.py", "engine/src/main.py"],
+      "files": [
+        "engine/src/infra/telegram.py",
+        "engine/src/modes/shadow.py",
+        "engine/src/main.py"
+      ],
       "description": "텔레그램 한글화 완전 적용 — send_alert → send_alert_kr 구조화 양식"
     },
     {
@@ -6189,7 +6193,9 @@
         "MIN_EDGE, MAX_POSITION 파라미터 UI 설정",
         "Chrome 렌더링 + API 200"
       ],
-      "files": ["dashboard/src/app/settings/page.tsx"],
+      "files": [
+        "dashboard/src/app/settings/page.tsx"
+      ],
       "description": "대시보드 Settings 모드별 계좌 설정 + 전략 토글 + 파라미터 UI"
     },
     {
@@ -6214,7 +6220,7 @@
       "phase": "SIT-3",
       "title": "종합테스트 Canary 72H — 10팀 411시나리오",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "411개 시나리오 전부 GREEN (sit3-checklist.json PENDING=0)",
         "72H Shadow 연속 무중단 (코드 수정 없이)",
@@ -6223,7 +6229,10 @@
         "pytest 5,241+ passed, 0 failed",
         "check_all 8/9+ OK (TF DRIFT 허용)"
       ],
-      "files": [".claude/plans/streamed-dazzling-music.md", ".omc/state/sit3-checklist.json"],
+      "files": [
+        ".claude/plans/streamed-dazzling-music.md",
+        ".omc/state/sit3-checklist.json"
+      ],
       "description": "SIT-3 Canary 종합테스트 — 10팀 411시나리오 + 72H Shadow + 하이브리드 리셋 + 96H 하드캡"
     },
     {
@@ -6239,7 +6248,11 @@
         "기존 .env 환경변수 우선순위 유지 (하위호환)",
         "pytest 전체 PASS"
       ],
-      "files": ["engine/settings.toml", "engine/src/core/config.py", "engine/pyproject.toml"],
+      "files": [
+        "engine/settings.toml",
+        "engine/src/core/config.py",
+        "engine/pyproject.toml"
+      ],
       "description": "dynaconf 5개 프로필로 설정 통합. LEVIATHAN_MODE 하나로 전체 전환."
     },
     {
@@ -6254,7 +6267,10 @@
         "dashboard 서비스에 JWT_SECRET env 전달",
         "docker compose --profile shadow up -d → production 빌드 healthy"
       ],
-      "files": ["docker-compose.yml", "docker-compose.override.yml"],
+      "files": [
+        "docker-compose.yml",
+        "docker-compose.override.yml"
+      ],
       "description": "Docker profiles로 dev/prod 분리. override.yml 제거."
     },
     {
@@ -6268,7 +6284,10 @@
         "CSP 위반 0건",
         "nginx.conf CSP 제거 (Next.js에 위임)"
       ],
-      "files": ["infra/nginx/nginx.conf", "dashboard/next.config.js"],
+      "files": [
+        "infra/nginx/nginx.conf",
+        "dashboard/next.config.js"
+      ],
       "description": "대시보드 로그인 근본 해결. Docker production + JWT + CSP 통합."
     },
     {
@@ -6282,8 +6301,160 @@
         "check_all에 env drift 검사 추가 (10번째)",
         "check_all 10/10 OK"
       ],
-      "files": ["scripts/sync_env.sh", "engine/src/workflow/consistency.py"],
+      "files": [
+        "scripts/sync_env.sh",
+        "engine/src/workflow/consistency.py"
+      ],
       "description": ".env secret-only + dynaconf 비밀 아닌 설정 이관 + 동기화 자동화."
+    },
+    {
+      "id": "US-344",
+      "phase": "I",
+      "title": "Claude Code 인프라 설정 (hooks + env + skill 등록)",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        ".claude/settings.local.json"
+      ],
+      "acceptanceCriteria": [
+        "settings.local.json에 CLAUDE_CODE_NO_FLICKER=1 env 추가",
+        "PermissionDenied hook 등록",
+        "leviathan-gate skill 등록 확인",
+        "⚡ WIRING: settings.local.json 변경 → Claude Code 세션에서 hook 발동 확인 >= 1건"
+      ],
+      "description": "Claude Code 개발 인프라 설정. hooks, env, skill 등록."
+    },
+    {
+      "id": "US-345",
+      "phase": "I",
+      "title": "설정 통합 — 5개 진입점 → 2개 (engine/.env + config/engine.json)",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/.env",
+        "engine/config/engine.json",
+        "engine/src/core/config.py"
+      ],
+      "acceptanceCriteria": [
+        "engine/.env: 민감 정보 + 모드/환경 (유일한 env 진입점)",
+        "config/engine.json: 런타임 파라미터 (자본·리스크·전략)",
+        "settings.toml, config/trading.json, config/strategy_params.json 폐기 또는 engine.json으로 통합",
+        "os.getenv() 직접 호출 131건(30개 파일) → get_settings() 싱글톤 교체 (1차: main.py/modes/config.py, 2차: infra/telegram/collectors)",
+        "설정 변경 시 수정 파일 ≤ 2개 달성",
+        "pytest 0 failures",
+        "⚡ WIRING: get_settings() 싱글톤 Engine.__init__에 주입 + 런타임 호출 확인"
+      ],
+      "description": "설정 파편화 근본 해결. 5개 진입점 → 2개."
+    },
+    {
+      "id": "US-346",
+      "phase": "I",
+      "title": "EngineMode 3개 단순화 (SHADOW 삭제 → backtest/paper/live)",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/src/core/engine.py",
+        "engine/src/modes/shadow.py",
+        "engine/src/modes/live.py",
+        "engine/config/engine.json"
+      ],
+      "acceptanceCriteria": [
+        "EngineMode.SHADOW 삭제 대신 deprecated alias 추가 (EngineMode.SHADOW = EngineMode.LIVE 또는 경고 로그)",
+        "progressive_shadow.py, test_shadow_mode.py 등 SHADOW 참조 파일 인벤토리 작성 (Grep으로 목록화)",
+        "engine.json shadow.* 키 → live.* 또는 capital.*로 마이그레이션 (기존 값 보존)",
+        "capital.max_position_pct / daily_loss_pct 퍼센티지 기반 한도 설정",
+        "pytest 0 failures (5,274+ tests)",
+        "⚡ WIRING: EngineMode.LIVE/PAPER/BACKTEST 분기 코드 정상 동작 확인"
+      ],
+      "description": "EngineMode 단순화 (점진적): SHADOW hard 삭제 대신 deprecated alias. progressive_shadow 파이프라인 보호."
+    },
+    {
+      "id": "US-347",
+      "phase": "I",
+      "title": "ShadowMode/LiveMode 중복 제거 — BaseMode 추출",
+      "priority": 4,
+      "passes": true,
+      "files": [
+        "engine/src/modes/base.py",
+        "engine/src/modes/shadow.py",
+        "engine/src/modes/live.py"
+      ],
+      "acceptanceCriteria": [
+        "ShadowMode 참조 파일 전수 목록 작성 (10개 소스파일, 20개 테스트파일)",
+        "engine/src/modes/base.py 신규 생성 (ShadowMode + LiveMode 공통 로직 추출)",
+        "LiveMode(BaseMode) 통합 구현",
+        "ShadowMode는 DEPRECATED 마킹 유지 (즉시 삭제 금지) — progressive_shadow.py 의존성 때문",
+        "progressive_shadow.py → LiveMode 기반으로 래핑 또는 BaseMode 직접 사용",
+        "pytest 0 failures",
+        "⚡ WIRING: BaseMode 생성 + LiveMode 상속 + Engine._init_mode() 인스턴스화 확인"
+      ],
+      "description": "ShadowMode/LiveMode 중복 제거. BaseMode 추출. ShadowMode는 즉시 삭제 대신 DEPRECATED 마킹 (progressive_shadow 보호)."
+    },
+    {
+      "id": "US-348",
+      "phase": "I",
+      "title": "BookWalkSlippage Dead Wiring 수정 (PaperExecutor 실행 계층 연결 또는 폐기)",
+      "priority": 5,
+      "passes": true,
+      "files": [
+        "engine/src/risk/exposure_tracker.py",
+        "engine/src/analysis/tca_analyzer.py",
+        "engine/src/execution/slippage.py",
+        "engine/src/core/engine.py"
+      ],
+      "acceptanceCriteria": [
+        "BookWalkSlippage: ShadowMode에 wired 확인 (shadow.py L479-484). US-347 완료 후 LiveMode/PaperMode로 이관",
+        "ExposureTracker: main.py 1202-1208, 1478-1495 wired 확인 (검증만, 수정 없음)",
+        "TCAAnalyzer: main.py 1289, 1519-1555 wired 확인 (검증만, 수정 없음)",
+        "BookWalkSlippage Paper 모드 주입 경로 확인 + US-346/347 이후 paper executor 연결",
+        "pytest 0 failures",
+        "⚡ WIRING: BookWalkSlippage PaperExecutor 주입 경로 존재 확인"
+      ],
+      "description": "Dead Wiring 검증. ExposureTracker/TCAAnalyzer는 이미 wired(검증만). BookWalkSlippage는 ShadowMode→LiveMode 이관 시 paper 계층 연결."
+    },
+    {
+      "id": "US-349",
+      "phase": "I",
+      "title": "AutoTuner 실 데이터 활성화 (TUNER_DATA_SOURCE=timescaledb)",
+      "priority": 6,
+      "passes": true,
+      "files": [
+        "engine/.env",
+        "engine/config/engine.json"
+      ],
+      "acceptanceCriteria": [
+        "TUNER_DATA_SOURCE=timescaledb .env 추가",
+        "ENABLE_INLINE_TUNER=true .env 추가",
+        "AutoTuner TimescaleDB 26K+ 실 데이터 로드 확인 (로그: tuner loaded N records)",
+        "synthetic 결과가 real params 덮어쓰지 않음 확인",
+        "pytest 0 failures",
+        "⚡ WIRING: AutoTuner 인스턴스 + Engine 주입 + timescaledb 쿼리 호출 확인"
+      ],
+      "description": "AutoTuner 실 데이터(TimescaleDB) 활성화."
+    },
+    {
+      "id": "US-350",
+      "phase": "I",
+      "title": "거래소 확장 — Gate.io/Bitget/OKX API키 + BingX/LBank/OrangeX 어댑터",
+      "priority": 7,
+      "passes": true,
+      "files": [
+        "engine/src/collectors/bingx_collector.py",
+        "engine/src/collectors/lbank_collector.py",
+        "engine/src/collectors/orangex_collector.py",
+        "engine/.env",
+        "engine/config/engine.json"
+      ],
+      "acceptanceCriteria": [
+        "Gate.io / Bitget / OKX: API 키 .env → active_exchanges → Paper 데이터 수신 확인",
+        "BingX 네이티브 WebSocket 어댑터 (bingx_collector.py) 구현",
+        "LBank 네이티브 WebSocket 어댑터 (lbank_collector.py) 구현",
+        "OrangeX 네이티브 WebSocket 어댑터 (orangex_collector.py) 구현",
+        "3개 신규 어댑터 10min Paper 실행 시 데이터 수신 확인",
+        "pytest 신규 어댑터 테스트 PASS",
+        "⚡ WIRING: 각 어댑터 CollectorManager 등록 + PriceHub 연결 + 런타임 데이터 수신"
+      ],
+      "description": "거래소 확장. API 키 거래소 즉시 활성화 + 신규 어댑터 3개."
     }
   ]
 }
