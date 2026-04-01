@@ -1,1 +1,5 @@
-{"phase": "SIT-3", "stage": "pending", "step": "pending-Step1"}
+{
+  "phase": "K",
+  "stage": "pending",
+  "step": "pending-Step1"
+}

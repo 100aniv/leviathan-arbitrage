@@ -24,7 +24,7 @@ from src.strategies.futures_futures import FuturesFuturesConfig, FuturesFuturesS
 from src.strategies.spot_futures import SpotFuturesConfig, SpotFuturesStrategy
 from src.strategies.statistical_arb import StatArbConfig, StatisticalArbStrategy
 from src.strategies.triangular import TriangularConfig, TriangularStrategy
-from src.tuning.backtest import BacktestResult, StrategyParams
+from src.tuning.backtest import TuningBacktestResult, StrategyParams
 from src.tuning.data_loader import OHLCVWindow
 
 
@@ -557,7 +557,7 @@ class StrategyBacktestEngine:
         self._fee_rate = fee_rate
         self._seed = seed
 
-    def run_with_synthetic_data(self, params: StrategyParams, n_candles: int = 80) -> BacktestResult:
+    def run_with_synthetic_data(self, params: StrategyParams, n_candles: int = 80) -> TuningBacktestResult:
         """Generate synthetic OHLCV and run backtest (used by ScheduledTuner)."""
         rng_np = np.random.default_rng(self._seed)
         closes = 50_000.0 + np.cumsum(rng_np.normal(0, 50.0, n_candles))
@@ -572,18 +572,18 @@ class StrategyBacktestEngine:
         )
         return self.run(params, ohlcv)
 
-    def run(self, params: StrategyParams, ohlcv: OHLCVWindow) -> BacktestResult:
+    def run(self, params: StrategyParams, ohlcv: OHLCVWindow) -> TuningBacktestResult:
         """
         Replay OHLCV data through the real strategy class.
 
-        Returns BacktestResult with metrics computed from actual strategy
+        Returns TuningBacktestResult with metrics computed from actual strategy
         trade decisions rather than generic spread logic.
         """
         closes = list(ohlcv.closes)
         n = len(closes)
 
         if n < 2:
-            return BacktestResult(
+            return TuningBacktestResult(
                 total_pnl=0.0,
                 sharpe_ratio=0.0,
                 max_drawdown=0.0,
@@ -683,7 +683,7 @@ class StrategyBacktestEngine:
         initial_capital: float,
         equity_curve: list[float],
         trade_pnls: list[float],
-    ) -> BacktestResult:
+    ) -> TuningBacktestResult:
         total_pnl = equity_curve[-1] - initial_capital
         equity = np.array(equity_curve, dtype=float)
         denom = np.where(equity[:-1] != 0.0, equity[:-1], 1e-10)
@@ -695,7 +695,7 @@ class StrategyBacktestEngine:
             else 0.0
         )
 
-        return BacktestResult(
+        return TuningBacktestResult(
             total_pnl=total_pnl,
             sharpe_ratio=self._compute_sharpe(returns),
             max_drawdown=self._compute_max_drawdown(equity),
@@ -705,7 +705,7 @@ class StrategyBacktestEngine:
         )
 
     @staticmethod
-    def _compute_sharpe(returns: np.ndarray, periods_per_year: int = 252) -> float:
+    def _compute_sharpe(returns: np.ndarray, periods_per_year: int = 8760) -> float:
         if len(returns) < 2:
             return 0.0
         std = float(np.std(returns, ddof=1))

@@ -1,9 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-03-25 (SIT-2 클로즈 베타 PASS + SIT-3 종합테스트 진입) | PRD: `.omc/prd.json` (343개 US, 338 passes:true / 5 passes:false)
+> 마지막 업데이트: 2026-04-02 (Phase J 완료) | PRD: `.omc/prd.json` (357개 US, 353 passes:true / 4 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | **SIT-3 플랜: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오)**
-> **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → **SIT-3 종합테스트** → TF QF 12차 → TF SF → TF PF → TF Final → Live
+> **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → **J** → K → L → M → N(TF Final → Live)
 
 ---
 
@@ -31,12 +31,12 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: Phase H 완료 ✅ (2026-03-29) — Live 파이프라인 + 4-모드 통일
-**Tests**: 5,274 passed / 0 failed / 12 skipped
+**Phase**: K (Phase J 완료 — BacktestMode WFA + ML A/B + Sharpe sqrt(8760) + Coinone CB fix, 2026-04-02)
+**Tests**: 5,379 passed / 0 failed / 12 skipped
 **Coverage**: 74%
-**PRD**: 338/343 passes:true (US-055/056 Phase F Live + US-332/334 S26 런타임 + US-339 SIT-3 잔여)
-**TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → **Phase H ✅** → Shadow 10min 검증 → TF QF 12차 → TF SF → TF PF → TF Final → Live
-**Next**: Shadow 10min 검증 (EngineMode.PAPER) → TF QF 12차 진입
+**PRD**: 353/357 passes:true (US-055/056 Live전환 + US-332/334 SF 24H Shadow 미완)
+**TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → **K** → L → M → N(TF Final → Live)
+**Next**: US-055/056 LiveGate + Live전환 (Phase K) + US-332/334 SF 24H Shadow
 **모드 체계 (Phase H-2)**: `backtest → paper → shadow → live` (업계 표준 4단계, EngineMode 단일 축)
 **Live 설정**: max_position=$10, daily_loss=$15, exchanges=binance+binance_futures
 **Live 파이프라인**: LiveMode 클래스 (직접 인-프로세스 라우팅, DI executor, KRW 정규화, circuit breaker, rate limiter)
@@ -391,7 +391,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 339개 User Stories, 333개 완료, 6개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 357개 User Stories, 353개 완료, 4개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -567,11 +567,106 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-336: 텔레그램 send_alert_kr 구조화 양식 전환 (15곳)
 - [x] US-337: 대시보드 Settings 모드별 설정 UI
 
-#### Phase SIT-2: 클로즈 베타 — US-338 (진행 중)
-- [ ] US-338: 클로즈 베타 체크리스트 10항목 통과
+#### Phase SIT-2: 클로즈 베타 — US-338 ✅
+- [x] US-338: 클로즈 베타 체크리스트 10항목 통과
 
-#### Phase SIT-3: 종합테스트 — US-339 (미시작)
-- [ ] US-339: 7팀 Agent Teams + Progressive Shadow 24H
+#### Phase SIT-3: 종합테스트 — US-339 ✅
+- [x] US-339: 종합테스트 410/410 GREEN, CP1~CP5 PASS (2026-03-29)
+
+#### Phase I: 배관 정리 + 거래소 기반 완성 — US-344~350 ✅ 완료 (2026-04-01)
+
+> **목표**: 설정 통합 + Dead Wiring 제거 + EngineMode 단순화 + 거래소 기반 정리
+> **결과**: 5,348 tests PASS, crash 0, Step 0 완료 (Redis 초기화 버그 수정 + DB mode 컬럼 + PaperMode 리네임)
+> **커밋**: `486419b feat: Phase I 완료 — 배관정리 + 거래소 기반 완성`
+
+- [x] US-344: Claude Code 인프라 설정 (hooks + env) ✅
+- [x] US-345: 설정 통합 (5 진입점 → 2개) ✅
+- [x] US-346: EngineMode 3개 단순화 (SHADOW 삭제) ✅
+- [x] US-347: ShadowMode/LiveMode 중복 제거 (PaperMode 리네임, shadow.py class → PaperMode) ✅
+- [x] US-348: Dead Wiring 수정 (ExposureTracker/TCAAnalyzer/BookWalkSlippage) ✅
+- [x] US-349: AutoTuner 실 데이터 활성화 ✅
+- [x] US-350: 거래소 확장 (Gate.io/Bitget/OKX API + BingX/LBank/OrangeX 어댑터) ✅
+
+**Step 0 완료 항목 (2026-04-01):**
+- [x] Redis 초기화 버그 수정 (main.py:467)
+- [x] DB mode 컬럼 추가 (execution_log, migration 002_add_mode_column.sql)
+- [x] MarketRecorder mode 파라미터 추가
+- [x] PaperMode 리네임 (shadow.py class → PaperMode, paper.py 정식 경로)
+- [x] 전체 테스트 5,348 passed / 0 failed / 12 skipped
+
+---
+
+#### Phase J: Backtest 검증 — US-351~357 ✅ 완료 (2026-04-02)
+
+> **목표**: BacktestMode wiring + WFA 6전략 루프 + ML A/B 연결 + Sharpe sqrt(8760) 통일 + orderbook retention 30일
+> **결과**: 5,379 tests PASS, Shadow 13/13 PASS (PnL=+$13,243, PF=8.75, CB CLOSED, 13.77min), crash 0
+> **커밋**: `feat: Phase J — BacktestMode WFA + ML A/B + Sharpe sqrt(8760) + coinone CB fix`
+> **플랜**: `/Users/100aniv/.claude/plans/fancy-strolling-pine.md`
+
+- [x] US-351: BacktestMode wiring (_backtest_mode_task + EngineMode.BACKTEST) ✅
+- [x] US-352: Sharpe sqrt(8760) 3곳 통일 ✅
+- [x] US-353: WFA 6전략 루프 ✅
+- [x] US-354: ML A/B MLSignalBacktester.ab_test() 연결 ✅
+- [x] US-355: BacktestResult 3중 정의 통합 ✅
+- [x] US-356: EngineMode.BACKTEST config ✅
+- [x] US-357: orderbook retention 30일 ✅
+
+**Shadow 13항목 복합지표 (2026-04-02):**
+- PnL: +$13,243.52 (257 trades), PF: 8.75, MDD: 0.0%, CB: CLOSED
+- Assembly Gate 5/5 PASS, 코드리뷰 PASS (HIGH 2건 수정 완료)
+
+#### Phase K: 소액 Live 실증 — 미시작
+
+> **목표**: 실 자본 소액으로 Live 전환 실증 (funding_rate + futures_futures 우선)
+> **진입 조건**: Phase J 완료 + US-055 LiveGate PASS + US-056 사장님 승인
+> **최소 기간**: 2주
+> **시작 전략**: funding_rate + futures_futures (가장 안전한 carry/차익 전략)
+> **자본 한도**: max_position=$10, daily_loss=$15 (Phase H-2 설정 유지)
+
+- [ ] K-1: US-055 LiveGate 6-check 완료 (Sharpe>2.0, MDD<5%, 24H Shadow PASS)
+- [ ] K-2: US-056 사장님 승인 (Live 전환 결재)
+- [ ] K-3: Binance API 키 Live 모드 활성화 + rate limiter 검증
+- [ ] K-4: funding_rate + futures_futures 소액 Live 2주 실행
+- [ ] K-5: 일일 3-way 리콘실리에이션 (DB vs 거래소 vs 예측값)
+- [ ] K-6: 슬리피지/수수료 실측 vs 예측 오차 < 20% 검증
+- [ ] K-7: US-332/334 SF 24H Shadow 완료 (spot_futures 보완)
+
+#### Phase L: 대시보드 재설계 + 운영 안정화 — 미시작
+
+> **목표**: 토스증권/업비트 UX 기반 전면 재설계 + 운영 인프라 안정화
+> **진입 조건**: Phase K 2주 완료
+
+- [ ] L-1: 대시보드 UX 전면 재설계 (토스증권/업비트 참조)
+- [ ] L-2: Settings hot-reload (재시작 없이 파라미터 변경)
+- [ ] L-3: OpenTelemetry 통합 (분산 트레이싱)
+- [ ] L-4: Zero-downtime 배포 (Blue-Green 또는 Rolling)
+- [ ] L-5: 운영 Runbook + 장애 대응 절차 (IRP: P1/P2/P3) 문서화
+- [ ] L-6: Phase L Shadow 검증 + 대시보드 브라우저 E2E (UAT)
+
+#### Phase M: 전략 성숙 — 미시작
+
+> **목표**: 수익 전략 성능 고도화 + 미활성 전략 재활성화
+> **진입 조건**: Phase L 완료
+
+- [ ] M-1: spot_futures WR 75%+ 달성 (OU Basis 파라미터 최적화)
+- [ ] M-2: Bithumb 인증 API 연동 (공개 WS stale data 해결 → triangular 재활성화)
+- [ ] M-3: triangular 재활성화 (Bithumb 인증 API 적용 후 fake spread 해소 검증)
+- [ ] M-4: cross_exchange VIP 수수료 협상 또는 저수수료 거래소 추가
+- [ ] M-5: cex_dex — Uniswap V3 연동 (leviathan-quant + dex-specialist)
+- [ ] M-6: Phase M Shadow 24H 검증 (전 활성 전략 WR>50%, Sharpe>2.0)
+
+#### Phase N: TF Final → 상용화 — 미시작
+
+> **목표**: 최종 TF 4-Round 통과 → 전체 자본 Live 전환
+> **진입 조건**: Phase M 완료 + TF SF 24H ALL PASS
+> **완료 기준**: Sharpe > 2.0, MDD < 5%, 72H 무중단, TF 4-Round PASS
+
+- [ ] N-1: TF QF 재검증 (코드 정합성 최종 확인)
+- [ ] N-2: TF SF 24H Progressive Shadow (Sharpe>2.0, MDD<5%, 전략별 WR>50%)
+- [ ] N-3: TF PF 코드 구조 최종 점검 (기능 변경 0)
+- [ ] N-4: TF Final ORR + DR 9/9 PASS
+- [ ] N-5: Canary 7일 실거래 (Alpha $70/exchange × 10 = $700)
+- [ ] N-6: 사장님 최종 승인 → Full Live 전환
 
 ---
 

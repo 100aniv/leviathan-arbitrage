@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -54,6 +55,7 @@ class BacktestResult:
     win_rate: float = 0.0
     by_strategy: dict[str, dict] = field(default_factory=dict)
     pnl_curve: list[float] = field(default_factory=list)
+    error: str = ""  # "insufficient_data" if no snapshots found
 
 
 class BacktestMode:
@@ -69,6 +71,7 @@ class BacktestMode:
         strategy_manager: Any,
         *,
         db_pool: Any | None = None,
+        market_recorder: Any | None = None,
         start_time: str | None = None,
         end_time: str | None = None,
         symbols: list[str] | None = None,
@@ -78,6 +81,7 @@ class BacktestMode:
         self._signal_generator = signal_generator
         self._strategy_manager = strategy_manager
         self._db_pool = db_pool
+        self._market_recorder = market_recorder
         self._start_time = start_time
         self._end_time = end_time
         self._symbols = symbols or ["BTC/USDT"]
@@ -126,6 +130,7 @@ class BacktestMode:
 
         if not snapshots:
             logger.warning("backtest.no_snapshots — check TimescaleDB orderbook_snapshots table")
+            self._result.error = "insufficient_data"
             self._result.duration_s = time.monotonic() - t0
             self._running = False
             return self._result
@@ -174,28 +179,53 @@ class BacktestMode:
         self._running = False
 
     async def _load_snapshots(self) -> list[dict]:
-        """Load orderbook snapshots from TimescaleDB."""
+        """Load orderbook snapshots from TimescaleDB.
+
+        Uses BACKTEST_MAX_ROWS env var (default 1,000,000) for LIMIT.
+        Auto-detects start/end from MIN/MAX ts when not specified.
+        Logs backtest.data_check with count and span after load.
+        """
         if self._db_pool is None:
             logger.warning("backtest.no_db_pool — cannot load historical data")
             return []
 
+        _max_rows = int(os.environ.get("BACKTEST_MAX_ROWS", "1000000"))
+
         try:
+            # Auto-detect time range from DB when not specified
+            start_time = self._start_time
+            end_time = self._end_time
+            if start_time is None or end_time is None:
+                async with self._db_pool.pool.acquire() as conn:
+                    row = await conn.fetchrow(
+                        "SELECT MIN(ts) as min_ts, MAX(ts) as max_ts, COUNT(*) as cnt"
+                        " FROM orderbook_snapshots"
+                    )
+                    if row and row["cnt"]:
+                        if start_time is None:
+                            start_time = str(row["min_ts"])
+                        if end_time is None:
+                            end_time = str(row["max_ts"])
+                    else:
+                        logger.info("backtest.data_check: count=0, span=0 min")
+                        return []
+
             query = """
-                SELECT exchange, symbol, bids, asks,
-                       EXTRACT(EPOCH FROM timestamp) as timestamp
+                SELECT exchange, symbol, bids_json, asks_json,
+                       EXTRACT(EPOCH FROM ts) as timestamp
                 FROM orderbook_snapshots
                 WHERE 1=1
             """
             params: list = []
             idx = 1
 
-            if self._start_time:
-                query += f" AND timestamp >= ${idx}::timestamptz"
-                params.append(self._start_time)
+            if start_time:
+                query += f" AND ts >= ${idx}::timestamptz"
+                params.append(start_time)
                 idx += 1
-            if self._end_time:
-                query += f" AND timestamp <= ${idx}::timestamptz"
-                params.append(self._end_time)
+            if end_time:
+                query += f" AND ts <= ${idx}::timestamptz"
+                params.append(end_time)
                 idx += 1
             if self._symbols:
                 query += f" AND symbol = ANY(${idx}::text[])"
@@ -206,7 +236,7 @@ class BacktestMode:
                 params.append(self._exchanges)
                 idx += 1
 
-            query += " ORDER BY timestamp ASC LIMIT 100000"
+            query += f" ORDER BY ts ASC LIMIT {_max_rows}"
 
             async with self._db_pool.pool.acquire() as conn:
                 rows = await conn.fetch(query, *params)
@@ -216,10 +246,20 @@ class BacktestMode:
                 snapshots.append({
                     "exchange": row["exchange"],
                     "symbol": row["symbol"],
-                    "bids": row["bids"] if isinstance(row["bids"], list) else [],
-                    "asks": row["asks"] if isinstance(row["asks"], list) else [],
+                    "bids": row["bids_json"] if isinstance(row["bids_json"], list) else [],
+                    "asks": row["asks_json"] if isinstance(row["asks_json"], list) else [],
                     "timestamp": float(row["timestamp"]),
                 })
+
+            # data_check log: count + time span
+            if snapshots:
+                span_min = (snapshots[-1]["timestamp"] - snapshots[0]["timestamp"]) / 60
+                logger.info(
+                    "backtest.data_check: count=%d, span=%.1f min",
+                    len(snapshots), span_min,
+                )
+            else:
+                logger.info("backtest.data_check: count=0, span=0 min")
 
             return snapshots
 
@@ -275,7 +315,7 @@ class BacktestMode:
             logger.debug("backtest.route_error: %s", exc)
 
     def _execute_paper_trade(self, trade_request: TradeRequest) -> None:
-        """Simulate trade execution with fee deduction."""
+        """Simulate trade execution with fee deduction and execution_log recording."""
         sid = trade_request.strategy_id or "unknown"
 
         # Compute PnL from legs (same logic as LiveMode._compute_pnl)
@@ -320,6 +360,31 @@ class BacktestMode:
         if pnl_f > 0:
             self._strategy_wins[sid] = self._strategy_wins.get(sid, 0) + 1
 
+        # Record execution to TimescaleDB for WFA input (mode='backtest')
+        if self._market_recorder is not None:
+            try:
+                buy_leg = next(
+                    (l for l in trade_request.legs if l.side == OrderSide.BUY), None
+                )
+                sell_leg = next(
+                    (l for l in trade_request.legs if l.side == OrderSide.SELL), None
+                )
+                if buy_leg and sell_leg:
+                    self._market_recorder.record_execution(
+                        strategy_id=sid,
+                        buy_exchange=buy_leg.exchange_id,
+                        sell_exchange=sell_leg.exchange_id,
+                        symbol=buy_leg.symbol,
+                        buy_price=buy_leg.price or Decimal("0"),
+                        sell_price=sell_leg.price or Decimal("0"),
+                        size=buy_leg.size,
+                        net_pnl=Decimal(str(pnl_f)),
+                        status="filled",
+                        mode="backtest",
+                    )
+            except Exception as exc:
+                logger.debug("backtest.record_execution_failed: %s", exc)
+
     def _compute_metrics(self) -> None:
         """Compute final Sharpe, MDD%, profit factor, win rate."""
         n = self._result.trades_executed
@@ -338,15 +403,14 @@ class BacktestMode:
         loss_sum = abs(sum(r for r in self._pnl_returns if r < 0))
         self._result.profit_factor = wins_sum / max(0.01, loss_sum)
 
-        # Sharpe ratio (annualized, assuming 1-minute intervals)
+        # Sharpe ratio — annualized per SSOT §4.5: sqrt(8760) for hourly intervals
         import numpy as np
         if len(self._pnl_returns) >= 2:
             returns = np.array(self._pnl_returns)
             mean_r = np.mean(returns)
             std_r = np.std(returns, ddof=1)
             if std_r > 0:
-                # Annualize: ~525,600 minutes/year
-                self._result.sharpe_ratio = float(mean_r / std_r * np.sqrt(525600))
+                self._result.sharpe_ratio = float(mean_r / std_r * np.sqrt(8760))
 
         # Per-strategy breakdown
         for sid in self._strategy_pnl:

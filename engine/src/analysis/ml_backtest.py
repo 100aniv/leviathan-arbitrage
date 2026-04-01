@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class BacktestResult:
+class MLBacktestResult:
     """백테스트 결과."""
 
     strategy: str
@@ -31,17 +31,22 @@ class BacktestResult:
     latency_p99_ms: float = 0.0
 
 
+# Backward-compat alias (do not use in new code)
+BacktestResult = MLBacktestResult
+
+
 @dataclass
 class ABTestResult:
     """A/B 테스트 결과 — ML vs Baseline."""
 
-    baseline: BacktestResult
-    ml_enhanced: BacktestResult
+    baseline: MLBacktestResult
+    ml_enhanced: MLBacktestResult
     pnl_delta: float  # ml - baseline
     pnl_delta_pct: float  # (ml - baseline) / |baseline| * 100
     win_rate_delta: float
     sharpe_delta: float
     ml_improves: bool  # pnl_delta > 0
+    comparison_valid: bool = True  # False when ml_scorer=None (미학습 상태 구분)
 
 
 class MLSignalBacktester:
@@ -96,10 +101,22 @@ class MLSignalBacktester:
         """A/B 테스트: baseline vs ML-enhanced."""
         baseline = self.run_baseline(signals, prices)
 
-        if features is not None and self._ml_scorer is not None:
+        if self._ml_scorer is None:
+            # ML 모델 미학습 — comparison_valid=False로 명시 (ml_improves=False와 구분)
+            return ABTestResult(
+                baseline=baseline,
+                ml_enhanced=baseline,
+                pnl_delta=0.0,
+                pnl_delta_pct=0.0,
+                win_rate_delta=0.0,
+                sharpe_delta=0.0,
+                ml_improves=False,
+                comparison_valid=False,
+            )
+
+        if features is not None:
             ml = self.run_ml_enhanced(signals, prices, features)
         else:
-            # No ML scorer → simulate with random filtering for comparison
             ml = self._simulate(signals, prices, use_ml=False, label="ml_enhanced")
 
         pnl_delta = ml.total_pnl - baseline.total_pnl
@@ -114,6 +131,7 @@ class MLSignalBacktester:
             win_rate_delta=ml.win_rate - baseline.win_rate,
             sharpe_delta=ml.sharpe_ratio - baseline.sharpe_ratio,
             ml_improves=pnl_delta > 0,
+            comparison_valid=True,
         )
 
         logger.info(
@@ -192,10 +210,11 @@ class MLSignalBacktester:
         win_rate = wins / len(pnls) if pnls else 0.0
         avg_pnl = total_pnl / len(pnls) if pnls else 0.0
 
-        # Sharpe
+        # Sharpe (annualized, hourly: sqrt(8760) per SSOT §4.5)
         if len(pnls) >= 2:
             pnl_arr = np.array(pnls)
-            sharpe = float(np.mean(pnl_arr) / np.std(pnl_arr)) if np.std(pnl_arr) > 1e-12 else 0.0
+            std = float(np.std(pnl_arr, ddof=1))
+            sharpe = float(np.mean(pnl_arr) / std * np.sqrt(8760)) if std > 1e-12 else 0.0
         else:
             sharpe = 0.0
 

@@ -292,12 +292,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S26✅ → SIT-0~2✅ → **SIT-3** → TF QF 12차 → TF SF → TF PF → TF Final → Live
-- **Tests**: 5,241 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (343개 US, 338 passes:true / 5 passes:false — US-055/056 Live + US-332/334 런타임 + US-339 SIT-3)
-- **다음 작업**: SIT-3 종합테스트 → TF QF 12차 → TF SF → TF PF → TF Final → Live
-- **계획서**: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US)
-- **SIT-3 플랜**: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오, Phase 0 완료)
+- **Phase 순서**: A~M✅ → S1~S26✅ → SIT-0~2✅ → SIT-3✅ → Phase H✅ → Phase I✅ → Phase J✅ → **K** → L → M → N(TF Final→Live)
+- **Tests**: 5,379 passed, 0 failed, 12 skipped
+- **PRD**: `.omc/prd.json` (357개 US, 353 passes:true / 4 passes:false — US-055/056 Live + US-332/334 SF 24H Shadow)
+- **다음 작업**: US-055/056 LiveGate + Live전환 (Phase K) + US-332/334 SF 24H Shadow
+- **계획서**: `/Users/100aniv/.claude/plans/fancy-strolling-pine.md` (Phase I~N 로드맵, 2026-04-01 승인)
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%
 
 ## 워크플로우 핵심 (상세 → leviathan.md)

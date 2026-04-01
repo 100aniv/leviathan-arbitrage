@@ -1,14 +1,21 @@
 {
-  "current_phase": "SIT-3",
+  "current_phase": "K",
   "current_stage": "pending",
   "current_step": "pending-Step1",
   "status": "in_progress",
   "us_targets": [
-    "US-339"
+    "US-351",
+    "US-352",
+    "US-353",
+    "US-354",
+    "US-355",
+    "US-356",
+    "US-357"
   ],
-  "us_count": 1,
-  "previous_phase": "SIT-2",
+  "us_count": 7,
+  "previous_phase": "Phase-I",
   "previous_result": "PASS",
   "regression_source": null,
-  "note": "SIT-3 종합테스트: 7팀 Agent Teams + Progressive Shadow. SIT-0~2 완료 (338/343)."
+  "plan_file": "engine/docs/planning/Phase-J_PLAN.md",
+  "note": "Phase J Stage B: BacktestMode \ubc30\uc120 + SQL \uc218\uc815 + WFA + ML A/B"
 }

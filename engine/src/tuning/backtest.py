@@ -20,7 +20,7 @@ class StrategyParams:
 
 
 @dataclass
-class BacktestResult:
+class TuningBacktestResult:
     """Metrics from a single backtest run."""
 
     total_pnl: float
@@ -29,6 +29,10 @@ class BacktestResult:
     win_rate: float
     num_trades: int
     returns: list[float] = field(default_factory=list)
+
+
+# Backward-compat alias (do not use in new code)
+BacktestResult = TuningBacktestResult
 
 
 class BacktestEngine:
@@ -52,7 +56,7 @@ class BacktestEngine:
     # OHLCV-based replay
     # ------------------------------------------------------------------
 
-    def run(self, params: StrategyParams, ohlcv: OHLCVWindow) -> BacktestResult:
+    def run(self, params: StrategyParams, ohlcv: OHLCVWindow) -> TuningBacktestResult:
         """
         Replay OHLCV data through a spread-based entry/exit strategy.
 
@@ -63,7 +67,7 @@ class BacktestEngine:
         n = len(closes)
 
         if n < 2:
-            return BacktestResult(
+            return TuningBacktestResult(
                 total_pnl=0.0,
                 sharpe_ratio=0.0,
                 max_drawdown=0.0,
@@ -120,7 +124,7 @@ class BacktestEngine:
 
     def run_on_spreads(
         self, params: StrategyParams, spreads: list[SpreadRecord]
-    ) -> BacktestResult:
+    ) -> TuningBacktestResult:
         """
         Replay spread observations through strategy logic.
 
@@ -128,7 +132,7 @@ class BacktestEngine:
         exit when net_spread < exit_threshold or cumulative loss > stop_loss_pct.
         """
         if not spreads:
-            return BacktestResult(
+            return TuningBacktestResult(
                 total_pnl=0.0,
                 sharpe_ratio=0.0,
                 max_drawdown=0.0,
@@ -173,7 +177,7 @@ class BacktestEngine:
         final_capital: float,
         equity_curve: list[float],
         trade_pnls: list[float],
-    ) -> BacktestResult:
+    ) -> TuningBacktestResult:
         total_pnl = final_capital - self._initial_capital
         equity = np.array(equity_curve, dtype=float)
         denom = np.where(equity[:-1] != 0.0, equity[:-1], 1e-10)
@@ -185,7 +189,7 @@ class BacktestEngine:
             else 0.0
         )
 
-        return BacktestResult(
+        return TuningBacktestResult(
             total_pnl=total_pnl,
             sharpe_ratio=self._compute_sharpe(returns),
             max_drawdown=self._compute_max_drawdown(equity),
@@ -199,7 +203,7 @@ class BacktestEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _compute_sharpe(returns: np.ndarray, periods_per_year: int = 252) -> float:
+    def _compute_sharpe(returns: np.ndarray, periods_per_year: int = 8760) -> float:
         if len(returns) < 2:
             return 0.0
         std = float(np.std(returns, ddof=1))

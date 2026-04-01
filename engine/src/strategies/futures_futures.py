@@ -35,6 +35,10 @@ class FuturesFuturesConfig(BaseModel):
     # US-273: Stale guard
     max_book_age_seconds: float = Field(default=5.0, gt=0)
     enable_stale_guard: bool = Field(default=False)
+    # CB: KRW spot-only exchanges don't support futures contracts — exclude by default
+    excluded_exchanges: list[str] = Field(
+        default_factory=lambda: ["coinone", "upbit", "bithumb"]
+    )
 
 
 class FuturesFuturesStrategy(BaseStrategy):
@@ -103,6 +107,16 @@ class FuturesFuturesStrategy(BaseStrategy):
             if book_age_ms / 1000 > self.config.max_book_age_seconds:
                 self._metrics.signals_filtered += 1
                 return None
+
+        # CB: Exclude KRW spot-only exchanges (no futures market)
+        if self.config.excluded_exchanges:
+            for _ex in (signal.buy_exchange, signal.sell_exchange):
+                if _ex and any(_ex == exc or _ex.startswith(exc) for exc in self.config.excluded_exchanges):
+                    self._metrics.signals_filtered += 1
+                    logger.debug(
+                        "strategy.rejected strategy=futures_futures reason=excluded_exchange exchange=%s", _ex
+                    )
+                    return None
 
         # US-254: Regime check — block new entries in CRISIS mode
         if self._regime_detector is not None:

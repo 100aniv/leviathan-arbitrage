@@ -2,9 +2,9 @@
   "project": "LEVIATHAN Arbitrage Engine",
   "version": "2.0",
   "created": "2026-03-08",
-  "updated": "2026-03-21",
+  "updated": "2026-04-01T14:15:13.792401+00:00",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 320,
+  "total_stories": 356,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -2873,7 +2873,7 @@
     {
       "id": "US-055",
       "title": "LiveGate + Preflight 10항목 통과",
-      "phase": "F",
+      "phase": "K",
       "priority": 66,
       "passes": false,
       "acceptanceCriteria": [
@@ -2885,7 +2885,7 @@
     {
       "id": "US-056",
       "title": "Live 모드 전환 (사용자 승인)",
-      "phase": "F",
+      "phase": "K",
       "priority": 67,
       "passes": false,
       "acceptanceCriteria": [
@@ -6107,7 +6107,7 @@
     },
     {
       "id": "US-332",
-      "phase": "S26",
+      "phase": "K",
       "title": "SF 24H Progressive Shadow 재실행",
       "priority": 0,
       "passes": false,
@@ -6136,7 +6136,7 @@
     },
     {
       "id": "US-334",
-      "phase": "S26",
+      "phase": "K",
       "title": "소액 Live 전환 기준 + Sandbox Testnet 검증",
       "priority": 1,
       "passes": false,
@@ -6455,6 +6455,158 @@
         "⚡ WIRING: 각 어댑터 CollectorManager 등록 + PriceHub 연결 + 런타임 데이터 수신"
       ],
       "description": "거래소 확장. API 키 거래소 즉시 활성화 + 신규 어댑터 3개."
+    },
+    {
+      "id": "US-351",
+      "title": "BacktestMode main.py 배선 + BACKTEST 경로 TimescaleDB 활성화",
+      "phase": "J",
+      "passes": true,
+      "files": [
+        "engine/src/main.py",
+        "engine/src/modes/backtest.py"
+      ],
+      "acceptanceCriteria": [
+        "EngineMode.BACKTEST 진입 시 BacktestMode.run() 호출됨 (로그: backtest.starting)",
+        "db_pool 주입 경로 존재 — Engine.__init__ → BacktestMode.__init__(db_pool=...)",
+        "BacktestResult 반환값이 engine_state 또는 API 캐시에 저장되어 /api/backtest/result 조회 가능",
+        "⚡ WIRING 생성: BacktestMode(signal_generator, strategy_manager, db_pool=...) 인스턴스 생성",
+        "⚡ WIRING 주입: Engine._db_pool → BacktestMode.__init__(db_pool=self._db_pool) 전달",
+        "⚡ WIRING 호출: main.py BACKTEST 분기에서 await backtest_mode.run() 실제 호출",
+        "python -m pytest tests/ -x --tb=short 통과"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "US-352",
+      "title": "orderbook_snapshots 데이터 충분성 검증 + fallback 전략",
+      "phase": "J",
+      "passes": true,
+      "files": [
+        "engine/src/modes/backtest.py",
+        "engine/src/infra/db/market_recorder.py",
+        "engine/src/core/config.py"
+      ],
+      "acceptanceCriteria": [
+        "BacktestMode._load_snapshots() 호출 후 스냅샷 수 로그 출력 (backtest.data_check: count=X, span=Y min)",
+        "스냅샷 0건 시 BacktestResult(snapshots_replayed=0, error='insufficient_data') 반환, 예외 없음",
+        "start_time=None, end_time=None 시 DB 전체 범위 자동 사용 (SELECT MIN/MAX timestamp)",
+        "스냅샷 충분 임계값 설정값 config.backtest_min_snapshots (기본 1000) 추가",
+        "python -m pytest tests/ -x --tb=short 통과"
+      ],
+      "dependencies": [
+        "US-351"
+      ]
+    },
+    {
+      "id": "US-353",
+      "title": "전 6전략 WFA 실행 엔진 + 결과 JSON 저장",
+      "phase": "J",
+      "passes": true,
+      "files": [
+        "engine/src/analysis/walk_forward.py",
+        "engine/src/modes/backtest.py",
+        "engine/src/api/routes/backtest.py"
+      ],
+      "acceptanceCriteria": [
+        "BacktestMode.run() 완료 후 WalkForwardAnalyzer.analyze() 호출 로그 확인 (wfa.starting strategy=X)",
+        "전략별 WalkForwardResult (overall_sharpe, overall_mdd, overall_trades) JSON 직렬화",
+        "결과 파일 .omc/state/backtest_results.json 저장",
+        "GET /api/backtest/wfa 엔드포인트 → 전략별 WFA 결과 반환 (200 OK)",
+        "cross_exchange 포함 — trades=0이어도 WFA 실행 완료 (오류 없음)",
+        "python -m pytest tests/ -x --tb=short 통과"
+      ],
+      "dependencies": [
+        "US-351",
+        "US-352"
+      ]
+    },
+    {
+      "id": "US-354",
+      "title": "ML A/B 비교 프레임워크 (ML 활성/비활성 WFA 병렬 실행)",
+      "phase": "J",
+      "passes": true,
+      "files": [
+        "engine/src/analysis/ml_backtest.py",
+        "engine/src/api/routes/backtest.py"
+      ],
+      "acceptanceCriteria": [
+        "MLSignalBacktester.walk_forward(n_folds=5) 완료 로그 (ml_backtest.ab_result fold=5/5)",
+        "ABTestResult.ml_improves 값이 backtest_results.json에 포함",
+        "sharpe_delta >= 0 (ML 기여도 ≥ 0) 검증 — 음수 시 경고 로그 기록",
+        "GET /api/backtest/ab-test 엔드포인트 → ABTestResult 반환 (200 OK)",
+        "ML 스코어러 없을 경우 (ml_scorer=None) graceful fallback — baseline 결과만 반환",
+        "python -m pytest tests/ -x --tb=short 통과"
+      ],
+      "dependencies": [
+        "US-353"
+      ]
+    },
+    {
+      "id": "US-355",
+      "title": "BacktestResult 3중 정의 통합 (MLBacktestResult + TuningBacktestResult rename)",
+      "phase": "J",
+      "passes": true,
+      "files": [
+        "engine/src/analysis/ml_backtest.py",
+        "engine/src/tuning/backtest.py"
+      ],
+      "acceptanceCriteria": [
+        "analysis/ml_backtest.py에 MLBacktestResult 정의 (구 BacktestResult)",
+        "tuning/backtest.py에 TuningBacktestResult 정의 (구 BacktestResult)",
+        "각 파일 내 참조 모두 업데이트 (grep으로 확인)",
+        "from src.analysis.ml_backtest import MLBacktestResult 임포트 정상 동작",
+        "python -m pytest tests/ -x --tb=short 통과"
+      ],
+      "dependencies": [
+        "US-354"
+      ]
+    },
+    {
+      "id": "US-356",
+      "title": "Phase J Shadow 검증 + LiveGate WFA 연동 확인",
+      "phase": "J",
+      "passes": true,
+      "files": [
+        "engine/src/core/live_gate_continuous.py",
+        "engine/src/modes/backtest.py",
+        "engine/tests/unit/test_backtest_mode.py"
+      ],
+      "acceptanceCriteria": [
+        "ENGINE_ENV=dev ENGINE_MODE=backtest timeout 600 python -m src.main 실행 → crash 0건",
+        "로그에 backtest.completed + wfa.starting + wfa.completed 순서 확인",
+        "live_gate_continuous.py result.walk_forward 필드가 US-353 WFA 결과 타입과 호환",
+        "BacktestResult.by_strategy에 활성 전략 6개 키 모두 존재 (trades=0 포함)",
+        ".omc/state/backtest_results.json 파일 생성 확인",
+        "python -m pytest tests/ -x --tb=short 통과 (신규 backtest 관련 테스트 포함)"
+      ],
+      "dependencies": [
+        "US-351",
+        "US-352",
+        "US-353",
+        "US-354",
+        "US-355"
+      ]
+    },
+    {
+      "id": "US-357",
+      "title": "Shadow 1시간+ 실행 → orderbook_snapshots 데이터 축적 (Backtest 전처리)",
+      "phase": "J",
+      "passes": true,
+      "files": [
+        "engine/src/infra/db/migrations/003_extend_retention.sql",
+        "engine/src/modes/backtest.py"
+      ],
+      "acceptanceCriteria": [
+        "003_extend_retention.sql: retention 30일로 확장 (add_retention_policy INTERVAL 30 days)",
+        "docker compose up -d timescaledb redis → both healthy",
+        "cd engine && timeout 3700 python -m src.main → 1시간+ 무중단 실행",
+        "SELECT COUNT(*) FROM orderbook_snapshots >= 1000건 확인",
+        "Shadow PnL > 0, crash = 0 (Shadow 13항목 기본 PASS)",
+        "SELECT * FROM timescaledb_information.jobs → 30-day retention policy 확인"
+      ],
+      "dependencies": [
+        "US-352"
+      ]
     }
   ]
 }

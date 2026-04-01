@@ -139,21 +139,22 @@ class TestEngineInitInfrastructure:
         assert engine._event_bus is mock_bus
 
     @pytest.mark.asyncio
-    async def test_init_infrastructure_sandbox_tries_redis(self):
-        from src.core.config import ExecutionMode
+    async def test_init_infrastructure_live_mode_uses_redis(self):
+        """Phase H-2: _init_infrastructure reads engine.json mode only.
+        LIVE mode → Redis EventBus. SANDBOX/PAPER/SHADOW → InMemoryEventBus."""
         engine = _make_engine()
         engine._settings = MagicMock()
-        engine._settings.execution_mode = ExecutionMode.SANDBOX
         engine._settings.redis.url = "redis://localhost:6379"
 
         mock_redis = AsyncMock()
         mock_bus = MagicMock()
-        with patch("src.infra.redis.client.RedisClient", return_value=mock_redis):
-            with patch("src.infra.redis.event_bus.EventBus", return_value=mock_bus):
-                with patch.object(engine, "_init_database", new=AsyncMock()):
-                    with patch.object(engine, "_init_telegram"):
-                        with patch.object(engine, "_init_rust_bridge"):
-                            await engine._init_infrastructure()
+        with patch("src.core.config.load_engine_config", return_value={"mode": "live"}):
+            with patch("src.infra.redis.client.RedisClient", return_value=mock_redis):
+                with patch("src.infra.redis.event_bus.EventBus", return_value=mock_bus):
+                    with patch.object(engine, "_init_database", new=AsyncMock()):
+                        with patch.object(engine, "_init_telegram"):
+                            with patch.object(engine, "_init_rust_bridge"):
+                                await engine._init_infrastructure()
 
         assert engine._event_bus is mock_bus
 
@@ -569,7 +570,7 @@ class TestOnExecutionResult:
 class TestStartBackgroundTasks:
     @pytest.mark.asyncio
     async def test_backtest_mode_starts_orderbook_feed(self):
-        """EngineMode.BACKTEST → orderbook_feed + multi_signal tasks."""
+        """EngineMode.BACKTEST → backtest_mode task (TimescaleDB replay, not orderbook_feed)."""
         engine = _make_engine()
         engine._settings = MagicMock()
         engine._strategy_manager = AsyncMock()
@@ -589,7 +590,9 @@ class TestStartBackgroundTasks:
             with patch("asyncio.create_task", side_effect=mock_create_task):
                 await engine._start_background_tasks()
 
-        assert "orderbook_feed" in created_tasks
+        # US-351: BACKTEST mode uses _backtest_mode_task (TimescaleDB replay),
+        # not orderbook_feed (which is for paper/live WS modes).
+        assert "backtest_mode" in created_tasks
 
     @pytest.mark.asyncio
     async def test_paper_mode_starts_paper_task(self):

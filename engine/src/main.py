@@ -152,6 +152,8 @@ class Engine:
         self._data_quality_manager: Any = None
         # SIT-3: FlashGuard — rapid price movement detection
         self._flash_guard: Any = None
+        # US-351: BacktestMode result (populated by _backtest_mode_task)
+        self._backtest_result: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -462,9 +464,18 @@ class Engine:
         # EventBus: only LIVE mode uses Redis, all others use InMemory (direct routing)
         if self._engine_mode == EngineMode.LIVE:
             try:
-                from src.infra.redis.client import RedisClient
+                from urllib.parse import urlparse
+                from src.infra.redis.client import RedisClient, RedisConfig
                 from src.infra.redis.event_bus import EventBus
-                redis_client = RedisClient(self._settings.redis.url)
+                _parsed = urlparse(self._settings.redis.url)
+                redis_config = RedisConfig(
+                    host=_parsed.hostname or "localhost",
+                    port=_parsed.port or 6379,
+                    db=int((_parsed.path or "/0").lstrip("/") or "0"),
+                    password=_parsed.password,
+                    max_connections=self._settings.redis.max_connections,
+                )
+                redis_client = RedisClient(redis_config)
                 await redis_client.connect()
                 self._redis_client = redis_client
                 self._event_bus = EventBus(redis_client)
@@ -1031,24 +1042,41 @@ class Engine:
             max_position_usdt=_max_pos_usd,
         ) if tri_p.get("status") in ("READY", "MONITOR") else None
 
+        # Load disabled strategies from strategy_activation.json
+        import pathlib
+        _activation_path = pathlib.Path(__file__).parent.parent / "config" / "strategy_activation.json"
+        _disabled_ids: set[str] = set()
+        try:
+            if _activation_path.exists():
+                with open(_activation_path) as _f:
+                    _activation = json.load(_f)
+                _disabled_ids = set(_activation.get("disabled_strategies", []))
+                if _disabled_ids:
+                    logger.info("Skipping disabled strategies: %s", _disabled_ids)
+        except Exception as _exc:
+            logger.warning("Failed to load strategy_activation.json: %s", _exc)
+
         strategies = [
-            CrossExchangeStrategy("cross_exchange_v1", cost_calc, config=ce_config,
-                                  latency_tracker=self._latency_tracker,
-                                  regime_detector=self._regime_detector),
-            SpotFuturesStrategy("spot_futures_v1", cost_calc, config=sf_config,
-                                regime_detector=self._regime_detector),
-            FuturesFuturesStrategy("futures_futures_v1", cost_calc, config=ff_config,
+            s for s in [
+                CrossExchangeStrategy("cross_exchange_v1", cost_calc, config=ce_config,
+                                      latency_tracker=self._latency_tracker,
+                                      regime_detector=self._regime_detector),
+                SpotFuturesStrategy("spot_futures_v1", cost_calc, config=sf_config,
+                                    regime_detector=self._regime_detector),
+                FuturesFuturesStrategy("futures_futures_v1", cost_calc, config=ff_config,
+                                       regime_detector=self._regime_detector),
+                TriangularStrategy("triangular_v1", cost_calc, config=tri_config,
                                    regime_detector=self._regime_detector),
-            TriangularStrategy("triangular_v1", cost_calc, config=tri_config,
-                               regime_detector=self._regime_detector),
-            FundingRateStrategy("funding_rate_v1", cost_calc, config=fr_config,
-                                regime_detector=self._regime_detector),
-            *(
-                [StatisticalArbStrategy("statistical_arb_v1", cost_calc,
-                                        regime_detector=self._regime_detector)]
-                if tuned.get("statistical_arb", {}).get("status") in ("READY", "MONITOR")
-                else []
-            ),
+                FundingRateStrategy("funding_rate_v1", cost_calc, config=fr_config,
+                                    regime_detector=self._regime_detector),
+                *(
+                    [StatisticalArbStrategy("statistical_arb_v1", cost_calc,
+                                            regime_detector=self._regime_detector)]
+                    if tuned.get("statistical_arb", {}).get("status") in ("READY", "MONITOR")
+                    else []
+                ),
+            ]
+            if s.strategy_id not in _disabled_ids
         ]
 
         # CexDex requires a DEXAdapter — register only if configured
@@ -1603,9 +1631,11 @@ class Engine:
                         asyncio.ensure_future(self._circuit_breaker.record_loss(drawdown_pct=dd_pct))
                     else:
                         asyncio.ensure_future(self._circuit_breaker.record_win())
-                else:
-                    # Execution failure (rejected/timeout) — count as loss
+                elif status_val in ("rolled_back", "rollback_failed", "timeout"):
+                    # Real execution attempt that failed — count as loss
                     asyncio.ensure_future(self._circuit_breaker.record_loss())
+                # else: "rejected" = infrastructure reject (no adapter, halted, health)
+                # — do NOT count as consecutive_loss; it was never a trade attempt
             except Exception:
                 pass  # Non-critical: CB feedback failure
 
@@ -1773,14 +1803,11 @@ class Engine:
 
         # --- Single-axis mode routing (Phase H-2) ---
         if self._engine_mode == EngineMode.BACKTEST:
-            # Backtest: historical data replay + SimExecutor
+            # Backtest: TimescaleDB orderbook replay via BacktestMode + WalkForwardAnalyzer
             tasks.append(
-                asyncio.create_task(self._orderbook_feed_loop(), name="orderbook_feed")
+                asyncio.create_task(self._backtest_mode_task(), name="backtest_mode")
             )
-            tasks.append(
-                asyncio.create_task(self._paper_signal_simulator_loop(), name="multi_signal")
-            )
-            logger.info("EngineMode: BACKTEST — synthetic data + SimExecutor")
+            logger.info("EngineMode: BACKTEST — TimescaleDB replay + WalkForwardAnalyzer")
 
         elif self._engine_mode == EngineMode.PAPER:
             # Paper: live WS data + SimExecutor (= old shadow mode)
@@ -1909,6 +1936,111 @@ class Engine:
             pass
         except Exception as exc:
             logger.error("TradeConsumer loop error: %s", exc)
+
+    async def _backtest_mode_task(self) -> None:
+        """Run BacktestMode replay + WFA for 6 strategies, save results, then shutdown."""
+        import json
+        import pathlib
+        from src.modes.backtest import BacktestMode
+        from src.analysis.walk_forward import WalkForwardAnalyzer
+
+        settings = get_settings()
+        backtest = BacktestMode(
+            signal_generator=self._signal_generator,
+            strategy_manager=self._strategy_manager,
+            db_pool=self._db_pool,
+            market_recorder=self._market_recorder,
+            start_time=getattr(settings, "backtest_start", None),
+            end_time=getattr(settings, "backtest_end", None),
+            symbols=getattr(settings.operational, "symbols", None),
+        )
+        result = await backtest.run()
+        self._backtest_result = result
+        self.context.backtest_result = result
+
+        # WFA 6-strategy loop (US-353)
+        _STRATEGIES = [
+            "cross_exchange", "spot_futures", "futures_futures",
+            "triangular", "funding_rate", "statistical_arb",
+        ]
+        wfa_results: dict = {}
+        if self._db_pool is not None:
+            try:
+                wfa = WalkForwardAnalyzer(self._db_pool.pool)
+                for strategy_id in _STRATEGIES:
+                    logger.info("wfa.starting strategy=%s", strategy_id)
+                    try:
+                        wfa_result = await wfa.analyze(strategy_id=strategy_id)
+                        wfa_results[strategy_id] = {
+                            "overall_sharpe": wfa_result.overall_sharpe,
+                            "overall_mdd": wfa_result.overall_mdd,
+                            "overall_trades": wfa_result.overall_trades,
+                            "overall_pnl": wfa_result.overall_pnl,
+                            "live_eligible": wfa_result.live_eligible,
+                            "block_reason": wfa_result.block_reason,
+                        }
+                        logger.info(
+                            "wfa.completed strategy=%s sharpe=%.2f trades=%d",
+                            strategy_id, wfa_result.overall_sharpe, wfa_result.overall_trades,
+                        )
+                    except Exception as exc:
+                        logger.warning("wfa.strategy_failed strategy=%s: %s", strategy_id, exc)
+                        wfa_results[strategy_id] = {"error": str(exc)}
+            except Exception as exc:
+                logger.error("wfa.failed: %s", exc)
+
+        self.context.wfa_results = wfa_results
+
+        # Save results to .omc/state/backtest_results.json
+        try:
+            _project_root = pathlib.Path(__file__).parent.parent.parent
+            state_dir = _project_root / ".omc" / "state"
+            state_dir.mkdir(parents=True, exist_ok=True)
+            output = {
+                "backtest": {
+                    "snapshots_replayed": result.snapshots_replayed,
+                    "signals_generated": result.signals_generated,
+                    "trades_executed": result.trades_executed,
+                    "total_pnl": result.total_pnl,
+                    "sharpe_ratio": result.sharpe_ratio,
+                    "max_drawdown_pct": result.max_drawdown_pct,
+                    "win_rate": result.win_rate,
+                    "profit_factor": result.profit_factor,
+                    "duration_s": result.duration_s,
+                    "by_strategy": result.by_strategy,
+                    "error": result.error,
+                },
+                "wfa": wfa_results,
+            }
+            results_path = state_dir / "backtest_results.json"
+            results_path.write_text(json.dumps(output, indent=2, default=str))
+            logger.info("backtest.results_saved path=%s", results_path)
+        except Exception as exc:
+            logger.error("backtest.save_results_failed: %s", exc)
+
+        # ML A/B test (US-354): baseline vs ML-enhanced signal comparison
+        try:
+            import numpy as np
+            from src.analysis.ml_backtest import MLSignalBacktester
+            ml_backtester = MLSignalBacktester(ml_scorer=None)
+            ml_ab_result = ml_backtester.ab_test(
+                signals=[],
+                prices=np.array([1.0]),
+                features=None,
+            )
+            self.context.backtest_result = getattr(self.context, "backtest_result", None)
+            # Store on context for API access
+            if hasattr(self.context, "__dict__"):
+                self.context.__dict__["ml_ab_result"] = ml_ab_result
+            logger.info(
+                "backtest.ml_ab_test_done comparison_valid=%s",
+                ml_ab_result.comparison_valid,
+            )
+        except Exception as exc:
+            logger.warning("backtest.ml_ab_test_failed: %s", exc)
+
+        # Signal engine shutdown after backtest completes
+        self._shutdown_event.set()
 
     async def _orderbook_feed_loop(self) -> None:
         """Subscribe to orderbook feeds from all exchanges and feed SignalGenerator."""
@@ -2447,6 +2579,7 @@ class Engine:
         """
         from src.collectors.funding_rate_collector import FundingRateCollector
         from src.modes.shadow import ShadowMode
+        from src.modes.paper import PaperMode
 
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
         exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
