@@ -53,6 +53,50 @@ ralph 루프 안에서 **Phase(로드맵) 단위**로 **3-Stage Sequential** 수
 
 ### Stage A — 기획 (Plan)
 
+### [Step 0] 플랜 파일 동기화 + Notion 업데이트 ← **Stage A 최우선 실행 (check_all 전)**
+
+> **이 스텝을 건너뛰면 수시간 고도화한 플랜이 무시되고 구 prd.json 기준으로 실행되는 치명적 버그 발생.**
+> 반드시 아래 순서대로 실행. 플랜 파일이 없으면 스킵하고 check_all로 진행.
+
+**실행 절차:**
+
+1. **최신 플랜 파일 탐색**
+```bash
+ls -t ~/.claude/plans/*.md | grep -v "\-agent-" | head -1
+# → 가장 최근 수정된 플랜 파일 경로 확인 (agent 산출물 제외)
+```
+
+2. **플랜 파일 존재 시 → ssot-keeper 투입 (동기화)**
+```
+Agent(subagent_type="ssot-keeper",
+      prompt="플랜 파일 [경로]를 전체 정독 후 SSOT.md + prd.json 동기화:
+              1) SSOT.md Phase 섹션 전면 교체 (플랜의 새 구조 반영)
+              2) 플랜에 있으나 prd.json에 없는 항목 → 신규 US로 등록 (passes:false, 최신 US 번호+1부터)
+              3) SSOT.md 상단 PRD 카운트 업데이트
+              4) cd engine && python -m src.workflow.cli check_all → 9/9 OK 필수
+              5) 결과 보고: 추가된 US 목록 + check_all 결과
+              주의: 기존 passes:true 항목 수정 금지. 추가만.")
+```
+→ 결과 수신 후 check_all 9/9 OK 확인. DRIFT 시 ssot-keeper 재투입 (최대 1회).
+
+3. **Notion 플랜 하위 페이지 생성** (Notion MCP 사용 — 세션에 MCP 연결된 경우 자동 실행)
+```
+# 🤖 [퀀트] 아비트라지 봇 V2 (page_id: cba952f3183c40168012e9f1afc8b6f6) 하위에 새 플랜 페이지 생성
+# Notion MCP 툴: mcp__claude_ai_Notion__notion-create-pages
+# 타이틀: "[날짜] Phase X 플랜 — [플랜파일명]"
+# 내용: 플랜 파일 앞 3000자 요약 + 주요 케이스 매트릭스 + passes:false US 목록
+
+mcp__claude_ai_Notion__notion-create-pages(
+  parent_id="cba952f3183c40168012e9f1afc8b6f6",
+  title="[YYYY-MM-DD] Phase X 플랜 — [플랜파일명]",
+  content="## 플랜 요약\n[플랜 파일 앞 2000자]\n\n## passes:false 항목\n[US 목록]\n\n## 테스트 케이스\n[매트릭스 요약]"
+)
+```
+> Notion MCP 미연결 시 스킵하고 계속 진행. 워크플로우 중단 금지.
+> MCP 재연결 방법: Claude Code 재시작 (Notion MCP는 claude.ai 통합 OAuth 방식으로 자동 로드됨).
+
+---
+
 ### 자동 일관성 검사 (워크플로우 자동화 레이어)
 - 실행: `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) check_all`
 - 결과가 OK → Karina에게 "자동 검사 PASS" 컨텍스트 주입
@@ -213,6 +257,19 @@ Agent(subagent_type="quant-validator", name="yeji", model="opus",
 
 **Step 4: 팀 해산**
 - 전원 `shutdown_request` → `TeamDelete()`
+
+**Step 5: Notion 진행상태 업데이트 (배치 완료 시마다)**
+```
+# Notion MCP 툴: mcp__claude_ai_Notion__notion-update-page
+# 대상: Stage A에서 생성한 플랜 페이지 (또는 Phase 진행 현황 페이지)
+# 업데이트 내용: 방금 완료된 배치의 US 체크박스 ✅ + 남은 항목 수
+
+mcp__claude_ai_Notion__notion-update-page(
+  page_id="<Stage A에서 생성한 플랜 페이지 ID>",
+  content="## 진행 현황 (배치 N 완료)\n✅ 완료: [US목록]\n🔄 남은 항목: [passes:false 개수]개\n⏳ 다음 배치: [다음 US 목록]"
+)
+```
+> Notion MCP 미연결 시 스킵. 워크플로우 중단 금지.
 
 **파일 소유권:** Yujin/Gaeul/Leeseo/Liz=`engine/src/`, Rei=`dashboard/src/`, Wonyoung=`tests/`+`docker-compose.yml`, Lead=SSOT/`.omc/`
 
@@ -536,6 +593,51 @@ Agent(subagent_type="ssot-keeper", name="sakura", model="sonnet",
 
 - **git commit만 하고 push 안 하는 것 = 미완료**. `git push origin main` 필수.
 
+### C-Step 7: 워크플로우 알림 (Sakura git push 완료 직후)
+
+**Phase 완료 알림을 텔레그램 + iMessage 양쪽 동시 전송:**
+```
+# iMessage (MCP 플러그인)
+mcp__plugin_imessage_imessage__reply(
+  chat_id="+821071763388",
+  text="✅ Phase X 완료. [N]개 US passes:true. git push 완료. 다음: Phase Y")
+
+# 텔레그램 DevBot (Bash)
+Bash("cd engine && python -c \"from src.infra.telegram_dev_bot import send_workflow_notification; import asyncio; asyncio.run(send_workflow_notification('Phase X 완료'))\"")
+```
+> 알림 실패로 워크플로우 중단 금지. 한쪽 실패 시 나머지로 전송. 양쪽 실패 시 로그만 남기고 계속 진행.
+
+### C-Step 8: Notion Phase 완료 업데이트 (git push + 알림 완료 직후)
+
+> **목적**: 사장님이 Notion에서 Phase 진행 현황을 확인할 수 있도록 완료 상태 업데이트.
+> 🤖 [퀀트] 아비트라지 봇 V2 (page_id: `cba952f3183c40168012e9f1afc8b6f6`) 하위 플랜 페이지 업데이트.
+
+**실행 절차:**
+
+1. **Stage A에서 생성한 플랜 페이지 업데이트** (Notion MCP 사용)
+```
+# 완료된 모든 US를 ✅로 업데이트 + Phase 완료 배너 추가
+mcp__claude_ai_Notion__notion-update-page(
+  page_id="<Stage A Step 0에서 생성한 플랜 페이지 ID>",
+  content="## ✅ Phase X 완료 — [날짜]\n\n**결과**: [N]개 US passes:true\n**테스트**: [M] passed, 0 failed\n**git**: [커밋 해시]\n**다음 Phase**: [Phase Y]\n\n---\n## 완료된 US\n[전체 passes:true US 목록 체크박스로]\n\n## Shadow 결과\nPnL: [값] | PF: [값] | MDD: [값]% | crash: 0"
+)
+```
+
+2. **Notion MCP 미연결 시 폴백** — 직접 API 호출 (NOTION_API_KEY 설정 시)
+```bash
+# 루트 .env에 NOTION_API_KEY=secret_xxx 설정 시 자동 실행
+python3 -c "
+import os, urllib.request, json
+from datetime import datetime
+key = os.environ.get('NOTION_API_KEY','')
+if not key: print('[Notion] 스킵'); exit(0)
+# ... Notion REST API 직접 호출
+print('[Notion] ✅ 폴백 업데이트 완료')
+"
+```
+
+> Notion MCP / API 키 양쪽 모두 실패 시 로그만 남기고 즉시 다음 Phase Stage A 진입. 중단 금지.
+
 ### 자동 일관성 재검증 + 체크포인트
 - 실행: `cd engine && python -m src.workflow.cli --root $(git rev-parse --show-toplevel) check_all`
 - 모든 검사 OK 확인 후 git push 진행
@@ -713,9 +815,12 @@ L0~L4 자동 처리. L5 텔레그램 알림 후 1회 추가 재시도, 재실패
 - Shadow 13항목 PASS 후: `checkpoint save --trigger "shadow_13item_pass"`
 - 세션 크래시 시 체크포인트에서 재개 가능 (Gate 재실행 방지)
 
-**R5. 텔레그램 알림 (정보 전달용):**
-- Phase 완료 시 텔레그램 알림 전송 (정보 전달 목적, 승인 대기 없음)
-- 알림 전송 후 즉시 다음 Phase 자동 진행
+**R5. 워크플로우 알림 (텔레그램 + iMessage 듀얼 채널):**
+- Phase 완료, 체크포인트, L5 에스컬레이션, 컨텍스트 60% 시 **양쪽 모두** 알림
+- 알림 전송 후 즉시 다음 Phase 자동 진행 (승인 대기 없음)
+- **iMessage**: `mcp__plugin_imessage_imessage__reply(chat_id="+821071763388", text="...")`
+- **텔레그램 DevBot**: `cd engine && python -c "from src.infra.telegram_dev_bot import DevBot; import asyncio; asyncio.run(DevBot.send_workflow_alert('...'))"` 또는 직접 API 호출
+- 둘 중 하나 실패 시 나머지로 전송 (graceful fallback, 알림 실패로 워크플로우 중단 금지)
 
 **R6. Assembly Gate 조건부 실행:**
 - `git diff --name-only`에 `class ` 정의 또는 `__init__` 변경이 포함된 경우에만 실행
@@ -740,17 +845,17 @@ L0~L4 자동 처리. L5 텔레그램 알림 후 1회 추가 재시도, 재실패
 | Stage B-Step 2 완료 | Shadow PASS + checkpoint → 즉시 Stage C |
 | Stage C Step 1 완료 | 코드리뷰 PASS → 즉시 Step 2 Karina |
 | Stage C Step 2 완료 | Go → 즉시 Step 3 Sakura |
-| Stage C Step 3 완료 | SSOT/git push + 텔레그램 → **즉시 다음 Phase Stage A** |
+| Stage C Step 3 완료 | SSOT/git push + **알림(텔레그램+iMessage)** → **즉시 다음 Phase Stage A** |
 
 **체크포인트**: `.omc/state/leviathan-progress.json` — 세션 복구 전용.
 세션 크래시/수동 `/clear` 시 → `/leviathan` 재호출 → progress 파일로 재개.
 
 **컨텍스트 60% 이상 시:**
-1. WORKFLOW_TELEGRAM `send_context_warning()` → 60% 도달 알림 전송
+1. **알림 전송** (텔레그램+iMessage 듀얼): "컨텍스트 60% 도달, /clear 예정"
 2. 현재 진행 중인 Stage 완료까지 마무리
 3. `/clear` 시도
-4. 성공 시 → `send_context_clear_success()` 알림 → progress.json으로 자동 재개
-5. 실패 시 → `send_context_alert()` 알림 → 사장님 수동 개입 필요
+4. 성공 시 → **알림** "컨텍스트 초기화 성공, 자동 재개" → progress.json으로 자동 재개
+5. 실패 시 → **알림** "컨텍스트 초기화 실패, 수동 개입 필요" → 사장님 수동 개입 필요
 6. **`/compact` 절대 금지** — 결과 소실 위험
 
 ---
@@ -838,21 +943,49 @@ Final FAIL → 항목별 수정 → 코드 변경 시 SF부터, 구조 변경 �
 
 ---
 
-## 8. 텔레그램 3-Bot 체계
+## 8. 워크플로우 알림 체계 (듀얼 채널: 텔레그램 + iMessage)
+
+> 모든 워크플로우 알림은 **텔레그램 + iMessage 양쪽 동시 전송**. 한쪽 실패 시 나머지로 전송.
+
+### 8.1 알림 채널
+
+| 채널 | 호출 방법 | 용도 |
+|------|----------|------|
+| **iMessage** | `mcp__plugin_imessage_imessage__reply(chat_id="+821071763388", text="...")` | 사장님 직접 알림 (MCP 플러그인) |
+| **텔레그램 DevBot** | `DEV_TELEGRAM_BOT_TOKEN` 경유 | 워크플로우 알림 + Watchdog `/go` 수동 재개 |
+| **텔레그램 TradeBot** | `TRADE_TELEGRAM_BOT_TOKEN` | 거래 알림 + Kill Switch (20cmd) |
+| **텔레그램 InfraBot** | `INFRA_TELEGRAM_BOT_TOKEN` | 인프라 모니터링 (7cmd) |
 
 > 상세 → CLAUDE.md "텔레그램 3-Bot" 섹션 참조.
 
-| 봇 | 환경변수 | 용도 |
-|----|---------|------|
-| TradeBot | `TRADE_TELEGRAM_BOT_TOKEN` | 거래 알림 + Kill Switch + 포지션 제어 (20cmd) |
-| DevBot | `DEV_TELEGRAM_BOT_TOKEN` | 워크플로우 알림 + Watchdog `/go` 수동 재개 (16cmd) |
-| InfraBot | `INFRA_TELEGRAM_BOT_TOKEN` | 인프라 모니터링 /health /resources (7cmd) |
+### 8.2 알림 발동 시점 (양쪽 모두 전송)
 
-**워크플로우 알림 (DevBot 경유):**
-- L5 에스컬레이션: 동일 Phase 3회 실패 → 사장님 판단 요청
-- 컨텍스트 60%: `/clear` 예고 → 성공/실패 알림
-- Phase 완료: 정보 전달 (승인 대기 없음, 즉시 다음 Phase)
-- **DevBot = Watchdog**: tmux 멈춤 감지 → 알림 → 자동 재개
+| 시점 | 메시지 예시 |
+|------|-----------|
+| **Phase 완료** (C-Step 6) | "✅ Phase I 완료. git push 완료. 다음: Phase J" |
+| **체크포인트 저장** | "💾 체크포인트: Phase-I_B_complete" |
+| **L5 에스컬레이션** | "🚨 Phase I 3회 연속 실패. 사장님 판단 필요" |
+| **컨텍스트 60%** | "⚠️ 컨텍스트 60% 도달. /clear 예정" |
+| **컨텍스트 초기화 성공** | "✅ /clear 성공. 자동 재개 진행" |
+| **컨텍스트 초기화 실패** | "🚨 /clear 실패. 수동 개입 필요" |
+| **사용자 질문 필요** | "❓ [질문 내용]. 답변 대기 중" |
+
+### 8.3 알림 전송 코드 (워크플로우 내 복붙용)
+
+```python
+# iMessage (MCP 플러그인 — Claude 세션 내에서 직접 호출)
+mcp__plugin_imessage_imessage__reply(chat_id="+821071763388", text=msg)
+
+# 텔레그램 DevBot (Agent 내에서 Bash로 호출)
+# cd engine && python -c "
+# import asyncio
+# from src.infra.telegram_dev_bot import send_workflow_notification
+# asyncio.run(send_workflow_notification('$msg'))
+# "
+```
+
+### 8.4 Watchdog
+- **DevBot = Watchdog**: tmux 멈춤 감지 → 알림 → 자동 재개. `/go`로 수동 재개
 
 ---
 
@@ -886,3 +1019,4 @@ Final FAIL → 항목별 수정 → 코드 변경 시 SF부터, 구조 변경 �
 - **모든 응답에 텍스트 1줄 + tool call** (#30625). "다음 세션에서" **금지** (#34238).
 - **TeamCreate 30초 무응답 → TeamDelete → Agent() fallback** (#33043).
 - **Watchdog**: Dev봇 독립 프로세스. tmux 멈춤 → 알림 → `/go` 재개.
+- **알림 듀얼**: Phase 완료/L5/컨텍스트60%/체크포인트 시 **iMessage(`+821071763388`) + 텔레그램 DevBot** 양쪽 전송. 실패 무시.

@@ -1,7 +1,25 @@
 {
   "effortLevel": "high",
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_NO_FLICKER": "1"
+  },
+  "hooks": {
+    "SubagentStop": [
+      {
+        "matcher": "assembly|assembler|stage-c|leviathan-assembler",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /Users/100aniv/Development/arbitrage_OMC/.claude/hooks/assembly-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash /Users/100aniv/Development/arbitrage_OMC/.claude/hooks/shadow-evidence-gate.sh"
+          }
+        ]
+      }
+    ]
   },
   "permissions": {
     "allow": [

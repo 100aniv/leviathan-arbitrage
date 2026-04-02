@@ -22,6 +22,13 @@ globs: ["SSOT.md", ".omc/prd.json", "SSOT_COMPLETE.md"]
 - 증거 없이 `passes:true` 변경 = 거짓 양성 → 나중에 TF에서 반드시 발각됨
 - dead code (정의는 있으나 호출 없음) = `passes:false` 유지
 
+## math-models.md 동기화 의무
+
+`SSOT.md §4` 수정 시 `.claude/rules/math-models.md`도 반드시 함께 업데이트:
+- §4.1 슬리피지 수식 변경 → math-models.md §4.1 업데이트
+- §4.2 수수료 테이블 변경 → math-models.md §4.2 업데이트
+- 기타 §4 하위 섹션 동일
+
 ## 컨텍스트 memoize 주의
 
 세션 중 SSOT.md 수정 내용은 **현재 세션의 다른 에이전트에게 반영되지 않습니다**.
