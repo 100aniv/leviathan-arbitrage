@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.infra.telegram import TelegramAlerter
-from src.tuning.backtest import BacktestEngine, BacktestResult, StrategyParams
+from src.tuning.backtest import BacktestEngine, TuningBacktestResult, StrategyParams
 from src.tuning.evaluator import EvaluationReport, OutOfSampleEvaluator
 from src.tuning.file_data_loader import FileDataLoader, generate_synthetic_ohlcv
 from src.tuning.param_bridge import params_to_strategy_config
@@ -28,8 +28,8 @@ class ShadowResult:
 
     strategy_id: str
     shadow_params: StrategyParams
-    baseline_result: BacktestResult
-    shadow_result: BacktestResult
+    baseline_result: TuningBacktestResult
+    shadow_result: TuningBacktestResult
     evaluation: EvaluationReport
     config_to_apply: dict
     elapsed_seconds: float = 0.0

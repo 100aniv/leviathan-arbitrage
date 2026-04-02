@@ -85,7 +85,14 @@ class ScheduledTuner:
             if env_path.exists():
                 resolved_path = env_path
 
-        if resolved_path is not None:
+        # Apply activation filter when:
+        # - activation_path was explicitly provided (caller requested filtering), OR
+        # - strategies was not explicitly provided (using default list)
+        # Skip only when strategies is explicit AND activation_path came from env fallback.
+        _apply_filter = resolved_path is not None and (
+            strategies is None or activation_path is not None
+        )
+        if _apply_filter:
             active = self._load_activation(resolved_path)
             if active is not None:
                 base = [s for s in base if s in active]

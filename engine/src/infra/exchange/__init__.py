@@ -8,6 +8,11 @@ from src.infra.exchange.native_bithumb import NativeBithumbAdapter
 from src.infra.exchange.native_bybit import NativeBybitAdapter
 from src.infra.exchange.native_okx import NativeOKXAdapter
 from src.infra.exchange.native_upbit import NativeUpbitAdapter
+from src.infra.exchange.native_mexc import NativeMEXCAdapter
+from src.infra.exchange.native_gateio import NativeGateIOAdapter
+from src.infra.exchange.native_bingx import NativeBingXAdapter
+from src.infra.exchange.native_lbank import NativeLBankAdapter
+from src.infra.exchange.native_orangex import NativeOrangeXAdapter
 from src.infra.exchange.rate_limiter import ExchangeRateLimiter, RateLimitConfig
 from src.infra.exchange.websocket_manager import ConnectionConfig, ConnectionState, WebSocketManager
 
@@ -37,6 +42,11 @@ __all__ = [
     "NativeBybitAdapter",
     "NativeOKXAdapter",
     "NativeUpbitAdapter",
+    "NativeMEXCAdapter",
+    "NativeGateIOAdapter",
+    "NativeBingXAdapter",
+    "NativeLBankAdapter",
+    "NativeOrangeXAdapter",
     # Infrastructure
     "HealthChecker",
     "ExchangeRateLimiter",
@@ -55,6 +65,11 @@ _NATIVE_ADAPTER_MAP: dict[str, type[NativeAdapter]] = {
     "bitget": NativeBitgetAdapter,
     "upbit": NativeUpbitAdapter,
     "bithumb": NativeBithumbAdapter,
+    "mexc": NativeMEXCAdapter,
+    "gateio": NativeGateIOAdapter,
+    "bingx": NativeBingXAdapter,
+    "lbank": NativeLBankAdapter,
+    "orangex": NativeOrangeXAdapter,
 }
 
 

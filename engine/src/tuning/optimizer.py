@@ -9,7 +9,7 @@ from typing import Callable
 import optuna
 from optuna.samplers import TPESampler
 
-from src.tuning.backtest import BacktestEngine, BacktestResult, StrategyParams
+from src.tuning.backtest import BacktestEngine, TuningBacktestResult, StrategyParams
 from src.tuning.data_loader import DataLoader, OHLCVWindow
 from src.tuning.strategy_backtest import STRATEGY_TYPES, StrategyBacktestEngine
 
@@ -38,8 +38,8 @@ class OptimizationResult:
     """Outcome of one walk-forward fold."""
 
     best_params: StrategyParams
-    train_result: BacktestResult
-    val_result: BacktestResult
+    train_result: TuningBacktestResult
+    val_result: TuningBacktestResult
     n_trials: int
     shadow_mode: bool = True  # params run in shadow 24 h before live application
 

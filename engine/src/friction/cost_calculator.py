@@ -67,8 +67,6 @@ class CostCalculator:
     """
 
     ROLLBACK_WINDOW = 30
-    _ROLLBACK_DISABLED = os.getenv("DISABLE_ROLLBACK_COST", "").lower() in ("true", "1", "yes")
-    COLD_START_ROLLBACK_PROB = Decimal("0") if _ROLLBACK_DISABLED else Decimal("0.05")
 
     def __init__(
         self,
@@ -91,10 +89,14 @@ class CostCalculator:
         """Record trade outcome to update rolling rollback probability."""
         self._trade_history.append(outcome)
 
+    @staticmethod
+    def _is_rollback_disabled() -> bool:
+        return os.getenv("DISABLE_ROLLBACK_COST", "").lower() in ("true", "1", "yes")
+
     def rollback_probability(self) -> Decimal:
         """P(rollback) from rolling 30-trade window. Returns 5% cold-start if no history."""
         if not self._trade_history:
-            return self.COLD_START_ROLLBACK_PROB
+            return Decimal("0") if self._is_rollback_disabled() else Decimal("0.05")
         rolled_back = sum(1 for t in self._trade_history if t.rolled_back)
         return Decimal(rolled_back) / Decimal(len(self._trade_history))
 

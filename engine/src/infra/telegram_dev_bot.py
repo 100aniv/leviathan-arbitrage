@@ -552,10 +552,10 @@ class DevTelegramBot(TelegramBotBase):
 
     async def _cmd_env(self, text: str, chat_id: int, message: dict) -> str:
         """.env 변수 확인 (민감정보 마스킹)."""
-        env_path = _ENGINE_ROOT / ".env"
+        env_path = _REPO_ROOT / ".env"
         try:
             if not env_path.exists():
-                return "🔑 engine/.env 파일 없음"
+                return "🔑 .env 파일 없음"
 
             content = env_path.read_text(encoding="utf-8")
             lines = ["🔑 환경변수 (.env)\n━━━━━━━━━━━━━━━"]

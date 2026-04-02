@@ -22,7 +22,7 @@ _ExecutionRow = tuple[
     datetime, str, str | None, str, str, str,
     Decimal, Decimal, Decimal,
     Decimal | None, Decimal | None, Decimal | None, Decimal | None,
-    str, str,
+    str, str, str,
 ]
 
 # SQL templates -----------------------------------------------------------
@@ -40,9 +40,9 @@ _INSERT_EXECUTION = """
          buy_exchange, sell_exchange, symbol,
          buy_price, sell_price, size,
          gross_spread_bps, fee_total, slippage_total, net_pnl,
-         status, metadata)
+         status, metadata, mode)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-            $10, $11, $12, $13, $14, $15::jsonb)
+            $10, $11, $12, $13, $14, $15::jsonb, $16)
     ON CONFLICT DO NOTHING
 """
 
@@ -192,6 +192,7 @@ class MarketRecorder:
         net_pnl: Decimal | None = None,
         status: str = "pending",
         metadata: dict[str, Any] | None = None,
+        mode: str = "live",
     ) -> None:
         """Buffer a trade execution record for async batch insert.
 
@@ -218,6 +219,7 @@ class MarketRecorder:
                 net_pnl,
                 status,
                 metadata_str,
+                mode,
             )
             self._execution_queue.put_nowait(row)
             self._maybe_trigger_flush()

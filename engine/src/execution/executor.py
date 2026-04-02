@@ -14,6 +14,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
+from src.core.config import get_settings
 from src.core.models import Order, OrderSide, OrderType, Trade
 from src.infra.exchange.base import ExchangeAdapter
 from src.risk.kill_switch import halt_local, is_halted
@@ -24,11 +25,10 @@ logger = logging.getLogger(__name__)
 _HEALTH_THRESHOLD = 0.7  # Phase H-Final: 0.9→0.7 (소액 alpha 초기 연결 시 0.85)
 # Partial fill acceptance threshold
 _PARTIAL_FILL_THRESHOLD = Decimal("0.80")
-# Blueprint compliance: LEG_TIMEOUT_MS from environment (.env or system)
-import os as _os
-_LEG_TIMEOUT_MS = int(_os.getenv("LEG_TIMEOUT_MS", "500"))
-_ROLLBACK_TIMEOUT_MS = int(_os.getenv("ROLLBACK_TIMEOUT_MS", "2000"))
-_RECONCILIATION_INTERVAL_S = int(_os.getenv("RECONCILIATION_INTERVAL_S", "5"))
+# Blueprint compliance: LEG_TIMEOUT_MS from settings singleton
+_LEG_TIMEOUT_MS = get_settings().execution.leg_timeout_ms
+_ROLLBACK_TIMEOUT_MS = get_settings().execution.rollback_timeout_ms
+_RECONCILIATION_INTERVAL_S = get_settings().execution.reconciliation_interval_s
 
 
 class ExecutionStatus(StrEnum):

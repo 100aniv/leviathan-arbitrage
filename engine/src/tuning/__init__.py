@@ -1,6 +1,6 @@
 """ML-based auto-tuner for strategy parameter optimization."""
 from src.tuning.adaptive_threshold import AdaptiveThreshold
-from src.tuning.backtest import BacktestEngine, BacktestResult, StrategyParams
+from src.tuning.backtest import BacktestEngine, TuningBacktestResult, StrategyParams
 from src.tuning.data_loader import DataLoader, OHLCVWindow, SpreadRecord
 from src.tuning.evaluator import EvaluationReport, OutOfSampleEvaluator
 from src.tuning.optimizer import ObjectiveType, TunerConfig, WalkForwardOptimizer
@@ -15,7 +15,7 @@ from src.tuning.regime_detector import (
 __all__ = [
     "AdaptiveThreshold",
     "BacktestEngine",
-    "BacktestResult",
+    "TuningBacktestResult",
     "StrategyParams",
     "DataLoader",
     "OHLCVWindow",

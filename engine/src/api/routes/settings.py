@@ -85,9 +85,9 @@ async def update_settings(request: Request, body: SettingsUpdate) -> JSONRespons
 
 def _update_env_file(key: str, value: str) -> bool:
     """Update a key=value in engine/.env file. Returns True on success."""
-    env_path = Path(__file__).parents[3] / ".env"
+    env_path = Path(__file__).parents[4] / ".env"
     if not env_path.exists():
-        logger.warning("Engine .env not found at %s", env_path)
+        logger.warning(".env not found at %s", env_path)
         return False
     try:
         content = env_path.read_text()

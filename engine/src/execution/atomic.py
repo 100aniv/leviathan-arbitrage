@@ -7,7 +7,6 @@ US-275-a: DepthAnalyzer sizing — scale size to available liquidity before exec
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -16,6 +15,7 @@ from typing import TYPE_CHECKING, Protocol
 import httpx
 import structlog
 
+from src.core.config import get_settings
 from src.core.depth_analyzer import DepthAnalyzer
 from src.core.order_book import OrderBook
 from src.infra.metrics import IOC_FILL_RATE, IOC_VS_MARKET
@@ -65,12 +65,13 @@ class AtomicOrderExecutor:
         self._market_slippage_sum: float = 0.0
         self._executed_keys: dict[str, float] = {}  # US-153: key → timestamp
         # US-275: partial fill stop
-        self.partial_fill_timeout_s: float = float(os.environ.get("PARTIAL_FILL_TIMEOUT_S", "30"))
-        self.max_loss_pct: float = float(os.environ.get("MAX_LOSS_PCT", "2.0"))
-        self.enable_partial_fill_stop: bool = os.environ.get("ENABLE_PARTIAL_FILL_STOP", "true").lower() == "true"
+        _op = get_settings().operational
+        self.partial_fill_timeout_s: float = _op.partial_fill_timeout_s
+        self.max_loss_pct: float = _op.max_loss_pct
+        self.enable_partial_fill_stop: bool = _op.enable_partial_fill_stop
         # US-275-a: depth-based sizing
         self._depth_analyzer: DepthAnalyzer | None = depth_analyzer
-        self.enable_depth_sizing: bool = os.environ.get("ENABLE_DEPTH_SIZING", "true").lower() == "true"
+        self.enable_depth_sizing: bool = _op.enable_depth_sizing
         # US-331: leg risk detection
         self._leg_risk_events: int = 0
 
@@ -93,7 +94,7 @@ class AtomicOrderExecutor:
     ) -> OrderResult:
         """Try IOC limit; fall back to market for remainder if partial or timed out."""
         # US-275-a: scale size to available liquidity
-        min_order_size = Decimal(os.getenv("MIN_ORDER_SIZE", "0.001"))
+        min_order_size = Decimal(get_settings().operational.min_order_size)
         if self._depth_analyzer and book and self.enable_depth_sizing:
             side_str = "ask" if side in ("buy", "bid") else "bid"
             available = self._depth_analyzer.liquidity_at_pct_depth(book, Decimal("1"), side_str)

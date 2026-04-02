@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from src.api.auth import require_auth
+from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +160,7 @@ async def get_db_metrics(request: Request) -> JSONResponse:  # noqa: ARG001
     }
 
     try:
-        database_url = os.getenv("DATABASE_URL", "")
+        database_url = get_settings().database.url
         if database_url:
             metrics["connected"] = True
             # Try to get pool stats from asyncpg if available
@@ -186,7 +187,7 @@ async def get_redis_metrics(request: Request) -> JSONResponse:  # noqa: ARG001
 
     try:
         import redis.asyncio as aioredis
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        redis_url = get_settings().redis.url
         client = aioredis.from_url(redis_url, decode_responses=True)
         try:
             info = await client.info("memory")

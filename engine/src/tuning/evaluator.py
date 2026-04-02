@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import stats
 
-from src.tuning.backtest import BacktestResult
+from src.tuning.backtest import TuningBacktestResult
 
 
 @dataclass
@@ -27,6 +27,10 @@ class OutOfSampleEvaluator:
     """
     Compare shadow-mode backtesting results vs live trading results.
 
+    Data contract: inputs must be TuningBacktestResult objects sourced from
+    mode='backtest' execution records only — WFA must not mix live/paper data
+    (US-376).
+
     Metrics:
     - Sim-Real Variance: |sim_pnl - live_pnl| / |live_pnl| * 100 (target < 5%)
     - Welch's t-test on return distributions (two-sided, unequal variance)
@@ -38,8 +42,8 @@ class OutOfSampleEvaluator:
 
     def evaluate(
         self,
-        sim_result: BacktestResult,
-        live_result: BacktestResult,
+        sim_result: TuningBacktestResult,
+        live_result: TuningBacktestResult,
     ) -> EvaluationReport:
         """Compare simulation vs live trading performance."""
         sim_pnl = sim_result.total_pnl
@@ -81,6 +85,6 @@ class OutOfSampleEvaluator:
             recommendation=rec,
         )
 
-    def compare_sharpe(self, baseline: BacktestResult, candidate: BacktestResult) -> bool:
+    def compare_sharpe(self, baseline: TuningBacktestResult, candidate: TuningBacktestResult) -> bool:
         """Return True if candidate Sharpe ratio strictly exceeds baseline."""
         return candidate.sharpe_ratio > baseline.sharpe_ratio

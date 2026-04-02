@@ -99,6 +99,7 @@ async def list_trades(
     strategy: str | None = None,
     exchange: str | None = None,
     symbol: str | None = None,
+    mode: str | None = None,
     from_date: str | None = Query(default=None, alias="from"),
     to_date: str | None = Query(default=None, alias="to"),
     limit: int = Query(default=50, ge=1, le=1000),
@@ -133,6 +134,10 @@ async def list_trades(
                 if symbol:
                     clauses.append(f"symbol = ${idx}")
                     params.append(symbol)
+                    idx += 1
+                if mode:
+                    clauses.append(f"mode = ${idx}")
+                    params.append(mode)
                     idx += 1
                 if from_date:
                     clauses.append(f"ts >= ${idx}::timestamptz")

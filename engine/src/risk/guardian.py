@@ -19,6 +19,7 @@ Check ordering:
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -99,9 +100,12 @@ class RiskGuardian:
         max_concurrent_positions: int = 20,
         dynamic_sizer: Any | None = None,  # US-176: DynamicSizer for correlation scale-down
         capital_allocation_pct: dict[str, float] | None = None,  # US-196: per-strategy capital limits
+        warmup_seconds: float = 120.0,  # cold-start grace period for exchange health check
     ) -> None:
         import os as _os
         self._cb = circuit_breaker
+        self._start_time: float = time.monotonic()
+        self._warmup_seconds: float = float(warmup_seconds)
         self._dynamic_sizer = dynamic_sizer  # US-176
         self._max_position_pct = max_position_pct
         self._max_drawdown_pct = max_drawdown_pct
@@ -258,6 +262,9 @@ class RiskGuardian:
                 )
 
         # CHECK #5: Exchange health score (US-286: prefer DQM if available)
+        # Cold-start warm-up: skip health check during initial warmup_seconds to allow
+        # WebSocket connections and latency metrics to stabilise before enforcing threshold.
+        _in_warmup = (time.monotonic() - self._start_time) < self._warmup_seconds
         if self.data_quality_manager is not None:
             _dqm_score = self.data_quality_manager.get_health_score(proposal.exchange_id)
             health_score = Decimal(str(_dqm_score))
@@ -265,7 +272,7 @@ class RiskGuardian:
             health_score = portfolio.exchange_health_scores.get(
                 proposal.exchange_id, Decimal("0")
             )
-        if health_score < self._exchange_health_threshold:
+        if not _in_warmup and health_score < self._exchange_health_threshold:
             RISK_REJECTIONS_TOTAL.labels(
                 check_number="5", reason="exchange_health_low"
             ).inc()
@@ -403,7 +410,13 @@ class RiskGuardian:
             halted = self.per_strategy_cb.halted_count()
             active = self.per_strategy_cb.active_count()
             if active > 0 and halted >= active:
-                self._cb.record_failure()
+                import asyncio as _asyncio
+                try:
+                    _asyncio.ensure_future(
+                        self._cb.trigger_manual("per_strategy_all_halted")
+                    )
+                except RuntimeError:
+                    pass  # No event loop — non-critical
                 logger.warning(
                     "risk_check_12_global_cb_triggered",
                     halted=halted,
