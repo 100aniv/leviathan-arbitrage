@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from src.api.auth import DASHBOARD_USER, require_auth, verify_password, create_token, verify_ws_token
 from src.api.middleware import IPWhitelistMiddleware, LoginRateLimitMiddleware, RateLimitMiddleware
 from src.api.websocket import ConnectionManager
+from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,8 @@ class EngineContext:
     dynamic_sizer: Any = None
     tca_analyzer: Any = None  # US-116
     rebalancer: Any = None  # US-120
+    backtest_result: Any = None  # US-351: BacktestMode result
+    wfa_results: dict[str, Any] = field(default_factory=dict)  # US-353: WFA per-strategy
 
 
 class KillBody(BaseModel):
@@ -96,9 +99,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
         redoc_url=None if _is_prod else "/redoc",
     )
 
-    _cors_origins = os.environ.get(
-        "CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
-    ).split(",")
+    _cors_origins = get_settings().operational.cors_origins.split(",")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins,
@@ -152,6 +153,10 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     app.include_router(tca_router)
     from src.api.routes.system import router as system_router
     app.include_router(system_router)
+    from src.api.routes.backtest import router as backtest_router
+    app.include_router(backtest_router)
+    from src.api.routes.paper import router as paper_router
+    app.include_router(paper_router)
 
     # ---------------------------------------------------------------------------
     # Prometheus short-path alias
