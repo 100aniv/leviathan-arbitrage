@@ -11,32 +11,32 @@
     "_note": "Real-data WFE results from TimescaleDB.",
     "cross_exchange": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "triangular": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "spot_futures": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "funding_rate": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "statistical_arb": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "futures_futures": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 7 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     }
   },
@@ -123,6 +123,6 @@
       "statistical_arb": 0,
       "futures_futures": 0
     },
-    "timestamp": "2026-03-29T08:59:03.953980+00:00"
+    "timestamp": "2026-04-01T04:34:06.029920+00:00"
   }
 }
