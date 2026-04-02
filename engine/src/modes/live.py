@@ -33,6 +33,7 @@ from src.core.config import get_settings
 from src.core.models import Order, OrderSide, OrderType, Signal
 from src.core.rust_bridge import get_orderbook_class
 from src.friction.fee_model import FeeModel
+from src.modes.base import BaseMode
 from src.strategies.base import TradeRequest, TradeLeg
 
 logger = logging.getLogger(__name__)
@@ -164,7 +165,7 @@ except Exception:
 # ---------------------------------------------------------------------------
 
 
-class LiveMode:
+class LiveMode(BaseMode):
     """Live Mode orchestrator — mirrors ShadowMode with real execution.
 
     Lifecycle: init → start() → [runs continuously] → stop()
@@ -223,6 +224,7 @@ class LiveMode:
         self._symbols = symbols or ["BTC/USDT"]
         self._exchanges = exchanges or ["binance"]
         self._running = False
+        self._first_trade_recorded = False
         self._stats = LiveModeStats(start_time=time.monotonic())
         self._fee_model = FeeModel()
 
@@ -378,6 +380,21 @@ class LiveMode:
             logger.warning(
                 "live_mode.live_gate_not_initialized — proceeding (소액 테스트 모드)"
             )
+
+        # Step 1.5: Telegram approval gate (fail-closed, US-364)
+        try:
+            from src.infra.approval_gate import request_live_approval  # noqa: PLC0415
+            approved = await request_live_approval(
+                stage="K-L",
+                details="Live 모드 진입 준비 완료 (K-L). 승인 시 실거래 시작.",
+            )
+            if not approved:
+                logger.warning("live_mode.approval_rejected — aborting live start")
+                raise LiveGateFailed("Live approval rejected or timed out")
+        except LiveGateFailed:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise LiveGateFailed(f"approval_gate_error: {exc}") from exc
 
         self._running = True
         self._stats = LiveModeStats(start_time=time.monotonic())
@@ -777,6 +794,10 @@ class LiveMode:
 
             # Compute PnL from ACTUAL fill prices (not estimates)
             pnl = self._compute_pnl_from_result(exec_result, trade_request)
+
+            # US-056: Record first live trade
+            if not self._first_trade_recorded and self._execution_mode == "live":
+                self._record_first_trade(trade_request, float(pnl))
             self._update_pnl_stats(pnl, sid)
 
             if LIVE_TRADES_TOTAL is not None:
@@ -808,6 +829,26 @@ class LiveMode:
 
             # Publish to Redis for dashboard (non-critical)
             await self._publish_trade_for_observability(trade_record)
+
+            # Record execution to TimescaleDB (US-358) ⚡ WIRING 호출
+            if self._market_recorder is not None and trade_request.legs:
+                try:
+                    buy_legs = [l for l in trade_request.legs if l.side == OrderSide.BUY]
+                    sell_legs = [l for l in trade_request.legs if l.side == OrderSide.SELL]
+                    first_leg = trade_request.legs[0]
+                    self._market_recorder.record_execution(
+                        strategy_id=sid,
+                        buy_exchange=buy_legs[0].exchange_id if buy_legs else "unknown",
+                        sell_exchange=sell_legs[0].exchange_id if sell_legs else "unknown",
+                        symbol=first_leg.symbol,
+                        buy_price=buy_legs[0].price if buy_legs and buy_legs[0].price else Decimal("0"),
+                        sell_price=sell_legs[0].price if sell_legs and sell_legs[0].price else Decimal("0"),
+                        size=first_leg.size,
+                        net_pnl=pnl,
+                        mode=self._execution_mode,
+                    )
+                except Exception as exc:
+                    logger.debug("live_mode.record_execution_failed error=%s", exc)
 
             logger.info(
                 "live_mode.trade_executed strategy=%s pnl=%.4f total_pnl=%.2f mode=%s latency_ms=%.1f",
@@ -938,6 +979,34 @@ class LiveMode:
         symbols = sorted({leg.symbol for leg in trade_request.legs})
         exchanges = sorted({leg.exchange_id for leg in trade_request.legs})
         return f"{','.join(symbols)}|{','.join(exchanges)}"
+
+    def _record_first_trade(self, trade_request: TradeRequest, pnl: float) -> None:
+        """Save first live trade to .omc/state/live-first-trade.json — US-056."""
+        import json  # noqa: PLC0415
+        import pathlib  # noqa: PLC0415
+        self._first_trade_recorded = True
+        try:
+            _state_dir = pathlib.Path(__file__).resolve().parents[3] / ".omc" / "state"
+            _state_dir.mkdir(parents=True, exist_ok=True)
+            first_leg = trade_request.legs[0] if trade_request.legs else None
+            record = {
+                "exchange": first_leg.exchange_id if first_leg else "",
+                "strategy": trade_request.strategy_id or "",
+                "side": first_leg.side.value if first_leg else "",
+                "qty": float(first_leg.size) if first_leg else 0.0,
+                "price": float(first_leg.price) if first_leg and first_leg.price else 0.0,
+                "pnl_usd": pnl,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            (_state_dir / "live-first-trade.json").write_text(
+                json.dumps(record, indent=2)
+            )
+            logger.info(
+                "live_mode.first_trade_recorded exchange=%s strategy=%s pnl=%.4f",
+                record["exchange"], record["strategy"], pnl,
+            )
+        except Exception as exc:
+            logger.warning("live_mode.first_trade_record_failed: %s", exc)
 
     def _compute_pnl_from_result(self, exec_result: Any, trade_request: TradeRequest) -> Decimal:
         """Compute PnL from ACTUAL execution result (fill prices from exchange).
@@ -1088,9 +1157,16 @@ class LiveMode:
             while self._running:
                 try:
                     if self._funding_rate_collector is not None:
-                        rates = await self._funding_rate_collector.fetch_all()
-                        if self._multi_signal_producer is not None and rates:
-                            self._multi_signal_producer.update_funding_rates(rates)
+                        rates = await self._funding_rate_collector.poll_once()
+                        if self._real_signal_producer is not None and rates:
+                            # Convert FundingRateEntry → float for RealDataSignalProducer
+                            float_rates = {
+                                ex: {sym: e.rate for sym, e in syms.items()}
+                                for ex, syms in rates.items()
+                            }
+                            await self._real_signal_producer.on_funding_rates_updated(
+                                float_rates, self._books
+                            )
                 except Exception as exc:
                     logger.warning("live_mode.funding_rate_fetch_error: %s", exc)
                 await asyncio.sleep(interval)

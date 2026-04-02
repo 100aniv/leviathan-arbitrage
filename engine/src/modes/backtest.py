@@ -56,6 +56,16 @@ class BacktestResult:
     by_strategy: dict[str, dict] = field(default_factory=dict)
     pnl_curve: list[float] = field(default_factory=list)
     error: str = ""  # "insufficient_data" if no snapshots found
+    # US-361 meta fields
+    strategy_ids: list[str] = field(default_factory=list)
+    exchange_ids: list[str] = field(default_factory=list)
+    seed_capital: float = 0.0
+    period_label: str = ""
+    by_exchange: dict[str, dict] = field(default_factory=dict)
+    # US-368~371 batch meta
+    run_id: str = ""
+    batch_id: str = ""
+    metadata: dict = field(default_factory=dict)
 
 
 class BacktestMode:
@@ -77,6 +87,11 @@ class BacktestMode:
         symbols: list[str] | None = None,
         exchanges: list[str] | None = None,
         replay_speed: float = 0.0,  # 0 = as fast as possible
+        strategy_ids: list[str] | None = None,
+        seed_capital: float | None = None,
+        run_id: str = "",
+        batch_id: str = "",
+        metadata: dict | None = None,
     ) -> None:
         self._signal_generator = signal_generator
         self._strategy_manager = strategy_manager
@@ -87,6 +102,11 @@ class BacktestMode:
         self._symbols = symbols or ["BTC/USDT"]
         self._exchanges = exchanges
         self._replay_speed = replay_speed
+        self._strategy_ids = strategy_ids or []
+        self._seed_capital = seed_capital or 0.0
+        self._run_id = run_id
+        self._batch_id = batch_id
+        self._metadata = metadata or {}
 
         self._orderbook_cls = get_orderbook_class()
         self._books: dict[str, dict[str, Any]] = {}
@@ -127,6 +147,10 @@ class BacktestMode:
         self._result.snapshots_replayed = len(snapshots)
         self._result.start_time = self._start_time or ""
         self._result.end_time = self._end_time or ""
+        self._result.strategy_ids = self._strategy_ids
+        self._result.exchange_ids = self._exchanges or []
+        self._result.seed_capital = self._seed_capital
+        self._result.period_label = f"{self._start_time or ''} ~ {self._end_time or ''}"
 
         if not snapshots:
             logger.warning("backtest.no_snapshots — check TimescaleDB orderbook_snapshots table")
@@ -163,7 +187,14 @@ class BacktestMode:
         # Compute final metrics
         self._compute_metrics()
         self._result.duration_s = time.monotonic() - t0
+        self._result.run_id = self._run_id
+        self._result.batch_id = self._batch_id
+        self._result.metadata = self._metadata
         self._running = False
+
+        # Save to file if run_id set (US-368~371)
+        if self._run_id:
+            self._save_result()
 
         logger.info(
             "backtest.completed duration=%.1fs snapshots=%d trades=%d pnl=%.2f sharpe=%.2f mdd=%.4f",
@@ -173,6 +204,22 @@ class BacktestMode:
         )
 
         return self._result
+
+    def _save_result(self) -> None:
+        """Save backtest result to .omc/state/backtest-results-{run_id}.json (US-368~371)."""
+        import dataclasses  # noqa: PLC0415
+        import json  # noqa: PLC0415
+        from pathlib import Path  # noqa: PLC0415
+
+        state_dir = Path(__file__).resolve().parents[4] / ".omc" / "state"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        out_path = state_dir / f"backtest-results-{self._run_id}.json"
+        try:
+            data = dataclasses.asdict(self._result)
+            out_path.write_text(json.dumps(data, indent=2, default=str))
+            logger.info("backtest.result_saved path=%s", out_path)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("backtest.result_save_failed: %s", exc)
 
     def stop(self) -> None:
         """Stop backtest early."""

@@ -6,6 +6,8 @@ import json
 import logging
 import os
 import time
+
+from src.core.config import get_settings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -72,19 +74,13 @@ class StrategyValidationOrchestrator:
         self._shadow = shadow_mode
         self._telegram = telegram_sender
 
-        # Config from env vars (with safe int parsing)
-        def _safe_int(key: str, default: int) -> int:
-            try:
-                return int(os.getenv(key, str(default)))
-            except ValueError:
-                logger.warning("Invalid %s value, using default %d", key, default)
-                return default
-
-        self._duration_s = _safe_int("STRATEGY_VALIDATION_DURATION_S", 600)
-        self._combined_duration_s = _safe_int("STRATEGY_VALIDATION_COMBINED_DURATION_S", 600)
-        self._min_trades = _safe_int("STRATEGY_VALIDATION_MIN_TRADES", 5)
-        self._hydration_s = _safe_int("STRATEGY_VALIDATION_HYDRATION_S", 30)
-        self._output_path = Path(os.getenv("STRATEGY_ACTIVATION_PATH", "config/strategy_activation.json"))
+        # Config from settings singleton
+        _op = get_settings().operational
+        self._duration_s = _op.strategy_validation_duration_s
+        self._combined_duration_s = _op.strategy_validation_combined_duration_s
+        self._min_trades = _op.strategy_validation_min_trades
+        self._hydration_s = _op.strategy_validation_hydration_s
+        self._output_path = Path(_op.strategy_activation_path)
 
         self._report = StrategyValidationReport(
             timestamp=datetime.now(timezone.utc).isoformat(),

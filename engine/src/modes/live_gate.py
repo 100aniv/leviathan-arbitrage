@@ -16,7 +16,9 @@ Failure blocks live mode activation + sends Telegram alert with reasons.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import pathlib
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -26,6 +28,7 @@ import asyncpg
 import structlog
 
 from src.analysis.walk_forward import WalkForwardAnalyzer, WalkForwardResult
+from src.core.config import get_settings
 from src.infra.metrics import CIRCUIT_BREAKER_STATE
 
 logger = structlog.get_logger(__name__)
@@ -90,12 +93,18 @@ class LiveGate:
         circuit_breaker: object | None = None,
         exchange_health_fn: Callable[[], dict[str, float]] | None = None,
         settings: object | None = None,
+        api_connectivity_fn: object | None = None,  # async callable -> dict[str, float] (ms)
+        balance_fn: object | None = None,           # callable -> dict[str, dict]
+        risk_guardian: object | None = None,
     ) -> None:
         self._pool = pool
         self._telegram = telegram
         self._kill_switch = kill_switch
         self._circuit_breaker = circuit_breaker
         self._exchange_health_fn = exchange_health_fn
+        self._api_connectivity_fn = api_connectivity_fn
+        self._balance_fn = balance_fn
+        self._risk_guardian = risk_guardian
 
         # Override class-level defaults from LiveGateSettings if provided
         if settings is not None and hasattr(settings, "live_gate"):
@@ -332,14 +341,14 @@ class LiveGate:
         US-280: Runs indefinitely; exceptions are caught and logged.
         Enabled via LIVE_GATE_CONTINUOUS_ENABLED env var (default True).
         """
-        import os
-        if os.getenv("LIVE_GATE_CONTINUOUS_ENABLED", "true").lower() == "false":
+        _op = get_settings().operational
+        if not _op.live_gate_continuous_enabled:
             logger.info("live_gate.continuous_monitor disabled via env")
             return
 
         consecutive_failures = 0
         try:
-            _raw = int(os.getenv("LIVE_GATE_PAUSE_THRESHOLD", "3"))
+            _raw = _op.live_gate_pause_threshold
             pause_threshold = max(1, min(_raw, 10))
         except (ValueError, TypeError):
             pause_threshold = 3
@@ -429,7 +438,7 @@ class LiveGate:
         4. PASS 시 DB에 live_gate_passed=true + 타임스탬프 저장
         """
         # --- AC3: BYPASS ---
-        if os.getenv("LIVE_GATE_BYPASS", "false").lower() == "true":
+        if get_settings().live_gate.bypass:
             logger.warning("live_gate_bypass_active")
             if self._telegram is not None:
                 try:
@@ -447,18 +456,17 @@ class LiveGate:
             logger.info("live_gate_enforcement_restored_from_db", passed_at=str(ts))
             return True
 
-        # --- 전체 평가 ---
-        result = await self.evaluate()
-        if result is None or not result.eligible:
+        # --- Preflight 10-check (US-055) ---
+        all_pass, preflight_data = await self.run_preflight()
+        if not all_pass:
+            failed = preflight_data.get("failed_checks", [])
             logger.warning(
-                "live_gate_enforcement_blocked",
-                eligible=False,
-                checks={c.name: c.passed for c in result.checks} if result else {},
+                "live_gate_enforcement_blocked failed_checks=%s", failed
             )
             if self._telegram is not None:
                 try:
                     await self._telegram.send_alert(
-                        "⚠️ LiveGate BLOCKED: 6-check 미통과 → Shadow fallback",
+                        f"⚠️ LiveGate BLOCKED: Preflight 미통과 → fallback. Failed: {failed}",
                         level="warning",
                     )
                 except Exception:
@@ -467,7 +475,7 @@ class LiveGate:
 
         # --- AC1: PASS → DB 저장 ---
         await self._db_save_pass_state()
-        logger.info("live_gate_enforcement_passed", eligible=True)
+        logger.info("live_gate_enforcement_passed eligible=True")
         return True
 
     # ---------------------------------------------------------------------------
@@ -557,6 +565,151 @@ class LiveGate:
             return False, f"Below threshold: {detail}"
 
         return True, "All exchanges healthy"
+
+    # ---------------------------------------------------------------------------
+    # US-055: Preflight 10-item check
+    # ---------------------------------------------------------------------------
+
+    async def run_preflight(
+        self, strategy_id: str = "cross_exchange_arb_v1"
+    ) -> tuple[bool, dict]:
+        """Run 10-item preflight check and save result to .omc/state/preflight-result.json.
+
+        Returns (all_pass, result_dict).
+        """
+        checks: dict[str, bool] = {}
+
+        # Check 10: Kill switch verify FIRST (sets+clears halt — must precede evaluate)
+        checks["kill_switch_verify"] = self._verify_kill_switch_blocks_orders()
+
+        # Check 1: API connectivity (async)
+        api_ok, _ = await self._check_api_connectivity()
+        checks["api_connectivity"] = api_ok
+
+        # Check 2: Balance sufficient
+        checks["balance_sufficient"] = self._check_balance_sufficient()
+
+        # Check 5: Risk guardian healthy
+        checks["risk_guardian_healthy"] = self._check_risk_guardian_healthy()
+
+        # Check 9: Paper hours gate
+        checks["paper_hours_gate"] = self._check_paper_hours_gate()
+
+        # Checks 3, 4, 6, 7, 8: from evaluate() (KS, CB, Sharpe, MDD, Signals)
+        try:
+            eval_result = await self.evaluate(strategy_id=strategy_id)
+            # Use eval_result.eligible as fallback when check names aren't present
+            # (e.g. mocked evaluate() with empty checks list)
+            _fallback = eval_result.eligible
+            name_map = {c.name: c.passed for c in eval_result.checks}
+            checks["kill_switch_clear"] = name_map.get("Kill Switch", _fallback)
+            checks["circuit_breaker_closed"] = name_map.get("Circuit Breaker", _fallback)
+            checks["sharpe_gate"] = name_map.get("Sharpe Ratio", _fallback)
+            checks["mdd_gate"] = name_map.get("Max Drawdown", _fallback)
+            checks["signals_gate"] = name_map.get("Signals/Day", _fallback)
+        except Exception as exc:
+            logger.warning("live_gate_preflight_evaluate_error: %s", exc)
+            for k in ("kill_switch_clear", "circuit_breaker_closed",
+                      "sharpe_gate", "mdd_gate", "signals_gate"):
+                checks.setdefault(k, False)
+
+        failed = [k for k, v in checks.items() if not v]
+        all_pass = len(failed) == 0
+        result: dict = {
+            "checks": checks,
+            "all_pass": all_pass,
+            "failed_checks": failed,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        try:
+            _state_dir = pathlib.Path(__file__).resolve().parents[3] / ".omc" / "state"
+            _state_dir.mkdir(parents=True, exist_ok=True)
+            (_state_dir / "preflight-result.json").write_text(
+                json.dumps(result, indent=2)
+            )
+        except Exception as exc:
+            logger.warning("live_gate_preflight_save_error: %s", exc)
+
+        logger.info(
+            "live_gate_preflight_done all_pass=%s failed=%s", all_pass, failed
+        )
+        return all_pass, result
+
+    def _verify_kill_switch_blocks_orders(self) -> bool:
+        """Verify KillSwitch actually halts when triggered — US-055 check 10."""
+        try:
+            from src.risk.kill_switch import halt_local, clear_halt, is_halted  # noqa: PLC0415
+            halt_local()
+            try:
+                blocked = is_halted()
+            finally:
+                clear_halt()
+            return blocked
+        except Exception as exc:
+            logger.warning("live_gate_ks_verify_error: %s", exc)
+            return False
+
+    async def _check_api_connectivity(self) -> tuple[bool, str]:
+        """Check REST ping latency < 500ms for all exchanges — US-055 check 1."""
+        if self._api_connectivity_fn is None:
+            return True, "no_connectivity_fn_configured"
+        try:
+            latencies: dict = await self._api_connectivity_fn()  # type: ignore[misc]
+            failing = {ex: ms for ex, ms in latencies.items() if ms >= 500}
+            if failing:
+                return False, f"High latency: {failing}"
+            return True, f"OK ({len(latencies)} exchanges)"
+        except Exception as exc:
+            return False, str(exc)
+
+    def _check_balance_sufficient(self) -> bool:
+        """Check exchange balances >= minimums — US-055 check 2."""
+        if self._balance_fn is None:
+            return True
+        try:
+            balances: dict = self._balance_fn()  # type: ignore[misc]
+            for exchange, info in balances.items():
+                min_req = 15.0 if "futures" in exchange else 10.0
+                bal = float(info.get("usdt", info.get("usd", info.get("USDT", 0))))
+                if bal < min_req:
+                    logger.warning(
+                        "live_gate_balance_insufficient exchange=%s bal=%.2f min=%.2f",
+                        exchange, bal, min_req,
+                    )
+                    return False
+            return True
+        except Exception as exc:
+            logger.warning("live_gate_balance_check_error: %s", exc)
+            return False
+
+    def _check_risk_guardian_healthy(self) -> bool:
+        """Check RiskGuardian 11-check passes — US-055 check 5."""
+        if self._risk_guardian is None:
+            return True
+        try:
+            fn = getattr(self._risk_guardian, "is_healthy", None)
+            if callable(fn):
+                return bool(fn())
+            return True
+        except Exception as exc:
+            logger.warning("live_gate_rg_health_error: %s", exc)
+            return False
+
+    def _check_paper_hours_gate(self) -> bool:
+        """Check paper-cumulative-hours.json satisfied=True — US-055 check 9."""
+        try:
+            _cum_file = (
+                pathlib.Path(__file__).resolve().parents[3]
+                / ".omc" / "state" / "paper-cumulative-hours.json"
+            )
+            if not _cum_file.exists():
+                return False
+            data = json.loads(_cum_file.read_text())
+            return bool(data.get("satisfied", False))
+        except Exception as exc:
+            logger.warning("live_gate_paper_hours_check_error: %s", exc)
+            return False
 
     async def _auto_evaluation_loop(self, strategy_id: str) -> None:
         """Background coroutine: evaluates on startup then every 24h."""

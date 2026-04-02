@@ -1,4 +1,4 @@
-"""LEVIATHAN Shadow Mode — Real Data + Paper Execution (Multi-Strategy).
+"""LEVIATHAN Paper Mode — Real Data + Paper Execution (Multi-Strategy).
 
 Runs the full pipeline with real market data and paper execution:
   1. WebSocket collectors receive real orderbook data (spot + futures)
@@ -6,11 +6,16 @@ Runs the full pipeline with real market data and paper execution:
   3. MultiStrategySignalProducer evaluates 6 additional strategies:
      - triangular, statistical_arb, latency_arb (spot)
      - spot_futures, funding_rate, futures_futures (futures)
-  4. PaperExecutor simulates trade execution with power-law slippage
+  4. PaperExecutor simulates trade execution with book-walk slippage
   5. All results recorded to TimescaleDB + Prometheus metrics
   6. Daily summary sent via Telegram
 
-Shadow mode is the final validation before live trading.
+Paper mode is the final validation before live trading.
+
+.. note::
+    This file is the canonical implementation (renamed from shadow.py as of Phase I).
+    ``ShadowMode`` is provided as a backward-compatibility alias at the bottom of this file.
+    New code should import ``PaperMode`` from ``src.modes.paper``.
 """
 from __future__ import annotations
 
@@ -22,7 +27,6 @@ import os
 import random
 import time
 import uuid
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -363,15 +367,12 @@ class ShadowStats:
 # ---------------------------------------------------------------------------
 
 
-class ShadowMode:
-    """Shadow Mode orchestrator.
+class PaperMode:
+    """Paper Mode orchestrator (renamed from ShadowMode as of Phase I).
 
-    .. deprecated::
-        ShadowMode is deprecated as of Phase I.
-        New code should use LiveMode with paper execution (EngineMode.LIVE +
-        LIVE_GATE_BYPASS=true for canary testing).
-        This class is retained for backward compatibility and SIT-3 progressive
-        shadow validation only. Do not use in new implementations.
+    Runs real market data with paper (simulated) execution.
+    New code should use this class directly. ``ShadowMode`` remains available
+    as a backward-compatibility alias at module level.
 
     Lifecycle: init → start() → [runs continuously] → stop()
 
@@ -438,16 +439,6 @@ class ShadowMode:
                                metrics (correlation, VaR, MDD). None = no-op (backward
                                compatible).
         """
-        # DEPRECATED: ShadowMode is deprecated as of Phase I.
-        # New code should use LiveMode with paper execution (EngineMode.LIVE +
-        # LIVE_GATE_BYPASS=true for canary testing).
-        # This class is retained for SIT-3 progressive_shadow validation only.
-        warnings.warn(
-            "ShadowMode is deprecated as of Phase I. "
-            "Use EngineMode.LIVE with LIVE_GATE_BYPASS=true for canary testing.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
         self._signal_generator = signal_generator
         self._multi_signal_producer = multi_signal_producer
         self._funding_rate_collector = funding_rate_collector
@@ -1629,6 +1620,7 @@ class ShadowMode:
                         "signal_spread_pct": str(signal.spread_pct),
                         "signal_confidence": signal.confidence,
                     },
+                    mode="paper",
                 )
             except Exception as exc:
                 logger.warning(
@@ -1997,6 +1989,7 @@ class ShadowMode:
                         fee_total=total_fees,
                         slippage_total=Decimal("0"),
                         net_pnl=net_pnl,
+                        mode="paper",
                     )
             except Exception as exc:
                 logger.debug("shadow_mode.record_execution_multileg_failed", error=str(exc))
@@ -2643,3 +2636,13 @@ class ShadowMode:
                 )
             except (TypeError, ValueError) as exc:
                 logger.warning("shadow._shadow_params_hot_reload: invalid min_edge_bps: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatibility alias (deprecated as of Phase I)
+# ---------------------------------------------------------------------------
+
+#: ``ShadowMode`` is retained so that existing tests and callers that import
+#: ``from src.modes.shadow import ShadowMode`` continue to work without change.
+#: New code should use ``PaperMode`` directly.
+ShadowMode = PaperMode
