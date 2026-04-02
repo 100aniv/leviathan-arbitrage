@@ -71,46 +71,37 @@ def test_us246_live_gate_has_enforce_or_fallback_method():
 @pytest.mark.asyncio
 async def test_us246_enforce_or_fallback_returns_false_when_not_eligible():
     """enforce_or_fallback() returns False (shadow fallback) when gate evaluation is not eligible."""
-    from datetime import datetime, timezone
-
-    from src.modes.live_gate import LiveGate, LiveGateResult
+    from src.modes.live_gate import LiveGate
 
     mock_pool = MagicMock()
     gate = LiveGate(pool=mock_pool)
 
-    # Mock evaluate() to return ineligible result
-    not_eligible = LiveGateResult(
-        timestamp=datetime.now(timezone.utc),
-        eligible=False,
-        checks=[],
-        block_reasons=["Sharpe below threshold"],
-    )
-    gate.evaluate = AsyncMock(return_value=not_eligible)
+    # US-055: enforce_or_fallback now calls run_preflight() — mock it directly
+    gate.run_preflight = AsyncMock(return_value=(
+        False,
+        {"checks": {}, "all_pass": False, "failed_checks": ["sharpe_gate"], "timestamp": ""},
+    ))
 
     result = await gate.enforce_or_fallback()
-    assert result is False, "enforce_or_fallback() must return False when gate is not eligible"
+    assert result is False, "enforce_or_fallback() must return False when preflight fails"
 
 
 @pytest.mark.asyncio
 async def test_us246_enforce_or_fallback_returns_true_when_eligible():
     """enforce_or_fallback() returns True when all gate checks pass."""
-    from datetime import datetime, timezone
-
-    from src.modes.live_gate import LiveGate, LiveGateResult
+    from src.modes.live_gate import LiveGate
 
     mock_pool = MagicMock()
     gate = LiveGate(pool=mock_pool)
 
-    eligible = LiveGateResult(
-        timestamp=datetime.now(timezone.utc),
-        eligible=True,
-        checks=[],
-        block_reasons=[],
-    )
-    gate.evaluate = AsyncMock(return_value=eligible)
+    # US-055: enforce_or_fallback now calls run_preflight() — mock it directly
+    gate.run_preflight = AsyncMock(return_value=(
+        True,
+        {"checks": {}, "all_pass": True, "failed_checks": [], "timestamp": ""},
+    ))
 
     result = await gate.enforce_or_fallback()
-    assert result is True, "enforce_or_fallback() must return True when gate is eligible"
+    assert result is True, "enforce_or_fallback() must return True when preflight passes"
 
 
 # ---------------------------------------------------------------------------

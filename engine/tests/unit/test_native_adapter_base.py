@@ -172,8 +172,8 @@ class TestQueryStringAndTimestamp:
         assert "limit=20" in qs
         assert "symbol=BTCUSDT" in qs
         assert "timestamp=123" in qs
-        # Sorted order: limit < symbol < timestamp
-        assert qs.index("limit") < qs.index("symbol") < qs.index("timestamp")
+        # insertion order (not sorted) — Binance signature requires exact query order
+        assert qs.index("symbol") < qs.index("timestamp") < qs.index("limit")
 
     def test_build_query_string_empty(self, adapter):
         qs = adapter._build_query_string({})

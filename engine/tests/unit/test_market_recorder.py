@@ -260,8 +260,8 @@ class TestRecordExecutionBuffering:
             metadata=meta,
         )
         row = recorder._execution_queue.get_nowait()
-        # last element is metadata JSON string
-        assert json.loads(row[-1]) == meta
+        # row[-2] is metadata JSON string, row[-1] is mode
+        assert json.loads(row[-2]) == meta
         await recorder.stop()
 
     async def test_record_execution_defaults_status_to_pending(self):
@@ -278,8 +278,8 @@ class TestRecordExecutionBuffering:
             size=Decimal("0.1"),
         )
         row = recorder._execution_queue.get_nowait()
-        # row[-2] = status, row[-1] = metadata
-        assert row[-2] == "pending"
+        # row[-3] = status, row[-2] = metadata, row[-1] = mode
+        assert row[-3] == "pending"
         await recorder.stop()
 
 

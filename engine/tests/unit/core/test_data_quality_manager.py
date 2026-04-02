@@ -273,7 +273,7 @@ class TestHealthScoreIntegration:
         clear_halt()
 
         cb = CircuitBreaker()
-        guardian = RiskGuardian(circuit_breaker=cb)
+        guardian = RiskGuardian(circuit_breaker=cb, warmup_seconds=0)  # disable warm-up for this test
 
         dqm = DataQualityManager()
         dqm.register_exchange("binance")

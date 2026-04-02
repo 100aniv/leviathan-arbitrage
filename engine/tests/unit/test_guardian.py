@@ -215,7 +215,8 @@ class TestCheck4CircuitBreaker:
 
 class TestCheck5ExchangeHealth:
     def test_unhealthy_exchange_rejected(self):
-        guardian = make_guardian(exchange_health_threshold=Decimal("0.90"))
+        # warmup_seconds=0 to disable cold-start grace period in this test
+        guardian = make_guardian(exchange_health_threshold=Decimal("0.90"), warmup_seconds=0)
         portfolio = make_portfolio(
             exchange_health_scores={"binance": Decimal("0.85")}
         )
@@ -224,7 +225,7 @@ class TestCheck5ExchangeHealth:
         assert result.rejected_at_check == 5
 
     def test_healthy_exchange_passes(self):
-        guardian = make_guardian(exchange_health_threshold=Decimal("0.90"))
+        guardian = make_guardian(exchange_health_threshold=Decimal("0.90"), warmup_seconds=0)
         portfolio = make_portfolio(
             exchange_health_scores={"binance": Decimal("0.95")}
         )
@@ -232,9 +233,38 @@ class TestCheck5ExchangeHealth:
         assert result.rejected_at_check != 5
 
     def test_missing_exchange_score_treated_as_zero(self):
-        guardian = make_guardian(exchange_health_threshold=Decimal("0.90"))
+        # warmup_seconds=0 to disable cold-start grace period in this test
+        guardian = make_guardian(exchange_health_threshold=Decimal("0.90"), warmup_seconds=0)
         portfolio = make_portfolio(exchange_health_scores={})  # no binance score
         result = guardian.check(make_proposal(exchange_id="binance"), portfolio)
+        assert not result.approved
+        assert result.rejected_at_check == 5
+
+    def test_warmup_period_bypasses_health_check(self):
+        """During warm-up, unhealthy exchange score does NOT block trades."""
+        # warmup_seconds=9999 simulates being inside warm-up window
+        guardian = make_guardian(
+            exchange_health_threshold=Decimal("0.90"),
+            warmup_seconds=9999,
+        )
+        portfolio = make_portfolio(
+            exchange_health_scores={"binance": Decimal("0.0")}  # worst possible score
+        )
+        result = guardian.check(make_proposal(), portfolio)
+        # Check#5 must NOT fire during warm-up
+        assert result.rejected_at_check != 5
+
+    def test_after_warmup_health_check_enforced(self):
+        """After warm-up expires, health check is enforced normally."""
+        # warmup_seconds=0 means warm-up is already over
+        guardian = make_guardian(
+            exchange_health_threshold=Decimal("0.90"),
+            warmup_seconds=0,
+        )
+        portfolio = make_portfolio(
+            exchange_health_scores={"binance": Decimal("0.85")}
+        )
+        result = guardian.check(make_proposal(), portfolio)
         assert not result.approved
         assert result.rejected_at_check == 5
 

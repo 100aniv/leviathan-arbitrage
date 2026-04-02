@@ -683,7 +683,7 @@ class TestNativeAdapterBase:
     def test_build_query_string_sorted(self):
         adapter = self._make_test_adapter()
         qs = adapter._build_query_string({"b": "2", "a": "1"})
-        assert qs.index("a") < qs.index("b")  # sorted
+        assert qs.index("b") < qs.index("a")  # insertion order (not sorted) — Binance requires exact order
 
     def test_timestamp_ms_is_int_and_recent(self):
         import time

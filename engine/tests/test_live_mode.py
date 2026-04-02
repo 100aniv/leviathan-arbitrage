@@ -156,6 +156,16 @@ class TestLiveModeInit:
 
 
 class TestLiveModeLifecycle:
+    @pytest.fixture(autouse=True)
+    def mock_approval_gate(self):
+        """US-364: mock Telegram approval gate — prevents real Telegram calls in tests."""
+        with patch(
+            "src.infra.approval_gate.request_live_approval",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_start_activates_strategies(self, make_live_mode, mock_strategy_manager):
         lm = make_live_mode()
@@ -200,6 +210,16 @@ class TestLiveModeLifecycle:
 
 
 class TestLiveGate:
+    @pytest.fixture(autouse=True)
+    def mock_approval_gate(self):
+        """US-364: mock Telegram approval gate — prevents real Telegram calls in tests."""
+        with patch(
+            "src.infra.approval_gate.request_live_approval",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_live_gate_pass(self, make_live_mode):
         from src.modes.live_gate import LiveGate
