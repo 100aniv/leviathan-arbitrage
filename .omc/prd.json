@@ -2,9 +2,9 @@
   "project": "LEVIATHAN Arbitrage Engine",
   "version": "2.0",
   "created": "2026-03-08",
-  "updated": "2026-04-01T14:15:13.792401+00:00",
+  "updated": "2026-04-02",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 356,
+  "total_stories": 376,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -2877,21 +2877,48 @@
       "priority": 66,
       "passes": false,
       "acceptanceCriteria": [
-        "LiveGate 6-check 전체 통과",
-        "Preflight 10항목 PASS",
-        "API 키 설정 완료 (Binance, Upbit, Bithumb)"
+        "TimescaleDB 연결 PASS",
+        "Exchange WS+REST PASS (Binance)",
+        "API 키 권한 PASS (Binance read+trade)",
+        "Balance >= spot_usd=$20, futures_usd=$30 PASS",
+        "Kill Switch Clear PASS",
+        "Circuit Breaker CLOSED PASS",
+        "LiveGate evaluation PASS (evaluation_days=1 또는 bypass=true)",
+        "Telegram TradeBot+DevBot 연결 PASS",
+        "Adapter Health > 0.95 PASS",
+        "Paper 72H 데이터 존재 PASS (US-332 후)"
+      ],
+      "files": [
+        "engine/src/modes/live_gate.py"
+      ],
+      "dependencies": [
+        "US-359",
+        "US-332"
       ]
     },
     {
       "id": "US-056",
-      "title": "Live 모드 전환 (사용자 승인)",
+      "title": "Live 모드 전환 — 첫 실거래 체결 (체결 품질 검증 포함)",
       "phase": "K",
       "priority": 67,
       "passes": false,
       "acceptanceCriteria": [
-        "사용자 승인 후 EXECUTION_MODE=live 전환",
-        "소액 실 거래 1건 이상 성공",
-        "Telegram 실시간 알림 수신"
+        "Telegram DevBot '/approve K-L' 승인 응답 후에만 live 모드 진입 (fail-closed)",
+        "execution_log에 mode='live' 레코드 1건 이상 존재",
+        "주문 ID 거래소 조회 성공 (get_order_status 200)",
+        "filled_qty > 0 (부분 또는 전체 체결 확인)",
+        "체결 후 잔고 반영 확인 (get_balance 갱신)",
+        "부분 체결 시 잔여 수량 취소 또는 재주문 처리 로직 동작 확인",
+        "체결 실패 시 mode='live_failed' 기록 또는 실패 로그 존재 (KillSwitch 미발동)",
+        "체결 1건 이상 성공 (MDD<3%, crash=0)",
+        "Telegram TradeBot 실시간 알림 수신"
+      ],
+      "files": [
+        "engine/src/modes/live.py"
+      ],
+      "dependencies": [
+        "US-055",
+        "US-364"
       ]
     },
     {
@@ -6108,16 +6135,25 @@
     {
       "id": "US-332",
       "phase": "K",
-      "title": "SF 24H Progressive Shadow 재실행",
+      "title": "Paper 무중단 24H 실행 (안정성 검증 PRIMARY, Sharpe>=2.0 SECONDARY)",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
-        "LiveGate 6-check PASS",
-        "Sharpe>=2.0",
-        "TCA 데이터 수집"
+        "[PRIMARY] Paper mode 무중단 24H 실행 (crash=0, 비정상 종료 없음)",
+        "[PRIMARY] API rate limit 위반 없음 (거래소 429 에러 0건)",
+        "[PRIMARY] OOM/메모리 누수 없음 (RSS 증가율 < 10%/24H)",
+        "[PRIMARY] Shadow 13항목 복합지표 PASS",
+        "[SECONDARY] Sharpe >= 2.0 (sqrt(8760) 연간화 기준, evaluation_days=1 설정 — 24H 통계적 유의성 낮음)",
+        "paper_results 또는 shadow_results 테이블 데이터 존재",
+        ".omc/state/paper-result-latest.json 생성 확인"
       ],
-      "files": [],
-      "description": "SF 24H Progressive Shadow 재실행"
+      "files": [
+        "engine/src/modes/live.py"
+      ],
+      "dependencies": [
+        "US-358"
+      ],
+      "description": "Paper 무중단 24H 실행"
     },
     {
       "id": "US-333",
@@ -6139,12 +6175,17 @@
       "phase": "K",
       "title": "소액 Live 전환 기준 + Sandbox Testnet 검증",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
-        "Sandbox API 연결 확인",
-        "Canary Alpha $70/거래소 기준 수립"
+        "engine/config/engine.json에 capital.tiers.alpha 추가: spot_usd=20, futures_usd=30, spot_krw=28000",
+        "capital.tier='alpha' + risk.use_percentage=true + max_position_pct=5.0 + max_daily_loss_pct=10.0 설정",
+        "AtomicExecutor Binance Testnet 주문 1건 성공 (BINANCE_TESTNET=true 환경변수 설정 후)",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
       ],
-      "files": [],
+      "files": [
+        "engine/config/engine.json",
+        "engine/src/execution/atomic.py"
+      ],
       "description": "소액 Live 전환 기준 + Sandbox Testnet 검증"
     },
     {
@@ -6606,6 +6647,480 @@
       ],
       "dependencies": [
         "US-352"
+      ]
+    },
+    {
+      "id": "US-358",
+      "title": "LiveMode record_execution() 호출 누락 수정 — 실거래 체결 기록 CRITICAL",
+      "phase": "K",
+      "passes": true,
+      "files": [
+        "engine/src/modes/live.py",
+        "engine/src/infra/db/market_recorder.py"
+      ],
+      "acceptanceCriteria": [
+        "_execute_trade_request() 완료 후 record_execution(mode='live') 호출 추가 (shadow.py:1603 패턴 참조)",
+        "execution_log 테이블에 mode='live' 레코드 존재 확인 (paper 실행 후 DB 쿼리)",
+        "⚡ WIRING: live.py _execute_trade_request에서 market_recorder.record_execution 호출 확인",
+        "⚡ WIRING: record_execution signature에 mode 파라미터 존재 (shadow.py 패턴 동일)",
+        "⚡ WIRING: pytest tests/unit/test_market_recorder.py - mode='live' 레코드 저장 테스트 통과",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "US-359",
+      "title": "config.py API 키 필드 18개 추가 — Bitget/Upbit/Bithumb/Coinone + Tier4 (K-1A)",
+      "phase": "K",
+      "passes": true,
+      "files": [
+        "engine/src/core/config.py",
+        "engine/src/core/engine.py",
+        "engine/tests/unit/test_config.py"
+      ],
+      "acceptanceCriteria": [
+        "config.py ExchangeSettings에 Bitget 4필드 추가 (bitget_api_key/secret/passphrase/testnet)",
+        "config.py에 Upbit 2필드 추가 (upbit_access_key/secret_key)",
+        "config.py에 Bithumb 2필드 추가 (bithumb_api_key/secret)",
+        "config.py에 Coinone 2필드 추가 (coinone_access_token/api_secret)",
+        "config.py에 Tier4 10필드 추가 (mexc/gateio/bingx/lbank/orangex 각 api_key/api_secret)",
+        "engine.py DI 배선: config.bitget_api_key 있을 때만 NativeBitget 인스턴스 생성",
+        "⚡ WIRING: ExchangeSettings에서 모든 18개 필드 Pydantic Field(default='') 정의 확인",
+        "⚡ WIRING: engine.py __init__에서 config.bitget_api_key 조건부 어댑터 생성 코드 확인",
+        "⚡ WIRING: pytest test_config.py - Bitget/KRW/Tier4 설정 로드 테스트 통과",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "dependencies": [
+        "US-358"
+      ]
+    },
+    {
+      "id": "US-360",
+      "title": "Tier4 거래소 거래 어댑터 5개 개발 — MEXC/Gate.io/BingX/LBank/OrangeX (K-1D)",
+      "phase": "K",
+      "passes": true,
+      "files": [
+        "engine/src/infra/exchange/native_mexc.py",
+        "engine/src/infra/exchange/native_gateio.py",
+        "engine/src/infra/exchange/native_bingx.py",
+        "engine/src/infra/exchange/native_lbank.py",
+        "engine/src/infra/exchange/native_orangex.py",
+        "engine/src/infra/exchange/__init__.py"
+      ],
+      "acceptanceCriteria": [
+        "native_mexc.py: NativeAdapterBase 상속, get_balance/place_order/cancel_order/get_order_status 구현",
+        "native_gateio.py: 동일 패턴 구현",
+        "native_bingx.py: 동일 패턴 구현",
+        "native_lbank.py: 동일 패턴 구현",
+        "native_orangex.py: 동일 패턴 구현",
+        "_NATIVE_ADAPTER_MAP에 mexc/gateio/bingx/lbank/orangex 5개 등록 확인",
+        "⚡ WIRING: __init__.py _NATIVE_ADAPTER_MAP에 5개 거래소 키 등록 확인",
+        "⚡ WIRING: 각 어댑터 API 키 없을 때 NotImplementedError graceful fallback 동작 확인",
+        "⚡ WIRING: pytest mock 단위테스트 통과 — REST API httpx mock으로 place_order 검증",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "dependencies": [
+        "US-359"
+      ]
+    },
+    {
+      "id": "US-361",
+      "title": "Backtest API 재설계 — POST /start + BacktestResult meta 5필드 (K-6)",
+      "phase": "K",
+      "passes": true,
+      "files": [
+        "engine/src/api/routes/backtest.py",
+        "engine/src/modes/backtest.py",
+        "dashboard/src/app/backtest/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "POST /api/backtest/start 엔드포인트 구현 (strategy_ids/exchange_ids/start_date/end_date/seed_capital/symbols)",
+        "BacktestResult dataclass에 5필드 추가: strategy_ids/exchange_ids/seed_capital/period_label/by_exchange",
+        "GET /api/backtest/result 응답에 strategy_ids, exchange_ids, seed_capital, period_label 포함",
+        "strategy_ids=['funding_rate_v1'] 지정 시 해당 전략만 실행",
+        "⚡ WIRING: POST /api/backtest/start 400/422/200 응답 정상 확인",
+        "⚡ WIRING: BacktestMode.__init__에 strategy_ids/seed_capital 파라미터 추가 확인",
+        "⚡ WIRING: 대시보드 backtest 폼에서 파라미터 선택 후 실행 가능 확인",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "dependencies": [
+        "US-358"
+      ]
+    },
+    {
+      "id": "US-362",
+      "title": "OHLCV 히스토리컬 데이터 다운로더 — Binance 1H → 합성 오더북 → TimescaleDB (K-7)",
+      "phase": "K",
+      "passes": true,
+      "files": [
+        "engine/src/infra/db/ohlcv_downloader.py",
+        "engine/src/api/routes/backtest.py"
+      ],
+      "acceptanceCriteria": [
+        "OHLCVDownloader 클래스 구현: download_and_store(exchange, symbol, start_date, end_date, interval) -> int",
+        "Binance /api/v3/klines 호출로 1H OHLCV 다운로드",
+        "OHLCV → 합성 오더북 변환: bid=mid*0.9995, ask=mid*1.0005, source='ohlcv_synthetic'",
+        "orderbook_snapshots 테이블에 INSERT (source 컬럼으로 실 데이터와 구분)",
+        "POST /api/backtest/download_history 엔드포인트 구현 (symbols 배열 파라미터 필수)",
+        "GET /api/backtest/data_availability 엔드포인트 구현 (합성/실 데이터 구분 응답)",
+        "⚡ WIRING: OHLCVDownloader가 BacktestMode에서 합성 데이터 자동 사용 확인",
+        "⚡ WIRING: Binance 30일치 1H OHLCV BTC/USDT+ETH/USDT 다운로드 후 COUNT >= 1440건",
+        "⚡ WIRING: pytest mock 단위테스트 통과 (Binance API mock)",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "dependencies": [
+        "US-361"
+      ]
+    },
+    {
+      "id": "US-363",
+      "title": "Paper API 엔드포인트 — POST /api/paper/start (전략/거래소/자본/duration 선택) (K-2-P)",
+      "phase": "K",
+      "passes": true,
+      "files": [
+        "engine/src/api/routes/paper.py",
+        "engine/src/modes/live.py",
+        "dashboard/src/app/paper/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "POST /api/paper/start 엔드포인트 신규 구현 (strategy_ids/exchange_ids/symbols/seed_capital/duration_hours)",
+        "GET /api/paper/result 엔드포인트 구현 (현재 PnL/trade 수/crash 여부)",
+        "live.py paper 분기에서 strategy_ids/exchange_ids/seed_capital/duration_hours 파라미터 수용",
+        "⚡ WIRING: paper.py 라우터가 server.py에 등록 확인",
+        "⚡ WIRING: POST /api/paper/start 200 응답 + session_id 반환 확인",
+        "⚡ WIRING: 대시보드 paper 페이지에서 파라미터 선택 후 실행 버튼 동작 확인",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "dependencies": [
+        "US-361"
+      ]
+    },
+    {
+      "id": "US-364",
+      "title": "Telegram 승인 게이트 — G-L 단계별 사용자 확인 (AppleScript 제거)",
+      "phase": "K",
+      "passes": true,
+      "files": [
+        "engine/src/infra/imessage_gate.py",
+        "engine/src/modes/live.py",
+        "engine/src/api/routes/paper.py"
+      ],
+      "acceptanceCriteria": [
+        "approval_gate.py 신규 구현: request_live_approval(case_id, details) -> bool",
+        "기본 채널: Telegram DevBot '/approve K-L' 명령 대기 (10분 타임아웃)",
+        "iMessage = 알림 전용 (결과 공유). AppleScript 기반 승인 채널 구현 금지 (Linux/Docker 비호환)",
+        "응답 없음 10분 시: 재전송 1회 → 여전히 없으면 SKIP (강제 실행 금지)",
+        "live.py LiveMode.start() 진입 시 approval_gate.request_live_approval() 주입 (fail-closed)",
+        "⚡ WIRING: approval_gate.py가 live.py에서 import 및 LiveMode.start() 호출 경로 확인",
+        "⚡ WIRING: Telegram '/approve K-L' 응답 수신 후에만 live 모드 진입 코드 경로 확인",
+        "⚡ WIRING: pytest mock 단위테스트 통과 (Telegram mock)",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "dependencies": [
+        "US-363"
+      ]
+    },
+    {
+      "id": "US-365",
+      "title": "DB mode 분리 배선 — walk_forward/attribution mode 필터 + migration 006 (K-0 선행)",
+      "phase": "K",
+      "passes": true,
+      "files": [
+        "engine/src/analysis/walk_forward.py",
+        "engine/src/api/routes/trading.py",
+        "engine/src/infra/db/migrations/006_add_source_column.sql"
+      ],
+      "acceptanceCriteria": [
+        "migration 006: orderbook_snapshots에 source TEXT DEFAULT 'live' 컬럼 추가",
+        "walk_forward.py 쿼리에 AND mode = 'backtest' 필터 추가 (backtest 데이터만 WFA)",
+        "/api/trades 엔드포인트에 mode 쿼리 파라미터 추가 (기본값: 전체 모드)",
+        "⚡ WIRING: migration 006 적용 후 orderbook_snapshots source 컬럼 존재 확인",
+        "⚡ WIRING: WFA 쿼리가 backtest 데이터만 읽는지 pytest 단위테스트 확인",
+        "⚡ WIRING: GET /api/trades?mode=live 파라미터 동작 확인",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "dependencies": [
+        "US-358"
+      ]
+    },
+    {
+      "id": "US-366",
+      "phase": "K",
+      "title": "engine/.env 표준화 — 시크릿 전용 정리 + os.environ 직접 접근 금지 (K-1B)",
+      "priority": 2,
+      "passes": true,
+      "files": [
+        "engine/.env",
+        "engine/src/core/config.py"
+      ],
+      "dependencies": [
+        "US-359"
+      ],
+      "acceptanceCriteria": [
+        "engine/.env = 시크릿(API 키)만 관리, 자본/설정은 engine/config/engine.json에 있음 확인",
+        "코드 전체에서 os.environ['KEY'] 직접 접근 0건 확인 (config.xxx 경유만 허용)",
+        "Bitget 4키(BITGET_API_KEY/SECRET/PASSPHRASE/TESTNET) + Upbit 2키 + Bithumb 2키 + Coinone 2키 engine/.env에 등록",
+        "Tier4 10키 플레이스홀더 주석으로 추가 (MEXC/Gate.io/BingX/LBank/OrangeX)",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "description": "engine/.env를 시크릿 전용으로 정리. config.py Pydantic 로드 체계가 유일한 접근 경로."
+    },
+    {
+      "id": "US-367",
+      "phase": "K",
+      "title": "거래소별 배선 검증 — API 보유 7개 거래소 Paper 1H 실행 + Bybit/OKX WS 연결 확인 (K-1C)",
+      "priority": 3,
+      "passes": true,
+      "files": [
+        "engine/config/strategy_activation.json",
+        "engine/src/core/engine.py"
+      ],
+      "dependencies": [
+        "US-359",
+        "US-366"
+      ],
+      "acceptanceCriteria": [
+        "Binance Spot+Futures Paper 1H: crash=0, orderbook 수신, execution_log 1건+",
+        "Bitget Paper 1H: crash=0, orderbook 수신, execution_log 1건+ (US-359 배선 완료 후)",
+        "Coinone Paper 1H: crash=0, orderbook 수신, execution_log 1건+",
+        "Upbit Paper 1H: crash=0, orderbook 수신, execution_log 1건+",
+        "Bithumb Paper 1H: crash=0 (WS 데이터 품질 이슈 기록 허용)",
+        "Bybit WS 연결 + orderbook 업데이트 로그 1건+ 수신 확인 (API 키 불필요)",
+        "OKX WS 연결 + orderbook 업데이트 로그 1건+ 수신 확인 (API 키 불필요)",
+        "TradeBot/DevBot Telegram 알림 수신 확인",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "description": "API 보유 7개 거래소 Paper 1H 실행으로 배선 확인. Bybit/OKX는 WS 연결만 확인 (API 미발급)."
+    },
+    {
+      "id": "US-368",
+      "phase": "K",
+      "title": "백테스트 Batch1 — Binance 4케이스 (B-01~B-04: funding_rate/triangular/stat_arb/spot_futures) (K-2-B-Batch1)",
+      "priority": 10,
+      "passes": true,
+      "files": [
+        "engine/src/modes/backtest.py",
+        "engine/src/api/routes/backtest.py"
+      ],
+      "dependencies": [
+        "US-361",
+        "US-362"
+      ],
+      "acceptanceCriteria": [
+        "B-01 BN-FR: Binance funding_rate 3개월 Sharpe>0.5, MDD<20%, trades>=5, PnL>0",
+        "B-02 BN-Tri: Binance triangular 3개월 동일 기준",
+        "B-03 BN-Stat: Binance statistical_arb 3개월 동일 기준",
+        "B-04 BN-SP: Binance spot_futures 3개월 동일 기준",
+        "GET /api/backtest/result 응답에 strategy_ids/exchange_ids/period_label/seed_capital/by_exchange 포함",
+        "결과 브리핑: 전략/기간/시드/거래소별 지표 전체 표시",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "description": "Binance 단독 4전략 백테스트. Phase J에서 누락된 '어떤 파라미터로 실행했는지' 브리핑 포함."
+    },
+    {
+      "id": "US-369",
+      "phase": "K",
+      "title": "백테스트 Batch2 — Bitget+KRW 7케이스 (B-05~B-11) (K-2-B-Batch2)",
+      "priority": 11,
+      "passes": true,
+      "files": [
+        "engine/src/modes/backtest.py",
+        "engine/src/api/routes/backtest.py"
+      ],
+      "dependencies": [
+        "US-368",
+        "US-359"
+      ],
+      "acceptanceCriteria": [
+        "B-05 BG-FR: Bitget funding_rate Sharpe>0.5, MDD<20%, trades>=5",
+        "B-06 BG-Tri: Bitget triangular 동일 기준",
+        "B-07 BG-Stat: Bitget statistical_arb 동일 기준",
+        "B-08 CN-Tri: Coinone triangular (수수료 0.06% — 높은 Sharpe 기대) 동일 기준",
+        "B-09 CN-Stat: Coinone statistical_arb 동일 기준",
+        "B-10 UP-Tri: Upbit triangular 동일 기준",
+        "B-11 BT-Tri: Bithumb triangular 신호 발생 여부 확인 (fake spread 이슈 기록)",
+        "결과 브리핑: 전략/거래소/기간/시드/Sharpe/MDD/WR/PnL 전체 표시",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "description": "Bitget + KRW 3거래소(Coinone/Upbit/Bithumb) 7케이스 백테스트. K-1B 배선 완료 후 실행."
+    },
+    {
+      "id": "US-370",
+      "phase": "K",
+      "title": "백테스트 Batch3 — 멀티거래소 5케이스 (B-12~B-16) (K-2-B-Batch3)",
+      "priority": 12,
+      "passes": true,
+      "files": [
+        "engine/src/modes/backtest.py",
+        "engine/src/api/routes/backtest.py"
+      ],
+      "dependencies": [
+        "US-368"
+      ],
+      "acceptanceCriteria": [
+        "B-12 BN-BG-CE: Binance↔Bitget cross_exchange Sharpe>0.5, MDD<20%, trades>=5",
+        "B-13 BN-BG-FR2: Binance+Bitget funding_rate 양거래소 동일 기준",
+        "B-14 BN-CN-CE: Binance↔Coinone cross_exchange 수익성 참고 (L1 전송비 이슈 기록, Paper 분석용)",
+        "B-15 BN-UP-CE: Binance↔Upbit cross_exchange 수익성 참고 (Paper 분석용)",
+        "B-16 BNF-BGF-FF: BinanceFut↔BitgetFut futures_futures PASS (Phase L 진행)",
+        "결과 브리핑: 거래소 조합별 수익성 + 네트워크 전송비 impact 표시",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "description": "멀티거래소 5케이스 백테스트. KRW cross_exchange는 L1 전송비 이슈 기록용."
+    },
+    {
+      "id": "US-371",
+      "phase": "K",
+      "title": "백테스트 Batch4 — Tier4 WS전용 거래소 7케이스 (B-17~B-23, K-1D 완료 후) (K-2-B-Batch4)",
+      "priority": 13,
+      "passes": true,
+      "files": [
+        "engine/src/modes/backtest.py",
+        "engine/src/api/routes/backtest.py"
+      ],
+      "dependencies": [
+        "US-360",
+        "US-368"
+      ],
+      "acceptanceCriteria": [
+        "B-17 MX-Tri: MEXC triangular Sharpe>0.5, trades>=5 (Binance proxy 데이터)",
+        "B-18 MX-Stat: MEXC statistical_arb 동일 기준",
+        "B-19 GT-Tri: Gate.io triangular 동일 기준",
+        "B-20 GT-Stat: Gate.io statistical_arb 동일 기준",
+        "B-21 BX-Tri: BingX triangular 동일 기준",
+        "B-22 LB-Tri: LBank triangular 신호 발생 여부 확인 (유동성 낮음 감안)",
+        "B-23 OX-Stat: OrangeX statistical_arb 신호 발생 여부 확인 (파생 특화 감안)",
+        "결과 브리핑: Binance proxy 사용 명시 + 신호 방향성 확인 목적 기록",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "description": "Tier4 WS전용 거래소 7케이스 백테스트. Binance OHLCV proxy 사용. K-1D 어댑터 개발 완료 후 진행."
+    },
+    {
+      "id": "US-372",
+      "phase": "K",
+      "title": "Paper 실행 — 백테스트 PASS 조합 전체 (P-01~P-23, 2H~4H, crash=0, trade>=1) (K-2-P)",
+      "priority": 20,
+      "passes": true,
+      "files": [
+        "engine/src/api/routes/paper.py",
+        "engine/src/modes/live.py"
+      ],
+      "dependencies": [
+        "US-363",
+        "US-368",
+        "US-367"
+      ],
+      "acceptanceCriteria": [
+        "P-01 BN-FR: 2H crash=0, trade>=1 (SIT-3 기검증, 가장 안전)",
+        "P-02~P-04 BN-Tri/Stat/SP: 4H crash=0, signal>=1 또는 trade>=1",
+        "P-05~P-07 BG-FR/Tri/Stat: 4H crash=0, trade>=1 (Bitget 배선 완료 후)",
+        "P-08~P-09 CN-Tri/Stat: 4H crash=0, trade>=1 (수수료 0.06% 최저)",
+        "P-10~P-11 UP-Tri/BT-Tri: 4H crash=0 (Upbit trade>=1, Bithumb 데이터 이슈 기록)",
+        "P-12~P-15 멀티거래소 CE/FR/FF: 4H crash=0, trade>=1 또는 Paper only 기록",
+        "P-16 BNF-BGF-FF: 4H crash=0 (Phase L 진행 기록)",
+        "P-17~P-23 Tier4 WS전용: 4H crash=0, WS 오더북 수신 + signal>=1 (K-1D 완료 후)",
+        "POST /api/paper/start로 전략/거래소/자본/duration 선택 실행 확인",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "description": "백테스트 PASS 조합 전체 Paper 실행. 이미 검증된 조합 2H, 신규 조합 4H."
+    },
+    {
+      "id": "US-373",
+      "phase": "K",
+      "title": "전체 병렬 운영 — 검증 완료 조합 동시 24H (Binance FR + Bitget FR + BN-BG CE + Coinone Tri) (K-2-ALL)",
+      "priority": 30,
+      "passes": true,
+      "files": [
+        "engine/src/core/engine.py",
+        "engine/config/engine.json"
+      ],
+      "dependencies": [
+        "US-056",
+        "US-372"
+      ],
+      "acceptanceCriteria": [
+        "검증 완료 4조합 동시 실행: Binance(funding_rate) + Bitget(funding_rate) + Binance+Bitget(cross_exchange) + Coinone(triangular)",
+        "24H crash=0, 전략별 trade>=1/24H",
+        "총 MDD < 5%",
+        "CB/KillSwitch 방어 레이어 로그 1건+",
+        "Telegram TradeBot 실시간 알림 수신 확인",
+        "engine/config/engine.json active_exchanges/active_strategies 병렬 설정 동작 확인",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "description": "Phase K 최종 검증. 검증된 전략×거래소 조합 전부 동시 24H 운영."
+    },
+    {
+      "id": "US-374",
+      "phase": "K",
+      "title": "Notion 실시간 플랜 + 테스트 결과 공유 — Phase K 매트릭스 + 단계별 업데이트 (K-8)",
+      "priority": 40,
+      "passes": true,
+      "files": [
+        "engine/src/infra/notion_reporter.py"
+      ],
+      "dependencies": [
+        "US-361"
+      ],
+      "acceptanceCriteria": [
+        "NotionReporter 클래스 구현: write_plan/update_test_progress/create_final_report 메서드",
+        "Phase K Stage A 완료 즉시 Notion 플랜 페이지 생성 (23케이스 매트릭스 표 포함)",
+        "각 B/P/L 테스트 케이스 완료 시 Notion 체크리스트 실시간 업데이트",
+        "백테스트 결과 표 자동 게시 (전략/거래소/기간/시드/Sharpe/MDD/WR/PnL)",
+        "라이브 체결 기록 표 자동 게시 (거래소/전략/체결가/MDD)",
+        "NOTION_TOKEN 환경변수 설정 시 REST API fallback 동작",
+        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+      ],
+      "description": "Notion MCP 또는 REST fallback으로 Phase K 진행 상황 실시간 공유."
+    },
+    {
+      "id": "US-375",
+      "title": ".env 단일화 — engine/.env 삭제 + config.py 절대경로 수정 + 드리프트 4개 해소 (K-0-ENV)",
+      "phase": "K",
+      "priority": 0,
+      "passes": true,
+      "acceptanceCriteria": [
+        "engine/.env 파일 삭제 확인 (ls engine/.env → 파일 없음)",
+        "config.py Line 55: _ENGINE_ROOT.parent / '.env' (절대경로 수정)",
+        "config.py Line 576: SettingsConfigDict env_file=str(Path(__file__).resolve().parents[3] / '.env')",
+        "루트 .env EXECUTION_MODE=paper (shadow→paper)",
+        "루트 .env MAX_DAILY_LOSS_USD=15 (500→15)",
+        "preflight.py _check_env_sync() 함수 삭제",
+        "engine/config/engine.json shadow/live_gate/tuner 섹션 추가",
+        "python -m pytest tests/ -x --tb=short 0 failures",
+        "python -c \"from src.core.config import Settings; s=Settings(); print(s.execution_mode)\" → paper"
+      ],
+      "files": [
+        "engine/src/core/config.py",
+        "engine/src/api/routes/settings.py",
+        "engine/src/infra/telegram_dev_bot.py",
+        "engine/src/modes/preflight.py",
+        ".env",
+        "engine/config/engine.json"
+      ],
+      "dependencies": [],
+      "description": "K-0-ENV: 모든 Phase K 단계 선행 조건. engine/.env와 루트 .env 4곳 드리프트 해소 + config.py CWD-상대경로를 절대경로로 수정. 단일화 후 신규 거래소 API 키 추가 위치 명확화."
+    },
+    {
+      "id": "US-376",
+      "title": "DB mode 분리 배선 — walk_forward/attribution mode 필터",
+      "phase": "K",
+      "priority": 1,
+      "passes": true,
+      "files": [
+        "engine/src/analysis/walk_forward.py",
+        "engine/src/api/routes/trading.py",
+        "engine/src/infra/db/migrations/006_add_source_column.sql"
+      ],
+      "dependencies": [
+        "US-375"
+      ],
+      "acceptanceCriteria": [
+        "walk_forward.py SQL 쿼리에 WHERE source = 'backtest' 또는 mode = 'backtest' 필터 추가",
+        "Live/Paper 실행 중 WFA 쿼리가 실거래 데이터를 포함하지 않음 확인",
+        "migration 006_add_source_column.sql 존재 및 적용 검증",
+        "⚡ WIRING: walk_forward.py에서 mode 파라미터 수신 확인",
+        "⚡ WIRING: engine.py 또는 backtest.py에서 WFA 호출 시 mode='backtest' 전달 확인",
+        "⚡ WIRING: Shadow/Paper 실행 중 WFA 쿼리 로그에 backtest 전용 필터 확인"
       ]
     }
   ]

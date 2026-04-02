@@ -77,6 +77,25 @@ CP1~CP3 PASS. CP4(3H) 1H 후.
 
 ## Working Memory
 <!-- Session notes. Auto-pruned after 7 days. -->
+### 2026-04-02 00:38
+Phase K 플랜 수정사항:
+1. "Shadow" 명칭 완전 제거 → "Paper test"로 통일 (모드: backtest/paper/live)
+2. 5개 거래소 배선 전부 확인 (Binance/Upbit/Coinone/Bithumb/Bitget)
+3. Binance만 Live → 5개 거래소 모두 Live 시나리오 포함
+4. $70 고정 → 거래소별 최소 주문 가능 금액 기준
+5. Spot/Futures 비율 근거 명시 (전략별 delta-neutral 기준)
+### 2026-04-02 08:59
+사용자 지시 (2026-04-02): Phase K 플랜 실행 시 (1) /leviathan 워크플로우 사용 확정 (2) Stage A에서 Codex+Gemini 병렬 플랜 리뷰 적용 — Claude 맹점 방지 (3) git push 누락 방지 — 단계별 체크포인트 확인 필수
+
+
+## 2026-04-02 00:38
+Phase K 플랜 수정사항:
+1. "Shadow" 명칭 완전 제거 → "Paper test"로 통일 (모드: backtest/paper/live)
+2. 5개 거래소 배선 전부 확인 (Binance/Upbit/Coinone/Bithumb/Bitget)
+3. Binance만 Live → 5개 거래소 모두 Live 시나리오 포함
+4. $70 고정 → 거래소별 최소 주문 가능 금액 기준
+5. Spot/Futures 비율 근거 명시 (전략별 delta-neutral 기준)
+
 
 ## MANUAL
 <!-- User content. Never auto-pruned. -->

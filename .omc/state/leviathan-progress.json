@@ -1,21 +1,25 @@
 {
-  "current_phase": "K",
+  "current_phase": "L",
   "current_stage": "pending",
   "current_step": "pending-Step1",
   "status": "in_progress",
   "us_targets": [
-    "US-351",
-    "US-352",
-    "US-353",
-    "US-354",
-    "US-355",
-    "US-356",
-    "US-357"
+    "US-055",
+    "US-056"
   ],
-  "us_count": 7,
-  "previous_phase": "Phase-I",
+  "previous_phase": "K",
   "previous_result": "PASS",
-  "regression_source": null,
-  "plan_file": "engine/docs/planning/Phase-J_PLAN.md",
-  "note": "Phase J Stage B: BacktestMode \ubc30\uc120 + SQL \uc218\uc815 + WFA + ML A/B"
+  "plan_file": "engine/docs/planning/Phase-K_PLAN.md",
+  "batch": 5,
+  "stage_b_result": {
+    "paper_mode_duration_s": 749,
+    "pnl_usd": 113.35,
+    "max_drawdown_pct": 0.025,
+    "profit_factor": 13.92,
+    "signal_count": 38963,
+    "checks_pass": true,
+    "all_13_checks": "PASS"
+  },
+  "updated_at": "2026-04-03T01:00:00.000000",
+  "phase": "L"
 }

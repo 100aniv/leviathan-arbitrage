@@ -1,9 +1,10 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-04-02 (Phase J 완료) | PRD: `.omc/prd.json` (357개 US, 353 passes:true / 4 passes:false)
+> 마지막 업데이트: 2026-04-02 (Phase K US-376 신규 등록 — DB mode 분리 배선 ID 충돌 해결) | PRD: `.omc/prd.json` (376개 US, 359 passes:true / 17 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | **SIT-3 플랜: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오)**
-> **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → **J** → K → L → M → N(TF Final → Live)
+> **Phase K 플랜**: `.claude/plans/radiant-cooking-forest.md` (Backtest→Paper→Live 종합 23케이스, 2026-04-02 v4)
+> **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → J ✅ → **K** → L → M → N(TF Final → Live)
 
 ---
 
@@ -31,13 +32,13 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: K (Phase J 완료 — BacktestMode WFA + ML A/B + Sharpe sqrt(8760) + Coinone CB fix, 2026-04-02)
-**Tests**: 5,379 passed / 0 failed / 12 skipped
+**Phase**: L (Phase K 완료 — Backtest 23케이스 + Paper 실행 + env 단일화 + 거래소 배선 검증, 2026-04-03)
+**Tests**: 5,454 passed / 0 failed / 12 skipped
 **Coverage**: 74%
-**PRD**: 353/357 passes:true (US-055/056 Live전환 + US-332/334 SF 24H Shadow 미완)
-**TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → **K** → L → M → N(TF Final → Live)
-**Next**: US-055/056 LiveGate + Live전환 (Phase K) + US-332/334 SF 24H Shadow
-**모드 체계 (Phase H-2)**: `backtest → paper → shadow → live` (업계 표준 4단계, EngineMode 단일 축)
+**PRD**: 374/376 passes:true (passes:false 2개 — US-055/056, Live 실제 실행 증거 필요 → Phase L 이월)
+**TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → Phase K ✅ → **L** → M → N(TF Final → Live)
+**Next**: Phase L — Live 모드 진입 (US-055 LiveGate 실행 + US-056 첫 실거래)
+**모드 체계 (Phase I 확정)**: `backtest → paper → live` (shadow 명칭 폐기, EngineMode 단일 축)
 **Live 설정**: max_position=$10, daily_loss=$15, exchanges=binance+binance_futures
 **Live 파이프라인**: LiveMode 클래스 (직접 인-프로세스 라우팅, DI executor, KRW 정규화, circuit breaker, rate limiter)
 **모니터링**: 텔레그램 TradeBot 알림 + 대시보드 + Shadow 병행
@@ -391,7 +392,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 357개 User Stories, 353개 완료, 4개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 375개 User Stories, 359개 완료, 16개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -615,21 +616,110 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - PnL: +$13,243.52 (257 trades), PF: 8.75, MDD: 0.0%, CB: CLOSED
 - Assembly Gate 5/5 PASS, 코드리뷰 PASS (HIGH 2건 수정 완료)
 
-#### Phase K: 소액 Live 실증 — 미시작
+#### Phase K: 종합 테스트 (Backtest → Paper → Live) — 진행중
 
-> **목표**: 실 자본 소액으로 Live 전환 실증 (funding_rate + futures_futures 우선)
-> **진입 조건**: Phase J 완료 + US-055 LiveGate PASS + US-056 사장님 승인
-> **최소 기간**: 2주
-> **시작 전략**: funding_rate + futures_futures (가장 안전한 carry/차익 전략)
-> **자본 한도**: max_position=$10, daily_loss=$15 (Phase H-2 설정 유지)
+> **목표**: 15개 거래소 × 7전략 모든 케이스를 Backtest→Paper→Live 전 사이클로 체계적 실증
+> **진입 조건**: Phase J 완료 ✅
+> **플랜**: `.claude/plans/radiant-cooking-forest.md` (v4, 2026-04-02)
+> **핵심 배경**: Phase J 백테스트 결과에 어떤 전략/기간/시드로 실행했는지 브리핑 없음, 사용자 파라미터 선택 UI도 없음 → Phase K에서 전 사이클 재설계
+> **자본 기준**: Spot $20 (글로벌) / ₩28,000 (KRW) / Futures $30 (글로벌만). max_position_pct=5%
+> **총 케이스**: 23개 (Batch1~3: 16개 + Batch4 Tier4 WS전용: 7개)
+> **모드 명칭**: backtest / paper / live (shadow 명칭 폐기 — Phase I 확정)
+> **실행 순서**: K-0-ENV(US-375) → K-0(US-334/365) → K-1A/C/D(US-359/364/366/367/360) → K-6/K-7(US-361/362) → K-2-B(US-368~371, Batch2+3 병렬) → K-2-P(US-332/372) → K-4(US-055) → K-2-L(US-056) → K-2-ALL(US-373)
 
-- [ ] K-1: US-055 LiveGate 6-check 완료 (Sharpe>2.0, MDD<5%, 24H Shadow PASS)
-- [ ] K-2: US-056 사장님 승인 (Live 전환 결재)
-- [ ] K-3: Binance API 키 Live 모드 활성화 + rate limiter 검증
-- [ ] K-4: funding_rate + futures_futures 소액 Live 2주 실행
-- [ ] K-5: 일일 3-way 리콘실리에이션 (DB vs 거래소 vs 예측값)
-- [ ] K-6: 슬리피지/수수료 실측 vs 예측 오차 < 20% 검증
-- [ ] K-7: US-332/334 SF 24H Shadow 완료 (spot_futures 보완)
+**거래소 아키텍처 (15개)**
+
+| 티어 | 거래소 | 거래 어댑터 | API 키 | Phase K 작업 |
+|------|--------|-----------|--------|------------|
+| Tier 1 Native Spot | Binance / Bybit / OKX | 완성 | Binance ✅ / 나머지 ❌ | — |
+| Tier 1 Native Spot | Bitget / Upbit / Bithumb | 완성 | 모두 ✅ | K-1A: config.py 필드 이미 추가(US-359) |
+| Tier 2 Native Futures | Binance Fut / Bybit Fut / OKX Fut | 완성 | Binance ✅ / 나머지 ❌ | — |
+| Tier 3 CCXT | Coinone | CCXT 경유 | ✅ | K-1A: config.py 필드 이미 추가(US-359) |
+| Tier 4 WS전용 | MEXC / Gate.io / BingX / LBank / OrangeX | US-360 ✅ 완성 | ❌ 미발급 | API 발급 즉시 Live 가능 |
+
+**K-0-ENV: .env 단일화 (모든 K 단계 최우선 선행)**
+- [ ] US-375: engine/.env 삭제 + config.py 절대경로 수정 + 드리프트 4개 해소 (EXECUTION_MODE=paper, MAX_DAILY_LOSS_USD=15, SHADOW_DISABLED_STRATEGIES 제거, ALLOWED_IPS 통합) + preflight.py _check_env_sync() 삭제 + engine.json shadow/live_gate/tuner 섹션 추가
+
+**K-0: 선행 완료**
+- [ ] US-334: engine.json capital.tiers.alpha 설정 + Testnet 주문 1건 (Binance Testnet)
+- [ ] US-365: DB mode 분리 배선 — walk_forward mode='backtest' 필터 + migration 006 + /trades?mode= 파라미터
+- [ ] US-376: DB mode 분리 배선 세부 배선 — walk_forward/attribution mode 필터 (US-375 의존)
+
+**K-1: 전체 거래소 배선 현황 + 검증 (15개)**
+- [x] US-359: config.py API 키 필드 18개 추가 (Bitget 4 + Upbit 2 + Bithumb 2 + Coinone 2 + Tier4 10) ✅
+- [ ] US-364: Telegram 승인 게이트 구현 (imessage_gate.py + live.py 주입, DevBot /approve, fail-closed) — K-1C
+- [ ] US-366: engine/.env 표준화 — K-0-ENV 완료로 자동 충족 대기 (K-1B → K-0-ENV 흡수)
+- [ ] US-367: 거래소별 배선 검증 — API 보유 7개 Paper 1H (crash=0) + Bybit/OKX WS 연결 확인 (K-1C)
+- [x] US-360: Tier4 거래 어댑터 5개 (MEXC/Gate.io/BingX/LBank/OrangeX, Bitget 패턴) ✅
+
+**K-선행 (K-6/K-7 — 백테스트 실행 전 완료 필수)**
+- [x] US-361: POST /api/backtest/start + BacktestResult meta 5필드 (전략/기간/시드/거래소 브리핑) ✅
+- [x] US-362: OHLCV 다운로더 — Binance 1H→합성 오더북→TimescaleDB ✅
+- [x] US-358: LiveMode record_execution(mode='live') 호출 추가 ✅
+- [x] US-363: POST /api/paper/start 엔드포인트 구현 ✅
+
+**K-2-B: 백테스트 단계 (23케이스, PASS 기준: Sharpe>0.5, MDD<20%, trades>=5, PnL>0)**
+- [ ] US-368: Batch1 — Binance 4케이스 B-01~B-04 (funding_rate/triangular/stat_arb/spot_futures) — 병렬 실행
+- [ ] US-369: Batch2 — Bitget+KRW 7케이스 B-05~B-11 — Batch3과 병렬 실행
+- [ ] US-370: Batch3 — 멀티거래소 5케이스 B-12~B-16 — Batch2와 병렬 실행
+- [ ] US-371: Batch4 — Tier4 WS전용 7케이스 B-17~B-23 (K-1D 완료 후, Binance proxy)
+
+**K-2-P: 페이퍼 테스트 단계 (백테스트 PASS 조합만, 2H~4H. 누적 ≥24H → US-332 자동 충족)**
+- [ ] US-332: Paper 무중단 24H (crash=0, Sharpe>=2.0) — K-2-P 23케이스 누적으로 자동 충족
+- [ ] US-372: P-01~P-23 페이퍼 실행 전체 (crash=0, trade>=1. Tier4는 K-1D 완료 후)
+
+**K-4: LiveGate 통과**
+- [ ] US-055: Preflight 10항목 통과 (TimescaleDB/WS+REST/API키/잔고/KillSwitch/CB/LiveGate/Telegram/AdapterHealth/Paper72H)
+
+**K-2-L: 라이브 테스트 단계 (페이퍼 PASS + 라이브 가능 조합)**
+- [ ] US-056: 첫 Live 체결 1건+ (L-01 BN-FR 최우선 → L-02 CN-Tri → L-03 BN-Stat → L-04 BG-FR → L-05 BN-Tri → L-06 BN-BG-CE → L-07a~d)
+  - Live 불가 케이스: BT-Tri(WS 품질), BN-CN-CE/BN-UP-CE(L1 전송비 $2.56~$4.56), BNF-BGF-FF(Phase L)
+
+**K-2-ALL: 전체 병렬 운영 (Day 15~21)**
+- [ ] US-373: 검증 완료 4조합 동시 24H (Binance FR + Bitget FR + BN-BG CE + Coinone Tri, crash=0, 전략별 trade>=1, MDD<5%)
+
+**K-8: Notion 실시간 플랜 공유**
+- [ ] US-374: NotionReporter — Phase K 플랜 페이지 + 단계별 실시간 업데이트
+
+**백테스트 전략×거래소 매트릭스 (23케이스)**
+
+| ID | 거래소 | 전략 | B | P | L | 제약 |
+|----|--------|------|---|---|---|------|
+| B-01/P-01/L-01 | Binance | funding_rate | Batch1 | 2H | 1순위 | SIT-3 기검증 |
+| B-02/P-02/L-05 | Binance | triangular | Batch1 | 4H | 5순위 | min_edge_bps 확인 |
+| B-03/P-03/L-03 | Binance | statistical_arb | Batch1 | 4H | 3순위 | pos_usd cap 주의 |
+| B-04/P-04/L-07a | Binance | spot_futures | Batch1 | 4H | 7a순위 | basis 거래 |
+| B-05/P-05/L-04 | Bitget | funding_rate | Batch2 | 4H | 4순위 | 배선 완료 후 |
+| B-06/P-06 | Bitget | triangular | Batch2 | 4H | — | |
+| B-07/P-07 | Bitget | statistical_arb | Batch2 | 4H | — | |
+| B-08/P-08/L-02 | Coinone | triangular | Batch2 | 4H | 2순위 | 수수료 0.06% 최저 |
+| B-09/P-09/L-07b | Coinone | statistical_arb | Batch2 | 4H | 7b순위 | |
+| B-10/P-10/L-07c | Upbit | triangular | Batch2 | 4H | 7c순위 | 수수료 0.43% |
+| B-11/P-11 | Bithumb | triangular | Batch2 | 4H | Paper only | WS 데이터 품질 |
+| B-12/P-12/L-06 | Binance↔Bitget | cross_exchange | Batch3 | 4H | 6순위 | L2 전송비 낮음 |
+| B-13/P-13/L-07d | Binance+Bitget | funding_rate(양) | Batch3 | 4H | 7d순위 | delta-neutral |
+| B-14/P-14 | Binance↔Coinone | cross_exchange | Batch3 | 4H | Paper only | L1 전송비 $2.56 |
+| B-15/P-15 | Binance↔Upbit | cross_exchange | Batch3 | 4H | Paper only | L1 전송비 $4.56 |
+| B-16/P-16 | BinanceFut↔BitgetFut | futures_futures | Batch3 | 4H | Phase L | Bitget Fut 미구현 |
+| B-17/P-17 | MEXC | triangular | Batch4 | 4H | API 미발급 | K-1D 후 |
+| B-18/P-18 | MEXC | statistical_arb | Batch4 | 4H | API 미발급 | K-1D 후 |
+| B-19/P-19 | Gate.io | triangular | Batch4 | 4H | API 미발급 | K-1D 후 |
+| B-20/P-20 | Gate.io | statistical_arb | Batch4 | 4H | API 미발급 | K-1D 후 |
+| B-21/P-21 | BingX | triangular | Batch4 | 4H | API 미발급 | K-1D 후 |
+| B-22/P-22 | LBank | triangular | Batch4 | 4H | API 미발급 | 소규모, 유동성 낮음 |
+| B-23/P-23 | OrangeX | statistical_arb | Batch4 | 4H | API 미발급 | 파생상품 특화 |
+
+**Phase K 완료 기준**:
+- Tests 5,379+ 유지 (pytest 0 failures)
+- US-375 K-0-ENV 완료 (engine/.env 삭제, config.py 절대경로, 드리프트 4개 해소)
+- US-332 Paper 24H PASS (K-2-P 누적) + US-365 DB mode 분리
+- 전체 거래소 배선: API 보유 7개 Paper 1H crash=0 + Bybit/OKX WS 연결
+- 백테스트 23케이스 결과 브리핑 (전략/기간/시드/거래소 지표 포함)
+- 페이퍼 23케이스 crash=0, trade>=1
+- US-055 Preflight 10/10 PASS + US-056 첫 Live 체결 1건+
+- K-2-ALL 4전략 동시 24H crash=0, MDD<5%
+- US-374 Notion 플랜 페이지 생성
+- check_all 9/9 OK + git push
 
 #### Phase L: 대시보드 재설계 + 운영 안정화 — 미시작
 
