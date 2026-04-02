@@ -9,7 +9,7 @@ from collections import deque
 
 import asyncio
 import logging
-import os
+
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +55,9 @@ class ContinuousLiveGateMonitor:
 
     @property
     def enabled(self) -> bool:
-        return os.getenv("LIVE_GATE_CONTINUOUS", "1").strip().lower() not in (
-            "0",
-            "false",
-            "no",
-        )
+        from src.core.config import get_settings  # noqa: PLC0415
+        raw = get_settings().operational.live_gate_continuous_raw
+        return raw.strip().lower() not in ("0", "false", "no")
 
     async def start(self) -> None:
         if not self.enabled:

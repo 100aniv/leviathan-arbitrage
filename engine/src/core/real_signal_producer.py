@@ -30,6 +30,7 @@ from collections import defaultdict, deque
 from decimal import Decimal
 from typing import Any, Optional
 
+from src.core.config import get_settings
 from src.core.models import Signal
 from src.core.multi_signal import MultiStrategySignalProducer
 from src.core.order_book import OrderBook
@@ -108,15 +109,17 @@ class RealDataSignalProducer:
         self._spread_filter_min_samples: int = 20
         self._spread_filter_multiplier: float = 3.0
         self._spread_ts_max_diff_s: float = 0.300  # 300ms timestamp cross-check
+        # Rate-limit futures_spread_outlier logs: key=(symbol,ex_a,ex_b) → last_log_time
+        self._outlier_log_cooldown: dict[tuple[str, str, str], float] = {}
         # S10: Warmup guard — skip signals for first 5 seconds after startup
         # Disabled in test mode to avoid breaking integration tests
         self._first_update_mono: float = 0.0
-        _env = os.environ.get("ENGINE_ENV", "dev")
+        _env = os.environ.get("ENGINE_ENV", "dev")  # os.environ直접: lru_cache monkeypatch 예외
         self._warmup_seconds: float = 5.0 if _env not in ("test",) else 0.0
         # S10 fix: per-exchange last-update timestamps for reconnect stale guard
         self._exchange_last_update: dict[str, float] = {}
-        _stale_threshold = os.environ.get("EXCHANGE_STALE_THRESHOLD_S", "1.5")
-        self._exchange_stale_threshold: float = float(_stale_threshold) if _env != "test" else 9999.0
+        _stale_threshold = get_settings().operational.exchange_stale_threshold_s
+        self._exchange_stale_threshold: float = _stale_threshold if _env != "test" else 9999.0
 
     # ------------------------------------------------------------------
     # Public interface
@@ -277,7 +280,7 @@ class RealDataSignalProducer:
                 if float(fut_bid) > float(spot_ask):
                     # US-229: min basis filter — skip trivially small spreads
                     _sf_basis_bps = (float(fut_bid) - float(spot_ask)) / float(spot_ask) * 10000
-                    _sf_min_bps = float(os.environ.get("SPOT_FUTURES_MIN_BASIS_BPS", "5"))
+                    _sf_min_bps = get_settings().operational.spot_futures_min_basis_bps
                     if _sf_basis_bps < _sf_min_bps:
                         continue
                     # US-230: rolling median spread outlier filter
@@ -318,7 +321,7 @@ class RealDataSignalProducer:
                 # US-238: Backwardation path — spot > futures → sell spot, buy futures
                 if float(spot_bid) > float(fut_ask):
                     _sf_basis_bps_back = (float(spot_bid) - float(fut_ask)) / float(fut_ask) * 10000
-                    _sf_min_bps = float(os.environ.get("SPOT_FUTURES_MIN_BASIS_BPS", "5"))
+                    _sf_min_bps = get_settings().operational.spot_futures_min_basis_bps
                     if _sf_basis_bps_back < _sf_min_bps:
                         continue
                     # Rolling median spread outlier filter
@@ -418,15 +421,19 @@ class RealDataSignalProducer:
                     # US-184 + S10 + US-225: spread outlier filter
                     spread_bps = (float(bid_a) - float(ask_b)) / float(ask_b) * 10000
                     if spread_bps > 100:
-                        logger.warning(
-                            "real_signal_producer.futures_spread_outlier",
-                            extra={
-                                "symbol": symbol,
-                                "buy_ex": ex_b,
-                                "sell_ex": ex_a,
-                                "spread_bps": round(spread_bps, 1),
-                            },
-                        )
+                        _olk1 = (symbol, ex_b, ex_a)
+                        _now1 = time.monotonic()
+                        if _now1 - self._outlier_log_cooldown.get(_olk1, 0.0) > 60.0:
+                            logger.warning(
+                                "real_signal_producer.futures_spread_outlier",
+                                extra={
+                                    "symbol": symbol,
+                                    "buy_ex": ex_b,
+                                    "sell_ex": ex_a,
+                                    "spread_bps": round(spread_bps, 1),
+                                },
+                            )
+                            self._outlier_log_cooldown[_olk1] = _now1
                         if spread_bps > 200 and self._stale_detector is not None:
                             self._stale_detector.add_blacklist(ex_a, symbol, ttl_s=60.0)
                             self._stale_detector.add_blacklist(ex_b, symbol, ttl_s=60.0)
@@ -461,15 +468,19 @@ class RealDataSignalProducer:
                     # US-184 + S10 + US-225: spread outlier filter
                     spread_bps = (float(bid_b) - float(ask_a)) / float(ask_a) * 10000
                     if spread_bps > 100:
-                        logger.warning(
-                            "real_signal_producer.futures_spread_outlier",
-                            extra={
-                                "symbol": symbol,
-                                "buy_ex": ex_a,
-                                "sell_ex": ex_b,
-                                "spread_bps": round(spread_bps, 1),
-                            },
-                        )
+                        _olk2 = (symbol, ex_a, ex_b)
+                        _now2 = time.monotonic()
+                        if _now2 - self._outlier_log_cooldown.get(_olk2, 0.0) > 60.0:
+                            logger.warning(
+                                "real_signal_producer.futures_spread_outlier",
+                                extra={
+                                    "symbol": symbol,
+                                    "buy_ex": ex_a,
+                                    "sell_ex": ex_b,
+                                    "spread_bps": round(spread_bps, 1),
+                                },
+                            )
+                            self._outlier_log_cooldown[_olk2] = _now2
                         if spread_bps > 200 and self._stale_detector is not None:
                             self._stale_detector.add_blacklist(ex_a, symbol, ttl_s=60.0)
                             self._stale_detector.add_blacklist(ex_b, symbol, ttl_s=60.0)

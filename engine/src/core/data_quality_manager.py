@@ -19,7 +19,6 @@ Usage::
 """
 from __future__ import annotations
 
-import os
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -28,26 +27,33 @@ from typing import Any
 
 import structlog
 
+from src.core.config import get_settings
 from src.infra.exchange.health_checker import HealthChecker
 
 logger = structlog.get_logger(__name__)
 
+
+def _op():
+    """Return operational settings (deferred to avoid import-time cycles)."""
+    return get_settings().operational
+
+
 # --- Freshness defaults (seconds) ---
-_FRESHNESS_FUTURES_S = float(os.getenv("FRESHNESS_FUTURES_S", "0.5"))
-_FRESHNESS_DEFAULT_S = float(os.getenv("FRESHNESS_DEFAULT_S", "1.0"))
-_FRESHNESS_KOREAN_S = float(os.getenv("FRESHNESS_KOREAN_S", "2.0"))
-_FRESHNESS_BITHUMB_S = float(os.getenv("FRESHNESS_BITHUMB_S", "1.0"))
+_FRESHNESS_FUTURES_S = _op().freshness_futures_s
+_FRESHNESS_DEFAULT_S = _op().freshness_default_s
+_FRESHNESS_KOREAN_S = _op().freshness_korean_s
+_FRESHNESS_BITHUMB_S = _op().freshness_bithumb_s
 
 # --- Bithumb-specific (US-290) ---
-_BITHUMB_DEVIATION_PCT = float(os.getenv("BITHUMB_DEVIATION_PCT", "0.05"))
-_BITHUMB_LARGE_DEVIATION_MULT = float(os.getenv("BITHUMB_LARGE_DEVIATION_MULT", "1.0"))  # deviation ratio 1.0 = 2x price
-_BITHUMB_BLACKLIST_TTL_S = float(os.getenv("BITHUMB_BLACKLIST_TTL_S", "600"))
+_BITHUMB_DEVIATION_PCT = _op().bithumb_deviation_pct
+_BITHUMB_LARGE_DEVIATION_MULT = _op().bithumb_large_deviation_mult
+_BITHUMB_BLACKLIST_TTL_S = _op().bithumb_blacklist_ttl_s
 
 # --- Anomaly detection (US-289) ---
-_ANOMALY_WINDOW = int(os.getenv("ANOMALY_WINDOW", "100"))
-_ANOMALY_Z_THRESHOLD = float(os.getenv("ANOMALY_Z_THRESHOLD", "4.0"))
-_ANOMALY_ISOLATION_S = float(os.getenv("ANOMALY_ISOLATION_S", "3.0"))
-_ANOMALY_WARMUP = int(os.getenv("ANOMALY_WARMUP", "10"))
+_ANOMALY_WINDOW = _op().anomaly_window
+_ANOMALY_Z_THRESHOLD = _op().anomaly_z_threshold
+_ANOMALY_ISOLATION_S = _op().anomaly_isolation_s
+_ANOMALY_WARMUP = _op().anomaly_warmup
 
 # --- Exchange classification ---
 KOREAN_EXCHANGES = frozenset({"upbit", "bithumb", "coinone"})

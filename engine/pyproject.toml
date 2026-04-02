@@ -66,6 +66,15 @@ packages = ["src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "--cov=src --cov-report=term-missing --cov-report=xml"
+filterwarnings = [
+    # ShadowMode and EngineMode.SHADOW are deprecated as of Phase I.
+    # Tests that still use ShadowMode directly are retained for backward
+    # compatibility (SIT-3 progressive_shadow). Suppress the warning so
+    # existing tests keep passing.
+    "ignore::DeprecationWarning:src.modes.shadow",
+    "ignore:ShadowMode is deprecated:DeprecationWarning",
+    "ignore:EngineMode.SHADOW is deprecated:DeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100

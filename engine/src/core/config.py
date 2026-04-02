@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import warnings
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
@@ -51,7 +52,7 @@ def _load_dynaconf_defaults() -> None:
     try:
         # Step 1: Pre-load .env into os.environ so its values beat dynaconf.
         # override=False means real shell env vars are never clobbered.
-        _env_file = _ENGINE_ROOT / ".env"
+        _env_file = _ENGINE_ROOT.parent / ".env"
         if _env_file.exists():
             try:
                 from dotenv import load_dotenv  # noqa: PLC0415
@@ -99,14 +100,18 @@ class ExecutionMode(StrEnum):
 class EngineMode(StrEnum):
     """Unified engine mode (Phase H-2 — industry standard 4-stage).
 
-    Backtest → Paper → Shadow → Live
+    Backtest → Paper → Live  (Shadow deprecated as of Phase I)
 
     Strategy/signal code is identical across all modes.
     Only DataFeed and Executor differ per mode.
+
+    Migration guide:
+      - EngineMode.SHADOW → EngineMode.LIVE (with small capital / paper execution)
+      - Set ENGINE_MODE=live and LIVE_GATE_BYPASS=true for canary testing
     """
     BACKTEST = "backtest"   # Historical data + SimExecutor
     PAPER = "paper"         # Live WS data + SimExecutor (= old "shadow")
-    SHADOW = "shadow"       # Live WS data + AtomicExecutor small capital (canary)
+    SHADOW = "shadow"       # DEPRECATED: use EngineMode.LIVE with paper execution
     LIVE = "live"           # Live WS data + AtomicExecutor full capital
 
 
@@ -132,7 +137,15 @@ def resolve_engine_mode(
     em = engine_mode or os.getenv("ENGINE_MODE", "")
     if em:
         try:
-            return EngineMode(em.lower())
+            resolved = EngineMode(em.lower())
+            if resolved == EngineMode.SHADOW:
+                warnings.warn(
+                    "EngineMode.SHADOW is deprecated as of Phase I. "
+                    "Use EngineMode.LIVE with LIVE_GATE_BYPASS=true for canary testing.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            return resolved
         except ValueError:
             pass
 
@@ -143,6 +156,12 @@ def resolve_engine_mode(
     if exec_m == "live":
         return EngineMode.LIVE
     if exec_m == "sandbox":
+        warnings.warn(
+            "EngineMode.SHADOW is deprecated as of Phase I (resolved from EXECUTION_MODE=sandbox). "
+            "Use EXECUTION_MODE=live with LIVE_GATE_BYPASS=true for canary testing.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return EngineMode.SHADOW
     # exec_m == "paper"
     if data_m == "shadow":
@@ -208,6 +227,36 @@ class ExchangeSettings(BaseSettings):
     bybit_api_secret: str = Field(default="", alias="BYBIT_API_SECRET")
     bybit_testnet: bool = Field(default=False, alias="BYBIT_TESTNET")
     bybit_rate_limit: int = Field(default=600, alias="BYBIT_RATE_LIMIT")
+
+    # Bitget (US-359)
+    bitget_api_key: str = Field(default="", alias="BITGET_API_KEY")
+    bitget_api_secret: str = Field(default="", alias="BITGET_API_SECRET")
+    bitget_passphrase: str = Field(default="", alias="BITGET_PASSPHRASE")
+    bitget_testnet: bool = Field(default=False, alias="BITGET_TESTNET")
+
+    # Upbit (US-359)
+    upbit_access_key: str = Field(default="", alias="UPBIT_ACCESS_KEY")
+    upbit_secret_key: str = Field(default="", alias="UPBIT_SECRET_KEY")
+
+    # Bithumb (US-359)
+    bithumb_api_key: str = Field(default="", alias="BITHUMB_API_KEY")
+    bithumb_api_secret: str = Field(default="", alias="BITHUMB_API_SECRET")
+
+    # Coinone (US-359)
+    coinone_access_token: str = Field(default="", alias="COINONE_ACCESS_TOKEN")
+    coinone_api_secret: str = Field(default="", alias="COINONE_API_SECRET")
+
+    # Tier4 — API 키 추후 발급, 어댑터는 Phase K에서 미리 구현 (US-359)
+    mexc_api_key: str = Field(default="", alias="MEXC_API_KEY")
+    mexc_api_secret: str = Field(default="", alias="MEXC_API_SECRET")
+    gateio_api_key: str = Field(default="", alias="GATEIO_API_KEY")
+    gateio_api_secret: str = Field(default="", alias="GATEIO_API_SECRET")
+    bingx_api_key: str = Field(default="", alias="BINGX_API_KEY")
+    bingx_api_secret: str = Field(default="", alias="BINGX_API_SECRET")
+    lbank_api_key: str = Field(default="", alias="LBANK_API_KEY")
+    lbank_api_secret: str = Field(default="", alias="LBANK_API_SECRET")
+    orangex_api_key: str = Field(default="", alias="ORANGEX_API_KEY")
+    orangex_api_secret: str = Field(default="", alias="ORANGEX_API_SECRET")
 
 
 class RiskSettings(BaseSettings):
@@ -359,11 +408,175 @@ class MonitoringSettings(BaseSettings):
         return upper
 
 
+class OperationalSettings(BaseSettings):
+    """Fine-grained operational parameters loaded from environment variables.
+
+    Centralises all os.getenv() calls that previously appeared inline across
+    main.py, modes/, and core/ — collected here so every module can call
+    ``get_settings().operational.<field>`` instead of raw ``os.getenv()``.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="", populate_by_name=True, extra="ignore")
+
+    # API server
+    api_host: str = Field(default="0.0.0.0", alias="API_HOST")
+    api_port: int = Field(default=8000, alias="PORT")
+
+    # BTC reference price (USD) for USDT→BTC conversion
+    btc_reference_price: Decimal = Field(default=Decimal("50000"), alias="BTC_REFERENCE_PRICE")
+
+    # Database
+    database_url: str = Field(
+        default="postgresql://leviathan:leviathan@localhost:5432/leviathan",
+        alias="DATABASE_URL",
+    )
+
+    # Signal pipeline
+    min_edge_bps: int = Field(default=5, alias="MIN_EDGE_BPS")
+    max_spread_pct: float = Field(default=0.05, alias="MAX_SPREAD_PCT")
+    signal_cooldown_sec: float = Field(default=2.0, alias="SIGNAL_COOLDOWN_SEC")
+    min_price_usd: Decimal = Field(default=Decimal("0.10"), alias="MIN_PRICE_USD")
+    signal_min_volume_usd: Decimal = Field(default=Decimal("0"), alias="SIGNAL_MIN_VOLUME_USD")
+
+    # Stale orderbook detection
+    stale_cross_deviation_pct: float = Field(default=0.10, alias="STALE_CROSS_DEVIATION_PCT")
+    stale_blacklist_ttl_s: float = Field(default=300.0, alias="STALE_BLACKLIST_TTL_S")
+
+    # Shadow mode — slippage & balance
+    powerlaw_slippage_k: float = Field(default=0.0, alias="POWERLAW_SLIPPAGE_K")
+    shadow_fallback_slippage_bps: Decimal = Field(default=Decimal("10"), alias="SHADOW_FALLBACK_SLIPPAGE_BPS")
+    shadow_depth_penalty_multiplier: float = Field(default=2.0, alias="SHADOW_DEPTH_PENALTY_MULTIPLIER")
+    shadow_initial_balance_usdt: Decimal = Field(default=Decimal("10000000"), alias="SHADOW_INITIAL_BALANCE_USDT")
+    shadow_rebalance_threshold_pct: Decimal = Field(default=Decimal("0.10"), alias="SHADOW_REBALANCE_THRESHOLD_PCT")
+    shadow_depth_fraction: Decimal = Field(default=Decimal("1.0"), alias="SHADOW_DEPTH_FRACTION")
+    shadow_max_trade_size: Decimal = Field(default=Decimal("100"), alias="SHADOW_MAX_TRADE_SIZE")
+    shadow_max_loss_per_trade_usd: Decimal = Field(default=Decimal("10"), alias="SHADOW_MAX_LOSS_PER_TRADE_USD")
+    strategy_loss_cap_json: str = Field(default="", alias="STRATEGY_LOSS_CAP_JSON")
+    shadow_single_loss_disable_seconds: float = Field(default=0.0, alias="SHADOW_SINGLE_LOSS_DISABLE_SECONDS")
+    shadow_reconcile_interval_s: float = Field(default=60.0, alias="SHADOW_RECONCILE_INTERVAL_S")
+    shadow_disabled_strategies: str = Field(default="", alias="SHADOW_DISABLED_STRATEGIES")
+    shadow_strategy_filter: str = Field(default="", alias="SHADOW_STRATEGY_FILTER")
+    shadow_mock_dex: bool = Field(default=False, alias="SHADOW_MOCK_DEX")
+    shadow_progressive: bool = Field(default=False, alias="SHADOW_PROGRESSIVE")
+    shadow_partial_fill_rate: Decimal = Field(default=Decimal("0.05"), alias="SHADOW_PARTIAL_FILL_RATE")
+    shadow_rejection_rate: Decimal = Field(default=Decimal("0.02"), alias="SHADOW_REJECTION_RATE")
+    shadow_leg_delay_min_ms: float = Field(default=50.0, alias="SHADOW_LEG_DELAY_MIN_MS")
+    shadow_leg_delay_max_ms: float = Field(default=300.0, alias="SHADOW_LEG_DELAY_MAX_MS")
+
+    # KRW/USDT rate
+    krw_usdt_rate: float = Field(default=1380.0, alias="KRW_USDT_RATE")
+
+    # DEX
+    dex_rpc_url: str = Field(default="", alias="DEX_RPC_URL")
+    dex_pool_address: str = Field(default="", alias="DEX_POOL_ADDRESS")
+
+    # Execution
+    execution_mode: str = Field(default="paper", alias="EXECUTION_MODE")
+    data_mode: str = Field(default="synthetic", alias="DATA_MODE")
+    strategy_validation: bool = Field(default=False, alias="STRATEGY_VALIDATION")
+
+    # Capital allocator
+    capital_allocator_enabled: bool = Field(default=True, alias="CAPITAL_ALLOCATOR_ENABLED")
+    max_position_usd: float = Field(default=10000.0, alias="MAX_POSITION_USD")
+    portfolio_risk_enabled: bool = Field(default=True, alias="PORTFOLIO_RISK_ENABLED")
+
+    # Inline tuner
+    enable_inline_tuner: str = Field(default="", alias="ENABLE_INLINE_TUNER")
+
+    # Inventory rebalancer
+    rebalancer_deviation_threshold: float = Field(default=0.30, alias="REBALANCER_DEVIATION_THRESHOLD")
+    rebalancer_check_interval_s: float = Field(default=14400.0, alias="REBALANCER_CHECK_INTERVAL_S")
+    rebalancer_min_transfer_usd: float = Field(default=50.0, alias="REBALANCER_MIN_TRANSFER_USD")
+
+    # Adaptive threshold
+    adaptive_threshold_interval_s: float = Field(default=3600.0, alias="ADAPTIVE_THRESHOLD_INTERVAL_S")
+
+    # Reconciliation
+    reconciliation_interval_s: float = Field(default=5.0, alias="RECONCILIATION_INTERVAL_S")
+
+    # Bithumb refresh
+    bithumb_refresh_interval_s: float = Field(default=60.0, alias="BITHUMB_REFRESH_INTERVAL_S")
+
+    # Funding rate
+    funding_rate_interval_s: float = Field(default=60.0, alias="FUNDING_RATE_INTERVAL_S")
+
+    # Live mode
+    live_single_loss_disable_seconds: float = Field(default=600.0, alias="LIVE_SINGLE_LOSS_DISABLE_SECONDS")
+    live_max_loss_per_trade_usd: Decimal = Field(default=Decimal("10"), alias="LIVE_MAX_LOSS_PER_TRADE_USD")
+
+    # LiveGate continuous monitor
+    live_gate_continuous_enabled: bool = Field(default=True, alias="LIVE_GATE_CONTINUOUS_ENABLED")
+    live_gate_monitor_interval_s: int = Field(default=60, alias="LIVE_GATE_MONITOR_INTERVAL_S")
+    live_gate_pause_threshold: int = Field(default=3, alias="LIVE_GATE_PAUSE_THRESHOLD")
+
+    # Market impact
+    market_impact_eta: str = Field(default="", alias="MARKET_IMPACT_ETA")
+    market_impact_enabled: bool = Field(default=True, alias="MARKET_IMPACT_ENABLED")
+    market_impact_min_adv: float = Field(default=1000.0, alias="MARKET_IMPACT_MIN_ADV")
+
+    # Data quality (freshness thresholds)
+    freshness_futures_s: float = Field(default=0.5, alias="FRESHNESS_FUTURES_S")
+    freshness_default_s: float = Field(default=1.0, alias="FRESHNESS_DEFAULT_S")
+    freshness_korean_s: float = Field(default=2.0, alias="FRESHNESS_KOREAN_S")
+    freshness_bithumb_s: float = Field(default=1.0, alias="FRESHNESS_BITHUMB_S")
+
+    # Data quality (Bithumb-specific)
+    bithumb_deviation_pct: float = Field(default=0.05, alias="BITHUMB_DEVIATION_PCT")
+    bithumb_large_deviation_mult: float = Field(default=1.0, alias="BITHUMB_LARGE_DEVIATION_MULT")
+    bithumb_blacklist_ttl_s: float = Field(default=600.0, alias="BITHUMB_BLACKLIST_TTL_S")
+
+    # Anomaly detection
+    anomaly_window: int = Field(default=100, alias="ANOMALY_WINDOW")
+    anomaly_z_threshold: float = Field(default=4.0, alias="ANOMALY_Z_THRESHOLD")
+    anomaly_isolation_s: float = Field(default=3.0, alias="ANOMALY_ISOLATION_S")
+    anomaly_warmup: int = Field(default=10, alias="ANOMALY_WARMUP")
+
+    # Strategy validation
+    strategy_validation_duration_s: int = Field(default=600, alias="STRATEGY_VALIDATION_DURATION_S")
+    strategy_validation_combined_duration_s: int = Field(default=600, alias="STRATEGY_VALIDATION_COMBINED_DURATION_S")
+    strategy_validation_min_trades: int = Field(default=5, alias="STRATEGY_VALIDATION_MIN_TRADES")
+    strategy_validation_hydration_s: int = Field(default=30, alias="STRATEGY_VALIDATION_HYDRATION_S")
+    strategy_activation_path: str = Field(default="config/strategy_activation.json", alias="STRATEGY_ACTIVATION_PATH")
+
+    # Engine core loop intervals
+    engine_reconcile_interval: int = Field(default=60, alias="ENGINE_RECONCILE_INTERVAL")
+    engine_health_check_interval: int = Field(default=10, alias="ENGINE_HEALTH_CHECK_INTERVAL")
+    engine_heartbeat_interval: int = Field(default=5, alias="ENGINE_HEARTBEAT_INTERVAL")
+    engine_shutdown_timeout: int = Field(default=10, alias="ENGINE_SHUTDOWN_TIMEOUT")
+
+    # Atomic executor (US-275)
+    partial_fill_timeout_s: float = Field(default=30.0, alias="PARTIAL_FILL_TIMEOUT_S")
+    max_loss_pct: float = Field(default=2.0, alias="MAX_LOSS_PCT")
+    enable_partial_fill_stop: bool = Field(default=True, alias="ENABLE_PARTIAL_FILL_STOP")
+    enable_depth_sizing: bool = Field(default=True, alias="ENABLE_DEPTH_SIZING")
+    min_order_size: str = Field(default="0.001", alias="MIN_ORDER_SIZE")
+
+    # Triangular scanner
+    enable_triangular_cost: bool = Field(default=False, alias="ENABLE_TRIANGULAR_COST")
+    triangular_cross_pairs: str = Field(default="ETH/BTC,SOL/BTC,SOL/ETH", alias="TRIANGULAR_CROSS_PAIRS")
+
+    # API server
+    cors_origins: str = Field(
+        default="http://localhost:3000,http://127.0.0.1:3000",
+        alias="CORS_ORIGINS",
+    )
+
+    # LiveGate continuous (raw string for env override)
+    live_gate_continuous_raw: str = Field(default="1", alias="LIVE_GATE_CONTINUOUS")
+
+    # Capital allocator
+    regime_aware_allocation_enabled: bool = Field(default=True, alias="REGIME_AWARE_ALLOCATION_ENABLED")
+
+    # Signal producer
+    exchange_stale_threshold_s: float = Field(default=1.5, alias="EXCHANGE_STALE_THRESHOLD_S")
+    spot_futures_min_basis_bps: float = Field(default=5.0, alias="SPOT_FUTURES_MIN_BASIS_BPS")
+
+
 class Settings(BaseSettings):
     """Top-level settings — loads all sub-settings from environment."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(Path(__file__).resolve().parents[3] / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,
@@ -391,6 +604,7 @@ class Settings(BaseSettings):
     live_gate: LiveGateSettings = Field(default_factory=LiveGateSettings)
     execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
+    operational: OperationalSettings = Field(default_factory=OperationalSettings)
 
     @model_validator(mode="after")
     def validate_prod_keys(self) -> "Settings":

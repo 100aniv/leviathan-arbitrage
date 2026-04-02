@@ -104,6 +104,7 @@ class WalkForwardAnalyzer:
             SELECT ts, net_pnl, gross_spread_bps, fee_total, slippage_total, status
             FROM execution_log
             WHERE strategy_id = $1 AND ts >= $2 AND ts <= $3
+              AND mode IN ('backtest', 'paper', 'shadow')
             ORDER BY ts ASC
         """
 

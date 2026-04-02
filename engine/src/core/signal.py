@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
+from src.core.config import get_settings
 from src.core.events import SignalEvent
 from src.core.models import Signal
 from src.core.order_book import OrderBook
@@ -36,8 +37,9 @@ def compute_depth_trade_size(
 
     Returns clamped value in [0.001, max_trade].
     """
-    frac = depth_fraction or Decimal(os.getenv("SHADOW_DEPTH_FRACTION", "1.0"))
-    cap = max_trade or Decimal(os.getenv("SHADOW_MAX_TRADE_SIZE", "100"))
+    _op = get_settings().operational
+    frac = depth_fraction or _op.shadow_depth_fraction
+    cap = max_trade or _op.shadow_max_trade_size
     depth_size = min(buy_depth, sell_depth) * frac
     return max(Decimal("0.001"), min(depth_size, cap))
 
@@ -96,7 +98,6 @@ class SignalGenerator:
         slippage_feedback: Any | None = None,  # US-283: SlippageFeedbackCollector
         market_impact_enabled: bool | None = None,  # US-284: toggle (default from env)
     ) -> None:
-        import os as _os
         self._hub = price_hub
         self._calc = cost_calculator
         self._config = config or SignalConfig()
@@ -110,11 +111,12 @@ class SignalGenerator:
         self._ml_canary = ml_canary  # US-253
         self._adaptive_threshold = adaptive_threshold  # US-255: per-strategy threshold
         self._slippage_feedback = slippage_feedback  # US-283
+        _op = get_settings().operational
         self._market_impact_enabled = (
             market_impact_enabled
             if market_impact_enabled is not None
-            else _os.getenv("MARKET_IMPACT_ETA", "") != ""
-            or _os.getenv("MARKET_IMPACT_ENABLED", "true").lower() != "false"
+            else _op.market_impact_eta != ""
+            or _op.market_impact_enabled
         )  # US-284
         self._crisis_start_time: float | None = None  # US-173: CRISIS timeout tracking
         self._price_history: dict[str, list[Decimal]] = {}  # US-248: mid-price cache per symbol
@@ -429,7 +431,7 @@ class SignalGenerator:
                 size_usd_f = float(notional)
                 buy_vol = getattr(books.get(buy_exchange), "volume_24h_usd", None)
                 adv_usd = float(buy_vol) if buy_vol is not None else 0.0
-                _min_adv = float(os.getenv("MARKET_IMPACT_MIN_ADV", "1000"))
+                _min_adv = get_settings().operational.market_impact_min_adv
                 if adv_usd >= _min_adv:
                     impact_bps = estimate_market_impact(size_usd_f, adv_usd)
                     edge_bps = float(net_edge) * 10_000

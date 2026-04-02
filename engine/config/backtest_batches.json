@@ -1,0 +1,34 @@
+{
+  "_comment": "Backtest batch cases for Phase K validation (US-368~371)",
+  "batch1_binance": [
+    {"id": "K-B-01", "exchange": "binance", "strategy": "triangular", "seed": 42, "period": "3M"},
+    {"id": "K-B-02", "exchange": "binance", "strategy": "statistical_arb", "seed": 42, "period": "3M"},
+    {"id": "K-B-03", "exchange": "binance", "strategy": "spot_futures", "seed": 42, "period": "3M"},
+    {"id": "K-B-04", "exchange": "binance", "strategy": "funding_rate", "seed": 42, "period": "3M"}
+  ],
+  "batch2_krw": [
+    {"id": "K-B-05", "exchange": "upbit", "strategy": "triangular", "seed": 42, "period": "3M"},
+    {"id": "K-B-06", "exchange": "bithumb", "strategy": "triangular", "seed": 42, "period": "3M"},
+    {"id": "K-B-07", "exchange": "coinone", "strategy": "triangular", "seed": 42, "period": "3M"},
+    {"id": "K-B-08", "exchange": "bitget", "strategy": "spot_futures", "seed": 42, "period": "3M"},
+    {"id": "K-B-09", "exchange": "upbit+binance", "strategy": "cross_exchange", "seed": 42, "period": "3M", "expected": "FAIL"},
+    {"id": "K-B-10", "exchange": "bithumb+binance", "strategy": "cross_exchange", "seed": 42, "period": "3M", "expected": "FAIL"},
+    {"id": "K-B-11", "exchange": "coinone+binance", "strategy": "cross_exchange", "seed": 42, "period": "3M", "expected": "FAIL"}
+  ],
+  "batch3_multi": [
+    {"id": "K-B-12", "exchange": "binance+bybit", "strategy": "cross_exchange", "seed": 42, "period": "3M"},
+    {"id": "K-B-13", "exchange": "binance+okx", "strategy": "cross_exchange", "seed": 42, "period": "3M"},
+    {"id": "K-B-14", "exchange": "binance+bitget", "strategy": "cross_exchange", "seed": 42, "period": "3M"},
+    {"id": "K-B-15", "exchange": "binance_futures+bybit_futures", "strategy": "futures_futures", "seed": 42, "period": "3M"},
+    {"id": "K-B-16", "exchange": "binance", "strategy": "stat_arb+funding_rate", "seed": 42, "period": "3M"}
+  ],
+  "batch4_tier4": [
+    {"id": "K-B-17", "exchange": "mexc", "strategy": "triangular", "seed": 42, "period": "3M"},
+    {"id": "K-B-18", "exchange": "gateio", "strategy": "triangular", "seed": 42, "period": "3M"},
+    {"id": "K-B-19", "exchange": "bingx", "strategy": "triangular", "seed": 42, "period": "3M"},
+    {"id": "K-B-20", "exchange": "lbank", "strategy": "triangular", "seed": 42, "period": "3M"},
+    {"id": "K-B-21", "exchange": "orangex", "strategy": "triangular", "seed": 42, "period": "3M"},
+    {"id": "K-B-22", "exchange": "mexc+binance", "strategy": "cross_exchange", "seed": 42, "period": "3M"},
+    {"id": "K-B-23", "exchange": "gateio+binance", "strategy": "cross_exchange", "seed": 42, "period": "3M"}
+  ]
+}

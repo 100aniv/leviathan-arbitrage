@@ -294,6 +294,43 @@ def cmd_transition(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# notion_report 커맨드
+# ---------------------------------------------------------------------------
+
+def cmd_notion_report(args: argparse.Namespace) -> int:
+    """NotionReporter를 통해 Phase K 테스트 결과 페이지 생성."""
+    from src.infra.notion_reporter import NotionReporter
+
+    root = Path(args.root) if args.root else _find_project_root()
+    phase = args.phase or "K"
+
+    # backtest_batches.json에서 케이스 로드
+    batches_file = root / "engine" / "config" / "backtest_batches.json"
+    if not batches_file.exists():
+        # engine/ 디렉토리 내에서 실행 시
+        batches_file = root / "config" / "backtest_batches.json"
+
+    test_cases: list[dict] = []
+    if batches_file.exists():
+        try:
+            data = json.loads(batches_file.read_text(encoding="utf-8"))
+            # 구조: {"batch1_binance": [...], "batch2_krw": [...], ...}
+            for batch_cases in data.values():
+                if isinstance(batch_cases, list):
+                    test_cases.extend(batch_cases)
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"[에러] backtest_batches.json 읽기 실패: {exc}", file=sys.stderr)
+            return 2
+    else:
+        print(f"[경고] backtest_batches.json 없음: {batches_file}", file=sys.stderr)
+
+    reporter = NotionReporter()
+    page_id = reporter.write_plan(phase=f"Phase {phase}", test_cases=test_cases)
+    print(f"notion_report: page_id={page_id}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # 인자 파서
 # ---------------------------------------------------------------------------
 
@@ -386,6 +423,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_trans.add_argument("event", help="이벤트 (예: shadow_pass, entry_gate_pass) 또는 status/set")
     p_trans.add_argument("--state", default=None, help="set 시 강제 설정할 상태")
     p_trans.set_defaults(func=cmd_transition)
+
+    # notion_report
+    p_notion = sub.add_parser("notion_report", help="Notion에 Phase K 테스트 결과 페이지 생성")
+    p_notion.add_argument("--phase", default="K", help="Phase 레이블 (기본: K)")
+    p_notion.set_defaults(func=cmd_notion_report)
 
     return parser
 

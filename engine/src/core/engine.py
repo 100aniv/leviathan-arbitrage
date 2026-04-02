@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Optional, Protocol, runtime_checkable
 
+from src.core.config import get_settings
 from src.risk.kill_switch import halt_local, is_halted
 
 logger = logging.getLogger(__name__)
@@ -39,10 +39,10 @@ class EngineStatus(StrEnum):
 
 @dataclass
 class EngineConfig:
-    reconcile_interval: int = int(os.getenv("ENGINE_RECONCILE_INTERVAL", "60"))
-    health_check_interval: int = int(os.getenv("ENGINE_HEALTH_CHECK_INTERVAL", "10"))
-    heartbeat_interval: int = int(os.getenv("ENGINE_HEARTBEAT_INTERVAL", "5"))
-    shutdown_timeout: int = int(os.getenv("ENGINE_SHUTDOWN_TIMEOUT", "10"))
+    reconcile_interval: int = field(default_factory=lambda: get_settings().operational.engine_reconcile_interval)
+    health_check_interval: int = field(default_factory=lambda: get_settings().operational.engine_health_check_interval)
+    heartbeat_interval: int = field(default_factory=lambda: get_settings().operational.engine_heartbeat_interval)
+    shutdown_timeout: int = field(default_factory=lambda: get_settings().operational.engine_shutdown_timeout)
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +178,22 @@ class LEVIATHANEngine:
         self.status = EngineStatus.STARTING
         self._started_at = time.monotonic()
         self._shutdown.clear()
+
+        # parallel 설정 읽기 및 로그 (US-373)
+        try:
+            import json
+            import pathlib
+            _engine_cfg_path = pathlib.Path(__file__).parents[2] / "config" / "engine.json"
+            _engine_cfg = json.loads(_engine_cfg_path.read_text())
+            _parallel = _engine_cfg.get("parallel", {})
+            if _parallel.get("enabled"):
+                logger.info(
+                    "engine.parallel_config_loaded combinations=%d total_capital=%.1f",
+                    len(_parallel.get("combinations", [])),
+                    _parallel.get("risk", {}).get("total_capital_usd", 0),
+                )
+        except Exception as _exc:
+            logger.debug("engine.parallel_config_load_skipped reason=%s", _exc)
 
         self._tasks = [
             asyncio.create_task(self._health_check_loop(), name="health_check"),

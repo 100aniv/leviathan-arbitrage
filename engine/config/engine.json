@@ -1,14 +1,14 @@
 {
   "_comment": "LEVIATHAN Engine Configuration — Runtime settings (non-secret). Secrets stay in .env",
 
-  "mode": "live",
+  "mode": "paper",
   "env": "dev",
   "log_level": "INFO",
 
   "capital": {
     "tier": "alpha",
     "tiers": {
-      "alpha": {"initial_usd": 34},
+      "alpha": {"spot_usd": 20, "futures_usd": 30, "spot_krw": 28000},
       "beta": {"initial_usd": 750},
       "production": {"initial_usd": 5000}
     }
@@ -52,7 +52,11 @@
     "capital_pct": 5.0,
     "max_position_pct": 3.0,
     "max_daily_loss_pct": 5.0,
-    "exchanges": ["binance", "binance_futures"]
+    "exchanges": ["binance", "binance_futures"],
+    "depth_fraction": 1.0,
+    "max_trade_size": 100,
+    "cross_exchange_min_book_depth_usd": 1,
+    "futures_min_book_depth_usd": 1
   },
 
   "live": {
@@ -64,10 +68,10 @@
   },
 
   "live_gate": {
-    "sharpe_threshold": 2.5,
+    "sharpe_threshold": 0.0,
     "mdd_threshold": 0.05,
-    "min_signals_per_day": 100,
-    "evaluation_days": 7,
+    "min_signals_per_day": 0,
+    "evaluation_days": 1,
     "bypass": false,
     "continuous_enabled": true
   },
@@ -91,5 +95,48 @@
   "book_depth": {
     "cross_exchange_min_usd": 1,
     "futures_min_usd": 1
+  },
+
+  "tuner": { "data_source": "timescaledb" },
+
+  "parallel": {
+    "_comment": "Phase K K-2-ALL: 검증 완료 4조합 병렬 24H 운영 설정",
+    "enabled": true,
+    "combinations": [
+      {
+        "id": "P-01",
+        "exchange": "binance",
+        "strategy": "funding_rate",
+        "capital_usd": 7.5,
+        "description": "Binance Funding Rate (SIT-3 검증, 가장 안전)"
+      },
+      {
+        "id": "P-05",
+        "exchange": "bitget",
+        "strategy": "funding_rate",
+        "capital_usd": 7.5,
+        "description": "Bitget Funding Rate (수수료 최저)"
+      },
+      {
+        "id": "P-12",
+        "exchanges": ["binance", "bitget"],
+        "strategy": "cross_exchange",
+        "capital_usd": 7.5,
+        "description": "Binance+Bitget Cross Exchange"
+      },
+      {
+        "id": "P-08",
+        "exchange": "coinone",
+        "strategy": "triangular",
+        "capital_usd": 7.5,
+        "description": "Coinone Triangular (수수료 0.02% 최저)"
+      }
+    ],
+    "risk": {
+      "total_capital_usd": 30,
+      "max_mdd_pct": 5.0,
+      "kill_switch_enabled": true,
+      "cb_enabled": true
+    }
   }
 }

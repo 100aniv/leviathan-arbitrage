@@ -16,17 +16,17 @@ Algorithm:
 from __future__ import annotations
 
 import math
-import os
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
+from src.core.config import get_settings
 from src.core.order_book import OrderBook
 
 if TYPE_CHECKING:
     from src.strategies.base import CostCalculator
 
-_ENABLE_TRIANGULAR_COST = os.environ.get("ENABLE_TRIANGULAR_COST", "false").lower() == "true"
+_ENABLE_TRIANGULAR_COST = get_settings().operational.enable_triangular_cost
 
 
 @dataclass

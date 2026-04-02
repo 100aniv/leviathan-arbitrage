@@ -172,8 +172,8 @@ class CapitalAllocator:
         Multiplier: bull=1.0, neutral=0.7, bear=0.4, crisis=0.1.
         After scaling, re-normalizes so total <= 100%.
         """
-        import os as _os
-        if _os.getenv("REGIME_AWARE_ALLOCATION_ENABLED", "true").lower() == "false":
+        from src.core.config import get_settings  # noqa: PLC0415
+        if not get_settings().operational.regime_aware_allocation_enabled:
             return self.compute_allocations(strategy_stats)
 
         mult = self.REGIME_KELLY_MULTIPLIER.get(regime, 0.7)

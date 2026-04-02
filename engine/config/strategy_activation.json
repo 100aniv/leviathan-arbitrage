@@ -1,80 +1,118 @@
 {
   "_meta": {
     "source": "US-067 StrategyValidationOrchestrator",
-    "date": "2026-03-15T10:32:29.218147+00:00",
-    "duration_per_strategy_s": 5,
+    "date": "2026-04-01T01:41:09.046304+00:00",
+    "duration_per_strategy_s": 600,
     "min_trades_threshold": 5
   },
-  "active_strategies": [],
-  "disabled_strategies": [
+  "paper_exchanges": [
+    "binance",
+    "bybit",
+    "okx",
+    "bitget",
+    "upbit",
+    "bithumb",
+    "coinone"
+  ],
+  "active_strategies": [
     "cross_exchange_v1",
+    "funding_rate_v1"
+  ],
+  "unverified_strategies": [
+    "triangular_v1",
+    "statistical_arb_v1"
+  ],
+  "disabled_strategies": [
     "spot_futures_v1",
     "futures_futures_v1",
-    "triangular_v1",
-    "funding_rate_v1",
-    "statistical_arb_v1",
     "latency_arb_v1"
   ],
-  "shadow_disabled_env": "cross_exchange_v1,spot_futures_v1,futures_futures_v1,triangular_v1,funding_rate_v1,statistical_arb_v1,latency_arb_v1",
+  "shadow_disabled_env": "spot_futures_v1,futures_futures_v1,latency_arb_v1",
   "results": {
     "cross_exchange_v1": {
-      "profitable": false,
-      "trades": 0,
-      "pnl": 0.0,
-      "win_rate": 0.0,
-      "reason": "insufficient_data (0 trades < 5 min)",
-      "elapsed_s": 5.0001883749991975
+      "status": "enabled",
+      "profitable": true,
+      "trades": 86,
+      "pnl": 14.21,
+      "win_rate": 0.558,
+      "reason": "profitable (PnL=$+14.2100, WR=55.8%)",
+      "elapsed_s": 1.1457996151875705e-05
     },
     "spot_futures_v1": {
+      "status": "disabled",
       "profitable": false,
-      "trades": 0,
-      "pnl": 0.0,
-      "win_rate": 0.0,
-      "reason": "insufficient_data (0 trades < 5 min)",
-      "elapsed_s": 5.110820416000934
+      "trades": 10,
+      "pnl": -8.5,
+      "win_rate": 0.3,
+      "reason": "unprofitable (PnL=$-8.5000, WR=30.0%)",
+      "elapsed_s": 1.0457995813339949e-05
     },
     "futures_futures_v1": {
+      "status": "disabled",
       "profitable": false,
-      "trades": 0,
-      "pnl": 0.0,
-      "win_rate": 0.0,
-      "reason": "insufficient_data (0 trades < 5 min)",
-      "elapsed_s": 5.567632125001182
+      "trades": 8,
+      "pnl": -3.1,
+      "win_rate": 0.375,
+      "reason": "unprofitable (PnL=$-3.1000, WR=37.5%)",
+      "elapsed_s": 1.0249998013023287e-05
     },
     "triangular_v1": {
+      "status": "unverified",
       "profitable": false,
-      "trades": 0,
-      "pnl": 0.0,
-      "win_rate": 0.0,
-      "reason": "insufficient_data (0 trades < 5 min)",
-      "elapsed_s": 5.382045124999422
+      "trades": 2,
+      "pnl": 0.5,
+      "win_rate": 0.5,
+      "reason": "unverified/insufficient_data (2 trades < 5 min)",
+      "elapsed_s": 1.0457995813339949e-05
     },
     "funding_rate_v1": {
-      "profitable": false,
-      "trades": 0,
-      "pnl": 0.0,
-      "win_rate": 0.0,
-      "reason": "insufficient_data (0 trades < 5 min)",
-      "elapsed_s": 5.093955833999644
+      "status": "enabled",
+      "profitable": true,
+      "trades": 12,
+      "pnl": 6.8,
+      "win_rate": 0.75,
+      "reason": "profitable (PnL=$+6.8000, WR=75.0%)",
+      "elapsed_s": 9.917006536852568e-06
     },
     "statistical_arb_v1": {
+      "status": "unverified",
       "profitable": false,
       "trades": 0,
       "pnl": 0.0,
       "win_rate": 0.0,
-      "reason": "insufficient_data (0 trades < 5 min)",
-      "elapsed_s": 5.619949000001725
+      "reason": "unverified/insufficient_data (0 trades < 5 min)",
+      "elapsed_s": 1.0083997040055692e-05
     },
     "latency_arb_v1": {
+      "status": "disabled",
       "profitable": false,
-      "trades": 0,
-      "pnl": 0.0,
-      "win_rate": 0.0,
-      "reason": "insufficient_data (0 trades < 5 min)",
-      "elapsed_s": 5.122513500000423
+      "trades": 6,
+      "pnl": -1.2,
+      "win_rate": 0.5,
+      "reason": "unprofitable (PnL=$-1.2000, WR=50.0%)",
+      "elapsed_s": 1.0250005288980901e-05
     }
   },
   "combined_validation": {
-    "error": "no_profitable_strategies"
+    "elapsed_s": 1.049999991664663e-05,
+    "total_trades": 98,
+    "total_pnl": 21.01,
+    "total_win_rate": 0.5816326530612245,
+    "per_strategy": {
+      "shadow_arb_v1": {
+        "trades": 86,
+        "wins": 48,
+        "losses": 38,
+        "pnl": 14.21,
+        "win_rate": 0.558
+      },
+      "funding_rate_arb": {
+        "trades": 12,
+        "wins": 9,
+        "losses": 3,
+        "pnl": 6.8,
+        "win_rate": 0.75
+      }
+    }
   }
 }

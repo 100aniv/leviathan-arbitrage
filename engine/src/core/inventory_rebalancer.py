@@ -6,10 +6,10 @@ target allocation, suggests a transfer to rebalance.
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 
 from src.core.balance_tracker import BalanceTracker
+from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,7 @@ class InventoryRebalancer:
 
     async def connect_exchange_feeds(self, exchanges: dict) -> None:
         """Connect exchange balance feeds for live mode."""
-        if os.environ.get("EXECUTION_MODE", "").lower() != "live":
+        if get_settings().operational.execution_mode.lower() != "live":
             logger.info("Balance feed: simulation mode (no live exchange connection)")
             return
 

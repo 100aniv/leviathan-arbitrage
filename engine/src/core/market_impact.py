@@ -7,11 +7,12 @@ to fill prices in PaperExecutor.
 from __future__ import annotations
 
 import logging
-import os
+
+from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_ETA_DEFAULT = float(os.getenv("MARKET_IMPACT_ETA", "0.1"))
+_ETA_DEFAULT = float(get_settings().operational.market_impact_eta or "0.1")
 
 
 def estimate_market_impact(

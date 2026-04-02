@@ -13,13 +13,14 @@ Responsibilities:
 """
 from __future__ import annotations
 
-import os
 import time
 from collections import deque
 from statistics import median
 from typing import Any
 
 import structlog
+
+from src.core.config import get_settings
 
 logger = structlog.get_logger(__name__)
 
@@ -67,15 +68,16 @@ class StaleOrderbookDetector:
             min_comparison_exchanges: Min exchange count for cross-validation.
                                       Skip check if fewer available (returns True).
         """
+        _op = get_settings().operational
         self._deviation_pct: float = (
             deviation_pct
             if deviation_pct is not None
-            else float(os.getenv("STALE_CROSS_DEVIATION_PCT", "0.10"))
+            else _op.stale_cross_deviation_pct
         )
         self._blacklist_ttl_s: float = (
             blacklist_ttl_s
             if blacklist_ttl_s is not None
-            else float(os.getenv("STALE_BLACKLIST_TTL_S", "300"))
+            else _op.stale_blacklist_ttl_s
         )
         self._min_comparison_exchanges = min_comparison_exchanges
         # {(exchange, symbol): expiry_monotonic_time}
