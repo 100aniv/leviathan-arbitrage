@@ -21,7 +21,7 @@
   },
 
   "exchanges": {
-    "active": ["binance", "bybit", "okx", "bitget", "upbit", "bithumb", "coinone", "binance_futures", "bybit_futures", "okx_futures"],
+    "active": ["binance", "bybit", "okx", "bitget", "mexc", "gateio", "upbit", "bithumb", "coinone", "binance_futures", "bybit_futures", "okx_futures", "bitget_futures"],
     "symbols": ["auto"],
     "symbol_min_exchanges": 3
   },

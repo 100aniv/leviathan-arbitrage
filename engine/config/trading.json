@@ -4,12 +4,15 @@
     "bybit",
     "okx",
     "bitget",
+    "mexc",
+    "gateio",
     "upbit",
     "bithumb",
     "coinone",
     "binance_futures",
     "okx_futures",
-    "bybit_futures"
+    "bybit_futures",
+    "bitget_futures"
   ],
   "disabled_strategies": [],
   "risk": {
