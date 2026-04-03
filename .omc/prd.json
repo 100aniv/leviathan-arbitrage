@@ -4,7 +4,7 @@
   "created": "2026-03-08",
   "updated": "2026-04-03T14:01:12",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 384,
+  "total_stories": 385,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
