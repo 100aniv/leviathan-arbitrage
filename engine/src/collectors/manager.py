@@ -17,6 +17,7 @@ from src.collectors.coinone_collector import CoinoneCollector
 from src.collectors.binance_futures_collector import BinanceFuturesCollector
 from src.collectors.okx_futures_collector import OKXFuturesCollector
 from src.collectors.bybit_futures_collector import BybitFuturesCollector
+from src.collectors.bitget_futures_collector import BitgetFuturesCollector
 from src.collectors.mexc_collector import MexcCollector
 from src.collectors.gateio_collector import GateioCollector
 
@@ -31,7 +32,7 @@ class CollectorManager:
     """
 
     # Default exchanges to collect from
-    DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget", "mexc", "gateio", "upbit", "bithumb", "coinone", "binance_futures", "okx_futures", "bybit_futures"]
+    DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget", "mexc", "gateio", "upbit", "bithumb", "coinone", "binance_futures", "okx_futures", "bybit_futures", "bitget_futures"]
 
     # Korean exchanges that trade primarily in KRW (not USDT)
     KOREAN_EXCHANGES = {"upbit", "bithumb", "coinone"}
@@ -75,6 +76,7 @@ class CollectorManager:
             "binance_futures": BinanceFuturesCollector,
             "okx_futures": OKXFuturesCollector,
             "bybit_futures": BybitFuturesCollector,
+            "bitget_futures": BitgetFuturesCollector,
         }
         cls = factory.get(exchange_id)
         if cls is None:

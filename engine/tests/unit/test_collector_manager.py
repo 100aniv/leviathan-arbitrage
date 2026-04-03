@@ -42,11 +42,12 @@ def _make_mock_collector(connected: bool = False, message_count: int = 0) -> Mag
 
 
 class TestDefaultConfiguration:
-    def test_default_exchanges_list_contains_twelve_exchanges(self):
-        """10→12 거래소 (MEXC + Gate.io 추가)."""
+    def test_default_exchanges_list_contains_thirteen_exchanges(self):
+        """10→12→13 거래소 (MEXC + Gate.io + Bitget Futures 추가)."""
         assert "mexc" in CollectorManager.DEFAULT_EXCHANGES
         assert "gateio" in CollectorManager.DEFAULT_EXCHANGES
-        assert len(CollectorManager.DEFAULT_EXCHANGES) == 12
+        assert "bitget_futures" in CollectorManager.DEFAULT_EXCHANGES
+        assert len(CollectorManager.DEFAULT_EXCHANGES) == 13
 
     def test_default_symbols_is_btc_usdt(self):
         manager = CollectorManager()

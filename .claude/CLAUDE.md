@@ -292,10 +292,10 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S26✅ → SIT-0~2✅ → SIT-3✅ → Phase H✅ → Phase I✅ → Phase J✅ → Phase K✅ → **L** → M → N(TF Final→Live)
+- **Phase 순서**: A~M✅ → S1~S26✅ → SIT-0~2✅ → SIT-3✅ → Phase H✅ → Phase I✅ → Phase J✅ → **K** → L → M → N(TF Final→Live)
 - **Tests**: 5,454 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (376개 US, 374 passes:true / 2 passes:false — US-055/056)
-- **다음 작업**: Phase L — Live 모드 진입 (US-055 LiveGate 실행 + US-056 첫 실거래)
+- **PRD**: `.omc/prd.json` (385개 US, 379 passes:true / 6 passes:false — US-055/056/332/372/373/382)
+- **다음 작업**: Phase K 잔여 (US-372 Paper P-01~P-23 → US-332 24H → US-382 P-24~P-31 → US-373 병렬 → US-055 LiveGate → US-056 첫 실거래) → Phase L
 - **계획서**: `/Users/100aniv/.claude/plans/radiant-cooking-forest.md` (Phase K 플랜 v4, 2026-04-02 승인)
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%
 

@@ -63,13 +63,16 @@ class WorkflowSync:
             self._update_ssot_markers(params)
             self._update_claude_md_markers(params)
 
-            # Step 4: 검증
+            # Step 4: SSOT.md §7 체크박스 + §2 PRD 카운트 자동 동기화
+            self._sync_ssot_checkboxes(params)
+
+            # Step 5: 검증
             ok, msg = self._verify()
             if not ok:
                 self._rollback()
                 return False, f"검증 실패 → 롤백 완료: {msg}"
 
-            # Step 5: 백업 정리
+            # Step 6: 백업 정리
             self._cleanup_backups()
             return True, f"7개 파일 동기화 완료: phase={params.phase}, stage={params.stage}"
 
@@ -180,6 +183,76 @@ class WorkflowSync:
             self._update_marker(claude_md, "TESTS", f"{params.tests_passed:,} passed / {params.tests_failed} failed / {params.tests_skipped} skipped")
         if params.prd_pass is not None and params.prd_total is not None:
             self._update_marker(claude_md, "PRD", f"{params.prd_pass}/{params.prd_total} passes:true")
+
+    # --- SSOT 체크박스 + §2 PRD 카운트 동기화 ---
+
+    def _sync_ssot_checkboxes(self, params: SyncParams) -> None:
+        """SSOT.md §7 체크박스를 PRD passes 상태와 자동 동기화.
+
+        - passes:true  → [x]
+        - passes:false → [ ]
+        - §2 PRD 카운트 라인도 업데이트
+        - SSOT.md §4 헤더 날짜/카운트 라인도 업데이트
+        """
+        ssot = self.root / "SSOT.md"
+        prd_path = self.root / ".omc" / "prd.json"
+        if not ssot.exists() or not prd_path.exists():
+            return
+
+        try:
+            stories = json.loads(prd_path.read_text(encoding="utf-8")).get("stories", [])
+        except (json.JSONDecodeError, OSError):
+            return
+
+        passes_map: dict[str, bool] = {s["id"]: bool(s.get("passes", False)) for s in stories}
+        passes_false_ids = [s["id"] for s in stories if not s.get("passes", False) and s.get("phase") in ("K", "L", "M", "N")]
+
+        content = ssot.read_text(encoding="utf-8")
+
+        # 1. 체크박스 동기화
+        def fix_checkbox(m: re.Match) -> str:
+            check, us_id, rest = m.group(1), m.group(2), m.group(3)
+            normalized = us_id.replace("_", "-")
+            passes = passes_map.get(us_id) or passes_map.get(normalized)
+            if passes is True:
+                return f"- [x] {us_id}{rest}"
+            if passes is False:
+                return f"- [ ] {us_id}{rest}"
+            return m.group(0)  # unknown US — leave as-is
+
+        content = re.sub(r"- \[(.)\] (US-[\w-]+)(.*)", fix_checkbox, content)
+
+        # 2. §2 PRD 카운트 라인 업데이트
+        if params.prd_pass is not None and params.prd_total is not None:
+            prd_false = params.prd_total - params.prd_pass
+            false_ids = ", ".join(passes_false_ids[:10]) if passes_false_ids else ""
+            prd_line = f"**PRD**: {params.prd_pass}/{params.prd_total} passes:true (passes:false {prd_false}개 — {false_ids})"
+            content = re.sub(
+                r"\*\*PRD\*\*: \d+/\d+ passes:true.*",
+                prd_line,
+                content,
+            )
+
+        # 3. §2 Tests 라인 업데이트
+        if params.tests_passed is not None:
+            tests_line = f"**Tests**: {params.tests_passed:,} passed / {params.tests_failed} failed / {params.tests_skipped} skipped"
+            content = re.sub(
+                r"\*\*Tests\*\*: [\d,]+ passed.*",
+                tests_line,
+                content,
+            )
+
+        # 4. §7 헤더 카운트 업데이트
+        if params.prd_pass is not None and params.prd_total is not None:
+            done = params.prd_pass
+            remaining = params.prd_total - params.prd_pass
+            content = re.sub(
+                r"## 7\. 남은 작업 \(`.omc/prd.json` \d+개 User Stories, \d+개 완료, \d+개 미완\)",
+                f"## 7. 남은 작업 (`.omc/prd.json` {params.prd_total}개 User Stories, {done}개 완료, {remaining}개 미완)",
+                content,
+            )
+
+        ssot.write_text(content, encoding="utf-8")
 
     # --- 검증 ---
 

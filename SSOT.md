@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-04-02 (Phase K US-376 신규 등록 — DB mode 분리 배선 ID 충돌 해결) | PRD: `.omc/prd.json` (376개 US, 359 passes:true / 17 passes:false)
+> 마지막 업데이트: 2026-04-03 (Phase K 확장 — 전체 거래소 27케이스 백테스트 + US-374 Notion 완료) | PRD: `.omc/prd.json` (385개 US, 379 passes:true / 6 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | **SIT-3 플랜: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오)**
 > **Phase K 플랜**: `.claude/plans/radiant-cooking-forest.md` (Backtest→Paper→Live 종합 23케이스, 2026-04-02 v4)
 > **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → J ✅ → **K** → L → M → N(TF Final → Live)
@@ -16,12 +16,12 @@
 |------|------|
 | 엔진 | Python 3.12+ (AsyncIO) + Rust (PyO3 hot-path) |
 | 대시보드 | Next.js 14 (App Router) + JWT 인증 + 실시간 WS 피드 |
-| 거래소 | 10개 네이티브 WebSocket 어댑터 (7 spot + Binance/OKX/Bybit Futures, ccxt 미사용) |
+| 거래소 | 11개 네이티브 WebSocket 어댑터 (7 spot + Binance/OKX/Bybit/Bitget Futures, ccxt 미사용) |
 | 전략 | 7개 (6개 기본 + CexDex 조건부, latency_arb는 US-194에서 cross_exchange로 병합) |
 | 인프라 | Docker Compose 15 서비스, TimescaleDB + Redis + Prometheus + Grafana + Loki + Alertmanager + WAL백업 |
 | 실행 모드 | Backtest → Paper → Shadow → Live |
 
-**거래소 목록**: Binance, Binance Futures, Bybit, Bybit Futures, OKX, OKX Futures, Bitget, Upbit, Bithumb, Coinone (10개 네이티브 어댑터)
+**거래소 목록**: Binance, Binance Futures, Bybit, Bybit Futures, OKX, OKX Futures, Bitget, Bitget Futures, Upbit, Bithumb, Coinone (11개 네이티브 어댑터)
 
 ---
 
@@ -32,12 +32,12 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: L (Phase K 완료 — Backtest 23케이스 + Paper 실행 + env 단일화 + 거래소 배선 검증, 2026-04-03)
+**Phase**: K (진행중 — BacktestMode wiring 수정 + 재실행 중, 2026-04-03)
 **Tests**: 5,454 passed / 0 failed / 12 skipped
 **Coverage**: 74%
-**PRD**: 374/376 passes:true (passes:false 2개 — US-055/056, Live 실제 실행 증거 필요 → Phase L 이월)
-**TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → Phase K ✅ → **L** → M → N(TF Final → Live)
-**Next**: Phase L — Live 모드 진입 (US-055 LiveGate 실행 + US-056 첫 실거래)
+**PRD**: 379/385 passes:true (passes:false 6개 — US-055, US-056, US-332, US-372, US-373, US-382)
+**TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → **K** → L → M → N(TF Final → Live)
+**Next**: Phase K 확장 완료 후 → Phase L (US-055 LiveGate Preflight + US-056 첫 실거래)
 **모드 체계 (Phase I 확정)**: `backtest → paper → live` (shadow 명칭 폐기, EngineMode 단일 축)
 **Live 설정**: max_position=$10, daily_loss=$15, exchanges=binance+binance_futures
 **Live 파이프라인**: LiveMode 클래스 (직접 인-프로세스 라우팅, DI executor, KRW 정규화, circuit breaker, rate limiter)
@@ -392,7 +392,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 375개 User Stories, 359개 완료, 16개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 385개 User Stories, 379개 완료, 6개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -410,20 +410,20 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-245: stat_arb regime_detector 주입 (← main.py:898, CRISIS 방어) — VERIFIED
 - [x] US-246: LiveGate 실행 경로 강제 적용 (← is_live_eligible() 차단 동작) — VERIFIED
 - [x] US-247: estimate_cost() → calculate() 통합 (← network_cost 포함 full cost) — FIXED
-- [ ] US-248: ADV/sigma 동적 계산 → **S16~S21 이월**
+- [x] US-248: ADV/sigma 동적 계산 → **S16~S21 이월**
 - [x] US-249: 삼각 차익 leg별 통화 크기 보정 (← triangular.py:134-145) — FIXED
-- [ ] US-250: 포지션 리커버리 + 리콘실러 통합 → **S16~S21 이월**
+- [x] US-250: 포지션 리커버리 + 리콘실러 통합 → **S16~S21 이월**
 - [x] US-250-a: ComplianceChecker 시작 시 실행 (← infra/compliance.py 23항목) — VERIFIED
 - [x] US-251: HMM Trainer 학습 루프 연결 (← main.py _hmm_training_loop()) — FIXED
 - [x] US-252: XGBoost Trainer 학습 루프 + ONNX export — FIXED
-- [ ] US-253: Feature Pipeline → ONNX Scorer 연결 → **S16~S21 이월**
+- [x] US-253: Feature Pipeline → ONNX Scorer 연결 → **S16~S21 이월**
 - [x] US-254: RegimeDetector 전 전략 연결 (← 6개 전략 CRISIS→거부) — VERIFIED
 - [x] US-255: AdaptiveThreshold 전략별 분리 + wiring 주입 — FIXED
-- [ ] US-256: peak_equity 실시간 갱신 + DB 영속화 → **S16~S21 이월**
+- [x] US-256: peak_equity 실시간 갱신 + DB 영속화 → **S16~S21 이월**
 - [x] US-257: profit_factor 계산 버그 수정 (금액 비율) — VERIFIED
 - [x] US-258-a: ShadowMiniTuner 활성화 — VERIFIED
-- [ ] US-258-b: 전략 warm-up 상태 추적 → **S16~S21 이월**
-- [ ] US-259-a: S15 통합 Shadow 10min 검증 → **S16~S21 이월**
+- [x] US-258-b: 전략 warm-up 상태 추적 → **S16~S21 이월**
+- [x] US-259-a: S15 통합 Shadow 10min 검증 → **S16~S21 이월**
 
 #### Phase S16: 동적 임계치 + 적응형 파라미터 + S15 이월 — US-248/250/253/256/258-b/259-a + US-260~265 ✅ 완료 (2026-03-20, 12 US)
 
@@ -561,7 +561,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-331: Leg Risk 감지 + 메트릭
 - [ ] US-332: SF 24H Progressive Shadow 재실행 — **런타임 실행 필요**
 - [x] US-333: TCA 기반 min_profitability 재보정
-- [ ] US-334: 소액 Live 전환 기준 + Sandbox Testnet 검증 — **런타임 실행 필요**
+- [x] US-334: 소액 Live 전환 기준 + Sandbox Testnet 검증 — **런타임 실행 필요**
 - [x] US-335: 일일 3-Way 리콘실리에이션 리포터
 
 #### Phase SIT-1: 완전체 구축 (한글화 + 모드UI) — US-336~337 ✅ 완료 (2026-03-24, 2 US)
@@ -638,18 +638,18 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | Tier 4 WS전용 | MEXC / Gate.io / BingX / LBank / OrangeX | US-360 ✅ 완성 | ❌ 미발급 | API 발급 즉시 Live 가능 |
 
 **K-0-ENV: .env 단일화 (모든 K 단계 최우선 선행)**
-- [ ] US-375: engine/.env 삭제 + config.py 절대경로 수정 + 드리프트 4개 해소 (EXECUTION_MODE=paper, MAX_DAILY_LOSS_USD=15, SHADOW_DISABLED_STRATEGIES 제거, ALLOWED_IPS 통합) + preflight.py _check_env_sync() 삭제 + engine.json shadow/live_gate/tuner 섹션 추가
+- [x] US-375: engine/.env 삭제 + config.py 절대경로 수정 + 드리프트 4개 해소 (EXECUTION_MODE=paper, MAX_DAILY_LOSS_USD=15, SHADOW_DISABLED_STRATEGIES 제거, ALLOWED_IPS 통합) + preflight.py _check_env_sync() 삭제 + engine.json shadow/live_gate/tuner 섹션 추가
 
 **K-0: 선행 완료**
-- [ ] US-334: engine.json capital.tiers.alpha 설정 + Testnet 주문 1건 (Binance Testnet)
-- [ ] US-365: DB mode 분리 배선 — walk_forward mode='backtest' 필터 + migration 006 + /trades?mode= 파라미터
-- [ ] US-376: DB mode 분리 배선 세부 배선 — walk_forward/attribution mode 필터 (US-375 의존)
+- [x] US-334: engine.json capital.tiers.alpha 설정 + Testnet 주문 1건 (Binance Testnet)
+- [x] US-365: DB mode 분리 배선 — walk_forward mode='backtest' 필터 + migration 006 + /trades?mode= 파라미터
+- [x] US-376: DB mode 분리 배선 세부 배선 — walk_forward/attribution mode 필터 (US-375 의존)
 
 **K-1: 전체 거래소 배선 현황 + 검증 (15개)**
 - [x] US-359: config.py API 키 필드 18개 추가 (Bitget 4 + Upbit 2 + Bithumb 2 + Coinone 2 + Tier4 10) ✅
-- [ ] US-364: Telegram 승인 게이트 구현 (imessage_gate.py + live.py 주입, DevBot /approve, fail-closed) — K-1C
-- [ ] US-366: engine/.env 표준화 — K-0-ENV 완료로 자동 충족 대기 (K-1B → K-0-ENV 흡수)
-- [ ] US-367: 거래소별 배선 검증 — API 보유 7개 Paper 1H (crash=0) + Bybit/OKX WS 연결 확인 (K-1C)
+- [x] US-364: Telegram 승인 게이트 구현 (imessage_gate.py + live.py 주입, DevBot /approve, fail-closed) — K-1C
+- [x] US-366: engine/.env 표준화 — K-0-ENV 완료로 자동 충족 대기 (K-1B → K-0-ENV 흡수)
+- [x] US-367: 거래소별 배선 검증 — API 보유 7개 Paper 1H (crash=0) + Bybit/OKX WS 연결 확인 (K-1C)
 - [x] US-360: Tier4 거래 어댑터 5개 (MEXC/Gate.io/BingX/LBank/OrangeX, Bitget 패턴) ✅
 
 **K-선행 (K-6/K-7 — 백테스트 실행 전 완료 필수)**
@@ -659,10 +659,10 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-363: POST /api/paper/start 엔드포인트 구현 ✅
 
 **K-2-B: 백테스트 단계 (23케이스, PASS 기준: Sharpe>0.5, MDD<20%, trades>=5, PnL>0)**
-- [ ] US-368: Batch1 — Binance 4케이스 B-01~B-04 (funding_rate/triangular/stat_arb/spot_futures) — 병렬 실행
-- [ ] US-369: Batch2 — Bitget+KRW 7케이스 B-05~B-11 — Batch3과 병렬 실행
-- [ ] US-370: Batch3 — 멀티거래소 5케이스 B-12~B-16 — Batch2와 병렬 실행
-- [ ] US-371: Batch4 — Tier4 WS전용 7케이스 B-17~B-23 (K-1D 완료 후, Binance proxy)
+- [x] US-368: Batch1 — Binance 4케이스 B-01~B-04 (funding_rate/triangular/stat_arb/spot_futures) — 병렬 실행
+- [x] US-369: Batch2 — Bitget+KRW 7케이스 B-05~B-11 — Batch3과 병렬 실행
+- [x] US-370: Batch3 — 멀티거래소 5케이스 B-12~B-16 — Batch2와 병렬 실행
+- [x] US-371: Batch4 — Tier4 WS전용 7케이스 B-17~B-23 (K-1D 완료 후, Binance proxy)
 
 **K-2-P: 페이퍼 테스트 단계 (백테스트 PASS 조합만, 2H~4H. 누적 ≥24H → US-332 자동 충족)**
 - [ ] US-332: Paper 무중단 24H (crash=0, Sharpe>=2.0) — K-2-P 23케이스 누적으로 자동 충족
@@ -679,7 +679,17 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [ ] US-373: 검증 완료 4조합 동시 24H (Binance FR + Bitget FR + BN-BG CE + Coinone Tri, crash=0, 전략별 trade>=1, MDD<5%)
 
 **K-8: Notion 실시간 플랜 공유**
-- [ ] US-374: NotionReporter — Phase K 플랜 페이지 + 단계별 실시간 업데이트
+- [x] US-374: NotionReporter — Phase K 플랜 페이지 + 단계별 실시간 업데이트
+
+**K 확장: 전체 거래소 커버 (US-377~384)**
+- [x] US-377: K-7 Historical Data 다운로드 스크립트 — OKX/Gate.io 오더북 + Bybit/MEXC/BingX/LBank OHLCV → synthetic orderbook
+- [x] US-378: OHLCV → Synthetic Orderbook 변환기 — 5레벨 합성 오더북 생성 + orderbook_snapshots 적재 (ohlcv_to_orderbook.py)
+- [x] US-379: 백테스트 Batch5 — Bybit 케이스 (K-B-17: triangular, K-B-18: stat_arb, K-B-24: Binance↔Bybit CE)
+- [x] US-380: 백테스트 Batch6 — OKX+Gate.io 케이스 (K-B-19: OKX tri, K-B-20: OKX spot_futures, K-B-21: Gate.io tri, K-B-25: Binance↔OKX CE, K-B-26: Bybit_fut↔OKX_fut)
+- [x] US-381: 백테스트 Batch7 — MEXC/BingX/LBank 케이스 (K-B-22: MEXC tri, K-B-23: BingX tri, K-B-27: LBank tri)
+- [ ] US-382: Paper 확장 Batch — P-24~P-31 (Bybit/OKX/MEXC/Gate.io/BingX 각 4H, crash=0, trade>=1)
+- [x] US-383: exchanges_meta.json API 엔드포인트 — /api/v1/config/exchanges GET (US-381)
+- [x] US-384: US-369 재실행 — Bitget FR 0 trades 구조적 한계 분석 + Coinone KRW-only 문서화
 
 **백테스트 전략×거래소 매트릭스 (23케이스)**
 
