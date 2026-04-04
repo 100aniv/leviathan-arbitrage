@@ -6996,7 +6996,7 @@
       "phase": "K",
       "title": "K-PT 페이즈 게이트 — K-PT 케이스 전체 (US-407~424)",
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/api/routes/paper.py",
         "engine/src/modes/live.py"
