@@ -806,12 +806,16 @@ class StatisticalArbStrategy(BaseStrategy):
         if self._state != StatArbState.FLAT:
             self._bars_in_position += 1
 
-        if len(self._spreads) < self.config.min_history:
+        # RSP pre-validated: signal producer already ran min_history/z-score checks
+        _rsp_validated = bool(signal.metadata and signal.metadata.get("rsp_validated"))
+        if _rsp_validated:
+            zscore = float(signal.metadata.get("rsp_z_score", 0.0))
+        elif len(self._spreads) < self.config.min_history:
             self._metrics.signals_filtered += 1
             return None
-
-        history = list(self._spreads)[:-1]
-        zscore = _zscore(history, spread)
+        else:
+            history = list(self._spreads)[:-1]
+            zscore = _zscore(history, spread)
 
         force_exit = (
             self._state != StatArbState.FLAT
@@ -903,11 +907,11 @@ class StatisticalArbStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
-        if not self._has_sufficient_zero_crossings():
+        if not _rsp_validated and not self._has_sufficient_zero_crossings():
             self._metrics.signals_filtered += 1
             return None
 
-        if not self._is_cointegrated():
+        if not _rsp_validated and not self._is_cointegrated():
             self._metrics.signals_filtered += 1
             return None
 

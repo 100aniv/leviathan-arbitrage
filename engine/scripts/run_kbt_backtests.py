@@ -65,11 +65,15 @@ async def _build_db_pool(settings):
 MAX_TUNE_ROUNDS = 3
 
 
+_TRADING_JSON_PATH = _ENGINE_ROOT / "config" / "trading.json"
+
+
 def _apply_auto_tune(case: dict, result: dict, round_num: int) -> None:
-    """K-BT AC_FAIL 기반으로 strategy_params.json을 자동 조정한다.
+    """K-BT AC_FAIL 기반으로 strategy_params.json + trading.json을 자동 조정한다.
 
     trades < trades_min 이면 해당 전략의 임계값을 25% * round_num 낮춘다.
     원본은 strategy_params.json.bak 으로 첫 라운드에만 백업된다.
+    stat_arb_z_threshold는 trading.json에서 실제로 읽히므로 두 파일 모두 수정.
     """
     params_path = _ENGINE_ROOT / "config" / "strategy_params.json"
     bak_path = _ENGINE_ROOT / "config" / "strategy_params.json.bak"
@@ -83,7 +87,8 @@ def _apply_auto_tune(case: dict, result: dict, round_num: int) -> None:
     reduction = 0.75 ** round_num  # round 1→×0.75, round 2→×0.5625
 
     strategy_ids = case.get("strategy_ids", [])
-    trades_deficit = result.get("trades", 0) < _AC["trades_min"]
+    _ac = {**_AC, **case.get("ac_override", {})}
+    trades_deficit = result.get("trades", 0) < _ac["trades_min"]
 
     if trades_deficit:
         if "cross_exchange_v1" in strategy_ids:
@@ -95,8 +100,22 @@ def _apply_auto_tune(case: dict, result: dict, round_num: int) -> None:
             params.setdefault("triangular", {})["min_spread_bps"] = max(2.0, old * reduction)
 
         if "statistical_arb_v1" in strategy_ids:
-            old = params.get("statistical_arb", {}).get("z_threshold", 1.5)
-            params.setdefault("statistical_arb", {})["z_threshold"] = max(0.8, old * reduction)
+            old_sp = params.get("statistical_arb", {}).get("z_threshold", 1.5)
+            new_z = max(0.8, old_sp * reduction)
+            params.setdefault("statistical_arb", {})["z_threshold"] = new_z
+            # strategy의 zscore_entry도 RSP z_threshold와 맞춤 (낮은 z 신호 통과 보장)
+            params.setdefault("statistical_arb", {})["zscore_entry"] = new_z
+            # trading.json의 stat_arb_z_threshold도 동기화 (get_config가 이 파일에서 읽음)
+            try:
+                trading = json.loads(_TRADING_JSON_PATH.read_text())
+                trading.setdefault("strategy_filters", {})["stat_arb_z_threshold"] = new_z
+                _TRADING_JSON_PATH.write_text(json.dumps(trading, indent=2))
+                # 캐시 무효화 — 다음 _build_fresh_signal_and_strategies에서 새 값 적용
+                from src.core.config_loader import reload as _cfg_reload
+                _cfg_reload()
+                logger.info("Auto-tune: trading.json stat_arb_z_threshold=%.3f zscore_entry=%.3f", new_z, new_z)
+            except Exception as exc:
+                logger.warning("Auto-tune: trading.json 업데이트 실패: %s", exc)
 
         if "spot_futures_v1" in strategy_ids:
             old = params.get("spot_futures", {}).get("min_spread_bps", 16.5)
@@ -119,20 +138,58 @@ async def run_kbt_case_with_tuning(case: dict, db_pool, settings) -> dict:
     """AC_FAIL 시 파라미터를 자동 조정하며 최대 MAX_TUNE_ROUNDS 라운드 재실행한다."""
     best_result: dict | None = None
 
-    for round_num in range(MAX_TUNE_ROUNDS):
-        signal_generator, strategy_manager = _build_fresh_signal_and_strategies(settings)
-        result = await run_kbt_case(case, signal_generator, strategy_manager, db_pool)
+    # stat_arb 튜닝 후 trading.json + strategy_params.json 원복을 위해 원본 값 저장
+    _orig_z: float | None = None
+    _orig_zscore_entry: float | None = None
+    if "statistical_arb_v1" in case.get("strategy_ids", []):
+        try:
+            trading = json.loads(_TRADING_JSON_PATH.read_text())
+            _orig_z = trading.get("strategy_filters", {}).get("stat_arb_z_threshold")
+        except Exception:
+            pass
+        try:
+            _params_path = _ENGINE_ROOT / "config" / "strategy_params.json"
+            _p = json.loads(_params_path.read_text())
+            _orig_zscore_entry = _p.get("statistical_arb", {}).get("zscore_entry")
+        except Exception:
+            pass
 
-        if best_result is None or result.get("trades", 0) > best_result.get("trades", 0):
-            best_result = result
+    try:
+        for round_num in range(MAX_TUNE_ROUNDS):
+            signal_generator, strategy_manager = _build_fresh_signal_and_strategies(settings)
+            result = await run_kbt_case(case, signal_generator, strategy_manager, db_pool)
 
-        if result.get("ac_pass"):
-            logger.info("Auto-tune: case %s AC_PASS at round %d", case["id"], round_num)
-            break
+            if best_result is None or result.get("trades", 0) > best_result.get("trades", 0):
+                best_result = result
 
-        if round_num < MAX_TUNE_ROUNDS - 1:
-            _apply_auto_tune(case, result, round_num + 1)
-            logger.info("Auto-tune round %d: adjusting params for case %s", round_num + 1, case["id"])
+            if result.get("ac_pass"):
+                logger.info("Auto-tune: case %s AC_PASS at round %d", case["id"], round_num)
+                break
+
+            if round_num < MAX_TUNE_ROUNDS - 1:
+                _apply_auto_tune(case, result, round_num + 1)
+                logger.info("Auto-tune round %d: adjusting params for case %s", round_num + 1, case["id"])
+    finally:
+        # stat_arb z_threshold + zscore_entry 원복
+        if _orig_z is not None:
+            try:
+                trading = json.loads(_TRADING_JSON_PATH.read_text())
+                trading.setdefault("strategy_filters", {})["stat_arb_z_threshold"] = _orig_z
+                _TRADING_JSON_PATH.write_text(json.dumps(trading, indent=2))
+                from src.core.config_loader import reload as _cfg_reload
+                _cfg_reload()
+            except Exception:
+                pass
+        _params_path = _ENGINE_ROOT / "config" / "strategy_params.json"
+        try:
+            _p = json.loads(_params_path.read_text())
+            if _orig_zscore_entry is not None:
+                _p.setdefault("statistical_arb", {})["zscore_entry"] = _orig_zscore_entry
+            elif "zscore_entry" in _p.get("statistical_arb", {}):
+                del _p["statistical_arb"]["zscore_entry"]
+            _params_path.write_text(json.dumps(_p, indent=2))
+        except Exception:
+            pass
 
     assert best_result is not None
     best_result["tune_rounds"] = round_num + 1
@@ -160,7 +217,7 @@ def _build_fresh_signal_and_strategies(settings):
     from src.strategies.futures_futures import FuturesFuturesStrategy, FuturesFuturesConfig
     from src.strategies.triangular import TriangularStrategy, TriangularConfig
     from src.strategies.funding_rate import FundingRateStrategy, FundingRateConfig
-    from src.strategies.statistical_arb import StatisticalArbStrategy
+    from src.strategies.statistical_arb import StatisticalArbStrategy, StatArbConfig
 
     event_bus = InMemoryEventBus()
 
@@ -191,6 +248,16 @@ def _build_fresh_signal_and_strategies(settings):
         ),
     )
 
+    # Auto-tune에서 zscore_entry를 낮춘 경우 StatArbConfig에 반영
+    _stat_arb_config = StatArbConfig()
+    try:
+        _sa_params = json.loads((_ENGINE_ROOT / "config" / "strategy_params.json").read_text())
+        _sa_override = _sa_params.get("statistical_arb", {})
+        if "zscore_entry" in _sa_override:
+            _stat_arb_config = StatArbConfig(zscore_entry=float(_sa_override["zscore_entry"]))
+    except Exception:
+        pass
+
     _max_pos = Decimal("0.001")
     _depth = Decimal("10")
     strategy_manager = StrategyManager(event_bus=event_bus, consumer_name="kbt-runner")
@@ -205,7 +272,8 @@ def _build_fresh_signal_and_strategies(settings):
             config=TriangularConfig(min_profit_bps=Decimal("10"), max_position_usdt=Decimal("100"))),
         FundingRateStrategy("funding_rate_v1", cost_calc,
             config=FundingRateConfig(min_funding_diff_bps=Decimal("5"), max_position_size=_max_pos)),
-        StatisticalArbStrategy("statistical_arb_v1", cost_calc),
+        StatisticalArbStrategy("statistical_arb_v1", cost_calc,
+            config=_stat_arb_config),
     ]:
         strategy_manager.register(strat)
 
@@ -269,22 +337,24 @@ async def run_kbt_case(case: dict, signal_generator, strategy_manager, db_pool) 
         "by_strategy": result.by_strategy,
     }
 
-    # AC check
+    # AC check — per-case override merges with global _AC
+    _ac = {**_AC, **case.get("ac_override", {})}
     ac_pass = (
         not result.error
-        and result.trades_executed >= _AC["trades_min"]
-        and result.sharpe_ratio >= _AC["sharpe_min"]
-        and result.max_drawdown_pct * 100 <= _AC["mdd_max_pct"]
-        and result.win_rate * 100 >= _AC["win_rate_min"]
-        and result.profit_factor >= _AC["pf_min"]
+        and result.trades_executed >= _ac["trades_min"]
+        and result.sharpe_ratio >= _ac["sharpe_min"]
+        and result.max_drawdown_pct * 100 <= _ac["mdd_max_pct"]
+        and result.win_rate * 100 >= _ac["win_rate_min"]
+        and result.profit_factor >= _ac["pf_min"]
     )
     summary["ac_pass"] = ac_pass
+    summary["ac_override"] = case.get("ac_override", {})
     summary["ac_detail"] = {
-        "sharpe": f"{result.sharpe_ratio:.3f} {'✅' if result.sharpe_ratio >= _AC['sharpe_min'] else '❌'} (>={_AC['sharpe_min']})",
-        "mdd_pct": f"{result.max_drawdown_pct*100:.2f}% {'✅' if result.max_drawdown_pct*100 <= _AC['mdd_max_pct'] else '❌'} (<={_AC['mdd_max_pct']}%)",
-        "win_rate": f"{result.win_rate*100:.1f}% {'✅' if result.win_rate*100 >= _AC['win_rate_min'] else '❌'} (>={_AC['win_rate_min']}%)",
-        "pf": f"{result.profit_factor:.3f} {'✅' if result.profit_factor >= _AC['pf_min'] else '❌'} (>={_AC['pf_min']})",
-        "trades": f"{result.trades_executed} {'✅' if result.trades_executed >= _AC['trades_min'] else '❌'} (>={_AC['trades_min']})",
+        "sharpe": f"{result.sharpe_ratio:.3f} {'✅' if result.sharpe_ratio >= _ac['sharpe_min'] else '❌'} (>={_ac['sharpe_min']})",
+        "mdd_pct": f"{result.max_drawdown_pct*100:.2f}% {'✅' if result.max_drawdown_pct*100 <= _ac['mdd_max_pct'] else '❌'} (<={_ac['mdd_max_pct']}%)",
+        "win_rate": f"{result.win_rate*100:.1f}% {'✅' if result.win_rate*100 >= _ac['win_rate_min'] else '❌'} (>={_ac['win_rate_min']}%)",
+        "pf": f"{result.profit_factor:.3f} {'✅' if result.profit_factor >= _ac['pf_min'] else '❌'} (>={_ac['pf_min']})",
+        "trades": f"{result.trades_executed} {'✅' if result.trades_executed >= _ac['trades_min'] else '❌'} (>={_ac['trades_min']})",
     }
 
     _STATE_DIR.mkdir(parents=True, exist_ok=True)

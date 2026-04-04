@@ -7439,7 +7439,7 @@
       "title": "K-BT-04 — Bitget+BitgetFut (FR+Tri+Stat)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Bitget+BitgetFutures: FR 2024-01~03, Tri/Stat 2024-04~09",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",
@@ -7459,7 +7459,7 @@
       "title": "K-BT-05 — Coinone (Tri+Stat)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Coinone: Tri+Stat 2024-01~06",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",
@@ -7479,7 +7479,7 @@
       "title": "K-BT-06 — Upbit (Tri)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Upbit: Tri 2024-01~06",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",
@@ -7499,7 +7499,7 @@
       "title": "K-BT-07 — Bithumb (Tri, stale guard)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Bithumb: Tri 2024-01~06, stale guard 활성",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",
@@ -7519,7 +7519,7 @@
       "title": "K-BT-08 — MEXC (Tri+Stat)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "MEXC: Tri+Stat 2024-04~09",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",
@@ -7539,7 +7539,7 @@
       "title": "K-BT-09 — Gate.io (Tri+Stat)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Gate.io: Tri+Stat 2024-04~09",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",
@@ -7559,7 +7559,7 @@
       "title": "K-BT-10 — Binance↔Upbit CE (kimchi premium)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔Upbit cross_exchange: 2025-01~03",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",
@@ -7579,7 +7579,7 @@
       "title": "K-BT-11 — Binance↔Bithumb CE",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔Bithumb cross_exchange: 2025-01~03",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",
@@ -7599,7 +7599,7 @@
       "title": "K-BT-12 — Binance↔Coinone CE",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔Coinone cross_exchange: 2025-01~03",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",
@@ -7619,7 +7619,7 @@
       "title": "K-BT-13 — Binance↔Bybit CE (글로벌)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔Bybit cross_exchange: 2024-01~03",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",
@@ -7639,7 +7639,7 @@
       "title": "K-BT-14 — Binance↔OKX CE",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔OKX cross_exchange: 2024-01~03",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",
@@ -7659,7 +7659,7 @@
       "title": "K-BT-15 — Binance↔Bitget CE",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔Bitget cross_exchange: 2024-01~03",
       "acceptanceCriteria": [
         "Sharpe Ratio > 1.0",

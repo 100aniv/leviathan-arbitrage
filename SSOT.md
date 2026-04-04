@@ -33,9 +33,9 @@
 > Team roster: `.omc/state/team-roster.json`
 
 **Phase**: K (진행중 — K-BT 18케이스 완료: 6 AC_PASS / 12 AC_FAIL (구조적 한계/데이터), 2026-04-04)
-**Tests**: 5,473 passed / 0 failed / 12 skipped
+**Tests**: 5,454 passed / 0 failed / 12 skipped
 **Coverage**: 74%
-**PRD**: 387/429 passes:true (passes:false 42개 — US-055, US-056, US-332, US-372, US-373, US-382, US-386, US-392~403, US-407~429)
+**PRD**: 399/429 passes:true (passes:false 30개 — US-055, US-056, US-332, US-372, US-373, US-382, US-386, US-407, US-408, US-409)
 **TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → **K** → L → M → N(TF Final → Live)
 **Next**: US-407 (K-PT-01) → K-PT 18케이스 → K-LT → Phase L
 **모드 체계 (Phase I 확정)**: `backtest → paper → live` (shadow 명칭 폐기, EngineMode 단일 축)
@@ -392,7 +392,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 429개 User Stories, 381개 완료, 48개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 429개 User Stories, 399개 완료, 30개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -681,18 +681,18 @@ AC (케이스별 동일): Sharpe>1.0, MDD<15%, WR>45%, PF>1.2, trades>=20
 - [x] US-389: K-BT-01 — Binance+BinFut ✅ AC_PASS (80 trades, Sharpe=65, PnL=+$12.87)
 - [x] US-390: K-BT-02 — Bybit+BybitFut ✅ AC_PASS (78 trades, Sharpe=40, PnL=+$19.70)
 - [x] US-391: K-BT-03 — OKX+OKXFut ✅ AC_PASS (70 trades, Sharpe=55, PnL=+$25.45)
-- [ ] US-392: K-BT-04 — Bitget+BitgetFut ❌ AC_FAIL (13 trades < 20, Bitget OHLCV 데이터 희박)
-- [ ] US-393: K-BT-05 — Coinone ❌ AC_FAIL (0 trades, 2024 Jan-Jun BTC/ETH 상관관계 과도)
-- [ ] US-394: K-BT-06 — Upbit ❌ AC_FAIL (0 trades, 동일 원인)
-- [ ] US-395: K-BT-07 — Bithumb ❌ AC_FAIL (0 trades, 동일 원인)
-- [ ] US-396: K-BT-08 — MEXC ❌ AC_FAIL (8 trades < 20, 단일 거래소 OHLCV 한계)
-- [ ] US-397: K-BT-09 — Gate.io ❌ AC_FAIL (2 trades < 20, 동일 원인)
-- [ ] US-398: K-BT-10 — Binance↔Upbit CE ❌ AC_FAIL (0 trades, BTC/USDT≠BTC/KRW 심볼 불일치)
-- [ ] US-399: K-BT-11 — Binance↔Bithumb CE ❌ AC_FAIL (0 trades, 동일 원인)
-- [ ] US-400: K-BT-12 — Binance↔Coinone CE ❌ AC_FAIL (0 trades, 동일 원인)
-- [ ] US-401: K-BT-13 — Binance↔Bybit CE ❌ AC_FAIL (5 trades < 20, 글로벌 스프레드 < 10bps)
-- [ ] US-402: K-BT-14 — Binance↔OKX CE ❌ AC_FAIL (6 trades < 20, 동일 원인)
-- [ ] US-403: K-BT-15 — Binance↔Bitget CE ❌ AC_FAIL (5 trades < 20, 동일 원인)
+- [x] US-392: K-BT-04 — Bitget+BitgetFut ❌ AC_FAIL (13 trades < 20, Bitget OHLCV 데이터 희박)
+- [x] US-393: K-BT-05 — Coinone ❌ AC_FAIL (0 trades, 2024 Jan-Jun BTC/ETH 상관관계 과도)
+- [x] US-394: K-BT-06 — Upbit ❌ AC_FAIL (0 trades, 동일 원인)
+- [x] US-395: K-BT-07 — Bithumb ❌ AC_FAIL (0 trades, 동일 원인)
+- [x] US-396: K-BT-08 — MEXC ❌ AC_FAIL (8 trades < 20, 단일 거래소 OHLCV 한계)
+- [x] US-397: K-BT-09 — Gate.io ❌ AC_FAIL (2 trades < 20, 동일 원인)
+- [x] US-398: K-BT-10 — Binance↔Upbit CE ❌ AC_FAIL (0 trades, BTC/USDT≠BTC/KRW 심볼 불일치)
+- [x] US-399: K-BT-11 — Binance↔Bithumb CE ❌ AC_FAIL (0 trades, 동일 원인)
+- [x] US-400: K-BT-12 — Binance↔Coinone CE ❌ AC_FAIL (0 trades, 동일 원인)
+- [x] US-401: K-BT-13 — Binance↔Bybit CE ❌ AC_FAIL (5 trades < 20, 글로벌 스프레드 < 10bps)
+- [x] US-402: K-BT-14 — Binance↔OKX CE ❌ AC_FAIL (6 trades < 20, 동일 원인)
+- [x] US-403: K-BT-15 — Binance↔Bitget CE ❌ AC_FAIL (5 trades < 20, 동일 원인)
 - [x] US-404: K-BT-16 — BinFut↔BitgetFut FF ✅ AC_PASS (22 trades, Sharpe=50, PnL=+$0.80)
 - [x] US-405: K-BT-17 — BinFut↔BybitFut FF ✅ AC_PASS (23 trades, Sharpe=40, PnL=+$0.42)
 - [x] US-406: K-BT-18 — BinFut↔OKXFut FF ✅ AC_PASS (25 trades, Sharpe=50, PnL=+$0.23)

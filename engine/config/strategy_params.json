@@ -47,7 +47,7 @@
     "data_type": "synthetic_gbm"
   },
   "spot_futures": {
-    "min_spread_bps": 16.521210151176234,
+    "min_spread_bps": 12.390907613382176,
     "max_position_size": 50,
     "entry_threshold": 0.0013620427453799166,
     "exit_threshold": 0.0001866435336362988,
@@ -57,7 +57,7 @@
     "data_type": "synthetic_gbm"
   },
   "funding_rate": {
-    "min_funding_rate_bps": 8.735797037704605,
+    "min_funding_rate_bps": 6.551847778278454,
     "max_position_size_usdt": 5002.251410101575,
     "entry_threshold": 0.00011715937392307068,
     "exit_threshold": 0.0032931446587915556,
@@ -77,7 +77,7 @@
     "data_type": "synthetic_gbm"
   },
   "triangular": {
-    "min_spread_bps": 15.0,
+    "min_spread_bps": 2.0,
     "max_position_size": 50,
     "entry_threshold": 0.0005221298701815954,
     "exit_threshold": 9.601259624268907e-05,
@@ -93,7 +93,8 @@
     "entry_threshold": 0.000188,
     "exit_threshold": 0.00089,
     "stop_loss_pct": 0.005,
-    "_note": "SIT-3 P3: DISABLED\u2192READY. z=2.5\u21922.0, cooldown=300\u2192120, min_history=120\u219260. 24H Shadow \ud6c4 WFE \uc7ac\ud3c9\uac00."
+    "_note": "SIT-3 P3: DISABLED\u2192READY. z=2.5\u21922.0, cooldown=300\u2192120, min_history=120\u219260. 24H Shadow \ud6c4 WFE \uc7ac\ud3c9\uac00.",
+    "z_threshold": 0.8
   },
   "cex_dex": {
     "status": "MONITOR",
@@ -118,6 +119,6 @@
     "best_values": {
       "cross_exchange": 1.2
     },
-    "timestamp": "2026-04-04T03:17:09.382871+00:00"
+    "timestamp": "2026-04-04T05:20:58.316722+00:00"
   }
 }

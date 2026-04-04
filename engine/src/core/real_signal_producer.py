@@ -689,6 +689,9 @@ class RealDataSignalProducer:
                 if sig.metadata is None:
                     sig.metadata = {}
                 sig.metadata["cross_asset"] = True
+                sig.metadata["rsp_validated"] = True
+                sig.metadata["rsp_z_score"] = float(z_score)
+                sig.metadata["rsp_history_len"] = len(history)
                 self._stat_arb_cooldown[pair_key] = now
                 logger.info(
                     "real_signal_producer.statistical_arb_signal",

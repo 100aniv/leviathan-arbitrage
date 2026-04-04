@@ -108,7 +108,7 @@
       "required_types": [
         "spot"
       ],
-      "description": "거래소 간 가격 차이를 이용한 차익거래"
+      "description": "\uac70\ub798\uc18c \uac04 \uac00\uaca9 \ucc28\uc774\ub97c \uc774\uc6a9\ud55c \ucc28\uc775\uac70\ub798"
     },
     "spot_futures_v1": {
       "min_exchanges": 1,
@@ -117,37 +117,37 @@
         "futures"
       ],
       "same_exchange": true,
-      "description": "현물-선물 베이시스 차익거래"
+      "description": "\ud604\ubb3c-\uc120\ubb3c \ubca0\uc774\uc2dc\uc2a4 \ucc28\uc775\uac70\ub798"
     },
     "futures_futures_v1": {
       "min_exchanges": 2,
       "required_types": [
         "futures"
       ],
-      "description": "선물 간 가격 차이 차익거래"
+      "description": "\uc120\ubb3c \uac04 \uac00\uaca9 \ucc28\uc774 \ucc28\uc775\uac70\ub798"
     },
     "triangular_v1": {
       "min_exchanges": 1,
       "same_exchange": true,
-      "description": "동일 거래소 내 3자 순환 차익거래"
+      "description": "\ub3d9\uc77c \uac70\ub798\uc18c \ub0b4 3\uc790 \uc21c\ud658 \ucc28\uc775\uac70\ub798"
     },
     "funding_rate_v1": {
       "min_exchanges": 1,
       "required_types": [
         "futures"
       ],
-      "description": "펀딩레이트 캐리 트레이드"
+      "description": "\ud380\ub529\ub808\uc774\ud2b8 \uce90\ub9ac \ud2b8\ub808\uc774\ub4dc"
     },
     "statistical_arb_v1": {
       "min_exchanges": 1,
-      "description": "통계적 페어 트레이딩 (공적분 기반)"
+      "description": "\ud1b5\uacc4\uc801 \ud398\uc5b4 \ud2b8\ub808\uc774\ub529 (\uacf5\uc801\ubd84 \uae30\ubc18)"
     },
     "cex_dex_v1": {
       "min_exchanges": 1,
       "required_types": [
         "dex"
       ],
-      "description": "CEX-DEX 간 차익거래"
+      "description": "CEX-DEX \uac04 \ucc28\uc775\uac70\ub798"
     }
   }
 }
