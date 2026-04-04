@@ -99,7 +99,7 @@ export function ModeSwitch({ currentMode }: ModeSwitchProps) {
               <button
                 onClick={() => switchMode(pendingMode!)}
                 disabled={loading}
-                className="px-3 py-1 text-xs font-mono bg-loss text-black hover:bg-loss/80 disabled:opacity-50"
+                className="px-3 py-1 text-xs font-mono bg-loss text-white hover:bg-loss/80 disabled:opacity-50"
               >
                 {loading ? '확인 중...' : '전환 확인'}
               </button>

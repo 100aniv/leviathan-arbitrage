@@ -292,11 +292,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S26✅ → SIT-0~2✅ → SIT-3✅ → Phase H✅ → Phase I✅ → Phase J✅ → **K** → L → M → N(TF Final→Live)
+- **Phase 순서**: A~M✅ → S1~S26✅ → SIT-0~2✅ → SIT-3✅ → Phase H✅ → Phase I✅ → Phase J✅ → K✅ → **L** → M → N(TF Final→Live)
 - **Tests**: 5,454 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (429개 US, 379 passes:true / 6 passes:false — US-055/056/332/372/373/382 + 신규 US-387~429 passes:false)
-- **다음 작업**: SSOT/PRD 업데이트✅ → 워크플로우 수정(US 단위)진행중 → K-BT Stage A (US-387 OHLCV 다운로드) → K-BT 18케이스 → K-PT → K-LT
-- **계획서**: `/Users/100aniv/.claude/plans/async-questing-garden.md` (Phase K 재설계 v5, 2026-04-04 승인)
+- **PRD**: `.omc/prd.json` (437개 US, 419 passes:true / 18 passes:false — US-055/056/332/373/382/425~437 passes:false)
+- **다음 작업**: Phase L 진행중 — US-432(디자인시스템✅진행중) → US-430(Paper리네임, 세션종료후) → US-433(대시보드재설계) → US-437(Assets페이지)
+- **계획서**: `/Users/100aniv/.claude/plans/lucky-watching-porcupine.md` (Phase L 재설계, 2026-04-04 승인)
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%
 
 ## 워크플로우 핵심 (상세 → leviathan.md)

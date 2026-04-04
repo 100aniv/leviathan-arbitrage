@@ -48,6 +48,10 @@ COPY dashboard/ ./
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Server-side proxy target — injected at build time so Next.js rewrites() picks it up
+ARG ENGINE_INTERNAL_URL=http://host.docker.internal:8000
+ENV ENGINE_INTERNAL_URL=$ENGINE_INTERNAL_URL
+
 RUN npm run build
 
 # ---------------------------------------------------------------------------

@@ -28,7 +28,7 @@ type SpreadGrid = Record<string, Record<string, number | null>>;
 
 function cellClass(bps: number | null): string {
   if (bps === null) return 'bg-terminal-muted text-terminal-subtle';
-  if (bps > 30)  return 'bg-profit text-black font-bold';
+  if (bps > 30)  return 'bg-profit text-terminal-bg font-bold';
   if (bps > 10)  return 'bg-profit/60 text-profit';
   if (bps > 0)   return 'bg-profit/25 text-profit/80';
   if (bps > -15) return 'bg-loss/25 text-loss/80';

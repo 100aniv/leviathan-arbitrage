@@ -12,10 +12,17 @@ export async function middleware(request: NextRequest) {
     PUBLIC_PATHS.has(pathname) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/") ||
-    pathname.startsWith("/engine-api/") ||
     pathname.startsWith("/favicon")
   ) {
     return NextResponse.next();
+  }
+
+  // Inject X-Forwarded-For so the engine's IPWhitelistMiddleware sees 127.0.0.1
+  // (the engine treats 172.16.0.0/12 Docker IPs as trusted proxies, so XFF is honored)
+  if (pathname.startsWith("/engine-api/")) {
+    const headers = new Headers(request.headers);
+    headers.set("x-forwarded-for", "127.0.0.1");
+    return NextResponse.next({ request: { headers } });
   }
 
   // Check for auth token in cookies (set after login) or Authorization header

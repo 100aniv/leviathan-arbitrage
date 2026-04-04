@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const engineUrl = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8000";
 const wsUrl     = process.env.NEXT_PUBLIC_WS_URL     || "ws://localhost:8000";
+// Server-side proxy target (inside Docker use host.docker.internal; falls back to engineUrl)
+const engineInternalUrl = process.env.ENGINE_INTERNAL_URL || engineUrl;
 // Build a deduplicated connect-src that always includes localhost and the configured engine URL
 const engineWsUrl = engineUrl.replace(/^http/, "ws");
 const connectSrcParts = [
@@ -28,7 +30,7 @@ const nextConfig = {
     return [
       {
         source: "/engine-api/:path*",
-        destination: `${engineUrl}/:path*`,
+        destination: `${engineInternalUrl}/:path*`,
       },
     ];
   },

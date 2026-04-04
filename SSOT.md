@@ -19,7 +19,7 @@
 | 거래소 | 11개 네이티브 WebSocket 어댑터 (7 spot + Binance/OKX/Bybit/Bitget Futures, ccxt 미사용) |
 | 전략 | 7개 (6개 기본 + CexDex 조건부, latency_arb는 US-194에서 cross_exchange로 병합) |
 | 인프라 | Docker Compose 15 서비스, TimescaleDB + Redis + Prometheus + Grafana + Loki + Alertmanager + WAL백업 |
-| 실행 모드 | Backtest → Paper → Shadow → Live |
+| 실행 모드 | Backtest → Paper → Live |
 
 **거래소 목록**: Binance, Binance Futures, Bybit, Bybit Futures, OKX, OKX Futures, Bitget, Bitget Futures, Upbit, Bithumb, Coinone (11개 네이티브 어댑터)
 
@@ -35,7 +35,7 @@
 **Phase**: L (K✅ 완료 | Phase L 진입 — Shadow→Paper 리네임 + 대시보드 재설계, 2026-04-04)
 **Tests**: 5,473 passed / 0 failed / 12 skipped
 **Coverage**: 74%
-**PRD**: 426/437 passes:true (passes:false 11개 — US-055, US-056, US-332, US-373, US-382, US-425~429, US-436)
+**PRD**: 427/437 passes:true (passes:false 10개 — US-055, US-056, US-332, US-373, US-382, US-425, US-426, US-427, US-428, US-429)
 **TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → K ✅ → **L** → M → N(TF Final → Live)
 **Next**: US-436 (E2E 브라우저 검증) → Phase L 완료 → Phase M
 **모드 체계 (Phase I 확정)**: `backtest → paper → live` (shadow 명칭 폐기, EngineMode 단일 축)
@@ -112,22 +112,19 @@ Stage 6: 24H → LiveGate 6-check + Sharpe>2.0, MDD<5%, 일일 PnL 양수 (최�
 
 ```
 DATA_MODE=synthetic     → Backtest (GBM 합성 데이터)
-DATA_MODE=real_public   → Paper   (실 WebSocket, 가상 실행)
-DATA_MODE=shadow        → Shadow  (실 데이터 + 전체 지표 + LiveGate)
+DATA_MODE=real_public   → Paper   (실 WebSocket, 가상 실행, 기능 검증)
+DATA_MODE=shadow        → Paper   (실 WebSocket, 가상 실행, 전체 지표+LiveGate — UI 표시명 "Paper"로 통일, US-430)
 EXECUTION_MODE=live     → Live    (실 거래, LiveGate 통과 후)
 ```
 
-### Paper vs Shadow 차이 (핵심)
+> **US-430 (Shadow→Paper 리네임)**: `shadow` DATA_MODE 값은 코드에서 계속 지원되지만 UI/문서의 표시명은 "Paper"로 통일. 기능 검증(real_public) vs 수익성 검증(shadow) 구분은 내부적으로 유지.
 
-| 구분 | Paper | Shadow |
-|------|-------|--------|
-| **목적** | 파이프라인 기능 검증 ("작동하는가?") | 수익성 검증 ("돈이 되는가?") |
-| **데이터** | 실 WebSocket (real_public) | 실 WebSocket (shadow) |
-| **실행** | PaperExecutor (가상) | PaperExecutor (가상) |
-| **지표** | 없음 | Prometheus + TimescaleDB 전체 기록 |
-| **LiveGate** | 없음 | 6-check 게이트 평가 |
-| **Telegram** | 없음 | 일일 요약 + 알림 |
-| **엔진 코드** | 동일 | 동일 (DATA_MODE env var만 다름) |
+### Paper 모드 단계 구분 (내부)
+
+| DATA_MODE | UI 표시 | 목적 | 지표 | LiveGate |
+|-----------|---------|------|------|----------|
+| real_public | Paper | 파이프라인 기능 검증 ("작동하는가?") | 없음 | 없음 |
+| shadow | Paper | 수익성 검증 ("돈이 되는가?") | Prometheus + TimescaleDB 전체 기록 | 6-check 게이트 평가 |
 
 ### LiveGate 전환 기준 (6-check AND)
 
@@ -392,7 +389,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 437개 User Stories, 419개 완료, 18개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 437개 User Stories, 427개 완료, 10개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -790,7 +787,7 @@ AC (케이스별 동일): Sharpe>1.0, MDD<15%, WR>45%, PF>1.2, trades>=20
 > **목표**: 토스증권/업비트 UX 기반 전면 재설계 + 운영 인프라 안정화
 > **진입 조건**: Phase K 2주 완료
 
-- [ ] US-386: Shadow→Paper 코드 전면 리네임 (ShadowMode→PaperEngine, shadow_runner→paper_runner, DATA_MODE 값 변경)
+- [x] US-386: Shadow→Paper 코드 전면 리네임 (ShadowMode→PaperEngine, shadow_runner→paper_runner, DATA_MODE 값 변경)
 - [ ] L-1: 대시보드 UX 전면 재설계 (토스증권/업비트 참조)
 - [ ] L-2: Settings hot-reload (재시작 없이 파라미터 변경)
 - [ ] L-3: OpenTelemetry 통합 (분산 트레이싱)
