@@ -2652,8 +2652,8 @@ class Engine:
                 logger.error("paper_mode.start_failed error=%s", exc, exc_info=True)
                 raise
             self.context.shadow_active = True
-            self.context.execution_mode = "shadow"
-            logger.info("Shadow Mode started: %s for %s", exchanges, symbols)
+            self.context.execution_mode = "paper"
+            logger.info("Paper Mode started: %s for %s", exchanges, symbols)
 
             # ER5-04: Warm-start restore — load previous shadow stats from DB
             if self._db_pool is not None:
@@ -2884,7 +2884,7 @@ class Engine:
 
         self.context.paper_mode = self._paper_mode
         self.context.shadow_active = True
-        self.context.execution_mode = "shadow"
+        self.context.execution_mode = "paper"
 
         orchestrator = ProgressiveShadowOrchestrator(
             shadow_mode=self._paper_mode,
