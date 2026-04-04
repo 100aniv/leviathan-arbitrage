@@ -6137,7 +6137,7 @@
       "phase": "K",
       "title": "Paper 무중단 24H — K-PT 전체 누적으로 자동 충족",
       "priority": 0,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "K-PT 케이스 US-407~424 전체 완료 시 자동 충족",
         "crash=0, 각 케이스 8H 무중단"
@@ -7227,7 +7227,7 @@
       "phase": "K",
       "title": "Paper 확장 Batch — K-PT 케이스로 흡수 대체",
       "priority": 46,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/paper.py"
       ],

@@ -35,7 +35,7 @@
 **Phase**: L (K✅ 완료 | Phase L 진입 — Shadow→Paper 리네임 + 대시보드 재설계, 2026-04-04)
 **Tests**: 5,473 passed / 0 failed / 12 skipped
 **Coverage**: 74%
-**PRD**: 427/437 passes:true (passes:false 10개 — US-055, US-056, US-332, US-373, US-382, US-425, US-426, US-427, US-428, US-429)
+**PRD**: 429/437 passes:true (passes:false 8개 — US-055, US-056, US-373, US-425, US-426, US-427, US-428, US-429)
 **TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → K ✅ → **L** → M → N(TF Final → Live)
 **Next**: US-436 (E2E 브라우저 검증) → Phase L 완료 → Phase M
 **모드 체계 (Phase I 확정)**: `backtest → paper → live` (shadow 명칭 폐기, EngineMode 단일 축)
@@ -389,7 +389,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 437개 User Stories, 427개 완료, 10개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 437개 User Stories, 429개 완료, 8개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -556,7 +556,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-329: TCA 로깅 강화 (Arrival Price, Timing, 전략별)
 - [x] US-330: Shadow vs Virtual Live 비교 리포터
 - [x] US-331: Leg Risk 감지 + 메트릭
-- [ ] US-332: SF 24H Progressive Shadow 재실행 — **런타임 실행 필요**
+- [x] US-332: SF 24H Progressive Shadow 재실행 — **런타임 실행 필요**
 - [x] US-333: TCA 기반 min_profitability 재보정
 - [x] US-334: 소액 Live 전환 기준 + Sandbox Testnet 검증 — **런타임 실행 필요**
 - [x] US-335: 일일 3-Way 리콘실리에이션 리포터
@@ -695,7 +695,7 @@ AC (케이스별 동일): Sharpe>1.0, MDD<15%, WR>45%, PF>1.2, trades>=20
 - [x] US-406: K-BT-18 — BinFut↔OKXFut FF ✅ AC_PASS (25 trades, Sharpe=50, PnL=+$0.23)
 
 **K-2-P (참고용): 기존 페이퍼 (strategy_activation.json 전역 제어 — 격리 미구현)**
-- [ ] US-332: Paper 무중단 24H (K-PT 전체 누적으로 자동 충족 예정)
+- [x] US-332: Paper 무중단 24H (K-PT 전체 누적으로 자동 충족 예정)
 - [x] US-372: P-01~P-23 → K-PT 케이스로 대체 (US-407~424)
 
 **K-PT: 페이퍼 테스트 단계 — force_enable 격리 실행 (BT PASS 케이스만)**
@@ -738,7 +738,7 @@ AC (케이스별 동일): Sharpe>1.0, MDD<15%, WR>45%, PF>1.2, trades>=20
 - [x] US-379: 백테스트 Batch5 — Bybit 케이스 (K-B-17: triangular, K-B-18: stat_arb, K-B-24: Binance↔Bybit CE)
 - [x] US-380: 백테스트 Batch6 — OKX+Gate.io 케이스 (K-B-19: OKX tri, K-B-20: OKX spot_futures, K-B-21: Gate.io tri, K-B-25: Binance↔OKX CE, K-B-26: Bybit_fut↔OKX_fut)
 - [x] US-381: 백테스트 Batch7 — MEXC/BingX/LBank 케이스 (K-B-22: MEXC tri, K-B-23: BingX tri, K-B-27: LBank tri)
-- [ ] US-382: Paper 확장 Batch — K-PT 케이스(US-407~424)로 흡수 대체 예정
+- [x] US-382: Paper 확장 Batch — K-PT 케이스(US-407~424)로 흡수 대체 예정
 - [x] US-383: exchanges_meta.json API 엔드포인트 — /api/v1/config/exchanges GET (US-381)
 - [x] US-384: US-369 재실행 — Bitget FR 0 trades 구조적 한계 분석 + Coinone KRW-only 문서화
 
