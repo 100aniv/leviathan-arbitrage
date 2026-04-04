@@ -46,7 +46,10 @@ TRANSITIONS: dict[tuple[str, str], str] = {
     ("C_review", "review_fail"): "B",  # CRITICAL/HIGH → Stage B 복귀
     ("C_go", "go"): "C_release",
     ("C_go", "no_go"): "B",
-    ("C_release", "pushed"): "NEXT_PHASE",
+    ("C_release", "pushed"): "NEXT_US",
+    # US 단위 사이클 (Phase K 재설계 v5 — 2026-04-04)
+    ("NEXT_US", "more_us"): "A",         # 다음 US 존재 → Stage A 재시작
+    ("NEXT_US", "phase_complete"): "NEXT_PHASE",  # 모든 US 완료 → 다음 Phase
     # 에스컬레이션
     ("ESCALATE_L2", "escalation_resolved"): "A",
     # TF 관련
@@ -82,6 +85,7 @@ STATE_LABELS: dict[str, str] = {
     "C_review": "Stage C: Code Review + Audit",
     "C_go": "Stage C: Go/No-Go",
     "C_release": "Stage C: SSOT + Git Push",
+    "NEXT_US": "US 완료 → 다음 US 대기 (more_us: Stage A 재시작 / phase_complete: 다음 Phase)",
     "NEXT_PHASE": "다음 Phase 진입",
     "ESCALATE_L2": "에스컬레이션 L2",
     "TF_QF": "TF Quarter-Final",

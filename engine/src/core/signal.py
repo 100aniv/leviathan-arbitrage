@@ -169,11 +169,12 @@ class SignalGenerator:
                 variance = sum((r - mean_r) ** 2 for r in returns) / len(returns)
                 sigma = Decimal(str(math.sqrt(float(variance))))
                 sigma = min(sigma, Decimal("0.10"))  # US-248: CRISIS upper clamp — prevent full signal block
+                sigma = max(sigma, Decimal("0.0001"))  # US-388: floor BEFORE log so log == returned value
                 logger.info(
                     "signal.dynamic_sigma_computed symbol=%s sigma=%s history_len=%d",
                     symbol, sigma, len(prices),
                 )
-                return max(sigma, Decimal("0.0001"))
+                return sigma
 
         # Cold-start: estimate sigma from orderbook spread as proxy
         if buy_book is not None:

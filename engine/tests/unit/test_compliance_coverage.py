@@ -238,6 +238,8 @@ class TestCheckKillSwitch:
 
     @pytest.mark.asyncio
     async def test_tier1_latency_passes_with_fast_halt_local(self):
+        import sys
+
         checker = ComplianceChecker()
 
         mock_ks_mod = MagicMock()
@@ -251,8 +253,18 @@ class TestCheckKillSwitch:
                 return True, mock_ks_mod
             return False, None
 
-        with patch("src.infra.compliance._try_import", side_effect=mock_import):
-            items = await checker._check_kill_switch()
+        # Also replace sys.modules entry so _try_import's importlib.import_module
+        # returns our mock even if the real module was already cached.
+        original_ks = sys.modules.get("src.risk.kill_switch")
+        sys.modules["src.risk.kill_switch"] = mock_ks_mod
+        try:
+            with patch("src.infra.compliance._try_import", side_effect=mock_import):
+                items = await checker._check_kill_switch()
+        finally:
+            if original_ks is None:
+                sys.modules.pop("src.risk.kill_switch", None)
+            else:
+                sys.modules["src.risk.kill_switch"] = original_ks
 
         tier1 = next(i for i in items if i.name == "Tier1-Latency")
         assert tier1.status == ComplianceStatus.PASS

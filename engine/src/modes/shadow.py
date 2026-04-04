@@ -653,7 +653,10 @@ class PaperMode:
         self._running = True
         self._stats = ShadowStats(start_time=time.monotonic())
         # US-256: restore peak_equity from DB before any drawdown calculations
-        await self._load_peak_equity_from_db()
+        # US-388: only restore peak if _force_enable is False; new clean sessions start at 0
+        if not getattr(self, "_force_enable", False):
+            await self._load_peak_equity_from_db()
+        self._force_enable = False  # consume once — prevent sticky state across sessions
 
         logger.info("shadow_mode.starting")
 
@@ -1790,7 +1793,15 @@ class PaperMode:
         # (comparing BTC price to ETH price). For cross-asset (stat_arb),
         # each leg is dollar-neutral by design, so net PnL = -(total fees).
         _is_cross_asset = trade_request.metadata.get("cross_asset") == "true"
-        _leg_symbols = {leg.symbol for leg, _ in trades}
+        # US-388: normalize symbol by stripping exchange suffix and futures margin suffix
+        # e.g. "BTC/USDT@binance_futures" -> "BTC/USDT"
+        # e.g. "BTC/USDT:USDT" -> "BTC/USDT"  (perpetual futures ccxt symbol)
+        def _normalize_symbol(sym: str) -> str:
+            s = sym.split("@")[0].strip()
+            if ":" in s:
+                s = s.split(":")[0]
+            return s
+        _leg_symbols = {_normalize_symbol(leg.symbol) for leg, _ in trades}
         # SIT-3: triangular은 multi-symbol이지만 cross_asset 아님 (동일 거래소 3-way 루프)
         _is_triangular = "triangular" in sid
         if not _is_cross_asset and len(_leg_symbols) > 1 and not _is_triangular:
@@ -2435,6 +2446,20 @@ class PaperMode:
         """Dynamically update disabled strategies set."""
         self._disabled_strategies = disabled
         logger.info("shadow_mode.disabled_strategies_updated", disabled=list(disabled))
+
+    def force_enable_strategies(self, strategy_ids: list[str]) -> None:
+        """US-388: Override strategy_activation.json — enable only the specified strategies.
+
+        Sets _force_enable flag so next start() skips peak_pnl restoration (clean session).
+        Clears _disabled_strategies and sets _strategy_filter to the given ids.
+        """
+        self._force_enable = True
+        self._disabled_strategies = set()
+        self._strategy_filter = frozenset(strategy_ids) if strategy_ids else None
+        logger.info(
+            "shadow_mode.force_enable_strategies",
+            strategy_ids=strategy_ids,
+        )
 
     def get_strategy_report(self) -> dict:
         """Return serializable per-strategy metrics dict (US-299: adds Sharpe/MDD/pass)."""

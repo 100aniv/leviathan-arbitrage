@@ -116,13 +116,8 @@
   "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 \ud1b5\uc77c, slippage_buffer 5bps \uc2e0\uaddc, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
   "_tuner_meta": {
     "best_values": {
-      "cross_exchange": 0,
-      "triangular": 0,
-      "spot_futures": 0,
-      "funding_rate": 0,
-      "statistical_arb": 0,
-      "futures_futures": 0
+      "cross_exchange": 1.2
     },
-    "timestamp": "2026-04-01T04:34:06.029920+00:00"
+    "timestamp": "2026-04-03T16:57:35.912162+00:00"
   }
 }

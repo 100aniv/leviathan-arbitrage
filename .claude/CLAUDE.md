@@ -218,7 +218,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 | ⑦ Fix Loop | L1+ | `leviathan-fix` | 에스컬레이션 시 활성화 (Type W/P/B) |
 | TF | QF/SF/PF/Final | `sit3-lead` + 전팀 | 상용화 최종 검증 (4-Round) |
 
-**사이클**: Stage A(기획)→B(구현+검증)→C(리뷰+릴리스+사장님승인)→다음Phase
+**사이클**: Stage A(기획)→B(구현+검증)→C(리뷰+릴리스+사장님승인)→**다음US** (Phase K부터 US 단위 사이클) → 해당 Phase 모든 US 완료 시 다음Phase
 
 ## 커스텀 에이전트 (.claude/agents/)
 
@@ -294,14 +294,14 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 - **Phase 순서**: A~M✅ → S1~S26✅ → SIT-0~2✅ → SIT-3✅ → Phase H✅ → Phase I✅ → Phase J✅ → **K** → L → M → N(TF Final→Live)
 - **Tests**: 5,454 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (385개 US, 379 passes:true / 6 passes:false — US-055/056/332/372/373/382)
-- **다음 작업**: Phase K 잔여 (US-372 Paper P-01~P-23 → US-332 24H → US-382 P-24~P-31 → US-373 병렬 → US-055 LiveGate → US-056 첫 실거래) → Phase L
-- **계획서**: `/Users/100aniv/.claude/plans/radiant-cooking-forest.md` (Phase K 플랜 v4, 2026-04-02 승인)
+- **PRD**: `.omc/prd.json` (429개 US, 379 passes:true / 6 passes:false — US-055/056/332/372/373/382 + 신규 US-387~429 passes:false)
+- **다음 작업**: SSOT/PRD 업데이트✅ → 워크플로우 수정(US 단위)진행중 → K-BT Stage A (US-387 OHLCV 다운로드) → K-BT 18케이스 → K-PT → K-LT
+- **계획서**: `/Users/100aniv/.claude/plans/async-questing-garden.md` (Phase K 재설계 v5, 2026-04-04 승인)
 - **Upbit 수수료**: Maker 0.05% / Taker 0.139%
 
 ## 워크플로우 핵심 (상세 → leviathan.md)
 
-- **3-Stage Sequential**: A(기획)→B(구현+Shadow)→C(Assembly→코드리뷰+멀티모델 병렬→Go/No-Go→SSOT+sync+git)→다음Phase
+- **3-Stage Sequential (US 단위)**: 각 US마다 A(기획)→B(구현+Shadow)→C(Assembly→코드리뷰+멀티모델 병렬→Go/No-Go→SSOT+sync+git)→**다음US**. 해당 Phase 모든 US 완료 시 NEXT_PHASE. FSM: C_release→NEXT_US→(more_us)→A 또는 (phase_complete)→NEXT_PHASE
 - **Assembly Gate (C-Step 1)**: 코드리뷰 전 조립 검증 (init chain + signal flow + dead wiring + config audit)
 - **C-Step 2 병렬**: Jennie(코드리뷰) + Jisoo(보안) + 멀티모델 CLI(codex/gemini/qwen) 동시 실행. quorum 2+ 지적 = MUST FIX
 - **Shadow 13항목 복합지표**: MDD%, PF, 전략별 trade>=1, 방어 레이어 활성

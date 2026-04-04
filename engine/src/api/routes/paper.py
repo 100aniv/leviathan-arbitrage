@@ -43,17 +43,33 @@ class PaperStartRequest(BaseModel):
     symbols: list[str] = []
     seed_capital: float = 0.0
     duration_hours: int = 0  # 0 = unlimited
+    # US-388: force_enable bypasses strategy_activation.json
+    force_enable: bool = False
 
 
 @router.post("/start", dependencies=[Depends(require_auth)])
 async def start_paper(request: Request, body: PaperStartRequest) -> JSONResponse:
-    """Start paper mode with user-specified parameters (US-363/372)."""
+    """Start paper mode with user-specified parameters (US-363/372/388)."""
     ctx = request.app.state.engine_context
     engine = getattr(ctx, "engine", None)
     if engine is None:
         return JSONResponse({"error": "engine_not_initialized"}, status_code=503)
 
     session_id = str(uuid.uuid4())[:8]
+
+    # US-388: force_enable overrides strategy_activation.json at runtime
+    if body.force_enable:
+        effective_ids = body.strategy_ids or (
+            [body.strategy_id] if body.strategy_id else []
+        )
+        if not effective_ids:
+            return JSONResponse(
+                {"error": "force_enable requires at least one strategy_id"},
+                status_code=422,
+            )
+        shadow = getattr(ctx, "shadow_mode", None)
+        if shadow is not None and hasattr(shadow, "force_enable_strategies"):
+            shadow.force_enable_strategies(effective_ids)
 
     ctx.paper_session = {
         "session_id": session_id,
@@ -64,6 +80,7 @@ async def start_paper(request: Request, body: PaperStartRequest) -> JSONResponse
         "symbols": body.symbols,
         "seed_capital": body.seed_capital,
         "duration_hours": body.duration_hours,
+        "force_enable": body.force_enable,
         "status": "started",
     }
 

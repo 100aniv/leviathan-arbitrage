@@ -11,7 +11,7 @@
     "_note": "Real-data WFE results from TimescaleDB.",
     "cross_exchange": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 11 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 13 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "triangular": {
@@ -26,7 +26,7 @@
     },
     "funding_rate": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 11 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 13 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "statistical_arb": {
@@ -57,13 +57,13 @@
     "data_type": "synthetic_gbm"
   },
   "funding_rate": {
-    "min_spread_bps": 8.735797037704605,
-    "max_position_size": 50,
+    "min_funding_rate_bps": 8.735797037704605,
+    "max_position_size_usdt": 5002.251410101575,
     "entry_threshold": 0.00011715937392307068,
     "exit_threshold": 0.0032931446587915556,
     "stop_loss_pct": 0.016645099172000764,
     "status": "READY",
-    "wfe": 1.774823934929885,
+    "wfe": 10.464224768228176,
     "data_type": "synthetic_gbm"
   },
   "futures_futures": {
@@ -118,6 +118,6 @@
     "best_values": {
       "cross_exchange": 1.2
     },
-    "timestamp": "2026-04-02T17:21:30.935725+00:00"
+    "timestamp": "2026-04-04T03:17:09.382871+00:00"
   }
 }

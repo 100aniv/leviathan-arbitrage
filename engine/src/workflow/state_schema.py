@@ -124,6 +124,9 @@ class LeviathanState(TypedDict, total=False):
     escalation_level: str          # "L0" … "L5"
     updated_at: str                # ISO 8601
     updated_by: str
+    # US 단위 사이클 필드 (Phase K 재설계 v5 — 2026-04-04)
+    current_us: Optional[str]      # 현재 실행 중인 US ID (예: "US-387")
+    us_queue: Optional[list[str]]  # 남은 US 목록 (순서 보장)
 
 
 class TestMetrics(TypedDict, total=False):

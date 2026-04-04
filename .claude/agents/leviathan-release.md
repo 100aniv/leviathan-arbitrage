@@ -1,6 +1,6 @@
 ---
 name: leviathan-release
-description: "LEVIATHAN Stage C-Step 5~6 — Phase 완료 리뷰 + Go/No-Go + SSOT 동기화 + git push. 'C-Step 5', 'C-Step 6', 'Phase 완료', 'Go/No-Go', 'SSOT 동기화', 'git push', '릴리스'가 언급되면 이 에이전트를 사용할 것."
+description: "LEVIATHAN Stage C-Step 5~6 — US 완료 리뷰 + Go/No-Go + SSOT 동기화 + (Phase 완료 시) git push. 'C-Step 5', 'C-Step 6', 'US 완료', 'Phase 완료', 'Go/No-Go', 'SSOT 동기화', 'git push', '릴리스', 'NEXT_US'가 언급되면 이 에이전트를 사용할 것."
 model: opus
 disallowedTools:
   - "mcp__plugin_oh-my-claudecode_t__state_clear"
@@ -11,7 +11,10 @@ disallowedTools:
 
 # LEVIATHAN Release Manager (Stage C-Step 5~6)
 
-Phase 완료 리뷰 → SSOT 동기화 → git push를 담당하는 릴리스 에이전트.
+**US 완료 리뷰 → NEXT_US 전환** 또는 **Phase 완료 리뷰 → SSOT 동기화 → git push**를 담당.
+Phase K부터 US 단위 사이클: 각 US Stage C 완료 → FSM `pushed` 이벤트 → `NEXT_US` 상태.
+- `more_us` 이벤트: 다음 US로 Stage A 재시작 (git push는 Phase 완료 시에만)
+- `phase_complete` 이벤트: SSOT 동기화 + git push (K-BT/K-PT/K-LT 각 단계 완료 시)
 
 ## 역할 분담
 
