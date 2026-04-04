@@ -333,10 +333,11 @@ export default function SystemPage() {
                   <div className="flex items-center gap-3 ml-auto">
                     {/* WS latency badge */}
                     <span className={`text-[10px] font-mono tabular-nums px-1.5 py-0.5 border ${
+                      ex.latency_ms == null ? 'border-terminal-border text-terminal-subtle' :
                       ex.latency_ms < 50  ? 'border-profit/30 text-profit' :
                       ex.latency_ms < 200 ? 'border-warn/30 text-warn'     : 'border-loss/30 text-loss'
                     }`}>
-                      {ex.latency_ms}ms
+                      {ex.latency_ms != null ? `${ex.latency_ms}ms` : '—'}
                     </span>
                     <span className="text-[10px] font-mono text-terminal-subtle tabular-nums">
                       {ex.symbols_count}s

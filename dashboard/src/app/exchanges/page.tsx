@@ -20,23 +20,27 @@ const EXCHANGE_LABELS: Record<string, string> = {
   coinone:          "Coinone",
 };
 
-function formatLatency(ms: number): string {
+function formatLatency(ms: number | undefined | null): string {
+  if (ms == null || isNaN(ms)) return '—';
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function latencyColor(ms: number): string {
-  if (ms < 100)  return '#00C896';  // green — excellent
-  if (ms < 500)  return '#F59E0B';  // amber — acceptable
-  return '#FF4757';                  // red — degraded
+function latencyColor(ms: number | undefined | null): string {
+  if (ms == null || isNaN(ms)) return '#888888';
+  if (ms < 100)  return '#00C896';
+  if (ms < 500)  return '#F59E0B';
+  return '#FF4757';
 }
 
-function formatLastUpdate(iso: string): string {
+function formatLastUpdate(iso: string | undefined | null): string {
+  if (!iso) return '—';
   try {
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
     return d.toLocaleTimeString("en-US", { hour12: false });
   } catch {
-    return iso;
+    return '—';
   }
 }
 
