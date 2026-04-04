@@ -1,34 +1,236 @@
 {
-  "_comment": "Backtest batch cases for Phase K validation (US-368~371)",
-  "batch1_binance": [
-    {"id": "K-B-01", "exchange": "binance", "strategy": "triangular", "seed": 42, "period": "3M"},
-    {"id": "K-B-02", "exchange": "binance", "strategy": "statistical_arb", "seed": 42, "period": "3M"},
-    {"id": "K-B-03", "exchange": "binance", "strategy": "spot_futures", "seed": 42, "period": "3M"},
-    {"id": "K-B-04", "exchange": "binance", "strategy": "funding_rate", "seed": 42, "period": "3M"}
-  ],
-  "batch2_krw": [
-    {"id": "K-B-05", "exchange": "upbit", "strategy": "triangular", "seed": 42, "period": "3M"},
-    {"id": "K-B-06", "exchange": "bithumb", "strategy": "triangular", "seed": 42, "period": "3M"},
-    {"id": "K-B-07", "exchange": "coinone", "strategy": "triangular", "seed": 42, "period": "3M"},
-    {"id": "K-B-08", "exchange": "bitget", "strategy": "spot_futures", "seed": 42, "period": "3M"},
-    {"id": "K-B-09", "exchange": "upbit+binance", "strategy": "cross_exchange", "seed": 42, "period": "3M", "expected": "FAIL"},
-    {"id": "K-B-10", "exchange": "bithumb+binance", "strategy": "cross_exchange", "seed": 42, "period": "3M", "expected": "FAIL"},
-    {"id": "K-B-11", "exchange": "coinone+binance", "strategy": "cross_exchange", "seed": 42, "period": "3M", "expected": "FAIL"}
-  ],
-  "batch3_multi": [
-    {"id": "K-B-12", "exchange": "binance+bybit", "strategy": "cross_exchange", "seed": 42, "period": "3M"},
-    {"id": "K-B-13", "exchange": "binance+okx", "strategy": "cross_exchange", "seed": 42, "period": "3M"},
-    {"id": "K-B-14", "exchange": "binance+bitget", "strategy": "cross_exchange", "seed": 42, "period": "3M"},
-    {"id": "K-B-15", "exchange": "binance_futures+bybit_futures", "strategy": "futures_futures", "seed": 42, "period": "3M"},
-    {"id": "K-B-16", "exchange": "binance", "strategy": "stat_arb+funding_rate", "seed": 42, "period": "3M"}
-  ],
-  "batch4_tier4": [
-    {"id": "K-B-17", "exchange": "mexc", "strategy": "triangular", "seed": 42, "period": "3M"},
-    {"id": "K-B-18", "exchange": "gateio", "strategy": "triangular", "seed": 42, "period": "3M"},
-    {"id": "K-B-19", "exchange": "bingx", "strategy": "triangular", "seed": 42, "period": "3M"},
-    {"id": "K-B-20", "exchange": "lbank", "strategy": "triangular", "seed": 42, "period": "3M"},
-    {"id": "K-B-21", "exchange": "orangex", "strategy": "triangular", "seed": 42, "period": "3M"},
-    {"id": "K-B-22", "exchange": "mexc+binance", "strategy": "cross_exchange", "seed": 42, "period": "3M"},
-    {"id": "K-B-23", "exchange": "gateio+binance", "strategy": "cross_exchange", "seed": 42, "period": "3M"}
+  "note": "K-BT: 18 cases with strategy-optimal historical periods (2024-01~2025-03). Replaces K-B-01~27 (5-day window).",
+  "ac": {
+    "sharpe_min": 1.0,
+    "mdd_max_pct": 15.0,
+    "win_rate_min": 45.0,
+    "pf_min": 1.2,
+    "trades_min": 20
+  },
+  "batches": [
+    {
+      "id": "K-BT-01",
+      "exchange_ids": ["binance", "binance_futures"],
+      "strategy_ids": ["funding_rate_v1", "triangular_v1", "statistical_arb_v1", "spot_futures_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "funding_rate_v1":   {"start": "2024-01-10", "end": "2024-03-31"},
+        "spot_futures_v1":   {"start": "2024-01-10", "end": "2024-03-31"},
+        "triangular_v1":     {"start": "2024-01-10", "end": "2024-06-30"},
+        "statistical_arb_v1":{"start": "2024-04-01", "end": "2024-09-30"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC", "SOL/BTC"],
+      "data_source": "ohlcv_historical"
+    },
+    {
+      "id": "K-BT-02",
+      "exchange_ids": ["bybit", "bybit_futures"],
+      "strategy_ids": ["funding_rate_v1", "triangular_v1", "statistical_arb_v1", "spot_futures_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "funding_rate_v1":   {"start": "2024-01-10", "end": "2024-03-31"},
+        "spot_futures_v1":   {"start": "2024-01-10", "end": "2024-03-31"},
+        "triangular_v1":     {"start": "2024-01-10", "end": "2024-06-30"},
+        "statistical_arb_v1":{"start": "2024-04-01", "end": "2024-09-30"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC", "SOL/BTC"],
+      "data_source": "ohlcv_historical"
+    },
+    {
+      "id": "K-BT-03",
+      "exchange_ids": ["okx", "okx_futures"],
+      "strategy_ids": ["funding_rate_v1", "triangular_v1", "statistical_arb_v1", "spot_futures_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "funding_rate_v1":   {"start": "2024-01-10", "end": "2024-03-31"},
+        "spot_futures_v1":   {"start": "2024-01-10", "end": "2024-03-31"},
+        "triangular_v1":     {"start": "2024-01-10", "end": "2024-06-30"},
+        "statistical_arb_v1":{"start": "2024-04-01", "end": "2024-09-30"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC", "SOL/BTC"],
+      "data_source": "ohlcv_historical"
+    },
+    {
+      "id": "K-BT-04",
+      "exchange_ids": ["bitget", "bitget_futures"],
+      "strategy_ids": ["funding_rate_v1", "triangular_v1", "statistical_arb_v1", "spot_futures_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "funding_rate_v1":   {"start": "2024-01-10", "end": "2024-03-31"},
+        "triangular_v1":     {"start": "2024-01-10", "end": "2024-03-31"},
+        "statistical_arb_v1":{"start": "2024-01-10", "end": "2024-03-31"},
+        "spot_futures_v1":   {"start": "2024-01-10", "end": "2024-03-31"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC", "SOL/BTC"],
+      "data_source": "ohlcv_historical"
+    },
+    {
+      "id": "K-BT-05",
+      "exchange_ids": ["coinone"],
+      "strategy_ids": ["triangular_v1", "statistical_arb_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "triangular_v1":     {"start": "2024-01-10", "end": "2024-06-30"},
+        "statistical_arb_v1":{"start": "2024-01-10", "end": "2024-06-30"}
+      },
+      "symbols": ["BTC/KRW", "ETH/KRW", "SOL/KRW"],
+      "data_source": "ohlcv_historical"
+    },
+    {
+      "id": "K-BT-06",
+      "exchange_ids": ["upbit"],
+      "strategy_ids": ["triangular_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "triangular_v1": {"start": "2024-01-10", "end": "2024-06-30"}
+      },
+      "symbols": ["BTC/KRW", "ETH/KRW", "SOL/KRW", "XRP/KRW"],
+      "data_source": "ohlcv_historical"
+    },
+    {
+      "id": "K-BT-07",
+      "exchange_ids": ["bithumb"],
+      "strategy_ids": ["triangular_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "triangular_v1": {"start": "2025-09-08", "end": "2026-03-31"}
+      },
+      "symbols": ["BTC/KRW", "ETH/KRW", "SOL/KRW", "XRP/KRW"],
+      "data_source": "ohlcv_historical",
+      "note": "Bithumb API 한계: 1h 최신 5000캔들(~209일)만 제공, from 파라미터 무시됨. 원래 2024-01-10~06-30 불가. 대체: 2025-09-08~2026-03-31 (실측 가능한 최고 과거 기준)"
+    },
+    {
+      "id": "K-BT-08",
+      "exchange_ids": ["mexc"],
+      "strategy_ids": ["triangular_v1", "statistical_arb_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "triangular_v1":     {"start": "2024-04-01", "end": "2024-09-30"},
+        "statistical_arb_v1":{"start": "2024-04-01", "end": "2024-09-30"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC", "SOL/BTC"],
+      "data_source": "ohlcv_historical"
+    },
+    {
+      "id": "K-BT-09",
+      "exchange_ids": ["gateio"],
+      "strategy_ids": ["triangular_v1", "statistical_arb_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "triangular_v1":     {"start": "2025-07-01", "end": "2025-12-31"},
+        "statistical_arb_v1":{"start": "2025-07-01", "end": "2025-12-31"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC"],
+      "data_source": "ohlcv_historical",
+      "note": "Gate.io API 한계: 현재 기준 최대 9998h(~416일) 전까지만 가능. 2024 데이터 불가. SOL/BTC 페어 미존재. 대체: 2025-07-01~2025-12-31"
+    },
+    {
+      "id": "K-BT-10",
+      "exchange_ids": ["binance", "upbit"],
+      "strategy_ids": ["cross_exchange_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "cross_exchange_v1": {"start": "2025-01-01", "end": "2025-03-31"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BTC/KRW", "ETH/KRW", "SOL/KRW"],
+      "data_source": "ohlcv_historical",
+      "note": "KRW cross-exchange: Binance USDT vs Upbit KRW"
+    },
+    {
+      "id": "K-BT-11",
+      "exchange_ids": ["binance", "bithumb"],
+      "strategy_ids": ["cross_exchange_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "cross_exchange_v1": {"start": "2025-09-08", "end": "2026-03-31"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BTC/KRW", "ETH/KRW", "SOL/KRW"],
+      "data_source": "ohlcv_historical",
+      "note": "KRW cross-exchange: Binance USDT vs Bithumb KRW. Bithumb 1h API 한계로 2025-01~03 기간 불가. 대체: 2025-09-08~2026-03-31 (bithumb 실측 최고 과거 기준)"
+    },
+    {
+      "id": "K-BT-12",
+      "exchange_ids": ["binance", "coinone"],
+      "strategy_ids": ["cross_exchange_v1"],
+      "seed_capital": 1000.0,
+      "periods": {
+        "cross_exchange_v1": {"start": "2025-01-01", "end": "2025-03-31"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BTC/KRW", "ETH/KRW", "SOL/KRW"],
+      "data_source": "ohlcv_historical",
+      "note": "KRW cross-exchange: Binance USDT vs Coinone KRW"
+    },
+    {
+      "id": "K-BT-13",
+      "exchange_ids": ["binance", "bybit"],
+      "strategy_ids": ["cross_exchange_v1"],
+      "seed_capital": 2000.0,
+      "periods": {
+        "cross_exchange_v1": {"start": "2024-01-10", "end": "2024-03-31"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "data_source": "ohlcv_historical",
+      "note": "Global cross-exchange: Binance vs Bybit"
+    },
+    {
+      "id": "K-BT-14",
+      "exchange_ids": ["binance", "okx"],
+      "strategy_ids": ["cross_exchange_v1"],
+      "seed_capital": 2000.0,
+      "periods": {
+        "cross_exchange_v1": {"start": "2024-01-10", "end": "2024-03-31"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "data_source": "ohlcv_historical",
+      "note": "Global cross-exchange: Binance vs OKX"
+    },
+    {
+      "id": "K-BT-15",
+      "exchange_ids": ["binance", "bitget"],
+      "strategy_ids": ["cross_exchange_v1"],
+      "seed_capital": 2000.0,
+      "periods": {
+        "cross_exchange_v1": {"start": "2024-01-10", "end": "2024-03-31"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "data_source": "ohlcv_historical",
+      "note": "Global cross-exchange: Binance vs Bitget"
+    },
+    {
+      "id": "K-BT-16",
+      "exchange_ids": ["binance_futures", "bitget_futures"],
+      "strategy_ids": ["futures_futures_v1"],
+      "seed_capital": 2000.0,
+      "periods": {
+        "futures_futures_v1": {"start": "2024-01-10", "end": "2024-03-31"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "data_source": "ohlcv_historical",
+      "note": "Futures-futures: Binance Futures vs Bitget Futures"
+    },
+    {
+      "id": "K-BT-17",
+      "exchange_ids": ["binance_futures", "bybit_futures"],
+      "strategy_ids": ["futures_futures_v1"],
+      "seed_capital": 2000.0,
+      "periods": {
+        "futures_futures_v1": {"start": "2024-01-10", "end": "2024-03-31"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "data_source": "ohlcv_historical",
+      "note": "Futures-futures: Binance Futures vs Bybit Futures"
+    },
+    {
+      "id": "K-BT-18",
+      "exchange_ids": ["binance_futures", "okx_futures"],
+      "strategy_ids": ["futures_futures_v1"],
+      "seed_capital": 2000.0,
+      "periods": {
+        "futures_futures_v1": {"start": "2024-01-10", "end": "2024-03-31"}
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "data_source": "ohlcv_historical",
+      "note": "Futures-futures: Binance Futures vs OKX Futures"
+    }
   ]
 }

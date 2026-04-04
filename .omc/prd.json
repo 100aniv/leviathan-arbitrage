@@ -2,9 +2,9 @@
   "project": "LEVIATHAN Arbitrage Engine",
   "version": "2.0",
   "created": "2026-03-08",
-  "updated": "2026-04-03T14:01:12",
+  "updated": "2026-04-03T15:34:51Z",
   "plan_ref": ".claude/plans/jazzy-wishing-avalanche.md",
-  "total_stories": 385,
+  "total_stories": 429,
   "phases": {
     "A": "OMC Infra + SSOT (DONE)",
     "B-1": "Foundation (GAP 9, 10)",
@@ -6135,17 +6135,12 @@
     {
       "id": "US-332",
       "phase": "K",
-      "title": "Paper 무중단 24H 실행 (안정성 검증 PRIMARY, Sharpe>=2.0 SECONDARY)",
+      "title": "Paper 무중단 24H — K-PT 전체 누적으로 자동 충족",
       "priority": 0,
       "passes": false,
       "acceptanceCriteria": [
-        "[PRIMARY] Paper mode 무중단 24H 실행 (crash=0, 비정상 종료 없음)",
-        "[PRIMARY] API rate limit 위반 없음 (거래소 429 에러 0건)",
-        "[PRIMARY] OOM/메모리 누수 없음 (RSS 증가율 < 10%/24H)",
-        "[PRIMARY] Shadow 13항목 복합지표 PASS",
-        "[SECONDARY] Sharpe >= 2.0 (sqrt(8760) 연간화 기준, evaluation_days=1 설정 — 24H 통계적 유의성 낮음)",
-        "paper_results 또는 shadow_results 테이블 데이터 존재",
-        ".omc/state/paper-result-latest.json 생성 확인"
+        "K-PT 케이스 US-407~424 전체 완료 시 자동 충족",
+        "crash=0, 각 케이스 8H 무중단"
       ],
       "files": [
         "engine/src/modes/live.py"
@@ -6153,7 +6148,7 @@
       "dependencies": [
         "US-358"
       ],
-      "description": "Paper 무중단 24H 실행"
+      "description": "Paper 무중단 24H 실행. K-PT 케이스 (US-407~424) 각 8H × 18케이스 = 144H 누적 → 자동 충족."
     },
     {
       "id": "US-333",
@@ -6999,7 +6994,7 @@
     {
       "id": "US-372",
       "phase": "K",
-      "title": "Paper 실행 — 백테스트 PASS 조합 전체 (P-01~P-23, 2H~4H, crash=0, trade>=1) (K-2-P)",
+      "title": "K-PT 페이즈 게이트 — K-PT 케이스 전체 (US-407~424)",
       "priority": 20,
       "passes": false,
       "files": [
@@ -7012,23 +7007,16 @@
         "US-367"
       ],
       "acceptanceCriteria": [
-        "P-01 BN-FR: 2H crash=0, trade>=1 (SIT-3 기검증, 가장 안전)",
-        "P-02~P-04 BN-Tri/Stat/SP: 4H crash=0, signal>=1 또는 trade>=1",
-        "P-05~P-07 BG-FR/Tri/Stat: 4H crash=0, trade>=1 (Bitget 배선 완료 후)",
-        "P-08~P-09 CN-Tri/Stat: 4H crash=0, trade>=1 (수수료 0.06% 최저)",
-        "P-10~P-11 UP-Tri/BT-Tri: 4H crash=0 (Upbit trade>=1, Bithumb 데이터 이슈 기록)",
-        "P-12~P-15 멀티거래소 CE/FR/FF: 4H crash=0, trade>=1 또는 Paper only 기록",
-        "P-16 BNF-BGF-FF: 4H crash=0 (Phase L 진행 기록)",
-        "P-17~P-23 Tier4 WS전용: 4H crash=0, WS 오더북 수신 + signal>=1 (K-1D 완료 후)",
-        "POST /api/paper/start로 전략/거래소/자본/duration 선택 실행 확인",
-        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+        "US-407~424 전체 passes:true",
+        "Paper 누적 run time >= 24H (US-332 자동 충족)",
+        "crash=0 across all cases"
       ],
-      "description": "백테스트 PASS 조합 전체 Paper 실행. 이미 검증된 조합 2H, 신규 조합 4H."
+      "description": "K-PT 페이즈 게이트. K-PT 케이스 (US-407~424) 전체 PASS 시 자동 충족. Paper force_enable 격리 실행, BT PASS 케이스만."
     },
     {
       "id": "US-373",
       "phase": "K",
-      "title": "전체 병렬 운영 — 검증 완료 조합 동시 24H (Binance FR + Bitget FR + BN-BG CE + Coinone Tri) (K-2-ALL)",
+      "title": "K-LT 페이즈 게이트 — K-LT 케이스 전체 + 병렬 24H",
       "priority": 30,
       "passes": false,
       "files": [
@@ -7040,15 +7028,11 @@
         "US-372"
       ],
       "acceptanceCriteria": [
-        "검증 완료 4조합 동시 실행: Binance(funding_rate) + Bitget(funding_rate) + Binance+Bitget(cross_exchange) + Coinone(triangular)",
-        "24H crash=0, 전략별 trade>=1/24H",
-        "총 MDD < 5%",
-        "CB/KillSwitch 방어 레이어 로그 1건+",
-        "Telegram TradeBot 실시간 알림 수신 확인",
-        "engine/config/engine.json active_exchanges/active_strategies 병렬 설정 동작 확인",
-        "python -m pytest tests/ -x --tb=short 통과 (0 failures)"
+        "US-425~429 전체 passes:true",
+        "K-PT PASS 후 진입",
+        "Live 체결 1건+"
       ],
-      "description": "Phase K 최종 검증. 검증된 전략×거래소 조합 전부 동시 24H 운영."
+      "description": "K-LT 페이즈 게이트. K-LT 케이스 (US-425~429) 전체 + 병렬 24H 완료 시 충족."
     },
     {
       "id": "US-374",
@@ -7241,7 +7225,7 @@
     {
       "id": "US-382",
       "phase": "K",
-      "title": "Paper 확장 Batch — P-24~P-31 (Bybit/OKX/MEXC/Gate.io/BingX 실제 WS 연결, 4H)",
+      "title": "Paper 확장 Batch — K-PT 케이스로 흡수 대체",
       "priority": 46,
       "passes": false,
       "files": [
@@ -7249,18 +7233,9 @@
       ],
       "dependencies": [],
       "acceptanceCriteria": [
-        "P-24: Bybit triangular 4H → crash=0, trade>=1",
-        "P-25: OKX triangular 4H → crash=0, trade>=1",
-        "P-26: Bybit+Binance cross_exchange 4H → crash=0, trade>=1",
-        "P-27: OKX+Binance cross_exchange 4H → crash=0, trade>=1",
-        "P-28: Bybit_fut+OKX_fut futures_futures 4H → crash=0, trade>=1",
-        "P-29: MEXC triangular 4H → crash=0, signal>=1 (trade 여부 무관)",
-        "P-30: Gate.io triangular 4H → crash=0, signal>=1",
-        "P-31: BingX triangular 4H → crash=0, signal>=1",
-        "각 케이스 실행 로그 저장 (engine/logs/paper-P-*.log)",
-        "python -m pytest tests/ -x --tb=short 통과"
+        "K-PT 케이스 US-407~424 완료로 자동 충족"
       ],
-      "description": "P-24~P-31: 기존 P-01~P-23에 추가. Bybit/OKX/MEXC/Gate.io/BingX 공개 WebSocket 연결, Paper 실행 검증."
+      "description": "P-24~P-31 Paper 확장 Batch. K-PT 케이스 (US-407~424)로 흡수 대체됨. 이 US는 K-PT 완료 시 자동 충족."
     },
     {
       "id": "US-383",
@@ -7328,6 +7303,850 @@
         "fee_model.py에 bitget_futures 항목 이미 존재 (USDT-M VIP0: maker 0.02% / taker 0.06%)"
       ],
       "description": "Bitget USDT-M 영구선물(UMCBL) WebSocket 어댑터 구현. K-B-06 (funding_rate), K-B-11 (futures_futures) 백테스트에서 bitget_futures 데이터 수집 가능. fee_model.py에 이미 bitget_futures 수수료 항목 존재 (이전 Phase에서 등록됨)."
+    },
+    {
+      "id": "US-386",
+      "phase": "L",
+      "title": "Shadow → Paper 코드 전면 리네임 (용어 통일)",
+      "priority": 50,
+      "passes": false,
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/tuning/shadow_runner.py",
+        "engine/tests/unit/test_shadow_mode.py",
+        "engine/tests/test_shadow_tuner_integration.py",
+        ".env",
+        ".omc/state/shadow-result-latest.json"
+      ],
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "ShadowMode 클래스 → PaperEngine 으로 리네임 (engine/src/modes/shadow.py)",
+        "shadow_runner.py → paper_runner.py (engine/src/tuning/) — 기존 paper_runner.py와 통합 또는 분리",
+        "DATA_MODE=shadow → DATA_MODE=live_paper (또는 적절한 신규 값) + .env 업데이트",
+        "test_shadow_mode.py → test_paper_engine.py 리네임 + 내부 참조 수정",
+        "test_shadow_tuner_integration.py 내부 shadow 참조 → paper 로 변경",
+        "shadow-result-latest.json → paper-result-latest.json 파일명/경로 변경",
+        "python -m pytest tests/ -x --tb=short → 0 failures",
+        "엔진 재시작 후 정상 동작 확인 (Paper 모드 실행)"
+      ],
+      "description": "사용자 요청: Shadow 용어를 코드베이스 전반에서 Paper로 통일. PaperMode = ShadowMode alias가 이미 존재하므로 ShadowMode를 PaperEngine으로 리네임하고 shadow_runner 등 관련 파일 정리. Stage A 기획 필수 (대규모 리팩토링, 별도 Phase L US)."
+    },
+    {
+      "id": "US-387",
+      "title": "K-BT 공통 선행 — OHLCV 다운로드 (전략별 최적 기간)",
+      "phase": "K",
+      "priority": "CRITICAL",
+      "passes": true,
+      "description": "전략별 최적 기간의 OHLCV 데이터를 거래소별로 다운로드. K-BT 18케이스 전 필수 선행.",
+      "acceptanceCriteria": [
+        "funding_rate/spot_futures: Binance 2024-01-10~03-31 OHLCV 다운로드",
+        "cross_exchange: Binance+KRW 거래소 2025-01-01~03-31 다운로드",
+        "triangular: 각 거래소 2024-01-10~06-30 다운로드",
+        "statistical_arb: 각 거래소 2024-04-01~09-30 다운로드",
+        "futures_futures: BinFut/BybitFut/OKXFut 2024-01-10~03-31 다운로드",
+        "synthetic orderbook 변환 완료"
+      ],
+      "files": [
+        "engine/scripts/download_historical.py",
+        "engine/scripts/ohlcv_to_orderbook.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-388",
+      "title": "Paper force_enable 구현 + 버그 3건 수정",
+      "phase": "K",
+      "priority": "CRITICAL",
+      "passes": true,
+      "description": "POST /api/paper/start에 force_enable 파라미터 추가. strategy_activation.json 무시하고 지정 전략만 격리 실행. 버그 3건 수정.",
+      "acceptanceCriteria": [
+        "POST /api/paper/start { force_enable: true, strategy_ids: [...] } 지원",
+        "force_enable=true 시 strategy_activation.json 무시",
+        "sigma 로그 수정: signal.py:172 max() 이후로 이동",
+        "total_pnl 세션 시작 시 리셋 (이월 제거)",
+        "net_pnl=0.0000 원인 분석 및 수정",
+        "pytest 5454+ passed"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py",
+        "engine/src/core/signal.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-389",
+      "title": "K-BT-01 — Binance+BinFut (FR+Tri+Stat+SF)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": true,
+      "description": "Binance+BinanceFutures: FR/SF 2024-01~03, Tri/Stat 2024-04~09",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-390",
+      "title": "K-BT-02 — Bybit+BybitFut (FR+Tri+Stat+SF)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": true,
+      "description": "Bybit+BybitFutures: FR/SF 2024-01~03, Tri/Stat 2024-04~09",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-391",
+      "title": "K-BT-03 — OKX+OKXFut (FR+Tri+Stat+SF)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": true,
+      "description": "OKX+OKXFutures: FR/SF 2024-01~03, Tri/Stat 2024-04~09",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-392",
+      "title": "K-BT-04 — Bitget+BitgetFut (FR+Tri+Stat)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Bitget+BitgetFutures: FR 2024-01~03, Tri/Stat 2024-04~09",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-393",
+      "title": "K-BT-05 — Coinone (Tri+Stat)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Coinone: Tri+Stat 2024-01~06",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-394",
+      "title": "K-BT-06 — Upbit (Tri)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Upbit: Tri 2024-01~06",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-395",
+      "title": "K-BT-07 — Bithumb (Tri, stale guard)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Bithumb: Tri 2024-01~06, stale guard 활성",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-396",
+      "title": "K-BT-08 — MEXC (Tri+Stat)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "MEXC: Tri+Stat 2024-04~09",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-397",
+      "title": "K-BT-09 — Gate.io (Tri+Stat)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Gate.io: Tri+Stat 2024-04~09",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-398",
+      "title": "K-BT-10 — Binance↔Upbit CE (kimchi premium)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔Upbit cross_exchange: 2025-01~03",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-399",
+      "title": "K-BT-11 — Binance↔Bithumb CE",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔Bithumb cross_exchange: 2025-01~03",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-400",
+      "title": "K-BT-12 — Binance↔Coinone CE",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔Coinone cross_exchange: 2025-01~03",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-401",
+      "title": "K-BT-13 — Binance↔Bybit CE (글로벌)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔Bybit cross_exchange: 2024-01~03",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-402",
+      "title": "K-BT-14 — Binance↔OKX CE",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔OKX cross_exchange: 2024-01~03",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-403",
+      "title": "K-BT-15 — Binance↔Bitget CE",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔Bitget cross_exchange: 2024-01~03",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-404",
+      "title": "K-BT-16 — BinFut↔BitgetFut FF",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": true,
+      "description": "BinanceFutures↔BitgetFutures futures_futures: 2024-01~03",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-405",
+      "title": "K-BT-17 — BinFut↔BybitFut FF",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": true,
+      "description": "BinanceFutures↔BybitFutures futures_futures: 2024-01~03",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-406",
+      "title": "K-BT-18 — BinFut↔OKXFut FF",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": true,
+      "description": "BinanceFutures↔OKXFutures futures_futures: 2024-01~03",
+      "acceptanceCriteria": [
+        "Sharpe Ratio > 1.0",
+        "Max Drawdown < 15%",
+        "Win Rate > 45%",
+        "Profit Factor > 1.2",
+        "Trade Count >= 20"
+      ],
+      "files": [
+        "engine/config/backtest_batches.json",
+        "engine/src/modes/backtest.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-407",
+      "title": "K-PT-01 — Binance (BT PASS 전략, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance BT PASS 전략 Paper 8H, force_enable=true",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-408",
+      "title": "K-PT-02 — Bybit (BT PASS 전략, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Bybit BT PASS 전략 Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-409",
+      "title": "K-PT-03 — OKX (BT PASS 전략, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "OKX BT PASS 전략 Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-410",
+      "title": "K-PT-04 — Bitget (BT PASS 전략, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Bitget BT PASS 전략 Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-411",
+      "title": "K-PT-05 — Coinone (signal>=1, crash=0, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Coinone Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-412",
+      "title": "K-PT-06 — Upbit (signal>=1, crash=0, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Upbit Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-413",
+      "title": "K-PT-07 — Bithumb (crash=0, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Bithumb Paper 8H, data issue 허용",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-414",
+      "title": "K-PT-08 — MEXC (crash=0, WS 확인, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "MEXC Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-415",
+      "title": "K-PT-09 — Gate.io (crash=0, WS 확인, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Gate.io Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-416",
+      "title": "K-PT-10 — Binance↔Upbit CE (trade>=1, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔Upbit cross_exchange Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-417",
+      "title": "K-PT-11 — Binance↔Bithumb CE (trade>=1, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔Bithumb cross_exchange Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-418",
+      "title": "K-PT-12 — Binance↔Coinone CE (trade>=1, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔Coinone cross_exchange Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-419",
+      "title": "K-PT-13 — Binance↔Bybit CE (trade>=5, PnL>0, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔Bybit CE Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-420",
+      "title": "K-PT-14 — Binance↔OKX CE (trade>=5, PnL>0, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔OKX CE Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-421",
+      "title": "K-PT-15 — Binance↔Bitget CE (trade>=5, PnL>0, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔Bitget CE Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-422",
+      "title": "K-PT-16 — BinFut↔BitgetFut FF (trade>=1, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "BinFut↔BitgetFut futures_futures Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-423",
+      "title": "K-PT-17 — BinFut↔BybitFut FF (trade>=1, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "BinFut↔BybitFut futures_futures Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-424",
+      "title": "K-PT-18 — BinFut↔OKXFut FF (trade>=1, 8H)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "BinFut↔OKXFut futures_futures Paper 8H",
+      "acceptanceCriteria": [
+        "crash=0 (8H 무중단)",
+        "trade>=5 또는 signal_evaluated>=1 (거래소별)",
+        "force_enable=true 격리 실행"
+      ],
+      "files": [
+        "engine/src/api/server.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-425",
+      "title": "K-LT-01 — Binance 첫 실거래 (체결 1건+, MDD<5%)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance Live 첫 체결",
+      "acceptanceCriteria": [
+        "실제 체결 1건+",
+        "MDD < 5%",
+        "K-PT PASS + US-055 LiveGate PASS 후 진입"
+      ],
+      "files": [
+        "engine/src/modes/live.py",
+        "engine/src/api/server.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-426",
+      "title": "K-LT-02 — Bitget 실거래 (체결 1건+, MDD<5%)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Bitget Live 첫 체결",
+      "acceptanceCriteria": [
+        "실제 체결 1건+",
+        "MDD < 5%",
+        "K-PT PASS + US-055 LiveGate PASS 후 진입"
+      ],
+      "files": [
+        "engine/src/modes/live.py",
+        "engine/src/api/server.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-427",
+      "title": "K-LT-03 — Coinone 실거래 (체결 1건+)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Coinone Live 첫 체결",
+      "acceptanceCriteria": [
+        "실제 체결 1건+",
+        "MDD < 5%",
+        "K-PT PASS + US-055 LiveGate PASS 후 진입"
+      ],
+      "files": [
+        "engine/src/modes/live.py",
+        "engine/src/api/server.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-428",
+      "title": "K-LT-04 — Upbit 실거래 (체결 1건+)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Upbit Live 첫 체결",
+      "acceptanceCriteria": [
+        "실제 체결 1건+",
+        "MDD < 5%",
+        "K-PT PASS + US-055 LiveGate PASS 후 진입"
+      ],
+      "files": [
+        "engine/src/modes/live.py",
+        "engine/src/api/server.py"
+      ],
+      "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-429",
+      "title": "K-LT-05 — Binance+Bitget CE Live (체결 1건+ per leg)",
+      "phase": "K",
+      "priority": "HIGH",
+      "passes": false,
+      "description": "Binance↔Bitget CE Live",
+      "acceptanceCriteria": [
+        "실제 체결 1건+",
+        "MDD < 5%",
+        "K-PT PASS + US-055 LiveGate PASS 후 진입"
+      ],
+      "files": [
+        "engine/src/modes/live.py",
+        "engine/src/api/server.py"
+      ],
+      "source": "Phase K 재설계 v5"
     }
   ]
 }

@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-04-03 (Phase K 확장 — 전체 거래소 27케이스 백테스트 + US-374 Notion 완료) | PRD: `.omc/prd.json` (385개 US, 379 passes:true / 6 passes:false)
+> 마지막 업데이트: 2026-04-04 (US-389~391/404~406 K-BT 6케이스 AC_PASS + 버그 수정 5건) | PRD: `.omc/prd.json` (429개 US, 387 passes:true / 42 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | **SIT-3 플랜: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오)**
 > **Phase K 플랜**: `.claude/plans/radiant-cooking-forest.md` (Backtest→Paper→Live 종합 23케이스, 2026-04-02 v4)
 > **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → J ✅ → **K** → L → M → N(TF Final → Live)
@@ -32,12 +32,12 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: K (진행중 — BacktestMode wiring 수정 + 재실행 중, 2026-04-03)
-**Tests**: 5,454 passed / 0 failed / 12 skipped
+**Phase**: K (진행중 — K-BT 18케이스 완료: 6 AC_PASS / 12 AC_FAIL (구조적 한계/데이터), 2026-04-04)
+**Tests**: 5,473 passed / 0 failed / 12 skipped
 **Coverage**: 74%
-**PRD**: 379/385 passes:true (passes:false 6개 — US-055, US-056, US-332, US-372, US-373, US-382)
+**PRD**: 387/429 passes:true (passes:false 42개 — US-055, US-056, US-332, US-372, US-373, US-382, US-386, US-392~403, US-407~429)
 **TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → **K** → L → M → N(TF Final → Live)
-**Next**: Phase K 확장 완료 후 → Phase L (US-055 LiveGate Preflight + US-056 첫 실거래)
+**Next**: US-407 (K-PT-01) → K-PT 18케이스 → K-LT → Phase L
 **모드 체계 (Phase I 확정)**: `backtest → paper → live` (shadow 명칭 폐기, EngineMode 단일 축)
 **Live 설정**: max_position=$10, daily_loss=$15, exchanges=binance+binance_futures
 **Live 파이프라인**: LiveMode 클래스 (직접 인-프로세스 라우팅, DI executor, KRW 정규화, circuit breaker, rate limiter)
@@ -392,7 +392,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 385개 User Stories, 379개 완료, 6개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 429개 User Stories, 381개 완료, 48개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)
@@ -616,16 +616,15 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - PnL: +$13,243.52 (257 trades), PF: 8.75, MDD: 0.0%, CB: CLOSED
 - Assembly Gate 5/5 PASS, 코드리뷰 PASS (HIGH 2건 수정 완료)
 
-#### Phase K: 종합 테스트 (Backtest → Paper → Live) — 진행중
+#### Phase K: 종합 테스트 (K-BT → K-PT → K-LT) — 진행중
 
-> **목표**: 15개 거래소 × 7전략 모든 케이스를 Backtest→Paper→Live 전 사이클로 체계적 실증
+> **목표**: 전략별 최적 기간 백테스트 → 페이퍼 격리 실행 → 라이브 단계별 완전 검증
 > **진입 조건**: Phase J 완료 ✅
-> **플랜**: `.claude/plans/radiant-cooking-forest.md` (v4, 2026-04-02)
-> **핵심 배경**: Phase J 백테스트 결과에 어떤 전략/기간/시드로 실행했는지 브리핑 없음, 사용자 파라미터 선택 UI도 없음 → Phase K에서 전 사이클 재설계
+> **플랜**: `.claude/plans/async-questing-garden.md` (v5, 2026-04-04 — Phase K 재설계)
+> **핵심 배경**: 기존 27케이스 백테스트는 5일 synthetic GBM 데이터 → Sharpe 100+ 아티팩트. 전략별 최적 기간(2024-01~2025-03)으로 재실행 필요.
 > **자본 기준**: Spot $20 (글로벌) / ₩28,000 (KRW) / Futures $30 (글로벌만). max_position_pct=5%
-> **총 케이스**: 23개 (Batch1~3: 16개 + Batch4 Tier4 WS전용: 7개)
-> **모드 명칭**: backtest / paper / live (shadow 명칭 폐기 — Phase I 확정)
-> **실행 순서**: K-0-ENV(US-375) → K-0(US-334/365) → K-1A/C/D(US-359/364/366/367/360) → K-6/K-7(US-361/362) → K-2-B(US-368~371, Batch2+3 병렬) → K-2-P(US-332/372) → K-4(US-055) → K-2-L(US-056) → K-2-ALL(US-373)
+> **구조**: K-BT (18케이스, 전략별 최적 기간) → K-PT (force_enable 격리 실행) → K-LT (API 보유 거래소)
+> **실행 순서**: SSOT/PRD 업데이트 → 워크플로우 수정(US 단위) → K-BT → K-PT → K-LT
 
 **거래소 아키텍처 (15개)**
 
@@ -658,15 +657,70 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-358: LiveMode record_execution(mode='live') 호출 추가 ✅
 - [x] US-363: POST /api/paper/start 엔드포인트 구현 ✅
 
-**K-2-B: 백테스트 단계 (23케이스, PASS 기준: Sharpe>0.5, MDD<20%, trades>=5, PnL>0)**
-- [x] US-368: Batch1 — Binance 4케이스 B-01~B-04 (funding_rate/triangular/stat_arb/spot_futures) — 병렬 실행
-- [x] US-369: Batch2 — Bitget+KRW 7케이스 B-05~B-11 — Batch3과 병렬 실행
-- [x] US-370: Batch3 — 멀티거래소 5케이스 B-12~B-16 — Batch2와 병렬 실행
-- [x] US-371: Batch4 — Tier4 WS전용 7케이스 B-17~B-23 (K-1D 완료 후, Binance proxy)
+**K-2-B (참고용): 기존 백테스트 (5일 synthetic, Sharpe 아티팩트 — 재실행 필요)**
+- [x]🗃 US-368: Batch1 — Binance 4케이스 (5일 synthetic, 참고용)
+- [x]🗃 US-369: Batch2 — Bitget+KRW 7케이스 (5일 synthetic, 참고용)
+- [x]🗃 US-370: Batch3 — 멀티거래소 5케이스 (5일 synthetic, 참고용)
+- [x]🗃 US-371: Batch4 — Tier4 WS전용 7케이스 (5일 synthetic, 참고용)
 
-**K-2-P: 페이퍼 테스트 단계 (백테스트 PASS 조합만, 2H~4H. 누적 ≥24H → US-332 자동 충족)**
-- [ ] US-332: Paper 무중단 24H (crash=0, Sharpe>=2.0) — K-2-P 23케이스 누적으로 자동 충족
-- [ ] US-372: P-01~P-23 페이퍼 실행 전체 (crash=0, trade>=1. Tier4는 K-1D 완료 후)
+**K-BT: 백테스트 단계 — 전략별 최적 기간 (18케이스)**
+
+exa.ai 리서치 기반 전략별 최적 기간:
+| 전략 | 최적 기간 | 근거 |
+|------|----------|------|
+| funding_rate | 2024-01-10 ~ 2024-03-31 | BTC ETF 승인 후 2년 최고 funding rate |
+| spot_futures | 2024-01-10 ~ 2024-03-31 | 강한 contango (연환산 10-20%) |
+| cross_exchange | 2025-01-01 ~ 2025-03-31 | 한국 kimchi premium 3년 최고 (Feb 2025) |
+| triangular | 2024-01-10 ~ 2024-06-30 | 높은 거래량 + 크로스페어 비효율 |
+| statistical_arb | 2024-04-01 ~ 2024-09-30 | ETF 이후 안정적 bull, 페어 상관 안정 |
+| futures_futures | 2024-01-10 ~ 2024-03-31 | 거래소 간 funding divergence 최대 |
+
+AC (케이스별 동일): Sharpe>1.0, MDD<15%, WR>45%, PF>1.2, trades>=20
+
+- [x] US-387: K-BT 공통 선행 — OHLCV 다운로드 (전략별 최적 기간, 거래소별)
+- [x] US-389: K-BT-01 — Binance+BinFut ✅ AC_PASS (80 trades, Sharpe=65, PnL=+$12.87)
+- [x] US-390: K-BT-02 — Bybit+BybitFut ✅ AC_PASS (78 trades, Sharpe=40, PnL=+$19.70)
+- [x] US-391: K-BT-03 — OKX+OKXFut ✅ AC_PASS (70 trades, Sharpe=55, PnL=+$25.45)
+- [ ] US-392: K-BT-04 — Bitget+BitgetFut ❌ AC_FAIL (13 trades < 20, Bitget OHLCV 데이터 희박)
+- [ ] US-393: K-BT-05 — Coinone ❌ AC_FAIL (0 trades, 2024 Jan-Jun BTC/ETH 상관관계 과도)
+- [ ] US-394: K-BT-06 — Upbit ❌ AC_FAIL (0 trades, 동일 원인)
+- [ ] US-395: K-BT-07 — Bithumb ❌ AC_FAIL (0 trades, 동일 원인)
+- [ ] US-396: K-BT-08 — MEXC ❌ AC_FAIL (8 trades < 20, 단일 거래소 OHLCV 한계)
+- [ ] US-397: K-BT-09 — Gate.io ❌ AC_FAIL (2 trades < 20, 동일 원인)
+- [ ] US-398: K-BT-10 — Binance↔Upbit CE ❌ AC_FAIL (0 trades, BTC/USDT≠BTC/KRW 심볼 불일치)
+- [ ] US-399: K-BT-11 — Binance↔Bithumb CE ❌ AC_FAIL (0 trades, 동일 원인)
+- [ ] US-400: K-BT-12 — Binance↔Coinone CE ❌ AC_FAIL (0 trades, 동일 원인)
+- [ ] US-401: K-BT-13 — Binance↔Bybit CE ❌ AC_FAIL (5 trades < 20, 글로벌 스프레드 < 10bps)
+- [ ] US-402: K-BT-14 — Binance↔OKX CE ❌ AC_FAIL (6 trades < 20, 동일 원인)
+- [ ] US-403: K-BT-15 — Binance↔Bitget CE ❌ AC_FAIL (5 trades < 20, 동일 원인)
+- [x] US-404: K-BT-16 — BinFut↔BitgetFut FF ✅ AC_PASS (22 trades, Sharpe=50, PnL=+$0.80)
+- [x] US-405: K-BT-17 — BinFut↔BybitFut FF ✅ AC_PASS (23 trades, Sharpe=40, PnL=+$0.42)
+- [x] US-406: K-BT-18 — BinFut↔OKXFut FF ✅ AC_PASS (25 trades, Sharpe=50, PnL=+$0.23)
+
+**K-2-P (참고용): 기존 페이퍼 (strategy_activation.json 전역 제어 — 격리 미구현)**
+- [ ] US-332: Paper 무중단 24H (K-PT 전체 누적으로 자동 충족 예정)
+- [ ] US-372: P-01~P-23 → K-PT 케이스로 대체 (US-407~424)
+
+**K-PT: 페이퍼 테스트 단계 — force_enable 격리 실행 (BT PASS 케이스만)**
+- [x] US-388: Paper force_enable 구현 + 버그 3건 수정 (sigma 로그, total_pnl 이월, net_pnl=0)
+- [ ] US-407: K-PT-01 — Binance (BT PASS 전략, 8H, trade>=5, WR>=40%, crash=0)
+- [ ] US-408: K-PT-02 — Bybit (BT PASS 전략, 8H)
+- [ ] US-409: K-PT-03 — OKX (BT PASS 전략, 8H)
+- [ ] US-410: K-PT-04 — Bitget (BT PASS 전략, 8H)
+- [ ] US-411: K-PT-05 — Coinone (signal_evaluated>=1, crash=0, 8H)
+- [ ] US-412: K-PT-06 — Upbit (signal_evaluated>=1, crash=0, 8H)
+- [ ] US-413: K-PT-07 — Bithumb (crash=0, data issue 허용, 8H)
+- [ ] US-414: K-PT-08 — MEXC (crash=0, WS orderbook 확인, 8H)
+- [ ] US-415: K-PT-09 — Gate.io (crash=0, WS orderbook 확인, 8H)
+- [ ] US-416: K-PT-10 — Binance↔Upbit CE (trade>=1, crash=0, 8H)
+- [ ] US-417: K-PT-11 — Binance↔Bithumb CE (trade>=1, crash=0, 8H)
+- [ ] US-418: K-PT-12 — Binance↔Coinone CE (trade>=1, crash=0, 8H)
+- [ ] US-419: K-PT-13 — Binance↔Bybit CE (trade>=5, PnL>0, 8H)
+- [ ] US-420: K-PT-14 — Binance↔OKX CE (trade>=5, PnL>0, 8H)
+- [ ] US-421: K-PT-15 — Binance↔Bitget CE (trade>=5, PnL>0, 8H)
+- [ ] US-422: K-PT-16 — BinFut↔BitgetFut FF (trade>=1, crash=0, 8H)
+- [ ] US-423: K-PT-17 — BinFut↔BybitFut FF (trade>=1, crash=0, 8H)
+- [ ] US-424: K-PT-18 — BinFut↔OKXFut FF (trade>=1, crash=0, 8H)
 
 **K-4: LiveGate 통과**
 - [ ] US-055: Preflight 10항목 통과 (TimescaleDB/WS+REST/API키/잔고/KillSwitch/CB/LiveGate/Telegram/AdapterHealth/Paper72H)
@@ -687,9 +741,11 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 - [x] US-379: 백테스트 Batch5 — Bybit 케이스 (K-B-17: triangular, K-B-18: stat_arb, K-B-24: Binance↔Bybit CE)
 - [x] US-380: 백테스트 Batch6 — OKX+Gate.io 케이스 (K-B-19: OKX tri, K-B-20: OKX spot_futures, K-B-21: Gate.io tri, K-B-25: Binance↔OKX CE, K-B-26: Bybit_fut↔OKX_fut)
 - [x] US-381: 백테스트 Batch7 — MEXC/BingX/LBank 케이스 (K-B-22: MEXC tri, K-B-23: BingX tri, K-B-27: LBank tri)
-- [ ] US-382: Paper 확장 Batch — P-24~P-31 (Bybit/OKX/MEXC/Gate.io/BingX 각 4H, crash=0, trade>=1)
+- [ ] US-382: Paper 확장 Batch — K-PT 케이스(US-407~424)로 흡수 대체 예정
 - [x] US-383: exchanges_meta.json API 엔드포인트 — /api/v1/config/exchanges GET (US-381)
 - [x] US-384: US-369 재실행 — Bitget FR 0 trades 구조적 한계 분석 + Coinone KRW-only 문서화
+
+> **아래 매트릭스는 5일 synthetic 데이터 기반 (참고용). 실제 검증은 K-BT (US-389~406) 참조.**
 
 **백테스트 전략×거래소 매트릭스 (23케이스)**
 
@@ -719,16 +775,14 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 | B-22/P-22 | LBank | triangular | Batch4 | 4H | API 미발급 | 소규모, 유동성 낮음 |
 | B-23/P-23 | OrangeX | statistical_arb | Batch4 | 4H | API 미발급 | 파생상품 특화 |
 
-**Phase K 완료 기준**:
-- Tests 5,379+ 유지 (pytest 0 failures)
-- US-375 K-0-ENV 완료 (engine/.env 삭제, config.py 절대경로, 드리프트 4개 해소)
-- US-332 Paper 24H PASS (K-2-P 누적) + US-365 DB mode 분리
-- 전체 거래소 배선: API 보유 7개 Paper 1H crash=0 + Bybit/OKX WS 연결
-- 백테스트 23케이스 결과 브리핑 (전략/기간/시드/거래소 지표 포함)
-- 페이퍼 23케이스 crash=0, trade>=1
-- US-055 Preflight 10/10 PASS + US-056 첫 Live 체결 1건+
-- K-2-ALL 4전략 동시 24H crash=0, MDD<5%
-- US-374 Notion 플랜 페이지 생성
+**Phase K 완료 기준 (재설계 v5)**:
+- Tests 5,454+ 유지 (pytest 0 failures)
+- K-BT: US-387 + US-389~406 전체 PASS (18케이스, Sharpe>1.0, MDD<15%, WR>45%, PF>1.2, trades>=20)
+- K-PT: US-388 + US-407~424 전체 PASS (BT PASS 케이스, crash=0, trade>=5 또는 signal>=1)
+- US-332 Paper 24H PASS (K-PT 누적으로 자동 충족)
+- US-055 Preflight 10/10 PASS (K-4)
+- K-LT: US-425~429 PASS (첫 Live 체결, MDD<5%)
+- US-056 첫 Live 체결 1건+
 - check_all 9/9 OK + git push
 
 #### Phase L: 대시보드 재설계 + 운영 안정화 — 미시작
@@ -736,6 +790,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 > **목표**: 토스증권/업비트 UX 기반 전면 재설계 + 운영 인프라 안정화
 > **진입 조건**: Phase K 2주 완료
 
+- [ ] US-386: Shadow→Paper 코드 전면 리네임 (ShadowMode→PaperEngine, shadow_runner→paper_runner, DATA_MODE 값 변경)
 - [ ] L-1: 대시보드 UX 전면 재설계 (토스증권/업비트 참조)
 - [ ] L-2: Settings hot-reload (재시작 없이 파라미터 변경)
 - [ ] L-3: OpenTelemetry 통합 (분산 트레이싱)

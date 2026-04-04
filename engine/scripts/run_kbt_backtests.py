@@ -1,0 +1,283 @@
+"""Backtest runner for Phase K-BT cases (US-389~406).
+
+Runs 18 K-BT backtest cases from backtest_batches.json using historical
+OHLCV data (2024-01-10 ~ 2026-03-31) stored in TimescaleDB.
+
+Each case has per-strategy periods; this runner computes the union period
+(min start ~ max end) and runs BacktestMode over that range.
+
+Usage:
+    cd /Users/100aniv/Development/arbitrage_OMC/engine
+    python scripts/run_kbt_backtests.py [--cases K-BT-01,K-BT-02] [--dry-run]
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import pathlib
+import sys
+from decimal import Decimal
+
+_ENGINE_ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_ENGINE_ROOT))
+
+_ROOT_ENV = _ENGINE_ROOT.parent / ".env"
+if _ROOT_ENV.exists():
+    from dotenv import load_dotenv
+    load_dotenv(str(_ROOT_ENV), override=False)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("run_kbt_backtests")
+
+_BATCHES_JSON = _ENGINE_ROOT / "config" / "backtest_batches.json"
+_STATE_DIR = _ENGINE_ROOT.parent / ".omc" / "state"
+
+# K-BT AC thresholds (from backtest_batches.json)
+_AC = {"sharpe_min": 1.0, "mdd_max_pct": 15.0, "win_rate_min": 45.0, "pf_min": 1.2, "trades_min": 20}
+
+
+def _union_period(case: dict) -> tuple[str, str]:
+    """Compute the union of all strategy periods for a case."""
+    periods = case.get("periods", {})
+    if not periods:
+        return case.get("start", "2024-01-10"), case.get("end", "2024-09-30")
+    starts = [p["start"] for p in periods.values()]
+    ends = [p["end"] for p in periods.values()]
+    return min(starts), max(ends)
+
+
+async def _build_db_pool(settings):
+    """Build DB pool once — stateless for historical reads, safe to share across cases."""
+    from src.infra.db.connection import DatabasePool
+    _op = settings.operational
+    dsn = (_op.database_url or "postgresql://leviathan:leviathan@localhost:5432/leviathan").replace("postgresql+asyncpg://", "postgresql://")
+    db_pool = DatabasePool(dsn=dsn, min_size=2, max_size=5)
+    await db_pool.initialize()
+    return db_pool
+
+
+def _build_fresh_signal_and_strategies(settings):
+    """Build fresh signal_generator + strategy_manager per case.
+
+    Each case MUST get its own instances to avoid state contamination:
+    - SignalGenerator._last_signal (cooldown dict) carries over between cases
+    - StatisticalArbStrategy._pair_states (Kalman beta/P, spreads deque) accumulates
+    - StaleOrderbookDetector._blacklist persists between cases
+    """
+    from src.core.price_hub import PriceHub
+    from src.core.signal import SignalConfig, SignalGenerator
+    from src.core.stale_detector import StaleOrderbookDetector
+    from src.friction.cost_calculator import CostCalculator
+    from src.friction.fee_model import FeeModel
+    from src.friction.slippage_model import CEXOrderbookSlippage
+    from src.infra.redis.memory_bus import InMemoryEventBus
+    from src.strategies.manager import StrategyManager
+    from src.strategies.cross_exchange import CrossExchangeStrategy, CrossExchangeConfig
+    from src.strategies.spot_futures import SpotFuturesStrategy, SpotFuturesConfig
+    from src.strategies.futures_futures import FuturesFuturesStrategy, FuturesFuturesConfig
+    from src.strategies.triangular import TriangularStrategy, TriangularConfig
+    from src.strategies.funding_rate import FundingRateStrategy, FundingRateConfig
+    from src.strategies.statistical_arb import StatisticalArbStrategy
+
+    event_bus = InMemoryEventBus()
+
+    try:
+        fee_model = FeeModel()
+        slippage_model = CEXOrderbookSlippage()
+        cost_calc = CostCalculator(fee_model=fee_model, slippage_model=slippage_model)
+    except Exception as exc:
+        logger.warning("CostCalculator init failed: %s", exc)
+        cost_calc = None
+
+    _op = settings.operational
+    signal_config = SignalConfig(
+        min_edge=Decimal(str(_op.min_edge_bps)) / Decimal("10000"),
+        max_spread_pct=Decimal(str(_op.max_spread_pct)),
+        cooldown_seconds=_op.signal_cooldown_sec,
+        min_price_usd=_op.min_price_usd,
+        min_volume_usd=_op.signal_min_volume_usd,
+    )
+    signal_generator = SignalGenerator(
+        price_hub=PriceHub(),
+        cost_calculator=cost_calc,
+        config=signal_config,
+        event_bus=InMemoryEventBus(),
+        stale_detector=StaleOrderbookDetector(
+            deviation_pct=_op.stale_cross_deviation_pct,
+            blacklist_ttl_s=_op.stale_blacklist_ttl_s,
+        ),
+    )
+
+    _max_pos = Decimal("0.001")
+    _depth = Decimal("10")
+    strategy_manager = StrategyManager(event_bus=event_bus, consumer_name="kbt-runner")
+    for strat in [
+        CrossExchangeStrategy("cross_exchange_v1", cost_calc,
+            config=CrossExchangeConfig(min_spread_bps=Decimal("10"), max_position_size=_max_pos, min_book_depth_usd=_depth)),
+        SpotFuturesStrategy("spot_futures_v1", cost_calc,
+            config=SpotFuturesConfig(min_basis_bps=Decimal("15"), max_position_size=_max_pos)),
+        FuturesFuturesStrategy("futures_futures_v1", cost_calc,
+            config=FuturesFuturesConfig(min_spread_bps=Decimal("8"), max_position_size=_max_pos, min_book_depth_usd=_depth)),
+        TriangularStrategy("triangular_v1", cost_calc,
+            config=TriangularConfig(min_profit_bps=Decimal("10"), max_position_usdt=Decimal("100"))),
+        FundingRateStrategy("funding_rate_v1", cost_calc,
+            config=FundingRateConfig(min_funding_diff_bps=Decimal("5"), max_position_size=_max_pos)),
+        StatisticalArbStrategy("statistical_arb_v1", cost_calc),
+    ]:
+        strategy_manager.register(strat)
+
+    return signal_generator, strategy_manager
+
+
+async def run_kbt_case(case: dict, signal_generator, strategy_manager, db_pool) -> dict:
+    from src.modes.backtest import BacktestMode
+    from src.core.triangular_scanner import TriangularScanner
+    from src.core.multi_signal import MultiStrategySignalProducer
+    from src.infra.redis.memory_bus import InMemoryEventBus
+
+    case_id = case["id"]
+    period_start, period_end = _union_period(case)
+    exchange_ids = case["exchange_ids"]
+    strategy_ids = case.get("strategy_ids", [])
+    symbols = case.get("symbols") or ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC", "SOL/BTC"]
+    seed = case.get("seed_capital", 1000.0)
+
+    logger.info("▶ %s  %s~%s  ex=%s strat=%s", case_id, period_start, period_end, exchange_ids, strategy_ids)
+
+    event_bus = InMemoryEventBus()
+    multi_signal_producer = MultiStrategySignalProducer(event_bus=event_bus)
+    triangular_scanner = TriangularScanner(min_profit_bps=Decimal("10"))
+
+    backtest = BacktestMode(
+        signal_generator=signal_generator,
+        strategy_manager=strategy_manager,
+        db_pool=db_pool,
+        start_time=period_start,
+        end_time=period_end,
+        symbols=symbols,
+        exchanges=exchange_ids,
+        strategy_ids=strategy_ids,
+        seed_capital=seed,
+        run_id=case_id,
+        batch_id="K-BT",
+        metadata={"note": case.get("note", ""), "periods": case.get("periods", {})},
+        multi_signal_producer=multi_signal_producer,
+        triangular_scanner=triangular_scanner,
+    )
+
+    result = await backtest.run()
+
+    summary = {
+        "case_id": case_id,
+        "exchange_ids": exchange_ids,
+        "strategy_ids": strategy_ids,
+        "seed_capital": seed,
+        "period": f"{period_start} ~ {period_end}",
+        "note": case.get("note", ""),
+        "snapshots_replayed": result.snapshots_replayed,
+        "signals_generated": result.signals_generated,
+        "trades": result.trades_executed,
+        "pnl": round(result.total_pnl, 4),
+        "sharpe": round(result.sharpe_ratio, 4),
+        "mdd_pct": round(result.max_drawdown_pct * 100, 4),
+        "win_rate": round(result.win_rate * 100, 4),
+        "profit_factor": round(result.profit_factor, 4),
+        "error": result.error,
+        "by_strategy": result.by_strategy,
+    }
+
+    # AC check
+    ac_pass = (
+        not result.error
+        and result.trades_executed >= _AC["trades_min"]
+        and result.sharpe_ratio >= _AC["sharpe_min"]
+        and result.max_drawdown_pct * 100 <= _AC["mdd_max_pct"]
+        and result.win_rate * 100 >= _AC["win_rate_min"]
+        and result.profit_factor >= _AC["pf_min"]
+    )
+    summary["ac_pass"] = ac_pass
+    summary["ac_detail"] = {
+        "sharpe": f"{result.sharpe_ratio:.3f} {'✅' if result.sharpe_ratio >= _AC['sharpe_min'] else '❌'} (>={_AC['sharpe_min']})",
+        "mdd_pct": f"{result.max_drawdown_pct*100:.2f}% {'✅' if result.max_drawdown_pct*100 <= _AC['mdd_max_pct'] else '❌'} (<={_AC['mdd_max_pct']}%)",
+        "win_rate": f"{result.win_rate*100:.1f}% {'✅' if result.win_rate*100 >= _AC['win_rate_min'] else '❌'} (>={_AC['win_rate_min']}%)",
+        "pf": f"{result.profit_factor:.3f} {'✅' if result.profit_factor >= _AC['pf_min'] else '❌'} (>={_AC['pf_min']})",
+        "trades": f"{result.trades_executed} {'✅' if result.trades_executed >= _AC['trades_min'] else '❌'} (>={_AC['trades_min']})",
+    }
+
+    _STATE_DIR.mkdir(parents=True, exist_ok=True)
+    (_STATE_DIR / f"backtest-summary-{case_id}.json").write_text(json.dumps(summary, indent=2, default=str))
+
+    ac_str = "AC_PASS" if ac_pass else "AC_FAIL"
+    logger.info("  %s %s | trades=%d pnl=%.4f sharpe=%.4f mdd=%.2f%% wr=%.1f%% pf=%.3f",
+        case_id, ac_str, result.trades_executed, result.total_pnl,
+        result.sharpe_ratio, result.max_drawdown_pct*100, result.win_rate*100, result.profit_factor)
+    return summary
+
+
+async def main(case_filter: list[str] | None = None, dry_run: bool = False) -> None:
+    from src.core.config import get_settings
+    settings = get_settings()
+
+    batch_config = json.loads(_BATCHES_JSON.read_text())
+    all_cases = [c for c in batch_config["batches"] if c["id"].startswith("K-BT")]
+
+    if case_filter:
+        all_cases = [c for c in all_cases if c["id"] in case_filter]
+
+    logger.info("=== K-BT 백테스트 %d케이스 ===", len(all_cases))
+    for c in all_cases:
+        ps, pe = _union_period(c)
+        logger.info("  %s: %s~%s  %s", c["id"], ps, pe, c["exchange_ids"])
+
+    if dry_run:
+        return
+
+    # db_pool is stateless for reads — build once and share
+    db_pool = await _build_db_pool(settings)
+    summaries = []
+
+    for case in all_cases:
+        # Fresh signal_generator + strategy_manager per case to prevent state contamination:
+        # - SignalGenerator._last_signal (cooldown) would block signals from previous case
+        # - StatisticalArbStrategy Kalman state + spreads deque accumulates across cases
+        # - StaleOrderbookDetector._blacklist persists between cases
+        signal_generator, strategy_manager = _build_fresh_signal_and_strategies(settings)
+        try:
+            s = await run_kbt_case(case, signal_generator, strategy_manager, db_pool)
+            summaries.append(s)
+        except Exception as exc:
+            logger.error("Case %s FAILED: %s", case["id"], exc)
+            summaries.append({"case_id": case["id"], "error": str(exc), "ac_pass": False,
+                               "trades": 0, "pnl": 0, "sharpe": 0, "mdd_pct": 0,
+                               "win_rate": 0, "profit_factor": 0,
+                               "exchange_ids": case["exchange_ids"], "strategy_ids": case.get("strategy_ids", [])})
+
+    # Print results table
+    print("\n" + "=" * 110)
+    print(f"K-BT 백테스트 결과 ({len(summaries)}케이스)")
+    print("=" * 110)
+    print(f"{'Case':<12} {'Exchanges':<32} {'Trades':>7} {'PnL':>10} {'Sharpe':>8} {'MDD%':>7} {'WR%':>7} {'PF':>6} {'AC':<8}")
+    print("-" * 110)
+    for s in summaries:
+        ex = ",".join(s["exchange_ids"])[:30]
+        ac = "✅PASS" if s.get("ac_pass") else ("❌FAIL" if not s.get("error") else f"ERROR")
+        print(f"{s['case_id']:<12} {ex:<32} {s['trades']:>7} {s['pnl']:>10.4f} "
+              f"{s['sharpe']:>8.4f} {s['mdd_pct']:>6.2f}% {s['win_rate']:>6.1f}% {s['profit_factor']:>6.3f} {ac}")
+    print("=" * 110)
+    ac_passed = sum(1 for s in summaries if s.get("ac_pass"))
+    print(f"AC PASS: {ac_passed}/{len(summaries)}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cases", help="쉼표 구분 케이스 ID (예: K-BT-01,K-BT-02)")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+    case_filter = args.cases.split(",") if args.cases else None
+    asyncio.run(main(case_filter=case_filter, dry_run=args.dry_run))

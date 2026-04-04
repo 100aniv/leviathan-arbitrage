@@ -92,6 +92,8 @@ class BacktestMode:
         run_id: str = "",
         batch_id: str = "",
         metadata: dict | None = None,
+        triangular_scanner: Any | None = None,
+        multi_signal_producer: Any | None = None,
     ) -> None:
         self._signal_generator = signal_generator
         self._strategy_manager = strategy_manager
@@ -113,6 +115,16 @@ class BacktestMode:
         self._fee_model = FeeModel()
         self._result = BacktestResult()
         self._running = False
+
+        # RealDataSignalProducer for triangular / stat_arb / funding_rate strategies
+        self._real_signal_producer: Any | None = None
+        if multi_signal_producer is not None and triangular_scanner is not None:
+            from src.core.real_signal_producer import RealDataSignalProducer
+            self._real_signal_producer = RealDataSignalProducer(
+                multi_signal_producer=multi_signal_producer,
+                triangular_scanner=triangular_scanner,
+                backtest_mode=True,  # disables wall-clock cooldowns and Korean exchange skip
+            )
 
         # Per-strategy PnL tracking
         self._strategy_pnl: dict[str, float] = {}
@@ -211,7 +223,7 @@ class BacktestMode:
         import json  # noqa: PLC0415
         from pathlib import Path  # noqa: PLC0415
 
-        state_dir = Path(__file__).resolve().parents[4] / ".omc" / "state"
+        state_dir = Path(__file__).resolve().parents[3] / ".omc" / "state"
         state_dir.mkdir(parents=True, exist_ok=True)
         out_path = state_dir / f"backtest-results-{self._run_id}.json"
         try:
@@ -257,6 +269,24 @@ class BacktestMode:
                         logger.info("backtest.data_check: count=0, span=0 min")
                         return []
 
+            # asyncpg requires datetime objects, not strings, for timestamptz params
+            from datetime import datetime, timezone  # noqa: PLC0415
+            def _to_dt(val: str | None) -> datetime | None:
+                if not val:
+                    return None
+                if isinstance(val, datetime):
+                    return val
+                # Accept "YYYY-MM-DD" or full ISO string
+                if "T" not in val and " " not in val:
+                    val = val + "T00:00:00"
+                try:
+                    dt = datetime.fromisoformat(val)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+                except ValueError:
+                    return None
+
             query = """
                 SELECT exchange, symbol, bids_json, asks_json,
                        EXTRACT(EPOCH FROM ts) as timestamp
@@ -266,13 +296,16 @@ class BacktestMode:
             params: list = []
             idx = 1
 
-            if start_time:
-                query += f" AND ts >= ${idx}::timestamptz"
-                params.append(start_time)
+            start_dt = _to_dt(start_time)
+            end_dt = _to_dt(end_time)
+
+            if start_dt:
+                query += f" AND ts >= ${idx}"
+                params.append(start_dt)
                 idx += 1
-            if end_time:
-                query += f" AND ts <= ${idx}::timestamptz"
-                params.append(end_time)
+            if end_dt:
+                query += f" AND ts <= ${idx}"
+                params.append(end_dt)
                 idx += 1
             if self._symbols:
                 query += f" AND symbol = ANY(${idx}::text[])"
@@ -288,13 +321,26 @@ class BacktestMode:
             async with self._db_pool.pool.acquire() as conn:
                 rows = await conn.fetch(query, *params)
 
+            import json as _json  # noqa: PLC0415
+
+            def _parse_levels(raw) -> list:
+                if isinstance(raw, list):
+                    return raw
+                if isinstance(raw, str):
+                    try:
+                        parsed = _json.loads(raw)
+                        return parsed if isinstance(parsed, list) else []
+                    except Exception:
+                        return []
+                return []
+
             snapshots = []
             for row in rows:
                 snapshots.append({
                     "exchange": row["exchange"],
                     "symbol": row["symbol"],
-                    "bids": row["bids_json"] if isinstance(row["bids_json"], list) else [],
-                    "asks": row["asks_json"] if isinstance(row["asks_json"], list) else [],
+                    "bids": _parse_levels(row["bids_json"]),
+                    "asks": _parse_levels(row["asks_json"]),
                     "timestamp": float(row["timestamp"]),
                 })
 
@@ -336,7 +382,7 @@ class BacktestMode:
             self._books[symbol] = {}
         self._books[symbol][exchange_id] = core_book
 
-        # Feed SignalGenerator (same code as paper/live)
+        # Feed SignalGenerator — cross_exchange path (requires books from >=2 exchanges)
         if self._signal_generator and len(self._books.get(symbol, {})) >= 2:
             try:
                 signal = await self._signal_generator.on_orderbook_update(
@@ -348,6 +394,31 @@ class BacktestMode:
                     await self._route_and_execute(signal)
             except Exception as exc:
                 logger.debug("backtest.signal_error: %s", exc)
+
+        # RealDataSignalProducer — triangular / stat_arb / spot_futures / futures_futures
+        if self._real_signal_producer is not None:
+            try:
+                # Build all_books dict (symbol → exchange_id → book) for multi-strategy eval
+                all_books = self._books
+                # futures_books: exchanges with "_futures" suffix
+                futures_books: dict[str, dict[str, Any]] = {}
+                for sym, ex_map in self._books.items():
+                    for ex_id, book in ex_map.items():
+                        if "_futures" in ex_id:
+                            futures_books.setdefault(sym, {})[ex_id] = book
+                signals = await self._real_signal_producer.on_orderbook_update(
+                    exchange_id=exchange_id,
+                    symbol=symbol,
+                    book=core_book,
+                    all_books=all_books,
+                    futures_books=futures_books,
+                    simulated_ts=snap.get("timestamp"),  # use historical time for cooldowns
+                )
+                for sig in signals:
+                    self._result.signals_generated += 1
+                    await self._route_and_execute(sig)
+            except Exception as exc:
+                logger.debug("backtest.real_signal_error: %s", exc)
 
     async def _route_and_execute(self, signal: Signal) -> None:
         """Route signal through strategies and track PnL."""
@@ -445,10 +516,15 @@ class BacktestMode:
         if self._result.peak_pnl > 0:
             self._result.max_drawdown_pct = self._result.max_drawdown / self._result.peak_pnl
 
-        # Profit factor
+        # Profit factor — no losses → infinity (use 9999 as sentinel)
         wins_sum = sum(r for r in self._pnl_returns if r > 0)
         loss_sum = abs(sum(r for r in self._pnl_returns if r < 0))
-        self._result.profit_factor = wins_sum / max(0.01, loss_sum)
+        if loss_sum > 0:
+            self._result.profit_factor = wins_sum / loss_sum
+        elif wins_sum > 0:
+            self._result.profit_factor = 9999.0  # no losses at all
+        else:
+            self._result.profit_factor = 0.0
 
         # Sharpe ratio — annualized per SSOT §4.5: sqrt(8760) for hourly intervals
         import numpy as np

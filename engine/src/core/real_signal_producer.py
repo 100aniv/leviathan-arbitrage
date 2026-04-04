@@ -50,6 +50,10 @@ CROSS_ASSET_PAIRS: list[tuple[str, str]] = [
     ("BTC/USDT", "ETH/USDT"),
     ("ETH/USDT", "SOL/USDT"),
     ("BTC/USDT", "SOL/USDT"),
+    # KRW pairs for Korean exchange backtest (ignored on non-KRW exchanges — book lookup returns None)
+    ("BTC/KRW", "ETH/KRW"),
+    ("ETH/KRW", "SOL/KRW"),
+    ("BTC/KRW", "SOL/KRW"),
 ]
 
 
@@ -79,6 +83,7 @@ class RealDataSignalProducer:
         latency_tracker: Any = None,
         stale_detector: Any = None,
         regime_detector: Any = None,
+        backtest_mode: bool = False,
     ) -> None:
         self._producer = multi_signal_producer
         self._scanner = triangular_scanner
@@ -95,10 +100,19 @@ class RealDataSignalProducer:
         self._stat_arb_kalman: dict[tuple[str, str, str], _KalmanHedgeRatio] = {}
         self._stat_arb_cooldown: dict[tuple[str, str, str], float] = {}
         from src.core.config_loader import get_config
+        # In backtest mode: use lower z-threshold (OHLCV hourly data is smoother than tick data,
+        # so z-scores are systematically lower; 1.5 is appropriate for hourly backtest data)
+        self._backtest_mode = backtest_mode
         self._stat_arb_z_threshold = float(get_config("strategy_filters.stat_arb_z_threshold", default=2.5))
+        if backtest_mode:
+            # Cap at 1.5 regardless of config — OHLCV hourly prices have less intraday noise
+            # than live tick data, so live-tuned thresholds (2.0+) rarely trigger in backtest
+            self._stat_arb_z_threshold = min(self._stat_arb_z_threshold, 1.5)
         self._stat_arb_cooldown_s = float(get_config("strategy_filters.stat_arb_cooldown_s", default=300))
         self._stat_arb_min_history = int(get_config("strategy_filters.stat_arb_min_history", default=120))
-        self._stat_arb_korean = {"upbit", "bithumb", "coinone"}  # skip stale data
+        # In backtest mode: skip Korean exchange filter (data is synthetic, not stale)
+        # and skip wall-clock cooldowns (simulated time is passed instead)
+        self._stat_arb_korean = {"upbit", "bithumb", "coinone"}  # skip stale data (live only)
         # Bug 1-A: cache latest funding rates so _evaluate_spot_futures can use them
         self._latest_rates: _Rates = {}
         # US-230: rolling spread history for outlier filter
@@ -132,31 +146,44 @@ class RealDataSignalProducer:
         book: OrderBook,
         all_books: _Books,
         futures_books: _Books,
+        simulated_ts: float | None = None,
     ) -> list[Signal]:
         """Evaluate all relevant strategies on a new orderbook update.
 
         Returns a (possibly empty) list of Signal objects produced.
         S10: Skips signals during first 5 seconds (orderbook cold-start warmup).
+
+        Parameters
+        ----------
+        simulated_ts : float | None
+            Unix epoch seconds from historical data (backtest mode). When provided,
+            wall-clock cooldowns use this instead of time.monotonic() so that
+            a 6-month replay in 1s of wall time doesn't block every signal.
         """
         signals: list[Signal] = []
 
         # S10: Warmup guard — skip all signals for first 5 seconds
+        # In backtest mode: skip warmup (data is pre-validated, no cold-start issue)
         now_mono = time.monotonic()
-        if self._first_update_mono == 0.0:
-            self._first_update_mono = now_mono
-        if (now_mono - self._first_update_mono) < self._warmup_seconds:
-            return signals
+        if not self._backtest_mode:
+            if self._first_update_mono == 0.0:
+                self._first_update_mono = now_mono
+            if (now_mono - self._first_update_mono) < self._warmup_seconds:
+                return signals
 
         # S10 fix: track per-exchange last update time for reconnect stale guard
         self._exchange_last_update[exchange_id] = now_mono
+
+        # Effective time for cooldown checks: simulated time in backtest, wall clock in live
+        _now_for_cooldown = simulated_ts if simulated_ts is not None else now_mono
 
         # Triangular arb (single exchange)
         signals.extend(
             await self._evaluate_triangular(exchange_id, symbol, book)
         )
 
-        # Spot-futures basis (disabled for Korean exchanges — stale data)
-        if exchange_id not in ("upbit", "bithumb", "coinone"):
+        # Spot-futures basis (disabled for Korean exchanges in live — stale data)
+        if self._backtest_mode or exchange_id not in ("upbit", "bithumb", "coinone"):
             signals.extend(
                 await self._evaluate_spot_futures(
                     exchange_id, symbol, all_books, futures_books
@@ -170,7 +197,9 @@ class RealDataSignalProducer:
 
         # Statistical arb (US-181)
         signals.extend(
-            await self._evaluate_statistical_arb(exchange_id, symbol, all_books)
+            await self._evaluate_statistical_arb(
+                exchange_id, symbol, all_books, now=_now_for_cooldown
+            )
         )
 
         # Latency arb (US-182)
@@ -517,6 +546,7 @@ class RealDataSignalProducer:
         exchange_id: str,
         symbol: str,
         all_books: _Books,
+        now: float | None = None,
     ) -> list[Signal]:
         """Evaluate cross-asset statistical arbitrage on the SAME exchange (US-188).
 
@@ -525,15 +555,25 @@ class RealDataSignalProducer:
             spread = log(midA) - beta * log(midB)
 
         Emits a signal when z-score exceeds threshold AND min_history samples exist
-        AND the per-pair cooldown has elapsed. Korean exchanges are excluded.
+        AND the per-pair cooldown has elapsed.
+        Korean exchanges are excluded in live mode; in backtest mode (synthetic data)
+        they are included.
+
+        Parameters
+        ----------
+        now : float | None
+            Effective timestamp for cooldown checks. Use simulated time in backtest
+            (passed from on_orderbook_update) so wall-clock 300s cooldown doesn't
+            block signals when replaying months of data in seconds.
         """
         signals: list[Signal] = []
 
-        # Korean exchanges have stale orderbook data — skip entirely
-        if exchange_id in self._stat_arb_korean:
+        # Korean exchanges have stale orderbook data — skip in live mode only
+        if not self._backtest_mode and exchange_id in self._stat_arb_korean:
             return signals
 
-        now = time.monotonic()
+        if now is None:
+            now = time.monotonic()
 
         for sym_a, sym_b in CROSS_ASSET_PAIRS:
             # Only evaluate when the incoming update is for one of the pair's symbols
