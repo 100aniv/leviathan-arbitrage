@@ -7739,7 +7739,7 @@
       "title": "K-PT-01 — Binance (BT PASS 전략, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance BT PASS 전략 Paper 8H, force_enable=true",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7757,7 +7757,7 @@
       "title": "K-PT-02 — Bybit (BT PASS 전략, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Bybit BT PASS 전략 Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7775,7 +7775,7 @@
       "title": "K-PT-03 — OKX (BT PASS 전략, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "OKX BT PASS 전략 Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7793,7 +7793,7 @@
       "title": "K-PT-04 — Bitget (BT PASS 전략, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Bitget BT PASS 전략 Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7811,7 +7811,7 @@
       "title": "K-PT-05 — Coinone (signal>=1, crash=0, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Coinone Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7829,7 +7829,7 @@
       "title": "K-PT-06 — Upbit (signal>=1, crash=0, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Upbit Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7847,7 +7847,7 @@
       "title": "K-PT-07 — Bithumb (crash=0, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Bithumb Paper 8H, data issue 허용",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7865,7 +7865,7 @@
       "title": "K-PT-08 — MEXC (crash=0, WS 확인, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "MEXC Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7883,7 +7883,7 @@
       "title": "K-PT-09 — Gate.io (crash=0, WS 확인, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Gate.io Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7901,7 +7901,7 @@
       "title": "K-PT-10 — Binance↔Upbit CE (trade>=1, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔Upbit cross_exchange Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7919,7 +7919,7 @@
       "title": "K-PT-11 — Binance↔Bithumb CE (trade>=1, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔Bithumb cross_exchange Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7937,7 +7937,7 @@
       "title": "K-PT-12 — Binance↔Coinone CE (trade>=1, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔Coinone cross_exchange Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7955,7 +7955,7 @@
       "title": "K-PT-13 — Binance↔Bybit CE (trade>=5, PnL>0, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔Bybit CE Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7973,7 +7973,7 @@
       "title": "K-PT-14 — Binance↔OKX CE (trade>=5, PnL>0, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔OKX CE Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7991,7 +7991,7 @@
       "title": "K-PT-15 — Binance↔Bitget CE (trade>=5, PnL>0, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "Binance↔Bitget CE Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -8009,7 +8009,7 @@
       "title": "K-PT-16 — BinFut↔BitgetFut FF (trade>=1, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "BinFut↔BitgetFut futures_futures Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -8027,7 +8027,7 @@
       "title": "K-PT-17 — BinFut↔BybitFut FF (trade>=1, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "BinFut↔BybitFut futures_futures Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -8045,7 +8045,7 @@
       "title": "K-PT-18 — BinFut↔OKXFut FF (trade>=1, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": false,
+      "passes": true,
       "description": "BinFut↔OKXFut futures_futures Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
