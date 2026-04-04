@@ -131,8 +131,8 @@ class BookWalkSlippage(SlippageModel):
         super().__init__(base_slippage_pct=Decimal("0"))
         self._books = books
         _op = get_settings().operational
-        self._fallback_bps = fallback_bps or _op.shadow_fallback_slippage_bps
-        self._depth_penalty = depth_penalty_multiplier or _op.shadow_depth_penalty_multiplier
+        self._fallback_bps = fallback_bps or _op.paper_fallback_slippage_bps
+        self._depth_penalty = depth_penalty_multiplier or _op.paper_depth_penalty_multiplier
         self._current_exchange: str = ""
         self._current_symbol: str = ""
 
@@ -162,7 +162,7 @@ class BookWalkSlippage(SlippageModel):
             else:
                 penalty_price = vwap_price / Decimal(str(self._depth_penalty))
             logger.warning(
-                "shadow_mode.book_walk_insufficient_depth",
+                "paper_mode.book_walk_insufficient_depth",
                 exchange=self._current_exchange,
                 symbol=self._current_symbol,
                 side=walk_side,
@@ -178,7 +178,7 @@ class BookWalkSlippage(SlippageModel):
     def _apply_fallback(self, base_price: Decimal, side: OrderSide) -> Decimal:
         """Conservative fallback when orderbook unavailable."""
         logger.warning(
-            "shadow_mode.book_walk_fallback",
+            "paper_mode.book_walk_fallback",
             exchange=self._current_exchange,
             symbol=self._current_symbol,
             side="buy" if side == OrderSide.BUY else "sell",
@@ -204,8 +204,8 @@ class VirtualBalanceTracker:
 
     def __init__(self, initial_balance_usdt: Decimal | None = None) -> None:
         _op = get_settings().operational
-        self._initial: Decimal = initial_balance_usdt or _op.shadow_initial_balance_usdt
-        self._threshold_pct: Decimal = _op.shadow_rebalance_threshold_pct
+        self._initial: Decimal = initial_balance_usdt or _op.paper_initial_balance_usdt
+        self._threshold_pct: Decimal = _op.paper_rebalance_threshold_pct
         self._balances: dict[str, Decimal] = {}
 
     def get_balance(self, exchange_id: str) -> Decimal:
@@ -219,7 +219,7 @@ class VirtualBalanceTracker:
         balance = self.get_balance(exchange_id)
         if balance < amount_usdt:
             logger.warning(
-                "shadow_mode.insufficient_balance",
+                "paper_mode.insufficient_balance",
                 exchange=exchange_id,
                 balance=str(balance),
                 required=str(amount_usdt),
@@ -229,7 +229,7 @@ class VirtualBalanceTracker:
         threshold = self._initial * self._threshold_pct
         if self._balances[exchange_id] < threshold:
             logger.warning(
-                "shadow_mode.rebalance_needed",
+                "paper_mode.rebalance_needed",
                 exchange=exchange_id,
                 balance=str(self._balances[exchange_id]),
                 threshold=str(threshold),
@@ -269,7 +269,7 @@ class StrategyStats:
     pnl_history: deque = field(default_factory=lambda: deque(maxlen=2000))
 
 
-class ShadowRateLimiter:
+class PaperRateLimiter:
     """Per-exchange token bucket rate limiter for shadow mode (SG-6).
 
     Simulates real exchange order rate limits using non-blocking try_acquire().
@@ -335,7 +335,7 @@ class ShadowRateLimiter:
 
 
 @dataclass
-class ShadowStats:
+class PaperStats:
     """Cumulative metrics tracked across the shadow mode session."""
 
     start_time: float  # time.monotonic()
@@ -383,7 +383,7 @@ class PaperMode:
         _market_recorder: MarketRecorder for TimescaleDB persistence
         _telegram: TelegramAlerter for notifications
         _running: bool flag
-        _stats: ShadowStats dataclass tracking cumulative metrics
+        _stats: PaperStats dataclass tracking cumulative metrics
     """
 
     # Strategy label used for all Prometheus metric labels
@@ -465,15 +465,15 @@ class PaperMode:
         # k=1.0 matches CEXOrderbookSlippage's default (~10bps/side = 20bps round-trip).
         # k=0: zero slippage in PaperExecutor — SignalGenerator already applies
         # CEXOrderbookSlippage, so PaperExecutor must NOT add more (double-count).
-        # FeeModel in _execute_shadow_trade handles per-exchange fees separately.
+        # FeeModel in _execute_paper_trade handles per-exchange fees separately.
         # Parse env vars with validation (clamp to [0, 1], fallback on invalid)
         _op = get_settings().operational
         try:
-            pfr = max(Decimal("0"), min(Decimal("1"), _op.shadow_partial_fill_rate))
+            pfr = max(Decimal("0"), min(Decimal("1"), _op.paper_partial_fill_rate))
         except Exception:
             pfr = Decimal("0.05")
         try:
-            rr = max(Decimal("0"), min(Decimal("1"), _op.shadow_rejection_rate))
+            rr = max(Decimal("0"), min(Decimal("1"), _op.paper_rejection_rate))
         except Exception:
             rr = Decimal("0.02")
         # Orderbook store must be initialized before PaperExecutor so
@@ -489,8 +489,8 @@ class PaperMode:
         )
 
         # Inter-leg execution delay simulation (SG-2)
-        self._leg_delay_min_ms = _op.shadow_leg_delay_min_ms
-        self._leg_delay_max_ms = _op.shadow_leg_delay_max_ms
+        self._leg_delay_min_ms = _op.paper_leg_delay_min_ms
+        self._leg_delay_max_ms = _op.paper_leg_delay_max_ms
 
         self._fee_model = FeeModel()
         self._market_recorder = market_recorder
@@ -502,9 +502,9 @@ class PaperMode:
         self._futures_books: dict[str, dict[str, Any]] = {}
 
         self._running = False
-        self._stats = ShadowStats(start_time=time.monotonic())
+        self._stats = PaperStats(start_time=time.monotonic())
         self._balance_tracker = VirtualBalanceTracker()
-        self._rate_limiter = ShadowRateLimiter()
+        self._rate_limiter = PaperRateLimiter()
         # S10 fix: warmup guard for SignalGenerator path (disabled in test mode)
         self._signal_warmup_seconds: float = 5.0 if get_settings().engine_env != "test" else 0.0
 
@@ -520,7 +520,7 @@ class PaperMode:
         _raw_krw_rate = get_settings().operational.krw_usdt_rate
         if _raw_krw_rate <= 0:
             logger.warning(
-                "shadow_mode.invalid_krw_rate", raw=_raw_krw_rate, fallback=1380.0
+                "paper_mode.invalid_krw_rate", raw=_raw_krw_rate, fallback=1380.0
             )
             _raw_krw_rate = 1380.0
         self._krw_rate: float = _raw_krw_rate
@@ -572,7 +572,7 @@ class PaperMode:
             )
 
         # US-066/US-156: Strategy blacklist — comma-separated strategy IDs to disable
-        _disabled_raw = get_settings().operational.shadow_disabled_strategies
+        _disabled_raw = get_settings().operational.paper_disabled_strategies
         _disabled_base: set[str] = {
             s.strip() for s in _disabled_raw.split(",") if s.strip()
         }
@@ -588,14 +588,14 @@ class PaperMode:
 
         if self._disabled_strategies:
             logger.warning(
-                "shadow_mode.strategies_disabled",
+                "paper_mode.strategies_disabled",
                 disabled=sorted(self._disabled_strategies),
             )
 
         # US-066/US-224: Per-trade loss cap (hard ceiling on single-trade loss)
         # US-224: per-strategy caps via STRATEGY_LOSS_CAP_JSON or SHADOW_MAX_LOSS_PER_TRADE_USD
         _op = get_settings().operational
-        self._max_loss_per_trade_usd: Decimal = _op.shadow_max_loss_per_trade_usd
+        self._max_loss_per_trade_usd: Decimal = _op.paper_max_loss_per_trade_usd
         _loss_cap_json = _op.strategy_loss_cap_json
         _default_caps: dict[str, float] = {
             "futures_futures": 1.0,
@@ -615,7 +615,7 @@ class PaperMode:
         # US-164: Temporary strategy disable map — strategy_id -> re-enable timestamp
         # Default 0 (disabled); set SHADOW_SINGLE_LOSS_DISABLE_SECONDS=600 in prod
         self._strategy_disable_until: dict[str, float] = {}
-        self._single_loss_disable_seconds: float = get_settings().operational.shadow_single_loss_disable_seconds
+        self._single_loss_disable_seconds: float = get_settings().operational.paper_single_loss_disable_seconds
 
         # US-066: Background task handle for periodic Bithumb REST refresh
         self._delta_refresh_task: asyncio.Task[None] | None = None
@@ -633,7 +633,7 @@ class PaperMode:
             )
 
         logger.info(
-            "shadow_mode.init",
+            "paper_mode.init",
             symbols=self._symbols,
             exchanges=self._exchanges,
             multi_strategy=multi_signal_producer is not None,
@@ -647,25 +647,25 @@ class PaperMode:
     async def start(self) -> None:
         """Start shadow mode: collectors, daily summary loop, Telegram alert."""
         if self._running:
-            logger.warning("shadow_mode.already_running")
+            logger.warning("paper_mode.already_running")
             return
 
         self._running = True
-        self._stats = ShadowStats(start_time=time.monotonic())
+        self._stats = PaperStats(start_time=time.monotonic())
         # US-256: restore peak_equity from DB before any drawdown calculations
         # US-388: only restore peak if _force_enable is False; new clean sessions start at 0
         if not getattr(self, "_force_enable", False):
             await self._load_peak_equity_from_db()
         self._force_enable = False  # consume once — prevent sticky state across sessions
 
-        logger.info("shadow_mode.starting")
+        logger.info("paper_mode.starting")
 
         # Send Telegram "started" notification (non-blocking; never crashes)
         if self._telegram is not None:
             try:
                 await self._telegram.send_alert_kr("shadow_start", {})
             except Exception as exc:
-                logger.warning("shadow_mode.telegram_start_alert_failed", error=str(exc))
+                logger.warning("paper_mode.telegram_start_alert_failed", error=str(exc))
 
         # Wire up the orderbook callback if manager was pre-supplied
         # (If we created it ourselves it already has the callback.)
@@ -676,9 +676,9 @@ class PaperMode:
         # Start collectors
         try:
             await self._collector_manager.start()
-            logger.info("shadow_mode.collectors_started")
+            logger.info("paper_mode.collectors_started")
         except Exception as exc:
-            logger.error("shadow_mode.collectors_start_failed", error=str(exc))
+            logger.error("paper_mode.collectors_start_failed", error=str(exc))
             self._running = False
             raise
 
@@ -712,7 +712,7 @@ class PaperMode:
         self._regime_check_task: asyncio.Task[None] | None = None
         if self._regime_detector is not None:
             self._regime_check_task = asyncio.create_task(
-                self._shadow_regime_check_loop(), name="shadow_regime_check"
+                self._paper_regime_check_loop(), name="shadow_regime_check"
             )
 
         # US-234: AdaptiveThreshold adjustment loop (300s periodic, shadow-local)
@@ -729,20 +729,20 @@ class PaperMode:
             self._shadow_mini_tuner = ShadowMiniTuner(
                 hot_reload_callback=self._shadow_params_hot_reload
             )
-            logger.info("shadow_mode.mini_tuner_initialized (will trigger after 2h)")
+            logger.info("paper_mode.mini_tuner_initialized (will trigger after 2h)")
         except Exception as exc:
-            logger.warning("shadow_mode.mini_tuner_init_failed: %s", exc)
+            logger.warning("paper_mode.mini_tuner_init_failed: %s", exc)
 
-        logger.info("shadow_mode.started", multi_strategy=self._multi_signal_producer is not None)
+        logger.info("paper_mode.started", multi_strategy=self._multi_signal_producer is not None)
 
     async def stop(self) -> None:
         """Stop shadow mode: collectors, send final summary, clean up."""
         if not self._running:
-            logger.warning("shadow_mode.not_running")
+            logger.warning("paper_mode.not_running")
             return
 
         self._running = False
-        logger.info("shadow_mode.stopping")
+        logger.info("paper_mode.stopping")
 
         # Cancel reconcile task (US-159)
         if self._reconcile_task is not None and not self._reconcile_task.done():
@@ -811,23 +811,23 @@ class PaperMode:
         try:
             await self._http_client.aclose()
         except Exception as exc:
-            logger.warning("shadow_mode.http_client_close_failed", error=str(exc))
+            logger.warning("paper_mode.http_client_close_failed", error=str(exc))
 
         # Stop collectors
         try:
             await self._collector_manager.stop()
         except Exception as exc:
-            logger.error("shadow_mode.collectors_stop_failed", error=str(exc))
+            logger.error("paper_mode.collectors_stop_failed", error=str(exc))
 
         # Send final summary
         if self._telegram is not None:
             try:
                 await self._send_summary()
             except Exception as exc:
-                logger.warning("shadow_mode.final_summary_failed", error=str(exc))
+                logger.warning("paper_mode.final_summary_failed", error=str(exc))
 
         logger.info(
-            "shadow_mode.stopped",
+            "paper_mode.stopped",
             uptime_s=time.monotonic() - self._stats.start_time,
             signals=self._stats.signals_detected,
             trades=self._stats.trades_executed,
@@ -867,7 +867,7 @@ class PaperMode:
         if "/KRW" in symbol:
             if self._krw_stale:
                 logger.info(
-                    "shadow_mode.krw_stale_filtered",
+                    "paper_mode.krw_stale_filtered",
                     exchange=exchange_id,
                     symbol=symbol,
                 )
@@ -878,7 +878,7 @@ class PaperMode:
                 asks = [[str(float(a[0]) / self._krw_rate), str(a[1])] for a in asks]
             else:
                 logger.warning(
-                    "shadow_mode.krw_rate_zero_skip",
+                    "paper_mode.krw_rate_zero_skip",
                     exchange=exchange_id,
                     symbol=symbol,
                 )
@@ -923,7 +923,7 @@ class PaperMode:
                     exchange=exchange_id, reason="cross_validation"
                 ).inc()
                 logger.info(
-                    "shadow_mode.stale_cross_validation_rejected",
+                    "paper_mode.stale_cross_validation_rejected",
                     exchange=exchange_id,
                     symbol=symbol,
                 )
@@ -945,7 +945,7 @@ class PaperMode:
                                 exchange=exchange_id, reason="data_quality"
                             ).inc()
                             logger.info(
-                                "shadow_mode.data_quality_rejected",
+                                "paper_mode.data_quality_rejected",
                                 exchange=exchange_id,
                                 symbol=symbol,
                                 reasons=dqm_result.reasons,
@@ -982,7 +982,7 @@ class PaperMode:
                         )
                 except Exception as exc:
                     logger.warning(
-                        "shadow_mode.record_orderbook_failed",
+                        "paper_mode.record_orderbook_failed",
                         exchange=exchange_id,
                         symbol=symbol,
                         error=str(exc),
@@ -1018,7 +1018,7 @@ class PaperMode:
                 )
             except Exception as exc:
                 logger.warning(
-                    "shadow_mode.signal_generator_error",
+                    "paper_mode.signal_generator_error",
                     exchange=exchange_id,
                     symbol=symbol,
                     error=str(exc),
@@ -1038,19 +1038,19 @@ class PaperMode:
 
             if signal is not None:
                 # Note: signal_found 알람 제거 — 시그널은 시간당 수백건으로 노이지.
-                # 실제 체결(fill) 시에만 send_fill_kr()로 알람 (아래 _execute_shadow_trade에서 처리)
+                # 실제 체결(fill) 시에만 send_fill_kr()로 알람 (아래 _execute_paper_trade에서 처리)
 
                 # Route through Strategy objects when StrategyManager is available;
                 # otherwise fall back to direct 2-leg execution (backward compat).
                 if self._strategy_manager is not None:
                     logger.debug(
-                        "shadow_mode.routing_via_strategy_manager",
+                        "paper_mode.routing_via_strategy_manager",
                         signal_strategy=signal.strategy_id,
                         symbol=signal.symbol,
                     )
                     await self._route_signal_to_strategies(signal)
                 else:
-                    await self._execute_shadow_trade(signal)
+                    await self._execute_paper_trade(signal)
 
             # --- Multi-strategy evaluation ---
             if self._multi_signal_producer is not None:
@@ -1058,7 +1058,7 @@ class PaperMode:
                     self._multi_signal_producer.on_orderbook(exchange_id, symbol, book)
                 except Exception as exc:
                     logger.warning(
-                        "shadow_mode.multi_signal_on_orderbook_error",
+                        "paper_mode.multi_signal_on_orderbook_error",
                         exchange=exchange_id, symbol=symbol, error=str(exc),
                     )
 
@@ -1068,7 +1068,7 @@ class PaperMode:
 
         except Exception as exc:
             logger.error(
-                "shadow_mode.on_orderbook_unhandled_error",
+                "paper_mode.on_orderbook_unhandled_error",
                 exchange=exchange_id,
                 symbol=symbol,
                 error=str(exc),
@@ -1084,7 +1084,7 @@ class PaperMode:
         try:
             await coro
         except Exception as exc:
-            logger.warning(f"shadow_mode.{name}_eval_error", error=str(exc))
+            logger.warning(f"paper_mode.{name}_eval_error", error=str(exc))
 
     async def _evaluate_multi_strategies(
         self, exchange_id: str, symbol: str, book: Any
@@ -1119,7 +1119,7 @@ class PaperMode:
             if self._strategy_manager is not None:
                 await self._route_signal_to_strategies(signal)
             else:
-                await self._execute_shadow_trade(signal)
+                await self._execute_paper_trade(signal)
 
     async def _feed_stat_arb_orderbook(
         self, exchange_id: str, symbol: str, book: Any
@@ -1154,10 +1154,10 @@ class PaperMode:
                     exchange_id, symbol, mid_price
                 )
                 for req in requests:
-                    await self._execute_shadow_trade_request(req)
+                    await self._execute_paper_trade_request(req)
             except Exception as exc:
                 logger.warning(
-                    "shadow_mode.stat_arb_orderbook_feed_failed",
+                    "paper_mode.stat_arb_orderbook_feed_failed",
                     exchange=exchange_id,
                     symbol=symbol,
                     error=str(exc),
@@ -1189,7 +1189,7 @@ class PaperMode:
                             for sym, entry in sym_map.items():
                                 rates_by_exchange.setdefault(ex_id, {})[sym] = entry.rate
                     except Exception as exc:
-                        logger.debug("shadow_mode.funding_collector_failed", error=str(exc))
+                        logger.debug("paper_mode.funding_collector_failed", error=str(exc))
                 else:
                     # Inline fallback: Binance Futures funding rates
                     try:
@@ -1202,7 +1202,7 @@ class PaperMode:
                             rate = float(data.get("lastFundingRate", 0))
                             rates_by_exchange.setdefault("binance_futures", {})["BTC/USDT"] = rate
                     except Exception as exc:
-                        logger.debug("shadow_mode.funding_binance_failed", error=str(exc))
+                        logger.debug("paper_mode.funding_binance_failed", error=str(exc))
 
                     # Inline fallback: Bybit funding rates
                     try:
@@ -1217,7 +1217,7 @@ class PaperMode:
                                 rate = float(result_list[0].get("fundingRate", 0))
                                 rates_by_exchange.setdefault("bybit", {})["BTC/USDT"] = rate
                     except Exception as exc:
-                        logger.debug("shadow_mode.funding_bybit_failed", error=str(exc))
+                        logger.debug("paper_mode.funding_bybit_failed", error=str(exc))
 
                 # Update cached rates
                 self._funding_rates.update(rates_by_exchange)
@@ -1232,13 +1232,13 @@ class PaperMode:
                             if self._strategy_manager is not None:
                                 await self._route_signal_to_strategies(signal)
                             else:
-                                await self._execute_shadow_trade(signal)
+                                await self._execute_paper_trade(signal)
                     except Exception as exc:
-                        logger.warning("shadow_mode.funding_rate_arb_error", error=str(exc))
+                        logger.warning("paper_mode.funding_rate_arb_error", error=str(exc))
 
                 if rates_by_exchange:
                     logger.debug(
-                        "shadow_mode.funding_rates_updated",
+                        "paper_mode.funding_rates_updated",
                         exchanges=list(rates_by_exchange.keys()),
                     )
 
@@ -1273,13 +1273,13 @@ class PaperMode:
                         try:
                             count = await collector.refresh_snapshots()
                             logger.info(
-                                "shadow_mode.delta_refresh_done",
+                                "paper_mode.delta_refresh_done",
                                 exchange=eid,
                                 refreshed=count,
                             )
                         except Exception as exc:
                             logger.warning(
-                                "shadow_mode.delta_refresh_failed",
+                                "paper_mode.delta_refresh_failed",
                                 exchange=eid,
                                 error=str(exc),
                             )
@@ -1293,13 +1293,13 @@ class PaperMode:
         with the recorded PnL. Logs warnings on drift but never raises.
         US-258-a: Also triggers ShadowMiniTuner after 2h elapsed.
         """
-        interval = get_settings().operational.shadow_reconcile_interval_s
+        interval = get_settings().operational.paper_reconcile_interval_s
         try:
             while self._running:
                 await asyncio.sleep(interval)
                 balance_summary = self._balance_tracker.summary()
                 logger.debug(
-                    "shadow_mode.reconcile_tick",
+                    "paper_mode.reconcile_tick",
                     total_pnl=f"{self._stats.total_pnl:.4f}",
                     trades=self._stats.trades_executed,
                     balances=balance_summary,
@@ -1313,7 +1313,7 @@ class PaperMode:
                         wins = self._stats.trades_won
                         win_rate = wins / trades if trades > 0 else 0.5
                         logger.info(
-                            "shadow_mode.mini_tuner_2h_trigger elapsed_s=%.0f trades=%d win_rate=%.2f",
+                            "paper_mode.mini_tuner_2h_trigger elapsed_s=%.0f trades=%d win_rate=%.2f",
                             elapsed_s, trades, win_rate,
                         )
                         self._shadow_mini_tuner.run_in_thread(
@@ -1334,7 +1334,7 @@ class PaperMode:
         base = strategy_id.split("_v")[0] if "_v" in strategy_id else strategy_id
         return self._strategy_loss_caps.get(base, self._max_loss_per_trade_usd)
 
-    async def _execute_shadow_trade(self, signal: Signal) -> None:
+    async def _execute_paper_trade(self, signal: Signal) -> None:
         """Paper-execute a signal: buy + sell orders with power-law slippage.
 
         Computes net PnL, updates stats, records to TimescaleDB + Prometheus.
@@ -1345,7 +1345,7 @@ class PaperMode:
         # which shadow mode doesn't support — skip them.
         if signal.buy_price >= signal.sell_price:
             logger.debug(
-                "shadow_mode.skip_negative_spread",
+                "paper_mode.skip_negative_spread",
                 strategy=signal.strategy_id,
                 symbol=signal.symbol,
                 buy_price=str(signal.buy_price),
@@ -1356,19 +1356,19 @@ class PaperMode:
         # Strategy blacklist check (US-066)
         sid_check = signal.strategy_id or self.STRATEGY_ID
         if sid_check in self._disabled_strategies:
-            logger.debug("shadow_mode.strategy_disabled", strategy=sid_check)
+            logger.debug("paper_mode.strategy_disabled", strategy=sid_check)
             return
 
         # US-299: strategy_filter allowlist — skip signals not in the filter
         if self._strategy_filter is not None and sid_check not in self._strategy_filter:
-            logger.debug("shadow_mode.strategy_filtered", strategy=sid_check)
+            logger.debug("paper_mode.strategy_filtered", strategy=sid_check)
             return
 
         # US-164: Temporary strategy disable check (10-min cooldown after single large loss)
         disable_until = self._strategy_disable_until.get(sid_check)
         if disable_until is not None and time.monotonic() < disable_until:
             logger.debug(
-                "shadow_mode.strategy_temp_disabled",
+                "paper_mode.strategy_temp_disabled",
                 strategy=sid_check,
                 seconds_remaining=f"{disable_until - time.monotonic():.1f}",
             )
@@ -1377,11 +1377,11 @@ class PaperMode:
         # Rate limit check before balance deduct (SG-6)
         if not self._rate_limiter.try_acquire(signal.buy_exchange):
             self._stats.trades_rate_limited += 1
-            logger.warning("shadow_mode.rate_limit_exceeded", exchange=signal.buy_exchange)
+            logger.warning("paper_mode.rate_limit_exceeded", exchange=signal.buy_exchange)
             return
         if not self._rate_limiter.try_acquire(signal.sell_exchange):
             self._stats.trades_rate_limited += 1
-            logger.warning("shadow_mode.rate_limit_exceeded", exchange=signal.sell_exchange)
+            logger.warning("paper_mode.rate_limit_exceeded", exchange=signal.sell_exchange)
             return
 
         # Balance check before BUY (SG-4)
@@ -1445,7 +1445,7 @@ class PaperMode:
             # Identify which leg was rejected (buy if buy_trade unset, else sell)
             rejected_leg = "buy" if buy_trade is None else "sell"
             logger.warning(
-                "shadow_mode.order_rejected",
+                "paper_mode.order_rejected",
                 strategy=sid,
                 symbol=signal.symbol,
                 rejected_leg=rejected_leg,
@@ -1454,7 +1454,7 @@ class PaperMode:
             return
         except Exception as exc:
             logger.error(
-                "shadow_mode.trade_execution_failed",
+                "paper_mode.trade_execution_failed",
                 strategy=signal.strategy_id,
                 symbol=signal.symbol,
                 error=str(exc),
@@ -1497,7 +1497,7 @@ class PaperMode:
         if net_pnl < -max_loss:
             capped_pnl = -max_loss
             logger.warning(
-                "shadow_mode.trade_loss_capped",
+                "paper_mode.trade_loss_capped",
                 symbol=signal.symbol,
                 buy_exchange=signal.buy_exchange,
                 sell_exchange=signal.sell_exchange,
@@ -1515,7 +1515,7 @@ class PaperMode:
                 _disable_until = time.monotonic() + self._single_loss_disable_seconds
                 self._strategy_disable_until[_sid_loss] = _disable_until
                 logger.warning(
-                    "shadow_mode.strategy_temp_disabled_single_loss",
+                    "paper_mode.strategy_temp_disabled_single_loss",
                     strategy=_sid_loss,
                     raw_pnl=f"{float(net_pnl):+.4f}",
                     threshold=f"{float(max_loss):.2f}",
@@ -1588,7 +1588,7 @@ class PaperMode:
             try:
                 self._portfolio_risk.update_returns(sid, net_pnl_float)
             except Exception as _prm_exc:
-                logger.debug("shadow_mode.portfolio_risk_update_failed", error=str(_prm_exc))
+                logger.debug("paper_mode.portfolio_risk_update_failed", error=str(_prm_exc))
 
         # Record to TimescaleDB
         if self._market_recorder is not None:
@@ -1627,7 +1627,7 @@ class PaperMode:
                 )
             except Exception as exc:
                 logger.warning(
-                    "shadow_mode.record_execution_failed",
+                    "paper_mode.record_execution_failed",
                     symbol=signal.symbol,
                     error=str(exc),
                 )
@@ -1650,7 +1650,7 @@ class PaperMode:
 
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.info(
-            "shadow_mode.trade_executed",
+            "paper_mode.trade_executed",
             symbol=signal.symbol,
             buy_exchange=signal.buy_exchange,
             sell_exchange=signal.sell_exchange,
@@ -1671,7 +1671,7 @@ class PaperMode:
         """Route signal to matching strategies via StrategyManager.route_signal().
 
         Delegates type-based matching to StrategyManager._should_route().
-        Falls back to _execute_shadow_trade() on routing failure.
+        Falls back to _execute_paper_trade() on routing failure.
 
         Empty list from route_signal() = normal filtering, NO fallback.
         Exception from route_signal() = routing mechanism failure, fallback triggered.
@@ -1682,10 +1682,10 @@ class PaperMode:
         try:
             trade_requests = await self._strategy_manager.route_signal(signal)
             for request in trade_requests:
-                await self._execute_shadow_trade_request(request)
+                await self._execute_paper_trade_request(request)
 
             logger.debug(
-                "shadow_mode.signal_routed",
+                "paper_mode.signal_routed",
                 signal_strategy=signal.strategy_id,
                 symbol=signal.symbol,
                 requests_generated=len(trade_requests),
@@ -1693,14 +1693,14 @@ class PaperMode:
         except Exception as exc:
             ROUTING_FALLBACK_TOTAL.labels(reason="routing_exception").inc()
             logger.warning(
-                "shadow_mode.strategy_routing_failed",
+                "paper_mode.strategy_routing_failed",
                 signal_strategy=signal.strategy_id,
                 error=str(exc),
             )
             # Fallback: prevent signal loss on routing mechanism failure
-            await self._execute_shadow_trade(signal)
+            await self._execute_paper_trade(signal)
 
-    async def _execute_shadow_trade_request(self, trade_request: TradeRequest) -> None:
+    async def _execute_paper_trade_request(self, trade_request: TradeRequest) -> None:
         """Paper-execute an N-leg TradeRequest from a strategy.
 
         Iterates over trade_request.legs, creates an Order for each leg,
@@ -1713,12 +1713,12 @@ class PaperMode:
 
         # Strategy blacklist check (US-066)
         if sid in self._disabled_strategies:
-            logger.debug("shadow_mode.strategy_disabled", strategy=sid)
+            logger.debug("paper_mode.strategy_disabled", strategy=sid)
             return
 
         # US-299: strategy_filter allowlist
         if self._strategy_filter is not None and sid not in self._strategy_filter:
-            logger.debug("shadow_mode.strategy_filtered", strategy=sid)
+            logger.debug("paper_mode.strategy_filtered", strategy=sid)
             return
 
         try:
@@ -1726,7 +1726,7 @@ class PaperMode:
             for leg in trade_request.legs:
                 if not self._rate_limiter.try_acquire(leg.exchange_id):
                     self._stats.trades_rate_limited += 1
-                    logger.warning("shadow_mode.rate_limit_exceeded", exchange=leg.exchange_id)
+                    logger.warning("paper_mode.rate_limit_exceeded", exchange=leg.exchange_id)
                     return
 
             trades = []
@@ -1735,7 +1735,7 @@ class PaperMode:
                 leg_price = leg.price or Decimal("0")
                 if leg_price <= Decimal("0"):
                     logger.warning(
-                        "shadow_mode.trade_leg_missing_price",
+                        "paper_mode.trade_leg_missing_price",
                         strategy_id=sid,
                         exchange_id=leg.exchange_id,
                         symbol=leg.symbol,
@@ -1772,14 +1772,14 @@ class PaperMode:
                 self._stats.by_strategy[sid] = StrategyStats()
             self._stats.by_strategy[sid].rejections += 1
             logger.warning(
-                "shadow_mode.trade_request_rejected",
+                "paper_mode.trade_request_rejected",
                 strategy_id=sid,
                 error=str(exc),
             )
             return
         except Exception as exc:
             logger.error(
-                "shadow_mode.trade_request_execution_failed",
+                "paper_mode.trade_request_execution_failed",
                 strategy_id=sid,
                 error=str(exc),
             )
@@ -1837,7 +1837,7 @@ class PaperMode:
             _MAX_SINGLE_TRADE_PNL = Decimal("10")
             if abs(_expected) > _MAX_SINGLE_TRADE_PNL:
                 logger.warning(
-                    "shadow_mode.cross_asset_pnl_capped",
+                    "paper_mode.cross_asset_pnl_capped",
                     raw_pnl=float(_expected),
                     capped=float(_MAX_SINGLE_TRADE_PNL),
                     strategy=sid,
@@ -1868,15 +1868,15 @@ class PaperMode:
         # SIT-3 P3: funding_rate carry trade — Shadow 즉시 결산이 carry 수익 미반영.
         # metadata에 expected_funding_income이 있으면 carry 시뮬레이션 적용.
         if "funding_rate" in sid:
-            logger.info("shadow_mode.funding_debug", meta_keys=list(trade_request.metadata.keys()) if trade_request.metadata else "None", sid=sid)
+            logger.info("paper_mode.funding_debug", meta_keys=list(trade_request.metadata.keys()) if trade_request.metadata else "None", sid=sid)
         if trade_request.metadata and "expected_funding_income" in trade_request.metadata:
             try:
                 carry_income = Decimal(str(trade_request.metadata["expected_funding_income"]))
                 _nc = network_cost if 'network_cost' in locals() else Decimal("0")
                 net_pnl = carry_income - total_fees - _nc
-                logger.info("shadow_mode.funding_carry_applied", carry=float(carry_income), fees=float(total_fees), nc=float(_nc), net=float(net_pnl))
+                logger.info("paper_mode.funding_carry_applied", carry=float(carry_income), fees=float(total_fees), nc=float(_nc), net=float(net_pnl))
             except Exception as _carry_exc:
-                logger.warning("shadow_mode.funding_carry_failed", error=str(_carry_exc), meta=str(trade_request.metadata.get("expected_funding_income")))
+                logger.warning("paper_mode.funding_carry_failed", error=str(_carry_exc), meta=str(trade_request.metadata.get("expected_funding_income")))
 
         net_pnl_float = float(net_pnl)
 
@@ -1885,7 +1885,7 @@ class PaperMode:
         if net_pnl < -max_loss:
             capped_pnl = -max_loss
             logger.warning(
-                "shadow_mode.trade_request_loss_capped",
+                "paper_mode.trade_request_loss_capped",
                 strategy_id=sid,
                 raw_pnl=f"{float(net_pnl):+.4f}",
                 capped_pnl=f"{float(capped_pnl):+.4f}",
@@ -2003,11 +2003,11 @@ class PaperMode:
                         mode="paper",
                     )
             except Exception as exc:
-                logger.debug("shadow_mode.record_execution_multileg_failed", error=str(exc))
+                logger.debug("paper_mode.record_execution_multileg_failed", error=str(exc))
 
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.info(
-            "shadow_mode.trade_request_executed",
+            "paper_mode.trade_request_executed",
             strategy_id=sid,
             legs=len(trade_request.legs),
             net_pnl=f"{net_pnl_float:+.4f}",
@@ -2046,7 +2046,7 @@ class PaperMode:
                             if price > 0:
                                 rates.append(price)
                 except Exception as exc:
-                    logger.debug("shadow_mode.krw_upbit_failed", error=str(exc))
+                    logger.debug("paper_mode.krw_upbit_failed", error=str(exc))
 
                 # Bithumb source
                 try:
@@ -2061,7 +2061,7 @@ class PaperMode:
                         if closing > 0:
                             rates.append(closing)
                 except Exception as exc:
-                    logger.debug("shadow_mode.krw_bithumb_failed", error=str(exc))
+                    logger.debug("paper_mode.krw_bithumb_failed", error=str(exc))
 
                 if rates:
                     new_rate = sum(rates) / len(rates)  # average of valid sources
@@ -2072,7 +2072,7 @@ class PaperMode:
                     ):
                         self._sanity_reject_count += 1
                         logger.warning(
-                            "shadow_mode.krw_rate_sanity_rejected",
+                            "paper_mode.krw_rate_sanity_rejected",
                             new_rate=new_rate,
                             current_rate=self._krw_rate,
                             reject_count=self._sanity_reject_count,
@@ -2080,7 +2080,7 @@ class PaperMode:
                         # Lockout escape: force-accept after 5 consecutive rejections
                         if self._sanity_reject_count >= 5:
                             logger.warning(
-                                "shadow_mode.krw_rate_lockout_override",
+                                "paper_mode.krw_rate_lockout_override",
                                 new_rate=new_rate,
                                 reject_count=self._sanity_reject_count,
                             )
@@ -2094,7 +2094,7 @@ class PaperMode:
                         self._krw_rate_updated_at = time.monotonic()
                         if abs(old_rate - new_rate) > 1:
                             logger.info(
-                                "shadow_mode.krw_rate_updated",
+                                "paper_mode.krw_rate_updated",
                                 old_rate=old_rate,
                                 new_rate=new_rate,
                                 sources=len(rates),
@@ -2107,13 +2107,13 @@ class PaperMode:
                         self._krw_stale = True
                         self._krw_stale_count = 0
                         logger.info(
-                            "shadow_mode.krw_stale_entered",
+                            "paper_mode.krw_stale_entered",
                             seconds_since_update=elapsed,
                         )
                     else:
                         self._krw_stale_count += 1
                     logger.warning(
-                        "shadow_mode.krw_rate_stale",
+                        "paper_mode.krw_rate_stale",
                         seconds_since_update=elapsed,
                         stale_count=self._krw_stale_count,
                     )
@@ -2122,7 +2122,7 @@ class PaperMode:
                     if self._krw_stale_count >= 3 and not self._krw_soft_blocked:
                         self._krw_soft_blocked = True
                         logger.warning(
-                            "shadow_mode.krw_soft_block_activated",
+                            "paper_mode.krw_soft_block_activated",
                             stale_seconds=elapsed,
                         )
                         if self._telegram is not None:
@@ -2135,14 +2135,14 @@ class PaperMode:
                     # Phase 2: 20x stale (≈10min) → full KillSwitch (prolonged outage = systemic risk)
                     if self._krw_stale_count >= 20 and self._kill_switch is not None:
                         logger.critical(
-                            "shadow_mode.krw_prolonged_outage_killswitch",
+                            "paper_mode.krw_prolonged_outage_killswitch",
                             stale_seconds=elapsed,
                             stale_count=self._krw_stale_count,
                         )
                         try:
                             asyncio.create_task(self._kill_switch.trigger())
                         except Exception as exc:
-                            logger.error("shadow_mode.kill_switch_trigger_failed", error=str(exc))
+                            logger.error("paper_mode.kill_switch_trigger_failed", error=str(exc))
                         if self._telegram is not None:
                             try:
                                 asyncio.create_task(self._telegram.send_alert_kr(
@@ -2156,7 +2156,7 @@ class PaperMode:
                     # US-171: unblock on recovery
                     if self._krw_soft_blocked:
                         self._krw_soft_blocked = False
-                        logger.info("shadow_mode.krw_soft_block_cleared")
+                        logger.info("paper_mode.krw_soft_block_cleared")
                         if self._telegram is not None:
                             try:
                                 asyncio.create_task(self._telegram.send_alert_kr(
@@ -2164,7 +2164,7 @@ class PaperMode:
                                 ))
                             except Exception:
                                 pass
-                    logger.info("shadow_mode.krw_stale_recovered")
+                    logger.info("paper_mode.krw_stale_recovered")
 
                 await asyncio.sleep(30.0)
         except asyncio.CancelledError:
@@ -2192,7 +2192,7 @@ class PaperMode:
                 break
             except Exception as exc:
                 logger.error(
-                    "shadow_mode.daily_summary_loop_error", error=str(exc), exc_info=True
+                    "paper_mode.daily_summary_loop_error", error=str(exc), exc_info=True
                 )
 
     async def _send_summary(self) -> None:
@@ -2234,15 +2234,15 @@ class PaperMode:
                 if _sb["trades"] == 0:
                     if _sb["warmup_excluded"]:
                         logger.info(
-                            "shadow_mode.strategy_trade_zero_warmup_incomplete strategy=%s", _sid
+                            "paper_mode.strategy_trade_zero_warmup_incomplete strategy=%s", _sid
                         )
                     elif _is_crisis:
                         logger.info(
-                            "shadow_mode.strategy_trade_zero_crisis_regime strategy=%s", _sid
+                            "paper_mode.strategy_trade_zero_crisis_regime strategy=%s", _sid
                         )
                     else:
                         logger.warning(
-                            "shadow_mode.strategy_trade_zero strategy=%s", _sid
+                            "paper_mode.strategy_trade_zero strategy=%s", _sid
                         )
         except Exception:
             pass
@@ -2304,7 +2304,7 @@ class PaperMode:
                 stats.last_daily_summary = now
                 stats.daily_pnl = 0.0  # US-F03: reset daily PnL at midnight UTC
                 logger.info(
-                    "shadow_mode.daily_summary_sent",
+                    "paper_mode.daily_summary_sent",
                     date=summary_data["date"],
                     total_pnl=stats.total_pnl,
                     trades=total_trades,
@@ -2313,7 +2313,7 @@ class PaperMode:
                 )
             except Exception as exc:
                 logger.error(
-                    "shadow_mode.daily_summary_send_failed", error=str(exc)
+                    "paper_mode.daily_summary_send_failed", error=str(exc)
                 )
 
     # -----------------------------------------------------------------------
@@ -2408,7 +2408,7 @@ class PaperMode:
                     "portfolio_mdd_breach": _mdd_info.get("portfolio_breach", False),
                 }
             except Exception as _prm_snap_exc:
-                logger.debug("shadow_mode.portfolio_risk_snapshot_failed", error=str(_prm_snap_exc))
+                logger.debug("paper_mode.portfolio_risk_snapshot_failed", error=str(_prm_snap_exc))
 
         return {
             "active": self._running, "uptime_seconds": round(uptime_s, 1),
@@ -2429,11 +2429,11 @@ class PaperMode:
 
     def reset_stats(self) -> None:
         """Reset stats for strategy validation. Preserves infrastructure (collectors, orderbooks, WS connections)."""
-        self._stats = ShadowStats(start_time=time.monotonic())
+        self._stats = PaperStats(start_time=time.monotonic())
         # Reset VirtualBalanceTracker to restore initial balances (architect recommendation)
         if hasattr(self, '_balance_tracker') and self._balance_tracker is not None:
             self._balance_tracker.reset()
-        # Reset ShadowRateLimiter buckets (architect recommendation)
+        # Reset PaperRateLimiter buckets (architect recommendation)
         if hasattr(self, '_rate_limiter') and self._rate_limiter is not None:
             self._rate_limiter._buckets = {}
         # Reset StaleOrderbookDetector blacklist (architect recommendation)
@@ -2445,7 +2445,7 @@ class PaperMode:
     def set_disabled_strategies(self, disabled: set[str]) -> None:
         """Dynamically update disabled strategies set."""
         self._disabled_strategies = disabled
-        logger.info("shadow_mode.disabled_strategies_updated", disabled=list(disabled))
+        logger.info("paper_mode.disabled_strategies_updated", disabled=list(disabled))
 
     def force_enable_strategies(self, strategy_ids: list[str]) -> None:
         """US-388: Override strategy_activation.json — enable only the specified strategies.
@@ -2457,7 +2457,7 @@ class PaperMode:
         self._disabled_strategies = set()
         self._strategy_filter = frozenset(strategy_ids) if strategy_ids else None
         logger.info(
-            "shadow_mode.force_enable_strategies",
+            "paper_mode.force_enable_strategies",
             strategy_ids=strategy_ids,
         )
 
@@ -2512,7 +2512,7 @@ class PaperMode:
     # US-234: Shadow-local regime check loop (60s periodic)
     # ------------------------------------------------------------------
 
-    async def _shadow_regime_check_loop(self) -> None:
+    async def _paper_regime_check_loop(self) -> None:
         """60초 주기로 regime_detector.detect()를 호출하고 CRISIS 시 min_edge 2배 상향.
 
         log-only 모드: 실제 SignalGenerator._config.min_edge를 직접 수정하지 않고
@@ -2567,7 +2567,7 @@ class PaperMode:
             except asyncio.CancelledError:
                 break
             except Exception as exc:
-                logger.warning("shadow._shadow_regime_check_loop error: %s", exc)
+                logger.warning("shadow._paper_regime_check_loop error: %s", exc)
 
     # ------------------------------------------------------------------
     # US-234: Shadow-local adaptive threshold loop (300s periodic)
@@ -2667,7 +2667,12 @@ class PaperMode:
 # Backward-compatibility alias (deprecated as of Phase I)
 # ---------------------------------------------------------------------------
 
-#: ``ShadowMode`` is retained so that existing tests and callers that import
-#: ``from src.modes.shadow import ShadowMode`` continue to work without change.
-#: New code should use ``PaperMode`` directly.
+#: Backward-compat aliases (Phase L rename: Shadow → Paper)
+#: New code should use PaperMode, PaperRateLimiter, PaperStats directly.
 ShadowMode = PaperMode
+ShadowRateLimiter = PaperRateLimiter
+ShadowStats = PaperStats
+
+# Backward-compat method aliases on PaperMode (US-431 will remove these)
+PaperMode._execute_shadow_trade = PaperMode._execute_paper_trade  # type: ignore[attr-defined]
+PaperMode._execute_shadow_trade_request = PaperMode._execute_paper_trade_request  # type: ignore[attr-defined]

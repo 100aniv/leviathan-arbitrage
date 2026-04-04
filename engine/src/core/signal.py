@@ -38,8 +38,8 @@ def compute_depth_trade_size(
     Returns clamped value in [0.001, max_trade].
     """
     _op = get_settings().operational
-    frac = depth_fraction or _op.shadow_depth_fraction
-    cap = max_trade or _op.shadow_max_trade_size
+    frac = depth_fraction or _op.paper_depth_fraction
+    cap = max_trade or _op.paper_max_trade_size
     depth_size = min(buy_depth, sell_depth) * frac
     return max(Decimal("0.001"), min(depth_size, cap))
 

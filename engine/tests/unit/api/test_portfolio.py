@@ -42,10 +42,12 @@ class TestPortfolioAuth:
 
 class TestPortfolioEmptyContext:
     def test_empty_context_returns_defaults(self, client, auth_headers):
-        """Empty context returns zero balance and empty exchange_balances."""
+        """Empty context returns zero balance. exchange_balances may contain $0 entries
+        from active_exchanges fallback (Source 5) but total must be zero."""
         data = client.get("/api/v1/portfolio-summary", headers=auth_headers).json()
         assert data["total_balance_usdt"] == 0.0
-        assert data["exchange_balances"] == []
+        # exchange_balances may contain $0 entries from active_exchanges fallback
+        assert all(eb["balance_usdt"] == 0.0 for eb in data["exchange_balances"])
         assert data["active_positions"] == 0
         assert data["total_pnl"] == 0.0
 

@@ -30,7 +30,7 @@ function StrategyCard({
   const [expanded, setExpanded] = useState(false);
   const [toggling, setToggling] = useState(false);
   const status = strategy.enabled ? 'active' : 'stopped';
-  const m = strategy.metrics ?? {} as any;
+  const m = (strategy.metrics ?? {}) as Record<string, number>;
   const trades = m.trades || m.trade_requests_generated || m.fills || 0;
   const wins = m.wins || 0;
   const wr = trades > 0 ? (wins / trades) * 100 : (m.win_rate != null ? m.win_rate * 100 : 0);

@@ -14,13 +14,20 @@ export interface UseEngineWsReturn {
 const INITIAL_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS     = 30_000;
 
+function getCookieToken(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)leviathan_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 function getWsUrl(): string {
   const engineUrl =
     (typeof process !== "undefined" &&
       process.env.NEXT_PUBLIC_ENGINE_URL) ||
     "http://localhost:8000";
-  // Convert http(s):// → ws(s)://
-  return engineUrl.replace(/^http/, "ws") + "/ws/feed";
+  const base = engineUrl.replace(/^http/, "ws") + "/ws/feed";
+  const token = getCookieToken();
+  return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -41,7 +48,7 @@ export function useEngineWs(): UseEngineWsReturn {
       if (destroyedRef.current) return;
 
       const baseUrl = getWsUrl();
-      // JWT sent via leviathan_token cookie (set at login) — no query param exposure
+      // JWT passed as ?token= query param (cookie not forwarded cross-port by browsers)
       const url = baseUrl;
       let ws: WebSocket;
       try {

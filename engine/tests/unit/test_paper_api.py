@@ -375,3 +375,125 @@ class TestPaperResultById:
         assert resp.status_code == 400
         assert resp.json()["error"] == "invalid_session_id"
         assert resp2.status_code in (400, 404)  # rejected at router or handler level
+
+
+# ---------------------------------------------------------------------------
+# US-388: force_enable API — POST /api/paper/start with force_enable=true
+# ---------------------------------------------------------------------------
+
+
+class TestPaperForceEnable:
+    """AC-1+2: force_enable=true bypasses strategy_activation.json at runtime."""
+
+    @pytest.mark.asyncio
+    async def test_force_enable_field_accepted(self):
+        """POST /api/paper/start accepts force_enable: true without error."""
+        ctx = _make_context()
+        app = create_app(ctx)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/paper/start",
+                json={
+                    "force_enable": True,
+                    "strategy_ids": ["cross_exchange_v1"],
+                },
+                headers=_auth_header(),
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "started"
+        assert data["params"]["force_enable"] is True
+
+    @pytest.mark.asyncio
+    async def test_force_enable_calls_shadow_force_enable_strategies(self):
+        """When force_enable=true, shadow_mode.force_enable_strategies() is called."""
+        shadow_mock = MagicMock()
+        shadow_mock.force_enable_strategies = MagicMock()
+
+        ctx = _make_context()
+        ctx.shadow_mode = shadow_mock
+        app = create_app(ctx)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/paper/start",
+                json={
+                    "force_enable": True,
+                    "strategy_ids": ["cross_exchange_v1", "funding_rate_v1"],
+                },
+                headers=_auth_header(),
+            )
+
+        assert resp.status_code == 200
+        shadow_mock.force_enable_strategies.assert_called_once_with(
+            ["cross_exchange_v1", "funding_rate_v1"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_force_enable_false_does_not_call_force_enable_strategies(self):
+        """When force_enable=false (default), force_enable_strategies() is NOT called."""
+        shadow_mock = MagicMock()
+        shadow_mock.force_enable_strategies = MagicMock()
+
+        ctx = _make_context()
+        ctx.shadow_mode = shadow_mock
+        app = create_app(ctx)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/paper/start",
+                json={"strategy_ids": ["cross_exchange_v1"]},
+                headers=_auth_header(),
+            )
+
+        assert resp.status_code == 200
+        shadow_mock.force_enable_strategies.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_force_enable_session_saved_to_paper_session(self):
+        """paper_session contains force_enable=True after start."""
+        shadow_mock = MagicMock()
+        shadow_mock.force_enable_strategies = MagicMock()
+
+        ctx = _make_context()
+        ctx.shadow_mode = shadow_mock
+        app = create_app(ctx)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await client.post(
+                "/api/paper/start",
+                json={"force_enable": True, "strategy_ids": ["funding_rate_v1"]},
+                headers=_auth_header(),
+            )
+            # GET /api/paper/result to verify session state
+            resp = await client.get("/api/paper/result", headers=_auth_header())
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("force_enable") is True
+
+    @pytest.mark.asyncio
+    async def test_force_enable_uses_strategy_id_singular_when_strategy_ids_empty(self):
+        """When strategy_ids=[] but strategy_id set, force_enable uses strategy_id."""
+        shadow_mock = MagicMock()
+        shadow_mock.force_enable_strategies = MagicMock()
+
+        ctx = _make_context()
+        ctx.shadow_mode = shadow_mock
+        app = create_app(ctx)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/paper/start",
+                json={
+                    "force_enable": True,
+                    "strategy_ids": [],
+                    "strategy_id": "cross_exchange_v1",
+                },
+                headers=_auth_header(),
+            )
+
+        assert resp.status_code == 200
+        shadow_mock.force_enable_strategies.assert_called_once_with(["cross_exchange_v1"])

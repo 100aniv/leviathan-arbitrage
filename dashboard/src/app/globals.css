@@ -5,17 +5,17 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 
 :root {
-  /* ── Core Palette (XXX STUDIO × LEVIATHAN) — Light Theme ── */
-  --bg:       #FFFFFF;   /* white background */
-  --surface:  #F5F5F7;   /* card / panel — Apple light gray */
-  --border:   rgba(0,0,0,0.08);
-  --muted:    #EBEBED;   /* hover / tertiary */
-  --text:     #111111;   /* primary text */
+  /* ── Core Palette (XXX STUDIO × LEVIATHAN) — Dark Theme ── */
+  --bg:       #0A0B0E;   /* near-black main background */
+  --surface:  #12141A;   /* card / panel */
+  --border:   rgba(255,255,255,0.07);
+  --muted:    #1C1F28;   /* hover / tertiary */
+  --text:     #E8EAF0;   /* primary text (near-white) */
   --subtle:   #6B7280;   /* muted text */
-  --profit:   #00A878;   /* success / connected — deeper green on white */
-  --loss:     #E53E4D;   /* danger / error */
-  --accent:   #00B8FF;   /* brand blue — CTA / active */
-  --warn:     #D97706;   /* warning */
+  --profit:   #00C896;   /* success green */
+  --loss:     #FF4757;   /* danger red */
+  --accent:   #00B8FF;   /* XXX STUDIO brand blue */
+  --warn:     #F59E0B;   /* warning amber */
 
   /* ── Semantic Aliases ── */
   --bg-primary:    var(--bg);
@@ -28,9 +28,9 @@
   --warning:       var(--warn);
 
   /* ── Accent Glow ── */
-  --accent-subtle:  rgba(0, 184, 255, 0.12);
-  --profit-subtle:  rgba(0, 200, 150, 0.12);
-  --loss-subtle:    rgba(255, 71, 87, 0.12);
+  --accent-subtle:  rgba(0, 184, 255, 0.10);
+  --profit-subtle:  rgba(0, 200, 150, 0.10);
+  --loss-subtle:    rgba(255, 71, 87, 0.10);
 }
 
 *,
@@ -51,8 +51,8 @@ body {
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: var(--muted); }
-::-webkit-scrollbar-thumb { background: #C0C0C8; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--subtle); }
+::-webkit-scrollbar-thumb { background: #2A2D38; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3A3D4A; }
 
 /* ── Modern Keyframes ── */
 @keyframes blink {
@@ -82,12 +82,12 @@ body {
 
 @layer components {
   .card {
-    @apply bg-terminal-surface border border-terminal-border rounded-lg p-4;
+    @apply bg-terminal-surface border border-terminal-border rounded-xl p-4;
     transition: box-shadow 200ms ease, transform 200ms ease;
   }
   .card:hover {
     transform: translateY(-1px);
-    box-shadow: 0 8px 32px rgba(0, 184, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 184, 255, 0.12);
   }
   .card-header {
     @apply text-xs font-mono text-terminal-subtle uppercase tracking-widest mb-3;
@@ -133,7 +133,7 @@ body {
 
   /* ── Skeleton Loading ── */
   .skeleton {
-    background: linear-gradient(90deg, var(--surface) 25%, var(--muted) 50%, var(--surface) 75%);
+    background: linear-gradient(90deg, #12141A 25%, #1C1F28 50%, #12141A 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;

@@ -181,7 +181,7 @@ class TestFSM:
             fsm.transition("shadow_pass")  # A 상태에서 shadow_pass 불가
 
     def test_fsm_full_cycle(self, tmp_path):
-        """A → B → C → NEXT_PHASE 전체 사이클."""
+        """A → B → C → NEXT_US (US 단위 사이클, Phase K 재설계 v5)."""
         from src.workflow.fsm import WorkflowFSM
         fsm = WorkflowFSM(root=tmp_path)
         fsm.transition("entry_gate_pass")  # A -> A_plan
@@ -192,5 +192,21 @@ class TestFSM:
         fsm.transition("assembly_pass")     # C -> C_review
         fsm.transition("review_pass")       # C_review -> C_go
         fsm.transition("go")               # C_go -> C_release
-        result = fsm.transition("pushed")   # C_release -> NEXT_PHASE
+        result = fsm.transition("pushed")   # C_release -> NEXT_US (US 단위 사이클)
+        assert result == "NEXT_US"
+
+    def test_fsm_next_us_to_stage_a(self, tmp_path):
+        """NEXT_US + more_us → Stage A (다음 US 시작)."""
+        from src.workflow.fsm import WorkflowFSM
+        fsm = WorkflowFSM(root=tmp_path)
+        fsm.set_state("NEXT_US")
+        result = fsm.transition("more_us")
+        assert result == "A"
+
+    def test_fsm_next_us_phase_complete(self, tmp_path):
+        """NEXT_US + phase_complete → NEXT_PHASE (Phase 전체 완료)."""
+        from src.workflow.fsm import WorkflowFSM
+        fsm = WorkflowFSM(root=tmp_path)
+        fsm.set_state("NEXT_US")
+        result = fsm.transition("phase_complete")
         assert result == "NEXT_PHASE"

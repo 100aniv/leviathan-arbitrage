@@ -206,7 +206,7 @@ class DevTelegramBot(TelegramBotBase):
 
             # Shadow process status
             if self._shadow_process and self._shadow_process.returncode is None:
-                lines.append("\n🔄 Shadow 실행 중 (PID: {})".format(self._shadow_process.pid))
+                lines.append("\n🔄 Paper 실행 중 (PID: {})".format(self._shadow_process.pid))
 
             return "\n".join(lines)
         except Exception as exc:
@@ -310,7 +310,7 @@ class DevTelegramBot(TelegramBotBase):
     async def _cmd_shadow(self, text: str, chat_id: int, message: dict) -> str:
         """Shadow 10min 시작 (백그라운드)."""
         if self._shadow_process and self._shadow_process.returncode is None:
-            return "🔄 Shadow가 이미 실행 중입니다 (PID: {})".format(self._shadow_process.pid)
+            return "🔄 Paper가 이미 실행 중입니다 (PID: {})".format(self._shadow_process.pid)
 
         try:
             self._shadow_process = await asyncio.create_subprocess_exec(
@@ -322,7 +322,7 @@ class DevTelegramBot(TelegramBotBase):
             )
             # Monitor in background
             asyncio.create_task(self._monitor_shadow(chat_id))
-            return f"🔄 Shadow 시작됨 (PID: {self._shadow_process.pid})\n10분 후 자동 종료 + 결과 알림"
+            return f"🔄 Paper 시작됨 (PID: {self._shadow_process.pid})\n10분 후 자동 종료 + 결과 알림"
         except Exception as exc:
             return f"🔄 Shadow 시작 오류: {exc}"
 
@@ -343,7 +343,7 @@ class DevTelegramBot(TelegramBotBase):
                 if any(k in lower for k in ["pnl", "trade", "win_rate", "drawdown", "shadow"]):
                     metrics.append(line.strip()[:120])
 
-            result = f"{icon} Shadow 완료 (exit: {rc})\n━━━━━━━━━━━━━━━"
+            result = f"{icon} Paper 완료 (exit: {rc})\n━━━━━━━━━━━━━━━"
             if metrics:
                 result += "\n" + "\n".join(metrics[-10:])
             else:

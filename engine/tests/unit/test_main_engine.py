@@ -95,7 +95,7 @@ class TestEngineInit:
         assert engine._trade_consumer is None
         assert engine._db_pool is None
         assert engine._market_recorder is None
-        assert engine._shadow_mode is None
+        assert engine._paper_mode is None
         assert engine._live_gate is None
 
     def test_init_data_mode_default_synthetic(self):
@@ -301,7 +301,7 @@ class TestEngineStopSubsystems:
         engine = Engine()
         engine.state.running = True
         mock_shadow = AsyncMock()
-        engine._shadow_mode = mock_shadow
+        engine._paper_mode = mock_shadow
 
         await engine.stop()
 

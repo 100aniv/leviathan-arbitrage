@@ -101,7 +101,7 @@ class TradeTelegramBot(TelegramBotBase):
     # ------------------------------------------------------------------
 
     async def _cmd_status(self, text: str, chat_id: int, message: dict) -> str | None:
-        snapshot = self._get_shadow_snapshot()
+        snapshot = self._get_paper_snapshot()
         ctx = self._engine_context
         mode = getattr(ctx, "mode", "N/A") if ctx else "대기 (엔진 미연결)"
         kill = getattr(ctx, "kill_switch_active", False) if ctx else False
@@ -132,7 +132,7 @@ class TradeTelegramBot(TelegramBotBase):
 
     async def _cmd_balance(self, text: str, chat_id: int, message: dict) -> str | None:
         ctx = self._engine_context
-        shadow = getattr(ctx, "shadow_mode", None) if ctx else None
+        shadow = getattr(ctx, "paper_mode", None) if ctx else None
         if not shadow:
             return (
                 "💰 가상 잔고\n"
@@ -148,7 +148,7 @@ class TradeTelegramBot(TelegramBotBase):
             )
         initial = float(tracker._initial)
         balances = tracker.summary()
-        snapshot = self._get_shadow_snapshot()
+        snapshot = self._get_paper_snapshot()
         total_pnl = snapshot.get("total_pnl", 0.0) if snapshot else 0.0
 
         lines = [
@@ -242,7 +242,7 @@ class TradeTelegramBot(TelegramBotBase):
         try:
             from src.infra.telegram_charts import generate_chart  # type: ignore[import]
 
-            snapshot = self._get_shadow_snapshot()
+            snapshot = self._get_paper_snapshot()
             png_bytes = await generate_chart(chart_type, snapshot)
             if png_bytes:
                 await self.send_photo(
@@ -291,7 +291,7 @@ class TradeTelegramBot(TelegramBotBase):
         fills = getattr(ctx, "recent_fills", []) if ctx else []
         if not fills:
             # Try shadow snapshot
-            snapshot = self._get_shadow_snapshot()
+            snapshot = self._get_paper_snapshot()
             if snapshot:
                 trades = snapshot.get("trades_executed", 0)
                 return (
@@ -498,7 +498,7 @@ class TradeTelegramBot(TelegramBotBase):
 
     async def _cmd_report(self, text: str, chat_id: int, message: dict) -> str | None:
         """수동 일일 리포트 즉시 생성."""
-        snapshot = self._get_shadow_snapshot()
+        snapshot = self._get_paper_snapshot()
         if not snapshot:
             return "📊 리포트 생성 불가 — Paper 데이터 없음"
 
@@ -687,7 +687,6 @@ class TradeTelegramBot(TelegramBotBase):
         _mode_prefixes = {
             "backtest": "⚪ [BACKTEST]",
             "paper": "🟢 [PAPER]",
-            "shadow": "🟡 [SHADOW]",
             "live": "🔴 [LIVE]",
         }
         _raw_mode = os.getenv("EXECUTION_MODE", "paper").lower()
@@ -724,7 +723,7 @@ class TradeTelegramBot(TelegramBotBase):
             wait_seconds = (target - now).total_seconds()
             await asyncio.sleep(wait_seconds)
             try:
-                snapshot = self._get_shadow_snapshot()
+                snapshot = self._get_paper_snapshot()
                 if snapshot:
                     await self._alerter.send_daily_report_kr(snapshot)
             except Exception:
@@ -734,11 +733,11 @@ class TradeTelegramBot(TelegramBotBase):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _get_shadow_snapshot(self) -> dict | None:
+    def _get_paper_snapshot(self) -> dict | None:
         ctx = self._engine_context
         if not ctx:
             return None
-        shadow = getattr(ctx, "shadow_mode", None)
+        shadow = getattr(ctx, "paper_mode", None)
         if not shadow:
             return None
         try:
@@ -747,7 +746,7 @@ class TradeTelegramBot(TelegramBotBase):
             return None
 
     async def _get_pnl_text(self) -> str:
-        snapshot = self._get_shadow_snapshot()
+        snapshot = self._get_paper_snapshot()
         if not snapshot:
             return (
                 "📊 PnL 조회\n"
@@ -770,7 +769,7 @@ class TradeTelegramBot(TelegramBotBase):
         )
 
     async def _get_strategies_text(self) -> str:
-        snapshot = self._get_shadow_snapshot()
+        snapshot = self._get_paper_snapshot()
         if not snapshot:
             return (
                 "⚙️ 전략 상태\n"
@@ -790,7 +789,7 @@ class TradeTelegramBot(TelegramBotBase):
         return "\n".join(lines)
 
     async def _get_risk_text(self) -> str:
-        snapshot = self._get_shadow_snapshot()
+        snapshot = self._get_paper_snapshot()
         mdd = snapshot.get("max_drawdown_pct", 0.0) if snapshot else 0.0
         ctx = self._engine_context
         kill_active = getattr(ctx, "kill_switch_active", False) if ctx else False

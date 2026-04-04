@@ -1,6 +1,7 @@
 """Runtime settings routes."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -186,6 +187,64 @@ async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
         "env_updated": env_updated,
         "restart_required": restart_required,
         "message": "엔진 재시작 필요" if restart_required else "런타임 전환 완료",
+    })
+
+
+_STRATEGY_PARAMS_PATH = Path(__file__).parents[4] / "config" / "strategy_params.json"
+
+
+class StrategyParamUpdate(BaseModel):
+    strategy_id: str
+    params: dict[str, Any]
+
+
+@router.patch("/settings/strategy", dependencies=[Depends(require_auth)])
+async def update_strategy_params(request: Request, body: StrategyParamUpdate) -> JSONResponse:
+    """US-434: Hot-reload strategy parameters without engine restart.
+
+    Updates config/strategy_params.json and notifies the running engine.
+    """
+    ctx = request.app.state.engine_context
+
+    # Load current params
+    try:
+        with _STRATEGY_PARAMS_PATH.open() as f:
+            current = json.load(f)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load strategy_params.json: {exc}")
+
+    if body.strategy_id not in current:
+        raise HTTPException(status_code=404, detail=f"Strategy '{body.strategy_id}' not found in strategy_params.json")
+
+    # Deep-merge params
+    current[body.strategy_id].update(body.params)
+    try:
+        with _STRATEGY_PARAMS_PATH.open("w") as f:
+            json.dump(current, f, indent=2, ensure_ascii=False)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to write strategy_params.json: {exc}")
+
+    # Notify engine if inline_tuner or strategy_manager supports reload
+    reloaded = False
+    engine = getattr(ctx, "engine", None)
+    for attr in ("_inline_tuner", "_strategy_manager", "_scheduled_tuner"):
+        component = getattr(engine, attr, None) if engine else None
+        if component is not None and hasattr(component, "reload_params"):
+            try:
+                component.reload_params(body.strategy_id, body.params)
+                reloaded = True
+                break
+            except Exception as exc:
+                logger.warning("reload_params failed on %s: %s", attr, exc)
+
+    logger.info("strategy_params hot-reload: strategy=%s params=%s reloaded=%s",
+                body.strategy_id, body.params, reloaded)
+    return JSONResponse({
+        "strategy_id": body.strategy_id,
+        "updated_params": current[body.strategy_id],
+        "file_saved": True,
+        "engine_reloaded": reloaded,
+        "message": "파라미터 저장됨. 엔진 재시작 없이 적용." if reloaded else "파라미터 저장됨. 다음 엔진 시작 시 적용.",
     })
 
 

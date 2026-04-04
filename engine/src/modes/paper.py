@@ -15,23 +15,29 @@ from __future__ import annotations
 from src.modes.shadow import (  # noqa: F401
     BookWalkSlippage,
     PaperMode,
+    PaperRateLimiter,
+    PaperStats,
     PowerLawSlippage,
     ROUTING_FALLBACK_TOTAL,
     ShadowMode,
-    ShadowRateLimiter,
-    ShadowStats,
     StrategyStats,
     VirtualBalanceTracker,
 )
 
+# Backward-compatibility aliases (Phase L rename: Shadow → Paper)
+ShadowRateLimiter = PaperRateLimiter
+ShadowStats = PaperStats
+
 __all__ = [
     "PaperMode",
-    "ShadowMode",  # backward-compat alias
+    "PaperRateLimiter",
+    "PaperStats",
+    "ShadowMode",        # backward-compat alias
+    "ShadowRateLimiter", # backward-compat alias
+    "ShadowStats",       # backward-compat alias
     "BookWalkSlippage",
     "PowerLawSlippage",
     "ROUTING_FALLBACK_TOTAL",
-    "ShadowRateLimiter",
-    "ShadowStats",
     "StrategyStats",
     "VirtualBalanceTracker",
 ]

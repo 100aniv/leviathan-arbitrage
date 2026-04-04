@@ -102,7 +102,7 @@ class Engine:
         self._market_recorder: Any = None
         self._telegram: Any = None
         self._collector_manager: Any = None
-        self._shadow_mode: Any = None
+        self._paper_mode: Any = None
         self._live_gate: Any = None
         self._data_mode: str = DataMode.SYNTHETIC
         # US-114/115/117/118: Wave 3 modules
@@ -229,9 +229,9 @@ class Engine:
                 logger.warning("Exchange %s disconnect error: %s", eid, exc)
 
         # Stop Shadow Mode
-        if self._shadow_mode:
+        if self._paper_mode:
             try:
-                await self._shadow_mode.stop()
+                await self._paper_mode.stop()
             except Exception as exc:
                 logger.warning("ShadowMode stop error: %s", exc)
 
@@ -1118,7 +1118,7 @@ class Engine:
         dex_rpc = _op.dex_rpc_url
         if not dex_rpc:
             # US-242: Check for mock DEX adapter in shadow mode
-            if _op.shadow_mock_dex:
+            if _op.paper_mock_dex:
                 try:
                     from src.dex.mock_adapter import MockDEXAdapter
                     adapter = MockDEXAdapter()
@@ -1813,7 +1813,7 @@ class Engine:
             # Paper: live WS data + SimExecutor (= old shadow mode)
             # Direct in-process routing (no Redis consumer loop)
             strategy_validation = get_settings().operational.strategy_validation
-            shadow_progressive = get_settings().operational.shadow_progressive
+            shadow_progressive = get_settings().operational.paper_progressive
             if strategy_validation:
                 tasks.append(
                     asyncio.create_task(self._strategy_validation_loop(), name="strategy_validation")
@@ -1826,7 +1826,7 @@ class Engine:
                 logger.info("EngineMode: PAPER (PROGRESSIVE)")
             else:
                 tasks.append(
-                    asyncio.create_task(self._shadow_mode_loop(), name="paper_mode")
+                    asyncio.create_task(self._paper_mode_loop(), name="paper_mode")
                 )
                 logger.info("EngineMode: PAPER — live WS data + SimExecutor")
 
@@ -2301,7 +2301,7 @@ class Engine:
                 await asyncio.sleep(5.0)
         except LiveGateFailed:
             logger.warning("LiveGate failed — falling back to Paper mode")
-            await self._shadow_mode_loop()
+            await self._paper_mode_loop()
         except asyncio.CancelledError:
             pass
         except Exception as exc:
@@ -2359,8 +2359,8 @@ class Engine:
                 # Collect win_rate and total_trades from available sources
                 win_rate = 0.5
                 total_trades = 0
-                if self._shadow_mode is not None and hasattr(self._shadow_mode, "_stats"):
-                    stats = self._shadow_mode._stats
+                if self._paper_mode is not None and hasattr(self._paper_mode, "_stats"):
+                    stats = self._paper_mode._stats
                     total_trades = getattr(stats, "total_trades", 0)
                     wins = getattr(stats, "profitable_trades", 0)
                     if total_trades > 0:
@@ -2570,133 +2570,141 @@ class Engine:
                 except asyncio.CancelledError:
                     break
 
-    async def _shadow_mode_loop(self) -> None:
+    async def _paper_mode_loop(self) -> None:
         """Start Shadow Mode: real data + paper execution + full metrics.
 
         Creates a ShadowMode orchestrator wired to the engine's signal pipeline,
         paper executor (power-law slippage), market recorder, and telegram alerter.
         Optionally starts a LiveGate auto-evaluation loop.
         """
-        from src.collectors.funding_rate_collector import FundingRateCollector
-        from src.modes.shadow import ShadowMode
-        from src.modes.paper import PaperMode
+        try:
+            from src.collectors.funding_rate_collector import FundingRateCollector
+            from src.modes.shadow import ShadowMode
+            from src.modes.paper import PaperMode
 
-        symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-        exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
+            symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
+            exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
 
-        # Create MultiStrategySignalProducer for 6 additional strategies
-        from src.core.multi_signal import MultiStrategySignalProducer
+            # Create MultiStrategySignalProducer for 6 additional strategies
+            from src.core.multi_signal import MultiStrategySignalProducer
 
-        multi_signal_producer = MultiStrategySignalProducer(
-            event_bus=self._event_bus,
-            latency_tracker=getattr(self, "_latency_tracker", None),
-        )
+            multi_signal_producer = MultiStrategySignalProducer(
+                event_bus=self._event_bus,
+                latency_tracker=getattr(self, "_latency_tracker", None),
+            )
 
-        # Create FundingRateCollector with shared HTTP client (4 exchanges, all symbols)
-        funding_rate_collector = FundingRateCollector(
-            symbols=symbols,
-            http_client=getattr(self, "_http_client", None),
-        )
+            # Create FundingRateCollector with shared HTTP client (4 exchanges, all symbols)
+            funding_rate_collector = FundingRateCollector(
+                symbols=symbols,
+                http_client=getattr(self, "_http_client", None),
+            )
 
-        # US-171: create KillSwitch for KRW staleness soft-block
-        from src.risk.kill_switch import KillSwitch as _KillSwitch
-        _shadow_kill_switch = _KillSwitch()
+            # US-171: create KillSwitch for KRW staleness soft-block
+            from src.risk.kill_switch import KillSwitch as _KillSwitch
+            _shadow_kill_switch = _KillSwitch()
 
-        # US-299: optional per-strategy filter from env var (comma-separated signal IDs)
-        _shadow_strategy_filter_raw = get_settings().operational.shadow_strategy_filter.strip()
-        _shadow_strategy_filter = (
-            [s.strip() for s in _shadow_strategy_filter_raw.split(",") if s.strip()]
-            if _shadow_strategy_filter_raw else None
-        )
+            # US-299: optional per-strategy filter from env var (comma-separated signal IDs)
+            _shadow_strategy_filter_raw = get_settings().operational.paper_strategy_filter.strip()
+            _shadow_strategy_filter = (
+                [s.strip() for s in _shadow_strategy_filter_raw.split(",") if s.strip()]
+                if _shadow_strategy_filter_raw else None
+            )
 
-        self._shadow_mode = ShadowMode(
-            signal_generator=self._signal_generator,
-            paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
-            collector_manager=None,  # auto-creates CollectorManager
-            market_recorder=self._market_recorder,
-            telegram=self._telegram,
-            symbols=symbols,
-            exchanges=exchanges,
-            multi_signal_producer=multi_signal_producer,
-            funding_rate_collector=funding_rate_collector,
-            strategy_manager=self._strategy_manager,
-            kill_switch=_shadow_kill_switch,
-            regime_detector=self._regime_detector,
-            adaptive_threshold=self._adaptive_threshold,
-            db_pool=self._db_pool,  # US-256
-            data_quality_manager=self._data_quality_manager,  # US-286
-            strategy_filter=_shadow_strategy_filter,  # US-299
-            portfolio_risk=self._portfolio_risk,  # US-300
-        )
-        # SIT-3: Wire FlashGuard into ShadowMode
-        if self._flash_guard is not None:
-            self._shadow_mode._flash_guard = self._flash_guard
+            self._paper_mode = ShadowMode(
+                signal_generator=self._signal_generator,
+                paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
+                collector_manager=None,  # auto-creates CollectorManager
+                market_recorder=self._market_recorder,
+                telegram=self._telegram,
+                symbols=symbols,
+                exchanges=exchanges,
+                multi_signal_producer=multi_signal_producer,
+                funding_rate_collector=funding_rate_collector,
+                strategy_manager=self._strategy_manager,
+                kill_switch=_shadow_kill_switch,
+                regime_detector=self._regime_detector,
+                adaptive_threshold=self._adaptive_threshold,
+                db_pool=self._db_pool,  # US-256
+                data_quality_manager=self._data_quality_manager,  # US-286
+                strategy_filter=_shadow_strategy_filter,  # US-299
+                portfolio_risk=self._portfolio_risk,  # US-300
+            )
+            # SIT-3: Wire FlashGuard into ShadowMode
+            if self._flash_guard is not None:
+                self._paper_mode._flash_guard = self._flash_guard
 
-        # Set all registered strategies to shadow mode and start them
-        if self._strategy_manager is not None:
-            for sid in self._strategy_manager.list_strategies():
-                s = self._strategy_manager.get_strategy(sid)
-                if s:
-                    s.shadow_mode = True
-            for sid in self._strategy_manager.list_strategies():
+            # Set all registered strategies to shadow mode and start them
+            if self._strategy_manager is not None:
+                for sid in self._strategy_manager.list_strategies():
+                    s = self._strategy_manager.get_strategy(sid)
+                    if s:
+                        s.paper_mode = True
+                for sid in self._strategy_manager.list_strategies():
+                    try:
+                        await self._strategy_manager.start_strategy(sid)
+                    except Exception as exc:
+                        logger.warning("Shadow strategy %s start failed: %s", sid, exc)
+
+            self.context.paper_mode = self._paper_mode  # set before start so API can see it
+            try:
+                await self._paper_mode.start()
+            except Exception as exc:
+                logger.error("paper_mode.start_failed error=%s", exc, exc_info=True)
+                raise
+            self.context.shadow_active = True
+            self.context.execution_mode = "shadow"
+            logger.info("Shadow Mode started: %s for %s", exchanges, symbols)
+
+            # ER5-04: Warm-start restore — load previous shadow stats from DB
+            if self._db_pool is not None:
                 try:
-                    await self._strategy_manager.start_strategy(sid)
+                    async with self._db_pool.pool.acquire() as conn:
+                        rows = await conn.fetch(
+                            "SELECT key, value FROM engine_state"
+                            " WHERE key IN ('shadow_total_pnl', 'shadow_trades_executed')"
+                        )
+                        for row in rows:
+                            if row["key"] == "shadow_total_pnl":
+                                self._paper_mode._stats.total_pnl = float(row["value"])
+                                logger.info("shadow_total_pnl_restored value=%s", row["value"])
+                            elif row["key"] == "shadow_trades_executed":
+                                self._paper_mode._stats.trades_executed = int(row["value"])
+                                logger.info("shadow_trades_executed_restored value=%s", row["value"])
                 except Exception as exc:
-                    logger.warning("Shadow strategy %s start failed: %s", sid, exc)
+                    logger.warning("shadow_stats_warm_start_failed error=%s", exc)
 
-        await self._shadow_mode.start()
-        self.context.shadow_mode = self._shadow_mode
-        self.context.shadow_active = True
-        self.context.execution_mode = "shadow"
-        logger.info("Shadow Mode started: %s for %s", exchanges, symbols)
+            # Start LiveGate auto-evaluation if DB is available
+            if self._db_pool is not None:
+                try:
+                    from src.modes.live_gate import LiveGate
+                    from src.risk.kill_switch import KillSwitch
 
-        # ER5-04: Warm-start restore — load previous shadow stats from DB
-        if self._db_pool is not None:
-            try:
-                async with self._db_pool.pool.acquire() as conn:
-                    rows = await conn.fetch(
-                        "SELECT key, value FROM engine_state"
-                        " WHERE key IN ('shadow_total_pnl', 'shadow_trades_executed')"
+                    kill_switch = KillSwitch()  # uses module-level halt flag
+                    # US-286: DQM health scores as exchange_health_fn
+                    _ehf = self._data_quality_manager.get_all_health_scores if self._data_quality_manager else None
+                    self._live_gate = LiveGate(
+                        pool=self._db_pool.pool,
+                        telegram=self._telegram,
+                        kill_switch=kill_switch,
+                        circuit_breaker=self._circuit_breaker,
+                        exchange_health_fn=_ehf,
+                        settings=self._settings,
                     )
-                    for row in rows:
-                        if row["key"] == "shadow_total_pnl":
-                            self._shadow_mode._stats.total_pnl = float(row["value"])
-                            logger.info("shadow_total_pnl_restored value=%s", row["value"])
-                        elif row["key"] == "shadow_trades_executed":
-                            self._shadow_mode._stats.trades_executed = int(row["value"])
-                            logger.info("shadow_trades_executed_restored value=%s", row["value"])
-            except Exception as exc:
-                logger.warning("shadow_stats_warm_start_failed error=%s", exc)
+                    await self._live_gate.start_auto_evaluation()
+                    logger.info("LiveGate auto-evaluation started (24h cycle)")
+                except Exception as exc:
+                    logger.warning("LiveGate init failed (non-fatal): %s", exc)
 
-        # Start LiveGate auto-evaluation if DB is available
-        if self._db_pool is not None:
-            try:
-                from src.modes.live_gate import LiveGate
-                from src.risk.kill_switch import KillSwitch
-
-                kill_switch = KillSwitch()  # uses module-level halt flag
-                # US-286: DQM health scores as exchange_health_fn
-                _ehf = self._data_quality_manager.get_all_health_scores if self._data_quality_manager else None
-                self._live_gate = LiveGate(
-                    pool=self._db_pool.pool,
-                    telegram=self._telegram,
-                    kill_switch=kill_switch,
-                    circuit_breaker=self._circuit_breaker,
-                    exchange_health_fn=_ehf,
-                    settings=self._settings,
-                )
-                await self._live_gate.start_auto_evaluation()
-                logger.info("LiveGate auto-evaluation started (24h cycle)")
-            except Exception as exc:
-                logger.warning("LiveGate init failed (non-fatal): %s", exc)
-
-        # Send Telegram notification
-        if self._telegram and self._telegram._enabled:
-            await self._telegram.send_alert_kr("shadow_mode_start", {
-                "exchanges": ", ".join(exchanges),
-                "symbols": ", ".join(symbols),
-                "live_gate": "활성" if self._live_gate else "비활성",
-            })
+            # Send Telegram notification
+            if self._telegram and self._telegram._enabled:
+                await self._telegram.send_alert_kr("shadow_mode_start", {
+                    "exchanges": ", ".join(exchanges),
+                    "symbols": ", ".join(symbols),
+                    "live_gate": "활성" if self._live_gate else "비활성",
+                })
+        except Exception as exc:
+            logger.error("paper_mode_loop.failed error=%s", exc, exc_info=True)
+            return
 
         # Keep alive until cancelled
         # NOTE: Cleanup is handled exclusively by Engine.stop() to avoid
@@ -2733,7 +2741,7 @@ class Engine:
         )
 
         # US-299: optional per-strategy filter from env var (comma-separated signal IDs)
-        _sf_raw = get_settings().operational.shadow_strategy_filter.strip()
+        _sf_raw = get_settings().operational.paper_strategy_filter.strip()
         _sf = [s.strip() for s in _sf_raw.split(",") if s.strip()] if _sf_raw else None
 
         shadow = ShadowMode(
@@ -2762,7 +2770,7 @@ class Engine:
             for sid in self._strategy_manager.list_strategies():
                 s = self._strategy_manager.get_strategy(sid)
                 if s:
-                    s.shadow_mode = True
+                    s.paper_mode = True
             for sid in self._strategy_manager.list_strategies():
                 try:
                     await self._strategy_manager.start_strategy(sid)
@@ -2774,7 +2782,7 @@ class Engine:
 
         try:
             orchestrator = StrategyValidationOrchestrator(
-                shadow_mode=shadow,
+                paper_mode=shadow,
                 telegram_sender=self._telegram,
             )
             report = await orchestrator.run()
@@ -2789,7 +2797,7 @@ class Engine:
         """Progressive Shadow: 6-stage automatic extension (1H→2H→6H→12H→24H→72H).
 
         Creates ShadowMode and ProgressiveShadowOrchestrator, runs all 6 stages.
-        Enabled when SHADOW_PROGRESSIVE=true (default: false → _shadow_mode_loop).
+        Enabled when SHADOW_PROGRESSIVE=true (default: false → _paper_mode_loop).
         """
         from src.collectors.funding_rate_collector import FundingRateCollector
         from src.modes.shadow import ShadowMode
@@ -2817,10 +2825,10 @@ class Engine:
         )
 
         # US-299: optional per-strategy filter from env var (comma-separated signal IDs)
-        _sf2_raw = get_settings().operational.shadow_strategy_filter.strip()
+        _sf2_raw = get_settings().operational.paper_strategy_filter.strip()
         _sf2 = [s.strip() for s in _sf2_raw.split(",") if s.strip()] if _sf2_raw else None
 
-        self._shadow_mode = ShadowMode(
+        self._paper_mode = ShadowMode(
             signal_generator=self._signal_generator,
             paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
             collector_manager=None,  # auto-creates CollectorManager
@@ -2840,14 +2848,14 @@ class Engine:
         )
         # SIT-3: Wire FlashGuard into ShadowMode
         if self._flash_guard is not None:
-            self._shadow_mode._flash_guard = self._flash_guard
+            self._paper_mode._flash_guard = self._flash_guard
 
         # Set all registered strategies to shadow mode
         if self._strategy_manager is not None:
             for sid in self._strategy_manager.list_strategies():
                 s = self._strategy_manager.get_strategy(sid)
                 if s:
-                    s.shadow_mode = True
+                    s.paper_mode = True
             for sid in self._strategy_manager.list_strategies():
                 try:
                     await self._strategy_manager.start_strategy(sid)
@@ -2874,12 +2882,12 @@ class Engine:
             except Exception as exc:
                 logger.warning("LiveGate init failed (non-fatal): %s", exc)
 
-        self.context.shadow_mode = self._shadow_mode
+        self.context.paper_mode = self._paper_mode
         self.context.shadow_active = True
         self.context.execution_mode = "shadow"
 
         orchestrator = ProgressiveShadowOrchestrator(
-            shadow_mode=self._shadow_mode,
+            shadow_mode=self._paper_mode,
             live_gate=self._live_gate,
             telegram=self._telegram,
             db_pool=self._db_pool,
@@ -3023,10 +3031,10 @@ class Engine:
                 await asyncio.sleep(interval)
 
                 # Only reconcile when shadow mode is active and Redis is available
-                if self._shadow_mode is None or self._redis_client is None:
+                if self._paper_mode is None or self._redis_client is None:
                     continue
 
-                current: dict[str, str] = self._shadow_mode._balance_tracker.summary()
+                current: dict[str, str] = self._paper_mode._balance_tracker.summary()
                 if not current:
                     continue
 
@@ -3157,9 +3165,9 @@ class Engine:
                     except Exception as exc:
                         logger.debug("peak_equity_file_persist_error error=%s", exc)
                 # ER5-04: Persist shadow stats alongside peak_equity
-                if self._shadow_mode is not None and self._db_pool is not None:
+                if self._paper_mode is not None and self._db_pool is not None:
                     try:
-                        stats = self._shadow_mode._stats
+                        stats = self._paper_mode._stats
                         async with self._db_pool.pool.acquire() as conn:
                             await conn.execute(_CREATE_TABLE)
                             _UPSERT_SHADOW = """
@@ -3228,9 +3236,9 @@ class Engine:
                         pass
 
                 shadow_stats = None
-                if self._shadow_mode and hasattr(self._shadow_mode, 'get_snapshot'):
+                if self._paper_mode and hasattr(self._paper_mode, 'get_snapshot'):
                     try:
-                        shadow_stats = self._shadow_mode.get_snapshot()
+                        shadow_stats = self._paper_mode.get_snapshot()
                     except Exception:
                         pass
 

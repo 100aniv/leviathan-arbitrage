@@ -11,31 +11,31 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // ── Terminal tokens (backward compat — used across 20+ components) ──
+        // ── Terminal tokens — DARK THEME (XXX STUDIO × LEVIATHAN) ──
         terminal: {
-          bg:      "#FFFFFF",   // white background (light theme)
-          surface: "#F5F5F7",   // card / panel
-          border:  "rgba(0,0,0,0.08)",
-          muted:   "#EBEBED",   // hover / tertiary
-          text:    "#111111",   // primary text
+          bg:      "#0A0B0E",   // near-black main background
+          surface: "#12141A",   // card / panel
+          border:  "rgba(255,255,255,0.07)",
+          muted:   "#1C1F28",   // hover / tertiary
+          text:    "#E8EAF0",   // primary text (near-white)
           subtle:  "#6B7280",   // muted text
         },
         // ── Semantic tokens (XXX STUDIO × LEVIATHAN) ──
         profit: {
-          DEFAULT: "#00C896",   // was #00ff88 (softer, more premium)
+          DEFAULT: "#00C896",
           dim:     "#009E78",
           glow:    "rgba(0,200,150,0.15)",
         },
         loss: {
-          DEFAULT: "#FF4757",   // was #ff4d4d
+          DEFAULT: "#FF4757",
           dim:     "#CC3344",
           glow:    "rgba(255,71,87,0.15)",
         },
         accent: {
-          DEFAULT: "#00B8FF",   // was #3b82f6 → XXX STUDIO brand blue
+          DEFAULT: "#00B8FF",   // XXX STUDIO brand blue
           dim:     "#0090CC",
           glow:    "rgba(0,184,255,0.15)",
-          subtle:  "rgba(0,184,255,0.12)",
+          subtle:  "rgba(0,184,255,0.10)",
         },
         warn: {
           DEFAULT: "#F59E0B",   // unchanged

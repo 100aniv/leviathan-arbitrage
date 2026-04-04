@@ -13,11 +13,11 @@ class TestShadowLiveReporter:
 
     def test_record_and_report(self):
         reporter = ShadowLiveReporter(output_path="/tmp/test-slr.json")
-        reporter.record_trade(shadow_pnl=10.0, virtual_live_pnl=12.0)
-        reporter.record_trade(shadow_pnl=5.0, virtual_live_pnl=6.0)
+        reporter.record_trade(paper_pnl=10.0, virtual_live_pnl=12.0)
+        reporter.record_trade(paper_pnl=5.0, virtual_live_pnl=6.0)
         report = reporter.generate_report()
         assert report["trade_count"] == 2
-        assert report["shadow_pnl"] == 15.0
+        assert report["paper_pnl"] == 15.0
         assert report["virtual_live_pnl"] == 18.0
         # Gap: (15-18)/18 * 100 = -16.67%
         assert report["pnl_gap_pct"] < 0
@@ -30,7 +30,7 @@ class TestShadowLiveReporter:
             "fill_rate_pct": 95.0,
         }
         reporter = ShadowLiveReporter(tca_analyzer=mock_tca, output_path="/tmp/test-slr2.json")
-        reporter.record_trade(shadow_pnl=1.0, virtual_live_pnl=None)
+        reporter.record_trade(paper_pnl=1.0, virtual_live_pnl=None)
         report = reporter.generate_report()
         assert report["slippage"]["is_p50_bps"] == 3.5
         assert report["fill_rate_pct"] == 95.0
