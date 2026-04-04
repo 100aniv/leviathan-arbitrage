@@ -27,6 +27,7 @@ import os
 import statistics
 import time
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -44,6 +45,31 @@ logger = logging.getLogger(__name__)
 _Books = dict[str, dict[str, OrderBook]]
 # exchange_id → symbol → funding_rate
 _Rates = dict[str, dict[str, float]]
+
+# KRW/USDT 환율 (하드코딩 기본값 — 동적 갱신은 _KRW_TO_USDT_RATE 인스턴스 변수로 오버라이드 가능)
+_DEFAULT_KRW_TO_USDT_RATE = Decimal("0.000714")  # ~1400 KRW/USDT
+
+# KRW 거래소 식별자
+_KRW_EXCHANGES = frozenset({"upbit", "bithumb", "coinone"})
+
+
+def _normalize_price_to_usdt(price: Decimal, exchange: str, symbol: str,
+                               krw_rate: Decimal = _DEFAULT_KRW_TO_USDT_RATE) -> Decimal:
+    """KRW 거래소의 KRW 가격을 USDT 단위로 정규화한다.
+
+    cross-exchange 비교 시에만 사용 — PnL 계산에는 원본 가격을 사용해야 한다.
+    """
+    if symbol.endswith("/KRW") and exchange in _KRW_EXCHANGES:
+        return price * krw_rate
+    return price
+
+
+def _normalize_symbol(symbol: str) -> str:
+    """BTC/KRW → BTC/USDT 로 정규화한다 (cross-exchange 심볼 매칭용)."""
+    if symbol.endswith("/KRW"):
+        return symbol[:-3] + "USDT"
+    return symbol
+
 
 # Cross-asset pairs evaluated on the SAME exchange (US-188)
 CROSS_ASSET_PAIRS: list[tuple[str, str]] = [
@@ -194,6 +220,15 @@ class RealDataSignalProducer:
         signals.extend(
             await self._evaluate_futures_futures(symbol, futures_books)
         )
+
+        # Cross-exchange KRW↔USDT arb (backtest only — live uses SignalGenerator directly)
+        # K-BT-10~12: Binance USDT vs Upbit/Bithumb/Coinone KRW comparison
+        if self._backtest_mode and exchange_id in _KRW_EXCHANGES and symbol.endswith("/KRW"):
+            signals.extend(
+                await self._evaluate_cross_exchange_krw(
+                    exchange_id, symbol, book, all_books, simulated_ts=simulated_ts
+                )
+            )
 
         # Statistical arb (US-181)
         signals.extend(
@@ -723,6 +758,135 @@ class RealDataSignalProducer:
                            "latency_diff_ms": f"{latency_diff_ms:.1f}"},
                 )
                 signals.append(sig)
+        return signals
+
+    async def _evaluate_cross_exchange_krw(
+        self,
+        krw_exchange: str,
+        krw_symbol: str,
+        krw_book: "OrderBook",
+        all_books: "_Books",
+        simulated_ts: float | None = None,
+    ) -> list[Signal]:
+        """KRW↔USDT cross-exchange 차익 평가 (backtest 전용, K-BT-10~12).
+
+        BTC/KRW (Upbit/Bithumb/Coinone) 가격을 USDT로 정규화한 뒤
+        BTC/USDT (Binance/Bybit/OKX 등) 오더북과 비교한다.
+
+        KRW 가격 정규화: price_usdt = price_krw * _DEFAULT_KRW_TO_USDT_RATE
+        신호 생성은 produce_cross_exchange_signal() 대신
+        produce_triangular_signal()처럼 직접 Signal 을 구성한다 — cross_exchange
+        전용 producer 메서드가 없으므로 StatisticalArbSignal 포맷을 재사용.
+        """
+        signals: list[Signal] = []
+
+        usdt_symbol = _normalize_symbol(krw_symbol)  # BTC/KRW → BTC/USDT
+
+        # KRW 오더북의 USDT 환산 가격
+        krw_bid = krw_book.best_bid()
+        krw_ask = krw_book.best_ask()
+        if krw_bid is None or krw_ask is None:
+            return signals
+
+        krw_bid_usdt = _normalize_price_to_usdt(krw_bid, krw_exchange, krw_symbol)
+        krw_ask_usdt = _normalize_price_to_usdt(krw_ask, krw_exchange, krw_symbol)
+
+        # USDT 거래소 오더북 조회
+        usdt_books = all_books.get(usdt_symbol, {})
+        for usdt_exchange, usdt_book in usdt_books.items():
+            if usdt_exchange in _KRW_EXCHANGES:
+                continue  # USDT 거래소만 비교
+
+            usdt_bid = usdt_book.best_bid()
+            usdt_ask = usdt_book.best_ask()
+            if usdt_bid is None or usdt_ask is None:
+                continue
+
+            # 방향 1: KRW 거래소가 더 비쌈 → KRW 거래소에서 팔고 USDT 거래소에서 삼
+            if float(krw_bid_usdt) > float(usdt_ask):
+                spread_bps = (float(krw_bid_usdt) - float(usdt_ask)) / float(usdt_ask) * 10000
+                # 비합리적 스프레드 필터 (100bps 이상은 환율 오차로 간주)
+                if spread_bps <= 0 or spread_bps > 200:
+                    continue
+                _ce_key = (usdt_symbol, usdt_exchange, krw_exchange)
+                _ce_hist = self._rolling_spread[_ce_key]
+                _ce_hist.append(spread_bps)
+                if len(_ce_hist) >= self._spread_filter_min_samples:
+                    _med = statistics.median(_ce_hist)
+                    if _med > 0 and spread_bps > self._spread_filter_multiplier * _med:
+                        continue
+                spread_pct = Decimal(str(spread_bps / 10000))
+                sig = Signal(
+                    strategy_id="cross_exchange_krw",
+                    symbol=usdt_symbol,
+                    buy_exchange=usdt_exchange,
+                    sell_exchange=krw_exchange,
+                    buy_price=usdt_ask,
+                    sell_price=krw_bid_usdt,  # USDT 환산가 (비교용)
+                    spread_pct=spread_pct,
+                    confidence=min(1.0, spread_bps / 50.0),
+                    volume=usdt_ask * Decimal("0.001"),
+                    timestamp=datetime.now(timezone.utc),
+                    metadata={
+                        "krw_normalized": True,
+                        "krw_rate": str(_DEFAULT_KRW_TO_USDT_RATE),
+                        "direction": "sell_krw",
+                        "krw_exchange": krw_exchange,
+                        "krw_symbol": krw_symbol,
+                    },
+                )
+                logger.info(
+                    "real_signal_producer.cross_krw_signal",
+                    extra={
+                        "usdt_ex": usdt_exchange, "krw_ex": krw_exchange,
+                        "symbol": usdt_symbol, "spread_bps": f"{spread_bps:.1f}",
+                        "direction": "sell_krw",
+                    },
+                )
+                signals.append(sig)
+
+            # 방향 2: USDT 거래소가 더 비쌈 → USDT 거래소에서 팔고 KRW 거래소에서 삼
+            if float(usdt_bid) > float(krw_ask_usdt):
+                spread_bps = (float(usdt_bid) - float(krw_ask_usdt)) / float(krw_ask_usdt) * 10000
+                if spread_bps <= 0 or spread_bps > 200:
+                    continue
+                _ce_key2 = (usdt_symbol, krw_exchange, usdt_exchange)
+                _ce_hist2 = self._rolling_spread[_ce_key2]
+                _ce_hist2.append(spread_bps)
+                if len(_ce_hist2) >= self._spread_filter_min_samples:
+                    _med2 = statistics.median(_ce_hist2)
+                    if _med2 > 0 and spread_bps > self._spread_filter_multiplier * _med2:
+                        continue
+                spread_pct2 = Decimal(str(spread_bps / 10000))
+                sig = Signal(
+                    strategy_id="cross_exchange_krw",
+                    symbol=usdt_symbol,
+                    buy_exchange=krw_exchange,
+                    sell_exchange=usdt_exchange,
+                    buy_price=krw_ask_usdt,  # USDT 환산가 (비교용)
+                    sell_price=usdt_bid,
+                    spread_pct=spread_pct2,
+                    confidence=min(1.0, spread_bps / 50.0),
+                    volume=usdt_bid * Decimal("0.001"),
+                    timestamp=datetime.now(timezone.utc),
+                    metadata={
+                        "krw_normalized": True,
+                        "krw_rate": str(_DEFAULT_KRW_TO_USDT_RATE),
+                        "direction": "buy_krw",
+                        "krw_exchange": krw_exchange,
+                        "krw_symbol": krw_symbol,
+                    },
+                )
+                logger.info(
+                    "real_signal_producer.cross_krw_signal",
+                    extra={
+                        "usdt_ex": usdt_exchange, "krw_ex": krw_exchange,
+                        "symbol": usdt_symbol, "spread_bps": f"{spread_bps:.1f}",
+                        "direction": "buy_krw",
+                    },
+                )
+                signals.append(sig)
+
         return signals
 
     async def _evaluate_funding_rate_arb(

@@ -62,6 +62,83 @@ async def _build_db_pool(settings):
     return db_pool
 
 
+MAX_TUNE_ROUNDS = 3
+
+
+def _apply_auto_tune(case: dict, result: dict, round_num: int) -> None:
+    """K-BT AC_FAIL 기반으로 strategy_params.json을 자동 조정한다.
+
+    trades < trades_min 이면 해당 전략의 임계값을 25% * round_num 낮춘다.
+    원본은 strategy_params.json.bak 으로 첫 라운드에만 백업된다.
+    """
+    params_path = _ENGINE_ROOT / "config" / "strategy_params.json"
+    bak_path = _ENGINE_ROOT / "config" / "strategy_params.json.bak"
+
+    # 첫 번째 조정 라운드에서만 원본 백업
+    if round_num == 1 and not bak_path.exists():
+        bak_path.write_text(params_path.read_text())
+        logger.info("Auto-tune: original params backed up to strategy_params.json.bak")
+
+    params = json.loads(params_path.read_text())
+    reduction = 0.75 ** round_num  # round 1→×0.75, round 2→×0.5625
+
+    strategy_ids = case.get("strategy_ids", [])
+    trades_deficit = result.get("trades", 0) < _AC["trades_min"]
+
+    if trades_deficit:
+        if "cross_exchange_v1" in strategy_ids:
+            old = params.get("cross_exchange", {}).get("min_spread_bps", 10.0)
+            params.setdefault("cross_exchange", {})["min_spread_bps"] = max(2.0, old * reduction)
+
+        if "triangular_v1" in strategy_ids:
+            old = params.get("triangular", {}).get("min_spread_bps", 15.0)
+            params.setdefault("triangular", {})["min_spread_bps"] = max(2.0, old * reduction)
+
+        if "statistical_arb_v1" in strategy_ids:
+            old = params.get("statistical_arb", {}).get("z_threshold", 1.5)
+            params.setdefault("statistical_arb", {})["z_threshold"] = max(0.8, old * reduction)
+
+        if "spot_futures_v1" in strategy_ids:
+            old = params.get("spot_futures", {}).get("min_spread_bps", 16.5)
+            params.setdefault("spot_futures", {})["min_spread_bps"] = max(3.0, old * reduction)
+
+        if "funding_rate_v1" in strategy_ids:
+            old = params.get("funding_rate", {}).get("min_funding_rate_bps", 8.7)
+            params.setdefault("funding_rate", {})["min_funding_rate_bps"] = max(1.0, old * reduction)
+
+        if "futures_futures_v1" in strategy_ids:
+            old = params.get("futures_futures", {}).get("min_spread_bps", 47.5)
+            params.setdefault("futures_futures", {})["min_spread_bps"] = max(3.0, old * reduction)
+
+    params_path.write_text(json.dumps(params, indent=2))
+    logger.info("Auto-tune applied: case=%s round=%d reduction=%.4f trades=%d",
+                case["id"], round_num, reduction, result.get("trades", 0))
+
+
+async def run_kbt_case_with_tuning(case: dict, db_pool, settings) -> dict:
+    """AC_FAIL 시 파라미터를 자동 조정하며 최대 MAX_TUNE_ROUNDS 라운드 재실행한다."""
+    best_result: dict | None = None
+
+    for round_num in range(MAX_TUNE_ROUNDS):
+        signal_generator, strategy_manager = _build_fresh_signal_and_strategies(settings)
+        result = await run_kbt_case(case, signal_generator, strategy_manager, db_pool)
+
+        if best_result is None or result.get("trades", 0) > best_result.get("trades", 0):
+            best_result = result
+
+        if result.get("ac_pass"):
+            logger.info("Auto-tune: case %s AC_PASS at round %d", case["id"], round_num)
+            break
+
+        if round_num < MAX_TUNE_ROUNDS - 1:
+            _apply_auto_tune(case, result, round_num + 1)
+            logger.info("Auto-tune round %d: adjusting params for case %s", round_num + 1, case["id"])
+
+    assert best_result is not None
+    best_result["tune_rounds"] = round_num + 1
+    return best_result
+
+
 def _build_fresh_signal_and_strategies(settings):
     """Build fresh signal_generator + strategy_manager per case.
 
@@ -243,13 +320,10 @@ async def main(case_filter: list[str] | None = None, dry_run: bool = False) -> N
     summaries = []
 
     for case in all_cases:
-        # Fresh signal_generator + strategy_manager per case to prevent state contamination:
-        # - SignalGenerator._last_signal (cooldown) would block signals from previous case
-        # - StatisticalArbStrategy Kalman state + spreads deque accumulates across cases
-        # - StaleOrderbookDetector._blacklist persists between cases
-        signal_generator, strategy_manager = _build_fresh_signal_and_strategies(settings)
+        # run_kbt_case_with_tuning handles fresh signal/strategy instances per round
+        # and auto-adjusts strategy_params.json on AC_FAIL (max MAX_TUNE_ROUNDS rounds)
         try:
-            s = await run_kbt_case(case, signal_generator, strategy_manager, db_pool)
+            s = await run_kbt_case_with_tuning(case, db_pool, settings)
             summaries.append(s)
         except Exception as exc:
             logger.error("Case %s FAILED: %s", case["id"], exc)

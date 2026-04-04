@@ -19,7 +19,7 @@
         "triangular_v1":     {"start": "2024-01-10", "end": "2024-06-30"},
         "statistical_arb_v1":{"start": "2024-04-01", "end": "2024-09-30"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC", "SOL/BTC"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT", "ETH/BTC", "SOL/BTC", "XRP/BTC"],
       "data_source": "ohlcv_historical"
     },
     {
@@ -33,7 +33,7 @@
         "triangular_v1":     {"start": "2024-01-10", "end": "2024-06-30"},
         "statistical_arb_v1":{"start": "2024-04-01", "end": "2024-09-30"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC", "SOL/BTC"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT", "ETH/BTC", "SOL/BTC", "XRP/BTC"],
       "data_source": "ohlcv_historical"
     },
     {
@@ -47,7 +47,7 @@
         "triangular_v1":     {"start": "2024-01-10", "end": "2024-06-30"},
         "statistical_arb_v1":{"start": "2024-04-01", "end": "2024-09-30"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC", "SOL/BTC"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT", "ETH/BTC", "SOL/BTC", "XRP/BTC"],
       "data_source": "ohlcv_historical"
     },
     {
@@ -61,7 +61,7 @@
         "statistical_arb_v1":{"start": "2024-01-10", "end": "2024-03-31"},
         "spot_futures_v1":   {"start": "2024-01-10", "end": "2024-03-31"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC", "SOL/BTC"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT", "ETH/BTC", "SOL/BTC", "XRP/BTC"],
       "data_source": "ohlcv_historical"
     },
     {
@@ -73,7 +73,7 @@
         "triangular_v1":     {"start": "2024-01-10", "end": "2024-06-30"},
         "statistical_arb_v1":{"start": "2024-01-10", "end": "2024-06-30"}
       },
-      "symbols": ["BTC/KRW", "ETH/KRW", "SOL/KRW"],
+      "symbols": ["BTC/KRW", "ETH/KRW", "SOL/KRW", "XRP/KRW"],
       "data_source": "ohlcv_historical"
     },
     {
@@ -84,7 +84,7 @@
       "periods": {
         "triangular_v1": {"start": "2024-01-10", "end": "2024-06-30"}
       },
-      "symbols": ["BTC/KRW", "ETH/KRW", "SOL/KRW", "XRP/KRW"],
+      "symbols": ["BTC/KRW", "ETH/KRW", "SOL/KRW", "XRP/KRW", "DOGE/KRW"],
       "data_source": "ohlcv_historical"
     },
     {
@@ -95,7 +95,7 @@
       "periods": {
         "triangular_v1": {"start": "2025-09-08", "end": "2026-03-31"}
       },
-      "symbols": ["BTC/KRW", "ETH/KRW", "SOL/KRW", "XRP/KRW"],
+      "symbols": ["BTC/KRW", "ETH/KRW", "SOL/KRW", "XRP/KRW", "DOGE/KRW"],
       "data_source": "ohlcv_historical",
       "note": "Bithumb API 한계: 1h 최신 5000캔들(~209일)만 제공, from 파라미터 무시됨. 원래 2024-01-10~06-30 불가. 대체: 2025-09-08~2026-03-31 (실측 가능한 최고 과거 기준)"
     },
@@ -108,7 +108,7 @@
         "triangular_v1":     {"start": "2024-04-01", "end": "2024-09-30"},
         "statistical_arb_v1":{"start": "2024-04-01", "end": "2024-09-30"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC", "SOL/BTC"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT", "ETH/BTC", "SOL/BTC"],
       "data_source": "ohlcv_historical"
     },
     {
@@ -120,7 +120,7 @@
         "triangular_v1":     {"start": "2025-07-01", "end": "2025-12-31"},
         "statistical_arb_v1":{"start": "2025-07-01", "end": "2025-12-31"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ETH/BTC"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT", "ETH/BTC", "SOL/BTC"],
       "data_source": "ohlcv_historical",
       "note": "Gate.io API 한계: 현재 기준 최대 9998h(~416일) 전까지만 가능. 2024 데이터 불가. SOL/BTC 페어 미존재. 대체: 2025-07-01~2025-12-31"
     },
@@ -168,7 +168,7 @@
       "periods": {
         "cross_exchange_v1": {"start": "2024-01-10", "end": "2024-03-31"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT"],
       "data_source": "ohlcv_historical",
       "note": "Global cross-exchange: Binance vs Bybit"
     },
@@ -180,7 +180,7 @@
       "periods": {
         "cross_exchange_v1": {"start": "2024-01-10", "end": "2024-03-31"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT"],
       "data_source": "ohlcv_historical",
       "note": "Global cross-exchange: Binance vs OKX"
     },
@@ -192,7 +192,7 @@
       "periods": {
         "cross_exchange_v1": {"start": "2024-01-10", "end": "2024-03-31"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT"],
       "data_source": "ohlcv_historical",
       "note": "Global cross-exchange: Binance vs Bitget"
     },
@@ -204,7 +204,7 @@
       "periods": {
         "futures_futures_v1": {"start": "2024-01-10", "end": "2024-03-31"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT"],
       "data_source": "ohlcv_historical",
       "note": "Futures-futures: Binance Futures vs Bitget Futures"
     },
@@ -216,7 +216,7 @@
       "periods": {
         "futures_futures_v1": {"start": "2024-01-10", "end": "2024-03-31"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT"],
       "data_source": "ohlcv_historical",
       "note": "Futures-futures: Binance Futures vs Bybit Futures"
     },
@@ -228,7 +228,7 @@
       "periods": {
         "futures_futures_v1": {"start": "2024-01-10", "end": "2024-03-31"}
       },
-      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT"],
       "data_source": "ohlcv_historical",
       "note": "Futures-futures: Binance Futures vs OKX Futures"
     }
