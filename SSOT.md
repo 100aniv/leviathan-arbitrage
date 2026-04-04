@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-04-04 (K-BT 18/18 AC_PASS + K-PT 18/18 AC_PASS — US-387~424 완료) | PRD: `.omc/prd.json` (429개 US, 418 passes:true / 11 passes:false)
+> 마지막 업데이트: 2026-04-04 (Phase L 거의 완료 — US-431/434/435/437 완료, US-436만 남음) | PRD: `.omc/prd.json` (437개 US, 426 passes:true / 11 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | **SIT-3 플랜: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오)**
 > **Phase K 플랜**: `.claude/plans/radiant-cooking-forest.md` (Backtest→Paper→Live 종합 23케이스, 2026-04-02 v4)
 > **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → J ✅ → **K** → L → M → N(TF Final → Live)
@@ -32,12 +32,12 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: K (진행중 — K-BT 18/18 AC_PASS ✅ + K-PT 18/18 AC_PASS ✅, 2026-04-04)
-**Tests**: 5,454 passed / 0 failed / 12 skipped
+**Phase**: L (K✅ 완료 | Phase L 진입 — Shadow→Paper 리네임 + 대시보드 재설계, 2026-04-04)
+**Tests**: 5,473 passed / 0 failed / 12 skipped
 **Coverage**: 74%
-**PRD**: 418/429 passes:true (passes:false 11개 — US-055, US-056, US-332, US-373, US-382, US-386, US-425, US-426, US-427, US-428)
-**TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → **K** → L → M → N(TF Final → Live)
-**Next**: US-332 24H 완료 확인 → US-372 passes:true → K-LT (US-425~429) → Phase L
+**PRD**: 426/437 passes:true (passes:false 11개 — US-055, US-056, US-332, US-373, US-382, US-425~429, US-436)
+**TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → K ✅ → **L** → M → N(TF Final → Live)
+**Next**: US-436 (E2E 브라우저 검증) → Phase L 완료 → Phase M
 **모드 체계 (Phase I 확정)**: `backtest → paper → live` (shadow 명칭 폐기, EngineMode 단일 축)
 **Live 설정**: max_position=$10, daily_loss=$15, exchanges=binance+binance_futures
 **Live 파이프라인**: LiveMode 클래스 (직접 인-프로세스 라우팅, DI executor, KRW 정규화, circuit breaker, rate limiter)
@@ -392,7 +392,7 @@ MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 
 ---
 
-## 7. 남은 작업 (`.omc/prd.json` 429개 User Stories, 418개 완료, 11개 미완)
+## 7. 남은 작업 (`.omc/prd.json` 437개 User Stories, 419개 완료, 18개 미완)
 
 > **실행 방식**: 3-Stage Sequential — Stage A(기획) → Stage B(구현+검증) → Stage C(리뷰+릴리스)
 > **자동화**: `ralph autopilot` → prd.json Phase 단위 순회 → 각 Phase 자동 실행 (leviathan.md 참조)

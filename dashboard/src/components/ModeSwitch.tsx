@@ -6,7 +6,6 @@ import { fetchApi } from '@/lib/api';
 const MODE_CONFIG: Record<string, { en: string; ko: string; color: string }> = {
   backtest: { en: 'BACKTEST', ko: '백테스트', color: 'text-terminal-subtle' },
   paper:    { en: 'PAPER',    ko: '페이퍼',   color: 'text-accent' },
-  shadow:   { en: 'SHADOW',   ko: 'Canary',   color: 'text-yellow-400' },
   live:     { en: 'LIVE',     ko: '실거래',   color: 'text-loss' },
 };
 
@@ -15,7 +14,7 @@ interface ModeSwitchProps {
 }
 
 export function ModeSwitch({ currentMode }: ModeSwitchProps) {
-  const [mode, setMode]               = useState(currentMode || 'shadow');
+  const [mode, setMode]               = useState(currentMode || 'paper');
   const [showConfirm, setShowConfirm] = useState(false);
   const [pendingMode, setPendingMode] = useState<string | null>(null);
   const [error, setError]             = useState<string | null>(null);

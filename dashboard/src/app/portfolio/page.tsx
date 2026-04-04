@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
   AreaChart, Area, PieChart, Pie, Cell,
@@ -64,20 +64,20 @@ function DrawdownChart({ data }: { data: DrawdownPoint[] }) {
       <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
         <defs>
           <linearGradient id="ddGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%"  stopColor="#ff4d4d" stopOpacity={0.4} />
-            <stop offset="95%" stopColor="#ff4d4d" stopOpacity={0.02} />
+            <stop offset="5%"  stopColor="#DC2626" stopOpacity={0.4} />
+            <stop offset="95%" stopColor="#DC2626" stopOpacity={0.02} />
           </linearGradient>
         </defs>
         <XAxis
           dataKey="date"
-          tick={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#666' }}
+          tick={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#6B7280' }}
           axisLine={false}
           tickLine={false}
           tickFormatter={(v: string) => v.slice(5)}
           interval="preserveStartEnd"
         />
         <YAxis
-          tick={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#666' }}
+          tick={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#6B7280' }}
           axisLine={false}
           tickLine={false}
           tickFormatter={(v: number) => `${v.toFixed(1)}%`}
@@ -86,23 +86,23 @@ function DrawdownChart({ data }: { data: DrawdownPoint[] }) {
         />
         <Tooltip
           contentStyle={{
-            background: '#1a1a1a',
-            border: '1px solid #333',
+            background: '#FFFFFF',
+            border: '1px solid #E5E7EB',
             borderRadius: 0,
             fontSize: 11,
             fontFamily: 'JetBrains Mono, monospace',
           }}
           formatter={(v: number | undefined) => [v != null ? `${v.toFixed(3)}%` : '—', '드로다운']}
         />
-        <ReferenceLine y={0} stroke="#333" strokeDasharray="3 3" />
+        <ReferenceLine y={0} stroke="#E5E7EB" strokeDasharray="3 3" />
         <Area
           type="monotone"
           dataKey="drawdown"
-          stroke="#ff4d4d"
+          stroke="#DC2626"
           strokeWidth={1.5}
           fill="url(#ddGradient)"
           dot={false}
-          activeDot={{ r: 3, fill: '#ff4d4d' }}
+          activeDot={{ r: 3, fill: '#DC2626' }}
         />
       </AreaChart>
     </ResponsiveContainer>
@@ -216,7 +216,7 @@ export default function PortfolioPage() {
         if (summaryData) setSummary(summaryData);
         if (positionsData) setPositions(positionsData);
         if (dailyData) {
-          const returns = Array.isArray(dailyData) ? dailyData : (dailyData as any)?.returns ?? [];
+          const returns = Array.isArray(dailyData) ? dailyData : ((dailyData as Record<string, unknown>)?.returns as { date: string; pnl: number }[]) ?? [];
           setDailyReturns(returns);
         }
         if (shadowData?.by_strategy) {
@@ -293,8 +293,8 @@ export default function PortfolioPage() {
                     ))}
                   </Pie>
                   <Tooltip
-                    contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 0, fontSize: 11, fontFamily: 'JetBrains Mono' }}
-                    formatter={(value: number, name: string) => [`$${value.toLocaleString()}`, name]}
+                    contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 0, fontSize: 11, fontFamily: 'JetBrains Mono' }}
+                    formatter={(value: number | undefined, name: string | undefined): [ReactNode, string] => [`$${(value ?? 0).toLocaleString()}`, name ?? '']}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -323,11 +323,11 @@ export default function PortfolioPage() {
           <div className="mt-3">
             <ResponsiveContainer width="100%" height={100}>
               <AreaChart data={dailyReturns} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                <XAxis dataKey="date" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: '#666' }} axisLine={false} tickLine={false} tickFormatter={(v: string) => v.slice(5)} />
-                <YAxis tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: '#666' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v.toFixed(0)}`} width={45} />
-                <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 0, fontSize: 11, fontFamily: 'JetBrains Mono' }} formatter={(v: number) => [`$${v.toFixed(2)}`, 'PnL']} />
-                <ReferenceLine y={0} stroke="#333" strokeDasharray="3 3" />
-                <Area type="monotone" dataKey="pnl" stroke="#00ff88" strokeWidth={1.5} fill="rgba(0,255,136,0.1)" dot={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={(v: string) => v.slice(5)} />
+                <YAxis tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v.toFixed(0)}`} width={45} />
+                <Tooltip contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 0, fontSize: 11, fontFamily: 'JetBrains Mono' }} formatter={(v: number | undefined): [ReactNode, string] => [`$${(v ?? 0).toFixed(2)}`, 'PnL']} />
+                <ReferenceLine y={0} stroke="#E5E7EB" strokeDasharray="3 3" />
+                <Area type="monotone" dataKey="pnl" stroke="#059669" strokeWidth={1.5} fill="rgba(5,150,105,0.1)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -350,9 +350,9 @@ export default function PortfolioPage() {
                 <div key={s.strategy_id} className="flex items-center gap-2">
                   <span className="text-[10px] font-mono text-terminal-subtle w-28 shrink-0 truncate">{s.strategy_id.replace(/_v\d+$/, '')}</span>
                   <div className="flex-1 h-4 bg-terminal-muted/20 overflow-hidden">
-                    <div className="h-full transition-all" style={{ width: `${w}%`, backgroundColor: s.pnl >= 0 ? '#00ff88' : '#ff4d4d', opacity: 0.7 }} />
+                    <div className="h-full transition-all" style={{ width: `${w}%`, backgroundColor: s.pnl >= 0 ? '#059669' : '#DC2626', opacity: 0.7 }} />
                   </div>
-                  <span className="text-[10px] font-mono tabular-nums w-20 text-right" style={{ color: s.pnl >= 0 ? '#00ff88' : '#ff4d4d' }}>
+                  <span className="text-[10px] font-mono tabular-nums w-20 text-right" style={{ color: s.pnl >= 0 ? '#059669' : '#DC2626' }}>
                     {s.pnl >= 0 ? '+' : ''}${s.pnl.toFixed(2)}
                   </span>
                   <span className="text-[9px] font-mono text-terminal-subtle w-12 text-right">{s.trades}t</span>
@@ -369,7 +369,7 @@ export default function PortfolioPage() {
           <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">드로다운</span>
           {metrics && (
             <span className="ml-2 text-[10px] font-mono text-terminal-subtle">
-              최대 <span style={{ color: '#ff4d4d' }}>{metrics.max_drawdown_pct.toFixed(2)}%</span>
+              최대 <span style={{ color: '#DC2626' }}>{metrics.max_drawdown_pct.toFixed(2)}%</span>
             </span>
           )}
         </div>

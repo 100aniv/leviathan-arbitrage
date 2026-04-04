@@ -112,9 +112,9 @@ export function TradeDetail({ trade, onClose }: TradeDetailProps) {
             <span
               className="px-1.5 py-0.5 text-[10px]"
               style={{
-                backgroundColor: trade.status === 'closed' ? 'rgba(0,255,136,0.1)' : 'rgba(245,158,11,0.1)',
-                color: trade.status === 'closed' ? '#00ff88' : '#f59e0b',
-                border: `1px solid ${trade.status === 'closed' ? 'rgba(0,255,136,0.2)' : 'rgba(245,158,11,0.2)'}`,
+                backgroundColor: trade.status === 'closed' ? 'rgba(5,150,105,0.1)' : 'rgba(245,158,11,0.1)',
+                color: trade.status === 'closed' ? '#059669' : '#f59e0b',
+                border: `1px solid ${trade.status === 'closed' ? 'rgba(5,150,105,0.2)' : 'rgba(245,158,11,0.2)'}`,
               }}
             >
               {trade.status.toUpperCase()}

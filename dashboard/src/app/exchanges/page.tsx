@@ -5,19 +5,30 @@ import { getExchangeStatus } from "@/lib/api";
 import type { ExchangeStatus } from "@/types";
 
 const EXCHANGE_LABELS: Record<string, string> = {
-  binance: "Binance",
-  binance_futures: "Binance Futures",
-  bybit: "Bybit",
-  okx: "OKX",
-  bitget: "Bitget",
-  upbit: "Upbit",
-  bithumb: "Bithumb",
-  coinone: "Coinone",
+  binance:          "Binance",
+  binance_futures:  "Binance Futures",
+  bybit:            "Bybit",
+  bybit_futures:    "Bybit Futures",
+  okx:              "OKX",
+  okx_futures:      "OKX Futures",
+  bitget:           "Bitget",
+  bitget_futures:   "Bitget Futures",
+  mexc:             "MEXC",
+  gateio:           "Gate.io",
+  upbit:            "Upbit",
+  bithumb:          "Bithumb",
+  coinone:          "Coinone",
 };
 
 function formatLatency(ms: number): string {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function latencyColor(ms: number): string {
+  if (ms < 100)  return '#00C896';  // green — excellent
+  if (ms < 500)  return '#F59E0B';  // amber — acceptable
+  return '#FF4757';                  // red — degraded
 }
 
 function formatLastUpdate(iso: string): string {
@@ -96,7 +107,7 @@ export default function ExchangesPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {entries.map((ex) => {
             const label = EXCHANGE_LABELS[ex.exchange_id] ?? ex.exchange_id;
-            const connColor = ex.connected ? "#00ff88" : "#ff4d4d";
+            const connColor = ex.connected ? "#00C896" : "#FF4757";
             const balanceEntries = ex.balance ? Object.entries(ex.balance).filter(([, v]) => v > 0) : [];
 
             return (
@@ -114,9 +125,9 @@ export default function ExchangesPage() {
                   <span
                     className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0"
                     style={{
-                      backgroundColor: ex.connected ? "rgba(0,255,136,0.1)" : "rgba(255,77,77,0.1)",
+                      backgroundColor: ex.connected ? "rgba(0,200,150,0.1)" : "rgba(255,71,87,0.1)",
                       color: connColor,
-                      border: `1px solid ${ex.connected ? "rgba(0,255,136,0.2)" : "rgba(255,77,77,0.2)"}`,
+                      border: `1px solid ${ex.connected ? "rgba(0,200,150,0.2)" : "rgba(255,71,87,0.2)"}`,
                     }}
                   >
                     <span
@@ -132,7 +143,8 @@ export default function ExchangesPage() {
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-terminal-border/50">
                   <div>
                     <p className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">Latency</p>
-                    <p className="text-sm font-mono text-terminal-text tabular-nums mt-0.5">
+                    <p className="text-sm font-mono tabular-nums mt-0.5"
+                      style={{ color: latencyColor(ex.latency_ms) }}>
                       {formatLatency(ex.latency_ms)}
                     </p>
                   </div>

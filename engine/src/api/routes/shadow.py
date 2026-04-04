@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/v1")
 async def get_shadow_stats(request: Request) -> JSONResponse:
     """Return current shadow mode statistics, with rolling risk metrics (US-281)."""
     ctx = request.app.state.engine_context
-    shadow_mode = getattr(ctx, "shadow_mode", None)
+    shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow_mode is None:
         return JSONResponse({"active": False, "message": "Shadow mode not running"})
     try:
@@ -33,3 +33,7 @@ async def get_shadow_stats(request: Request) -> JSONResponse:
     except Exception as exc:
         logger.warning("Failed to get shadow stats: %s", exc)
         return JSONResponse({"active": False, "message": "Shadow mode not running"})
+
+
+# US-435: /api/v1/paper/stats alias — same handler as /shadow/stats
+router.get("/paper/stats", dependencies=[Depends(require_auth)])(get_shadow_stats)

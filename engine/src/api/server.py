@@ -46,7 +46,8 @@ class EngineContext:
     })
     funding_rates: dict[str, Any] = field(default_factory=dict)
     exchange_status: dict[str, Any] = field(default_factory=dict)
-    shadow_mode: Any = None
+    paper_mode: Any = None   # US-431: Phase L rename (canonical)
+    shadow_mode: Any = None  # backward-compat alias — set by routes that still use old name
     rolling_metrics: Any = None  # US-281: RollingMetricsCalculator
     # Real subsystem references (set during engine init)
     engine: Any = None

@@ -2,19 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --bg:       #0a0c0f;
-  --surface:  #111419;
-  --border:   #1e2329;
-  --muted:    #2a303a;
-  --text:     #c9d1d9;
-  --subtle:   #6e7681;
-  --profit:   #00ff88;
-  --loss:     #ff4d4d;
-  --accent:   #3b82f6;
-  --warn:     #f59e0b;
+  /* ── Core Palette (XXX STUDIO × LEVIATHAN) — Light Theme ── */
+  --bg:       #FFFFFF;   /* white background */
+  --surface:  #F5F5F7;   /* card / panel — Apple light gray */
+  --border:   rgba(0,0,0,0.08);
+  --muted:    #EBEBED;   /* hover / tertiary */
+  --text:     #111111;   /* primary text */
+  --subtle:   #6B7280;   /* muted text */
+  --profit:   #00A878;   /* success / connected — deeper green on white */
+  --loss:     #E53E4D;   /* danger / error */
+  --accent:   #00B8FF;   /* brand blue — CTA / active */
+  --warn:     #D97706;   /* warning */
+
+  /* ── Semantic Aliases ── */
+  --bg-primary:    var(--bg);
+  --bg-secondary:  var(--surface);
+  --bg-tertiary:   var(--muted);
+  --text-primary:  var(--text);
+  --text-muted:    var(--subtle);
+  --success:       var(--profit);
+  --danger:        var(--loss);
+  --warning:       var(--warn);
+
+  /* ── Accent Glow ── */
+  --accent-subtle:  rgba(0, 184, 255, 0.12);
+  --profit-subtle:  rgba(0, 200, 150, 0.12);
+  --loss-subtle:    rgba(255, 71, 87, 0.12);
 }
 
 *,
@@ -28,45 +44,111 @@ body {
   height: 100%;
   background-color: var(--bg);
   color: var(--text);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: var(--surface); }
-::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 3px; }
+::-webkit-scrollbar-track { background: var(--muted); }
+::-webkit-scrollbar-thumb { background: #C0C0C8; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--subtle); }
+
+/* ── Modern Keyframes ── */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes countUp {
+  from { opacity: 0.4; }
+  to   { opacity: 1; }
+}
+
+@keyframes pulseAccent {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 184, 255, 0); }
+  50%       { box-shadow: 0 0 12px 2px rgba(0, 184, 255, 0.25); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
 
 @layer components {
   .card {
     @apply bg-terminal-surface border border-terminal-border rounded-lg p-4;
+    transition: box-shadow 200ms ease, transform 200ms ease;
+  }
+  .card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 32px rgba(0, 184, 255, 0.08);
   }
   .card-header {
     @apply text-xs font-mono text-terminal-subtle uppercase tracking-widest mb-3;
   }
   .stat-value {
     @apply text-2xl font-mono font-semibold tabular-nums;
+    animation: countUp 300ms ease;
   }
+
+  /* ── Status Badges ── */
   .badge-profit {
     @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-profit border border-profit/30;
-    background: rgba(0,255,136,0.1);
+    background: var(--profit-subtle);
   }
   .badge-loss {
     @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-loss border border-loss/30;
-    background: rgba(255,77,77,0.1);
+    background: var(--loss-subtle);
   }
   .badge-accent {
     @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-accent border border-accent/30;
-    background: rgba(59,130,246,0.1);
+    background: var(--accent-subtle);
   }
   .badge-warn {
     @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-warn border border-warn/30;
     background: rgba(245,158,11,0.1);
   }
+
+  /* ── Glassmorphism Panel ── */
+  .glass {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    will-change: transform;
+    contain: layout style;
+  }
+
+  /* ── Stale Data Indicator ── */
+  .stale {
+    opacity: 0.45;
+    transition: opacity 400ms ease;
+  }
+
+  /* ── Skeleton Loading ── */
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface) 25%, var(--muted) 50%, var(--surface) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+  }
+
+  /* ── Realtime Ticker ── */
+  .ticker-update {
+    animation: countUp 300ms ease;
+  }
 }
 
 @layer utilities {
-  .text-balance { text-wrap: balance; }
-  .tabular-nums { font-variant-numeric: tabular-nums; }
+  .text-balance     { text-wrap: balance; }
+  .tabular-nums     { font-variant-numeric: tabular-nums; }
+  .font-mono-nums   { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+  .fade-in          { animation: fadeIn 300ms ease; }
+  .pulse-accent     { animation: pulseAccent 2s ease-in-out infinite; }
 }

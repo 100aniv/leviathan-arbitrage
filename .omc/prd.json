@@ -25,7 +25,7 @@
     "J": "Merged into TF (US-057/077/079 이동, US-078 삭제)",
     "J-EXT": "Security + UX + Engine Enhancement (Wave1~3 먼저) + Infra (Wave4: K/L/M 완료 후)",
     "K": "Regime Detection (ML-based HMM)",
-    "L": "DEX Real-time + Gas Integration",
+    "L": "Shadow→Paper 리네임 + 대시보드 전면 재설계 (XXX STUDIO 브랜드, Dense 프로 터미널)",
     "M": "ML Signal Pipeline (XGBoost/ONNX)",
     "F": "Final Audit — 72H Shadow to Live (LAST)",
     "S8": "System Integration Hardening (미연결 기능 12개 해소)",
@@ -7309,7 +7309,7 @@
       "phase": "L",
       "title": "Shadow → Paper 코드 전면 리네임 (용어 통일)",
       "priority": 50,
-      "passes": false,
+      "passes": true,
       "files": [
         "engine/src/modes/shadow.py",
         "engine/src/tuning/shadow_runner.py",
@@ -8147,6 +8147,169 @@
         "engine/src/api/server.py"
       ],
       "source": "Phase K 재설계 v5"
+    },
+    {
+      "id": "US-430",
+      "phase": "L",
+      "title": "Shadow→Paper: Python 구조 리네임",
+      "description": "engine/src/modes/shadow.py 클래스/메서드명, main.py 속성, config.py SHADOW_* env var → PAPER_* 전면 리네임. ShadowMode=PaperMode alias 유지.",
+      "files": [
+        "engine/src/modes/shadow.py",
+        "engine/src/main.py",
+        "engine/src/core/config.py",
+        "engine/src/infra/telegram_trade_bot.py"
+      ],
+      "acceptanceCriteria": [
+        "pytest tests/ -x --tb=short -q → 5454+ passed 0 failed",
+        "python -m src.main 시작 로그에 EngineMode: PAPER 확인",
+        "ctx.paper_mode 속성 접근 가능 (ctx.shadow_mode alias도 동작)"
+      ],
+      "dependencies": [
+        "US-386"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-431",
+      "phase": "L",
+      "title": "Shadow→Paper: 테스트 파일 업데이트",
+      "description": "67개 테스트 파일에서 shadow 관련 import/변수명/파일명 paper로 전면 업데이트. test_shadow_*.py → test_paper_*.py 파일명 변경 포함.",
+      "files": [
+        "engine/tests/"
+      ],
+      "acceptanceCriteria": [
+        "pytest tests/ --tb=short -q → 5454+ passed 0 failed",
+        "grep -r shadow engine/tests/ | grep -v .pyc 결과 0건 (레거시 alias 테스트 제외)"
+      ],
+      "dependencies": [
+        "US-430"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-432",
+      "phase": "L",
+      "title": "L-1 대시보드 디자인 시스템 구축",
+      "description": "Kraken dark 테마 기반 CSS 변수 시스템 구축. globals.css에 색상/폰트/간격 변수 정의. MetricCard, StatusBadge, SparkLine, RealTimeTicker 공통 컴포넌트 구현.",
+      "files": [
+        "dashboard/src/app/globals.css",
+        "dashboard/src/components/ui/"
+      ],
+      "acceptanceCriteria": [
+        "globals.css에 --bg-primary(#0A0A0A), --accent(#00B8FF), --success(#00C896), --danger(#FF4757) 변수 정의 + tailwind.config.js color token 업데이트",
+        "MetricCard/StatusBadge/SparkLine 컴포넌트 Chrome 스크린샷 확인",
+        "next build 0 TypeScript errors",
+        "IBM Plex Sans + IBM Plex Mono Google Fonts import 교체 확인 (globals.css:5)"
+      ],
+      "dependencies": [],
+      "passes": true
+    },
+    {
+      "id": "US-433",
+      "phase": "L",
+      "title": "L-2 메인 대시보드 + 핵심 페이지 재설계",
+      "description": "Kraken dark 테마로 홈(Trading Command Center), Strategies, Exchanges, Trades 4개 페이지 전면 재설계. 사용자와 상호작용하며 페이지별 순차 구현.",
+      "files": [
+        "dashboard/src/app/page.tsx",
+        "dashboard/src/app/strategies/page.tsx",
+        "dashboard/src/app/trades/page.tsx",
+        "dashboard/src/app/exchanges/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "홈: 누적PnL/거래수/WR 메트릭카드 + 실시간 PnL 차트 + 최근 체결 5건",
+        "Strategies: 전략별 Sharpe/MDD/WR 카드 + 7일 sparkline",
+        "Exchanges: latency 게이지 카드 (<100ms=green, <500ms=yellow, >500ms=red)",
+        "Chrome DevTools MCP 스크린샷 확인 + API 200",
+        "next build 0 errors"
+      ],
+      "dependencies": [
+        "US-432"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-434",
+      "phase": "L",
+      "title": "L-3 Settings hot-reload API",
+      "description": "strategy_params.json 및 엔진 설정을 재시작 없이 변경하는 API 엔드포인트. PATCH /api/v1/settings/strategy 구현.",
+      "files": [
+        "engine/src/api/routes/settings.py",
+        "engine/src/modes/shadow.py"
+      ],
+      "acceptanceCriteria": [
+        "PATCH /api/v1/settings/strategy → 200 + 엔진 파라미터 즉시 반영",
+        "pytest tests/ 0 failed",
+        "대시보드 Settings 페이지에서 파라미터 변경 → 엔진 로그 확인"
+      ],
+      "dependencies": [
+        "US-430"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-435",
+      "phase": "L",
+      "title": "L-4 /api/v1/shadow → /api/v1/paper 라우트",
+      "description": "/api/v1/shadow/stats → /api/v1/paper/stats 라우트 추가. 기존 /shadow 경로 deprecated alias 유지.",
+      "files": [
+        "engine/src/api/routes/shadow.py",
+        "engine/src/api/server.py",
+        "dashboard/src/lib/api.ts"
+      ],
+      "acceptanceCriteria": [
+        "GET /api/v1/paper/stats → 200 + ShadowStats JSON",
+        "GET /api/v1/shadow/stats → 200 (하위호환 유지)",
+        "dashboard api.ts getShadowStats → /paper/stats 엔드포인트 사용"
+      ],
+      "dependencies": [
+        "US-430"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-436",
+      "phase": "L",
+      "title": "L-5 E2E 브라우저 검증 (UAT)",
+      "description": "Chrome DevTools MCP로 전체 대시보드 11개 페이지 E2E 검증. API 200, WS 연결, 실시간 업데이트, 모바일 반응형 확인.",
+      "files": [
+        "dashboard/src/"
+      ],
+      "acceptanceCriteria": [
+        "11개 페이지 모두 HTTP 200 + 렌더링 오류 없음",
+        "WS /ws/feed 연결 + 실시간 PnL 업데이트 확인",
+        "Chrome DevTools MCP 스크린샷 11장 캡처",
+        "모바일(375px) 뷰 레이아웃 깨짐 없음"
+      ],
+      "dependencies": [
+        "US-433",
+        "US-435"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-437",
+      "phase": "L",
+      "title": "L-6 Assets 페이지 — 거래소별 자산 상태",
+      "description": "13개 거래소별 잔고(USDT/KRW/BTC)/미체결주문/포지션P&L/출금한도 통합 뷰. 기존 portfolio.py /portfolio-summary 엔드포인트 확장 (?include=orders,positions) + EngineContext 30s TTL 캐시.",
+      "files": [
+        "engine/src/api/routes/portfolio.py",
+        "engine/src/api/server.py",
+        "dashboard/src/app/assets/page.tsx",
+        "dashboard/src/components/Sidebar.tsx"
+      ],
+      "acceptanceCriteria": [
+        "GET /api/v1/portfolio/summary?include=orders,positions → 200 + 거래소별 잔고 JSON",
+        "balance_age_sec 필드 <= 35 (30s TTL + 5s 여유)",
+        "EngineContext._balance_cache 30s 백그라운드 갱신 (HTTP 요청 경로 직접 거래소 API 호출 없음)",
+        "Chrome DevTools 스크린샷: 13개 거래소 카드 렌더링",
+        "Sidebar MONITOR 그룹에 Assets 메뉴 추가",
+        "next build 0 errors"
+      ],
+      "dependencies": [
+        "US-432",
+        "US-435"
+      ],
+      "passes": true
     }
   ]
 }

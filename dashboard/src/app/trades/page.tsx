@@ -19,7 +19,7 @@ export default function TradesPage() {
   const [engineMode, setEngineMode] = useState<string>("unknown");
 
   useEffect(() => {
-    getMode().then((m) => setEngineMode(m.mode ?? m.execution_mode ?? "unknown")).catch(() => {});
+    getMode().then((m) => setEngineMode(m.mode ?? "unknown")).catch(() => {});
   }, []);
 
   const fetchTrades = useCallback(async () => {
@@ -98,8 +98,8 @@ export default function TradesPage() {
             거래 내역
             <span className={`ml-2 px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
               engineMode === "live" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
-              engineMode === "shadow" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" :
               engineMode === "paper" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" :
+              engineMode === "backtest" ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" :
               "bg-gray-500/20 text-gray-400 border border-gray-500/30"
             }`}>
               {engineMode}
@@ -168,7 +168,7 @@ export default function TradesPage() {
             Loading trades...
           </div>
         ) : error ? (
-          <div className="p-8 text-center font-mono text-xs" style={{ color: "#ff4d4d" }}>
+          <div className="p-8 text-center font-mono text-xs" style={{ color: "#FF4757" }}>
             {error}
           </div>
         ) : trades.length === 0 ? (
@@ -219,7 +219,7 @@ export default function TradesPage() {
                     </td>
                     <td
                       className="px-4 py-2 text-right tabular-nums font-semibold"
-                      style={{ color: trade.pnl >= 0 ? "#00ff88" : "#ff4d4d" }}
+                      style={{ color: trade.pnl >= 0 ? "#00C896" : "#FF4757" }}
                     >
                       {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(4)}
                     </td>
@@ -229,12 +229,12 @@ export default function TradesPage() {
                         style={{
                           backgroundColor:
                             trade.status === "closed"
-                              ? "rgba(0,255,136,0.1)"
+                              ? "rgba(0,200,150,0.1)"
                               : "rgba(245,158,11,0.1)",
-                          color: trade.status === "closed" ? "#00ff88" : "#f59e0b",
+                          color: trade.status === "closed" ? "#00C896" : "#F59E0B",
                           border: `1px solid ${
                             trade.status === "closed"
-                              ? "rgba(0,255,136,0.2)"
+                              ? "rgba(0,200,150,0.2)"
                               : "rgba(245,158,11,0.2)"
                           }`,
                         }}

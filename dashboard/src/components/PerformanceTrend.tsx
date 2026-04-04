@@ -73,7 +73,7 @@ export function PerformanceTrend() {
         </span>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
-            <div className="w-4 h-0.5" style={{ background: '#00ff88' }} />
+            <div className="w-4 h-0.5" style={{ background: '#059669' }} />
             <span className="text-[10px] font-mono text-terminal-subtle">PnL</span>
           </div>
           <div className="flex items-center gap-1">
@@ -87,21 +87,21 @@ export function PerformanceTrend() {
         <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
           <XAxis
             dataKey="time"
-            tick={{ fill: '#6e7681', fontSize: 9, fontFamily: 'monospace' }}
+            tick={{ fill: '#6B7280', fontSize: 9, fontFamily: 'monospace' }}
             tickLine={false}
-            axisLine={{ stroke: '#1e2329' }}
+            axisLine={{ stroke: '#E5E7EB' }}
             interval="preserveStartEnd"
           />
           <YAxis hide />
           <Tooltip
             contentStyle={{
-              background: '#111419',
-              border: '1px solid #1e2329',
+              background: '#FFFFFF',
+              border: '1px solid #E5E7EB',
               borderRadius: 0,
               fontFamily: 'monospace',
               fontSize: 11,
             }}
-            labelStyle={{ color: '#6e7681', fontSize: 10 }}
+            labelStyle={{ color: '#6B7280', fontSize: 10 }}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             formatter={(value: any, name: any) => {
               const v = +(value ?? 0);
@@ -111,8 +111,8 @@ export function PerformanceTrend() {
           <Area
             type="monotone"
             dataKey="pnl"
-            stroke="#00ff88"
-            fill="rgba(0,255,136,0.1)"
+            stroke="#059669"
+            fill="rgba(5,150,105,0.1)"
             dot={false}
             strokeWidth={1.5}
             isAnimationActive={false}

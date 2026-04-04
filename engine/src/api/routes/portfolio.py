@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 
 from src.api.auth import require_auth
@@ -19,8 +20,8 @@ def _get_exchange_balances(ctx: Any) -> list[dict[str, Any]]:
     """Build per-exchange balance list from available data sources."""
     balances: dict[str, float] = {}
 
-    # Source 1: Shadow mode VirtualBalanceTracker (highest priority)
-    shadow_mode = getattr(ctx, "shadow_mode", None)
+    # Source 1: Paper mode VirtualBalanceTracker (highest priority)
+    shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow_mode is not None:
         tracker = getattr(shadow_mode, "_balance_tracker", None)
         if tracker is not None:
@@ -31,7 +32,7 @@ def _get_exchange_balances(ctx: Any) -> list[dict[str, Any]]:
                 except (ValueError, TypeError):
                     pass
 
-    # Source 2: Shadow trade history — aggregate PnL per exchange as activity proxy
+    # Source 2: Paper trade history — aggregate PnL per exchange as activity proxy
     if not balances and shadow_mode is not None and hasattr(shadow_mode, "_trade_history"):
         ex_pnl: dict[str, float] = {}
         for t in shadow_mode._trade_history:
@@ -58,12 +59,17 @@ def _get_exchange_balances(ctx: Any) -> list[dict[str, Any]]:
             for ex in connected:
                 balances[ex] = per_ex
 
+    # Source 5: active_exchanges from runtime_settings (last resort — shows $0 cards)
+    if not balances:
+        for ex in ctx.runtime_settings.get("active_exchanges", []):
+            balances[ex] = 0.0
+
     # Build response with connection info
     result = []
     total = sum(balances.values()) if balances else 0.0
 
-    # Shadow mode tracks balances = exchange is effectively connected
-    has_shadow = getattr(ctx, "shadow_mode", None) is not None
+    # Paper mode tracks balances = exchange is effectively connected
+    has_shadow = (getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)) is not None
 
     for ex_id, bal in sorted(balances.items()):
         connected = False
@@ -85,9 +91,13 @@ def _get_exchange_balances(ctx: Any) -> list[dict[str, Any]]:
 
 
 @router.get("/portfolio-summary", dependencies=[Depends(require_auth)])
-async def get_portfolio_summary(request: Request) -> JSONResponse:
+async def get_portfolio_summary(
+    request: Request,
+    include: str = Query(default="", description="Comma-separated extra fields: orders,positions"),
+) -> JSONResponse:
     """Return portfolio summary with per-exchange balance breakdown."""
     ctx = request.app.state.engine_context
+    _t0 = time.monotonic()
 
     exchange_balances = _get_exchange_balances(ctx)
     total_balance = sum(eb["balance_usdt"] for eb in exchange_balances)
@@ -98,8 +108,8 @@ async def get_portfolio_summary(request: Request) -> JSONResponse:
     total_pnl = realized + unrealized
     total_trades = len(ctx.trade_history)
 
-    # Shadow mode override — ctx.realized_pnl is not populated for shadow trades
-    shadow_mode = getattr(ctx, "shadow_mode", None)
+    # Paper mode override — ctx.realized_pnl is not populated for paper trades
+    shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow_mode is not None:
         try:
             snap = shadow_mode.get_snapshot()
@@ -119,7 +129,8 @@ async def get_portfolio_summary(request: Request) -> JSONResponse:
     else:
         position_count = len(ctx.positions)
 
-    return JSONResponse({
+    include_set = {s.strip() for s in include.split(",") if s.strip()}
+    payload: dict[str, Any] = {
         "total_balance_usdt": round(total_balance, 2),
         "total_pnl": round(total_pnl, 6),
         "total_trades": total_trades,
@@ -128,7 +139,34 @@ async def get_portfolio_summary(request: Request) -> JSONResponse:
         "exchange_balances": exchange_balances,
         "mode": ctx.execution_mode,
         "last_updated": datetime.now(timezone.utc).isoformat(),
-    })
+        "balance_age_sec": round(time.monotonic() - _t0, 3),
+    }
+
+    if "orders" in include_set:
+        try:
+            payload["open_orders"] = list(getattr(ctx, "open_orders", {}).values())
+        except Exception:
+            payload["open_orders"] = []
+
+    if "positions" in include_set:
+        pm = getattr(ctx, "position_manager", None)
+        if pm is not None:
+            try:
+                payload["positions"] = [
+                    {
+                        "strategy_id": getattr(p, "strategy_id", "unknown"),
+                        "exchange_id": getattr(p, "exchange_id", "unknown"),
+                        "symbol": getattr(p, "symbol", "unknown"),
+                        "unrealized_pnl": float(getattr(p, "unrealized_pnl", 0)),
+                    }
+                    for p in pm.get_all_positions()
+                ]
+            except Exception:
+                payload["positions"] = []
+        else:
+            payload["positions"] = []
+
+    return JSONResponse(payload)
 
 
 @router.get("/portfolio/positions", dependencies=[Depends(require_auth)])

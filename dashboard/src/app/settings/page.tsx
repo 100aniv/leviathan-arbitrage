@@ -37,14 +37,12 @@ const ALL_EXCHANGES = [
 const MODE_LABELS: Record<string, string> = {
   backtest: "Backtest",
   paper: "Paper",
-  shadow: "Shadow",
   live: "Live",
 };
 
 const MODE_DESCRIPTIONS: Record<string, string> = {
   backtest: "과거 데이터 + SimExecutor — 오프라인 전략 성능 검증",
   paper: "실시간 WS + SimExecutor — 실제 시장 데이터 기반 가상 거래 (주문 없음)",
-  shadow: "실시간 WS + AtomicExecutor 소액 Canary — 실제 소액 거래 실행",
   live: "실시간 WS + AtomicExecutor 전액 — LiveGate 통과 필요",
 };
 

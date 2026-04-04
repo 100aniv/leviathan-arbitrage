@@ -11,9 +11,9 @@ const CY        = 100;
 const TOTAL_ARC = Math.PI * RADIUS; // ≈ 282.74
 
 function arcColor(pct: number): string {
-  if (pct > 15) return '#ff4d4d';
+  if (pct > 15) return '#DC2626';
   if (pct > 5)  return '#f59e0b';
-  return '#00ff88';
+  return '#059669';
 }
 
 function GaugeArc({ pct }: { pct: number }) {
@@ -25,7 +25,7 @@ function GaugeArc({ pct }: { pct: number }) {
   return (
     <svg viewBox="0 0 200 110" className="w-full max-w-[200px]" aria-label={`Drawdown gauge: ${clamped.toFixed(1)}%`}>
       {/* Track */}
-      <path d={d} fill="none" stroke="#1e2329" strokeWidth={14} strokeLinecap="round" />
+      <path d={d} fill="none" stroke="#E5E7EB" strokeWidth={14} strokeLinecap="round" />
       {/* Progress arc */}
       <path
         d={d}
@@ -51,7 +51,7 @@ function GaugeArc({ pct }: { pct: number }) {
         {clamped.toFixed(1)}%
       </text>
       {/* Label */}
-      <text x={CX} y={98} textAnchor="middle" fill="#6e7681" fontSize={9} fontFamily="monospace" letterSpacing="1">
+      <text x={CX} y={98} textAnchor="middle" fill="#6B7280" fontSize={9} fontFamily="monospace" letterSpacing="1">
         MAX DRAWDOWN
       </text>
     </svg>

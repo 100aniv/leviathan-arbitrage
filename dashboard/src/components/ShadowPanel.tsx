@@ -107,7 +107,7 @@ function InactiveState() {
         ○ Paper mode inactive
       </span>
       <p className="text-[10px] font-mono text-terminal-subtle/60">
-        Start the engine in Paper or Shadow mode to see live stats
+        Start the engine in Paper mode to see live stats
       </p>
     </div>
   );
@@ -118,7 +118,6 @@ function InactiveState() {
 const MODE_TITLES: Record<string, string> = {
   backtest: '백테스트 모니터',
   paper: '페이퍼 모니터',
-  shadow: 'Canary 모니터',
   live: '실거래 모니터',
 };
 
@@ -129,7 +128,7 @@ interface ShadowPanelProps {
 }
 
 export function ShadowPanel({ wsStats, mode }: ShadowPanelProps = {}) {
-  const panelTitle = MODE_TITLES[mode ?? 'shadow'] ?? '{panelTitle}';
+  const panelTitle = MODE_TITLES[mode ?? 'paper'] ?? '페이퍼 모니터';
   const { data: restData, error, isLoading } = useApi<ShadowStats>(
     '/shadow/stats',
     getShadowStats,

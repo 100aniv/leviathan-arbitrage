@@ -27,7 +27,7 @@ interface PnLChartProps {
 }
 
 const COLORS = {
-  total:      '#00ff88',
+  total:      '#059669',
   realized:   '#3b82f6',
   unrealized: '#f59e0b',
 };
@@ -134,7 +134,7 @@ export function PnLChart({ wsPnl }: PnLChartProps = {}) {
               </div>
               <div
                 className="text-sm font-mono tabular-nums font-semibold"
-                style={{ color: value >= 0 ? '#00ff88' : '#ff4d4d' }}
+                style={{ color: value >= 0 ? '#059669' : '#DC2626' }}
               >
                 {fmt(value)}
               </div>
@@ -146,16 +146,16 @@ export function PnLChart({ wsPnl }: PnLChartProps = {}) {
       {/* Chart */}
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={history} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1e2329" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
           <XAxis
             dataKey="time"
-            tick={{ fill: '#6e7681', fontSize: 9, fontFamily: 'monospace' }}
+            tick={{ fill: '#6B7280', fontSize: 9, fontFamily: 'monospace' }}
             tickLine={false}
-            axisLine={{ stroke: '#1e2329' }}
+            axisLine={{ stroke: '#E5E7EB' }}
             interval="preserveStartEnd"
           />
           <YAxis
-            tick={{ fill: '#6e7681', fontSize: 9, fontFamily: 'monospace' }}
+            tick={{ fill: '#6B7280', fontSize: 9, fontFamily: 'monospace' }}
             tickLine={false}
             axisLine={false}
             tickFormatter={v => `$${v}`}
@@ -163,13 +163,13 @@ export function PnLChart({ wsPnl }: PnLChartProps = {}) {
           />
           <Tooltip
             contentStyle={{
-              background: '#111419',
-              border: '1px solid #1e2329',
+              background: '#FFFFFF',
+              border: '1px solid #E5E7EB',
               borderRadius: 0,
               fontFamily: 'monospace',
               fontSize: 11,
             }}
-            labelStyle={{ color: '#6e7681', fontSize: 10 }}
+            labelStyle={{ color: '#6B7280', fontSize: 10 }}
             formatter={(value: number | undefined, name: string | undefined) => [value != null ? fmt(value) : '—', name ?? '']}
           />
           <Line type="monotone" dataKey="total"      stroke={COLORS.total}      dot={false} strokeWidth={1.5} isAnimationActive={false} />

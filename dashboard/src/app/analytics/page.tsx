@@ -12,11 +12,11 @@ import type { StrategyMetric } from "@/types";
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function heatColor(value: number, maxAbs: number): string {
-  if (maxAbs === 0) return "rgba(80,80,80,0.15)";
+  if (maxAbs === 0) return "rgba(150,150,150,0.15)";
   const ratio = Math.max(-1, Math.min(1, value / maxAbs));
-  if (ratio > 0) return `rgba(0,255,136,${0.08 + ratio * 0.7})`;
-  if (ratio < 0) return `rgba(255,77,77,${0.08 + (-ratio) * 0.7})`;
-  return "rgba(80,80,80,0.15)";
+  if (ratio > 0) return `rgba(5,150,105,${0.08 + ratio * 0.7})`;
+  if (ratio < 0) return `rgba(220,38,38,${0.08 + (-ratio) * 0.7})`;
+  return "rgba(150,150,150,0.15)";
 }
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -59,18 +59,18 @@ function SharpeChart({ data }: { data: StrategyBar[] }) {
         />
         <Tooltip
           contentStyle={{
-            background: "#1a1a1a",
-            border: "1px solid #333",
+            background: "#FFFFFF",
+            border: "1px solid #E5E7EB",
             borderRadius: 0,
             fontSize: 11,
             fontFamily: "JetBrains Mono, monospace",
           }}
           formatter={(v: number | undefined) => [v != null ? `${v >= 0 ? "+" : ""}${v.toFixed(4)}` : "—", "PnL"]}
-          cursor={{ fill: "rgba(255,255,255,0.04)" }}
+          cursor={{ fill: "rgba(0,0,0,0.04)" }}
         />
         <Bar dataKey="value" radius={0}>
           {data.map((d, i) => (
-            <Cell key={i} fill={d.value >= 0 ? "#00ff88" : "#ff4d4d"} fillOpacity={0.8} />
+            <Cell key={i} fill={d.value >= 0 ? "#059669" : "#DC2626"} fillOpacity={0.8} />
           ))}
         </Bar>
       </BarChart>
@@ -126,11 +126,11 @@ function PnLHeatmap({ cells }: { cells: HeatCell[] }) {
         {/* Legend */}
         <div className="flex items-center gap-3 mt-2 ml-10">
           <div className="flex items-center gap-1">
-            <div className="w-10 h-2.5" style={{ background: "linear-gradient(to right, rgba(255,77,77,0.8), rgba(80,80,80,0.15))" }} />
+            <div className="w-10 h-2.5" style={{ background: "linear-gradient(to right, rgba(220,38,38,0.8), rgba(150,150,150,0.15))" }} />
             <span className="text-[9px] font-mono text-terminal-subtle">Loss</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-10 h-2.5" style={{ background: "linear-gradient(to right, rgba(80,80,80,0.15), rgba(0,255,136,0.78))" }} />
+            <div className="w-10 h-2.5" style={{ background: "linear-gradient(to right, rgba(150,150,150,0.15), rgba(5,150,105,0.78))" }} />
             <span className="text-[9px] font-mono text-terminal-subtle">Profit</span>
           </div>
         </div>
@@ -234,8 +234,8 @@ export default function AnalyticsPage() {
   const strategies = Object.values(metrics);
   // Use shadow stats as ground truth for totals (strategy_manager metrics diverge)
   const totalPnl = shadowTotals?.pnl ?? strategies.reduce((s, m) => s + m.pnl, 0);
-  const totalTrades = shadowTotals?.trades ?? strategies.reduce((s, m) => s + ((m as any).trades || m.fills || 0), 0);
-  const totalSignals = strategies.reduce((s, m) => s + (m.signals_received || (m as any).trade_requests || 0), 0);
+  const totalTrades = shadowTotals?.trades ?? strategies.reduce((s, m) => s + ((m as unknown as Record<string, number>).trades || m.fills || 0), 0);
+  const totalSignals = strategies.reduce((s, m) => s + (m.signals_received || (m as unknown as Record<string, number>).trade_requests || 0), 0);
 
   return (
     <div className="space-y-4">
@@ -254,7 +254,7 @@ export default function AnalyticsPage() {
             {
               label: "총 손익",
               value: `${totalPnl >= 0 ? "+" : ""}$${totalPnl.toFixed(4)}`,
-              color: totalPnl >= 0 ? "#00ff88" : "#ff4d4d",
+              color: totalPnl >= 0 ? "#059669" : "#DC2626",
             },
             { label: "총 거래",  value: totalTrades.toLocaleString(),   color: undefined },
             { label: "총 시그널", value: totalSignals.toLocaleString(), color: undefined },
@@ -297,7 +297,7 @@ export default function AnalyticsPage() {
           Loading metrics...
         </div>
       ) : error ? (
-        <div className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-xs font-mono" style={{ color: "#ff4d4d" }}>
+        <div className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-xs font-mono" style={{ color: "#DC2626" }}>
           {error}
         </div>
       ) : strategies.length === 0 ? (
@@ -308,7 +308,7 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {strategies.map((m) => {
             const fillRatio = m.trade_requests > 0 ? (m.fills / m.trade_requests) * 100 : 0;
-            const pnlColor = m.pnl >= 0 ? "#00ff88" : "#ff4d4d";
+            const pnlColor = m.pnl >= 0 ? "#059669" : "#DC2626";
             const barWidth = Math.min(
               Math.abs(m.pnl) / Math.max(...strategies.map((s) => Math.abs(s.pnl)), 0.0001) * 100,
               100
@@ -324,9 +324,9 @@ export default function AnalyticsPage() {
                   <span
                     className="px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0"
                     style={{
-                      backgroundColor: m.enabled ? "rgba(0,255,136,0.1)" : "rgba(100,100,100,0.15)",
-                      color: m.enabled ? "#00ff88" : "#666",
-                      border: `1px solid ${m.enabled ? "rgba(0,255,136,0.2)" : "rgba(100,100,100,0.2)"}`,
+                      backgroundColor: m.enabled ? "rgba(5,150,105,0.1)" : "rgba(100,100,100,0.15)",
+                      color: m.enabled ? "#059669" : "#666",
+                      border: `1px solid ${m.enabled ? "rgba(5,150,105,0.2)" : "rgba(100,100,100,0.2)"}`,
                     }}
                   >
                     {m.enabled ? "ACTIVE" : "IDLE"}
@@ -347,9 +347,9 @@ export default function AnalyticsPage() {
 
                 <div className="grid grid-cols-3 gap-2 pt-1 border-t border-terminal-border/50">
                   {[
-                    { label: "Trades",   value: ((m as any).trades || m.fills || 0).toString() },
-                    { label: "Wins",     value: ((m as any).wins || 0).toString() },
-                    { label: "WR",       value: ((m as any).win_rate ? `${((m as any).win_rate * 100).toFixed(0)}%` : `${m.trade_requests > 0 ? ((m.fills / m.trade_requests) * 100).toFixed(0) : 0}%`) },
+                    { label: "Trades",   value: ((m as unknown as Record<string, number>).trades || m.fills || 0).toString() },
+                    { label: "Wins",     value: ((m as unknown as Record<string, number>).wins || 0).toString() },
+                    { label: "WR",       value: ((m as unknown as Record<string, number>).win_rate ? `${((m as unknown as Record<string, number>).win_rate * 100).toFixed(0)}%` : `${m.trade_requests > 0 ? ((m.fills / m.trade_requests) * 100).toFixed(0) : 0}%`) },
                   ].map(({ label, value }) => (
                     <div key={label}>
                       <p className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">{label}</p>

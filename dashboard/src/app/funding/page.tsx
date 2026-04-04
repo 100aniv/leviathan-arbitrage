@@ -77,8 +77,8 @@ export default function FundingPage() {
   }
 
   function rateColor(rate: number) {
-    if (rate > 0.0001) return "#00ff88";
-    if (rate < -0.0001) return "#ff4d4d";
+    if (rate > 0.0001) return "#059669";
+    if (rate < -0.0001) return "#DC2626";
     return "#8b9cb3";
   }
 
@@ -94,11 +94,11 @@ export default function FundingPage() {
         </div>
         <div className="flex items-center gap-4 text-[10px] font-mono text-terminal-subtle">
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#00ff88" }} />
+            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#059669" }} />
             profit (long pays short)
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#ff4d4d" }} />
+            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#DC2626" }} />
             loss (short pays long)
           </span>
         </div>
@@ -111,7 +111,7 @@ export default function FundingPage() {
             Loading funding rates...
           </div>
         ) : error ? (
-          <div className="p-8 text-center text-xs font-mono" style={{ color: "#ff4d4d" }}>
+          <div className="p-8 text-center text-xs font-mono" style={{ color: "#DC2626" }}>
             {error}
           </div>
         ) : symbols.length === 0 ? (
@@ -221,19 +221,19 @@ export default function FundingPage() {
               >
                 <XAxis
                   dataKey="symbol"
-                  tick={{ fill: '#6e7681', fontSize: 9, fontFamily: 'monospace' }}
+                  tick={{ fill: '#6B7280', fontSize: 9, fontFamily: 'monospace' }}
                   tickLine={false}
-                  axisLine={{ stroke: '#1e2329' }}
+                  axisLine={{ stroke: '#E5E7EB' }}
                 />
                 <YAxis
-                  tick={{ fill: '#6e7681', fontSize: 9, fontFamily: 'monospace' }}
+                  tick={{ fill: '#6B7280', fontSize: 9, fontFamily: 'monospace' }}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={v => `${v}%`}
                   width={44}
                 />
                 <Tooltip
-                  contentStyle={{ background: '#111419', border: '1px solid #1e2329', borderRadius: 0, fontFamily: 'monospace', fontSize: 11 }}
+                  contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 0, fontFamily: 'monospace', fontSize: 11 }}
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   formatter={(v: any) => [`${(v ?? 0) > 0 ? '+' : ''}${(+(v ?? 0)).toFixed(4)}%`, 'Avg Rate']}
                 />
@@ -241,7 +241,7 @@ export default function FundingPage() {
                   {symbols.slice(0, 12).map((sym, idx) => {
                     const rates = exchanges.map(ex => data[ex]?.[sym]?.rate ?? 0);
                     const avg = rates.reduce((s, r) => s + r, 0) / Math.max(rates.length, 1);
-                    return <Cell key={idx} fill={avg >= 0 ? '#00ff88' : '#ff4d4d'} />;
+                    return <Cell key={idx} fill={avg >= 0 ? '#059669' : '#DC2626'} />;
                   })}
                 </Bar>
               </BarChart>

@@ -11,51 +11,87 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // ── Terminal tokens (backward compat — used across 20+ components) ──
         terminal: {
-          bg:      "#0a0c0f",
-          surface: "#111419",
-          border:  "#1e2329",
-          muted:   "#2a303a",
-          text:    "#c9d1d9",
-          subtle:  "#6e7681",
+          bg:      "#FFFFFF",   // white background (light theme)
+          surface: "#F5F5F7",   // card / panel
+          border:  "rgba(0,0,0,0.08)",
+          muted:   "#EBEBED",   // hover / tertiary
+          text:    "#111111",   // primary text
+          subtle:  "#6B7280",   // muted text
         },
+        // ── Semantic tokens (XXX STUDIO × LEVIATHAN) ──
         profit: {
-          DEFAULT: "#00ff88",
-          dim:     "#00cc6a",
-          glow:    "rgba(0,255,136,0.15)",
+          DEFAULT: "#00C896",   // was #00ff88 (softer, more premium)
+          dim:     "#009E78",
+          glow:    "rgba(0,200,150,0.15)",
         },
         loss: {
-          DEFAULT: "#ff4d4d",
-          dim:     "#cc3333",
-          glow:    "rgba(255,77,77,0.15)",
+          DEFAULT: "#FF4757",   // was #ff4d4d
+          dim:     "#CC3344",
+          glow:    "rgba(255,71,87,0.15)",
         },
         accent: {
-          DEFAULT: "#3b82f6",
-          dim:     "#2563eb",
-          glow:    "rgba(59,130,246,0.15)",
+          DEFAULT: "#00B8FF",   // was #3b82f6 → XXX STUDIO brand blue
+          dim:     "#0090CC",
+          glow:    "rgba(0,184,255,0.15)",
+          subtle:  "rgba(0,184,255,0.12)",
         },
         warn: {
-          DEFAULT: "#f59e0b",
-          dim:     "#d97706",
+          DEFAULT: "#F59E0B",   // unchanged
+          dim:     "#D97706",
+        },
+        // ── Aliases for new semantic names ──
+        success: {
+          DEFAULT: "#00C896",
+          glow:    "rgba(0,200,150,0.15)",
+        },
+        danger: {
+          DEFAULT: "#FF4757",
+          glow:    "rgba(255,71,87,0.15)",
         },
       },
       fontFamily: {
-        mono: ["'JetBrains Mono'", "'Fira Code'", "monospace"],
-        sans: ["'Inter'", "system-ui", "sans-serif"],
+        mono: ["'IBM Plex Mono'", "'Fira Code'", "monospace"],
+        sans: ["'IBM Plex Sans'", "system-ui", "sans-serif"],
       },
       boxShadow: {
-        profit: "0 0 12px rgba(0,255,136,0.3)",
-        loss:   "0 0 12px rgba(255,77,77,0.3)",
-        accent: "0 0 12px rgba(59,130,246,0.3)",
+        profit:  "0 0 12px rgba(0,200,150,0.3)",
+        loss:    "0 0 12px rgba(255,71,87,0.3)",
+        accent:  "0 0 12px rgba(0,184,255,0.3)",
+        // Hover glow for cards
+        "accent-hover": "0 8px 32px rgba(0,184,255,0.12)",
+        // Glassmorphism
+        glass:   "0 4px 24px rgba(0,0,0,0.6)",
       },
       keyframes: {
         blink: {
           "0%, 100%": { opacity: "1" },
           "50%":      { opacity: "0" },
         },
+        fadeIn: {
+          from: { opacity: "0", transform: "translateY(4px)" },
+          to:   { opacity: "1", transform: "translateY(0)" },
+        },
+        countUp: {
+          from: { opacity: "0.4" },
+          to:   { opacity: "1" },
+        },
+        pulseAccent: {
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(0,184,255,0)" },
+          "50%":      { boxShadow: "0 0 12px 2px rgba(0,184,255,0.25)" },
+        },
+        shimmer: {
+          "0%":   { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition:  "200% 0" },
+        },
       },
       animation: {
-        blink: "blink 1s step-end infinite",
+        blink:        "blink 1s step-end infinite",
+        "fade-in":    "fadeIn 300ms ease",
+        "count-up":   "countUp 300ms ease",
+        "pulse-accent": "pulseAccent 2s ease-in-out infinite",
+        shimmer:      "shimmer 1.5s infinite",
       },
     },
   },

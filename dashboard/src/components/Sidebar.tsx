@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Zap, ShieldAlert, Server, Activity,
   History, Bell, Settings, BarChart3, TrendingUp, Globe,
-  PieChart, Wallet, Menu, X,
+  PieChart, Wallet, Coins, Menu, X,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -17,6 +17,7 @@ const NAV_GROUPS = [
     label: "MONITOR",
     items: [
       { href: "/",          label: "Overview",    icon: LayoutDashboard, tip: "전체 현황 요약 — PnL, 전략, 리스크" },
+      { href: "/assets",    label: "Assets",      icon: Coins,           tip: "거래소별 잔고 · 미체결 · 포지션 P&L" },
       { href: "/portfolio", label: "Portfolio",   icon: Wallet,          tip: "자산 배분 및 수익률 분석" },
     ],
   },
@@ -99,11 +100,23 @@ export function Sidebar() {
     <>
       {/* Desktop sidebar — md and above */}
       <aside className="hidden md:flex flex-col w-56 min-h-screen bg-terminal-surface border-r border-terminal-border shrink-0">
-        <div className="flex items-center gap-2 px-4 py-4 border-b border-terminal-border shrink-0">
-          <Activity className="w-5 h-5 text-profit" />
-          <div>
-            <p className="text-sm font-mono font-semibold text-terminal-text leading-none">LEVIATHAN</p>
-            <p className="text-[10px] font-mono text-terminal-subtle mt-0.5">ARBITRAGE ENGINE</p>
+        {/* XXX STUDIO brand header */}
+        <div className="px-4 pt-4 pb-2 border-b border-terminal-border shrink-0">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-6 h-6 rounded flex items-center justify-center bg-accent shrink-0">
+              <span className="text-white text-[9px] font-black leading-none">X</span>
+            </div>
+            <div>
+              <p className="text-[10px] font-mono font-bold text-accent tracking-widest leading-none">XXX STUDIO</p>
+              <p className="text-[8px] font-mono text-terminal-subtle mt-0.5 tracking-wider">CREATIVE LAB</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-accent shrink-0" />
+            <div>
+              <p className="text-xs font-mono font-semibold text-terminal-text leading-none">LEVIATHAN</p>
+              <p className="text-[9px] font-mono text-terminal-subtle mt-0.5">ARBITRAGE ENGINE</p>
+            </div>
           </div>
         </div>
         <NavLinks pathname={pathname} />
@@ -115,10 +128,12 @@ export function Sidebar() {
       {/* Mobile top bar — below md */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between h-14 px-4 bg-terminal-surface border-b border-terminal-border">
         <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-profit" />
+          <div className="w-5 h-5 rounded flex items-center justify-center bg-accent shrink-0">
+            <span className="text-white text-[8px] font-black leading-none">X</span>
+          </div>
           <div>
-            <p className="text-sm font-mono font-semibold text-terminal-text leading-none">LEVIATHAN</p>
-            <p className="text-[10px] font-mono text-terminal-subtle mt-0.5">ARBITRAGE ENGINE</p>
+            <p className="text-xs font-mono font-semibold text-terminal-text leading-none">LEVIATHAN</p>
+            <p className="text-[9px] font-mono text-accent mt-0.5 tracking-widest">XXX STUDIO</p>
           </div>
         </div>
         <button

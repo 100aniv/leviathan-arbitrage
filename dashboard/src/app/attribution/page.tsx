@@ -25,7 +25,7 @@ function fmt(n: number) {
   return `${n >= 0 ? "+" : ""}$${Math.abs(n).toFixed(4)}`;
 }
 
-const PIE_COLORS = ['#00ff88', '#3b82f6', '#f59e0b', '#ff4d4d', '#a78bfa', '#34d399', '#fb923c', '#60a5fa'];
+const PIE_COLORS = ['#059669', '#3b82f6', '#f59e0b', '#DC2626', '#a78bfa', '#34d399', '#fb923c', '#60a5fa'];
 
 function 전략PieChart({ items }: { items: AttributionBreakdown[] }) {
   if (items.length === 0) return null;
@@ -36,7 +36,7 @@ function 전략PieChart({ items }: { items: AttributionBreakdown[] }) {
     value: parseFloat(Math.abs(item.pnl).toFixed(4)),
     pct: ((Math.abs(item.pnl) / totalAbs) * 100).toFixed(1),
     profit: item.pnl >= 0,
-    color: item.pnl >= 0 ? PIE_COLORS[idx % PIE_COLORS.length] : '#ff4d4d',
+    color: item.pnl >= 0 ? PIE_COLORS[idx % PIE_COLORS.length] : '#DC2626',
   }));
 
   return (
@@ -60,8 +60,8 @@ function 전략PieChart({ items }: { items: AttributionBreakdown[] }) {
           </Pie>
           <Tooltip
             contentStyle={{
-              background: '#111419',
-              border: '1px solid #1e2329',
+              background: '#FFFFFF',
+              border: '1px solid #E5E7EB',
               borderRadius: 0,
               fontFamily: 'monospace',
               fontSize: 11,
@@ -76,7 +76,7 @@ function 전략PieChart({ items }: { items: AttributionBreakdown[] }) {
             iconType="circle"
             iconSize={8}
             formatter={(value: string) => (
-              <span style={{ color: '#6e7681', fontSize: 10, fontFamily: 'monospace' }}>{value}</span>
+              <span style={{ color: '#6B7280', fontSize: 10, fontFamily: 'monospace' }}>{value}</span>
             )}
           />
         </PieChart>
@@ -93,7 +93,7 @@ function WaterfallChart({ items }: { items: AttributionBreakdown[] }) {
     <div className="space-y-1.5">
       {items.map((item) => {
         const width = (Math.abs(item.pnl) / maxAbs) * 100;
-        const color = item.pnl >= 0 ? "#00ff88" : "#ff4d4d";
+        const color = item.pnl >= 0 ? "#059669" : "#DC2626";
         return (
           <div key={item.key} className="flex items-center gap-3 group">
             <span className="w-28 shrink-0 text-[10px] font-mono text-terminal-subtle truncate text-right">
@@ -177,8 +177,8 @@ function Heatmap({
               const intensity = Math.min(Math.abs(cellPnl) / maxAbs, 1);
               const bg =
                 cellPnl >= 0
-                  ? `rgba(0,255,136,${intensity * 0.7})`
-                  : `rgba(255,77,77,${intensity * 0.7})`;
+                  ? `rgba(5,150,105,${intensity * 0.7})`
+                  : `rgba(220,38,38,${intensity * 0.7})`;
               return (
                 <div
                   key={`${pair.key}-${ex.key}`}
@@ -220,14 +220,14 @@ function DetailTable({ items }: { items: AttributionBreakdown[] }) {
               <td className="px-4 py-2 text-terminal-text">{item.key}</td>
               <td
                 className="px-4 py-2 text-right tabular-nums font-semibold"
-                style={{ color: item.pnl >= 0 ? "#00ff88" : "#ff4d4d" }}
+                style={{ color: item.pnl >= 0 ? "#059669" : "#DC2626" }}
               >
                 {fmt(item.pnl)}
               </td>
               <td className="px-4 py-2 text-right text-terminal-text tabular-nums">
                 {item.trades}
               </td>
-              <td className="px-4 py-2 text-right tabular-nums" style={{ color: item.wr * 100 >= 70 ? "#00ff88" : item.wr * 100 >= 50 ? "#f59e0b" : "#ff4d4d" }}>
+              <td className="px-4 py-2 text-right tabular-nums" style={{ color: item.wr * 100 >= 70 ? "#059669" : item.wr * 100 >= 50 ? "#f59e0b" : "#DC2626" }}>
                 {(item.wr * 100).toFixed(1)}%
               </td>
             </tr>
@@ -298,7 +298,7 @@ export default function AttributionPage() {
       ) : error ? (
         <div
           className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-xs font-mono"
-          style={{ color: "#ff4d4d" }}
+          style={{ color: "#DC2626" }}
         >
           {error}
         </div>
@@ -310,7 +310,7 @@ export default function AttributionPage() {
               {
                 label: "Total PnL",
                 value: fmt(data.total_pnl),
-                color: data.total_pnl >= 0 ? "#00ff88" : "#ff4d4d",
+                color: data.total_pnl >= 0 ? "#059669" : "#DC2626",
               },
               {
                 label: "Total Trades",
@@ -320,12 +320,12 @@ export default function AttributionPage() {
               {
                 label: "Best 전략",
                 value: best전략?.key ?? "—",
-                color: "#00ff88",
+                color: "#059669",
               },
               {
                 label: "Best 거래소",
                 value: best거래소?.key ?? "—",
-                color: "#00ff88",
+                color: "#059669",
               },
             ].map(({ label, value, color }) => (
               <div
