@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.api.auth import require_auth
 
@@ -146,7 +146,7 @@ async def get_paper_result_by_session(session_id: str) -> JSONResponse:
 
 class PaperCompleteRequest(BaseModel):
     """Result payload posted when a paper session ends — US-372/332."""
-    session_id: str
+    session_id: str = Field(..., pattern=r"^[a-zA-Z0-9_-]{1,64}$")
     exchange_id: str = ""
     strategy_id: str = ""
     duration_hours: float = 0.0
@@ -168,6 +168,8 @@ async def complete_paper(body: PaperCompleteRequest) -> JSONResponse:
     # Save per-session result file (US-372)
     _STATE_DIR.mkdir(parents=True, exist_ok=True)
     result_file = _STATE_DIR / f"paper-results-{body.session_id}.json"
+    if not result_file.resolve().is_relative_to(_STATE_DIR.resolve()):
+        return JSONResponse({"error": "invalid_session_id"}, status_code=400)
     result_file.write_text(json.dumps(result, indent=2))
 
     # Update cumulative 24H tracker (US-332)

@@ -243,11 +243,11 @@ class LiveMode(BaseMode):
                 from src.execution.paper import PaperExecutor
                 _op = get_settings().operational
                 try:
-                    pfr = max(Decimal("0"), min(Decimal("1"), _op.shadow_partial_fill_rate))
+                    pfr = max(Decimal("0"), min(Decimal("1"), _op.paper_partial_fill_rate))
                 except Exception:
                     pfr = Decimal("0.05")
                 try:
-                    rr = max(Decimal("0"), min(Decimal("1"), _op.shadow_rejection_rate))
+                    rr = max(Decimal("0"), min(Decimal("1"), _op.paper_rejection_rate))
                 except Exception:
                     rr = Decimal("0.02")
                 self._book_walk_slippage = BookWalkSlippage(books=self._books)

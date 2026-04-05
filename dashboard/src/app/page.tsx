@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import clsx from 'clsx';
 import { PnLChart }    from '@/components/PnLChart';
 import { EventFeed }   from '@/components/EventFeed';
@@ -422,6 +423,156 @@ function RecentFillsPanel({ trades, loading }: { trades: Trade[]; loading: boole
   );
 }
 
+// ─── Backtest View ────────────────────────────────────────────────────────────
+
+interface BtCase {
+  case_id: string; exchange_ids: string[]; strategy_ids: string[];
+  seed_capital: number; period: string; snapshots_replayed: number;
+  signals_generated: number; trades: number; pnl: number; sharpe: number;
+  mdd_pct: number; win_rate: number; profit_factor: number; error: string;
+  ac_pass?: boolean;
+  by_strategy: Record<string, { pnl: number; trades: number; wins: number; win_rate: number }>;
+}
+
+const BT_ABBR: Record<string, string> = {
+  funding_rate_v1: 'FR', triangular_v1: 'TRI', statistical_arb_v1: 'SA',
+  spot_futures_v1: 'SF', cross_exchange_v1: 'CE', futures_futures_v1: 'FF', cex_dex_v1: 'CD',
+};
+const btAbbr = (id: string) => BT_ABBR[id] ?? id.split('_')[0].toUpperCase().slice(0, 3);
+const btEx = (id: string) => id.replace('_futures','F').replace('binance','BN').replace('bybit','BB')
+  .replace('okx','OKX').replace('bitget','BG').replace('upbit','UP').replace('bithumb','BH').replace('coinone','CO');
+
+function BacktestView() {
+  const [cases, setCases] = useState<BtCase[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => {
+    const ids = Array.from({ length: 18 }, (_, i) => String(i + 1).padStart(2, '0'));
+    Promise.all(ids.map(async id => {
+      try {
+        const res = await fetch(`/backtest/backtest-summary-K-BT-${id}.json`);
+        if (!res.ok) return null;
+        return res.json() as Promise<BtCase>;
+      } catch { return null; }
+    })).then(results => {
+      setCases(results.filter((r): r is BtCase => r !== null));
+      setLoading(false);
+    });
+  }, []);
+
+  const valid = cases.filter(c => !c.error);
+  const totalPnl = valid.reduce((s, c) => s + c.pnl, 0);
+  const avgSharpe = valid.length ? valid.reduce((s, c) => s + c.sharpe, 0) / valid.length : 0;
+  const passCount = valid.filter(c => c.ac_pass ?? (c.sharpe >= 1.0 && c.pnl > 0)).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary KPI */}
+      {!loading && valid.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: '총 케이스', value: `${cases.length}개`, sub: `${passCount} AC_PASS`, up: null },
+            { label: '누적 PnL', value: `+$${totalPnl.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, sub: '전 케이스 합산', up: totalPnl > 0 as boolean | null },
+            { label: '평균 Sharpe', value: avgSharpe.toFixed(2), sub: '≥1.0 = 우수', up: avgSharpe >= 1 as boolean | null },
+            { label: '합격률', value: `${passCount}/${valid.length}`, sub: 'Sharpe≥1 & PnL>0', up: passCount === valid.length ? true : null },
+          ].map(k => (
+            <div key={k.label} className="card">
+              <div className="card-header">{k.label}</div>
+              <div className={clsx('text-xl font-mono font-bold tabular-nums mt-1',
+                k.up === true ? 'text-profit' : k.up === false ? 'text-loss' : 'text-terminal-text',
+              )}>{k.value}</div>
+              <div className="text-[10px] font-mono text-terminal-subtle mt-0.5">{k.sub}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="card p-0 overflow-hidden">
+        <div className="px-4 py-3 border-b border-terminal-border flex items-center justify-between">
+          <span className="card-header mb-0">K-BT 배치 결과 — Phase K 검증</span>
+          <span className="text-[9px] font-mono text-terminal-subtle">행 클릭 시 전략별 상세</span>
+        </div>
+        {loading && <div className="p-8 flex justify-center"><div className="h-4 w-32 skeleton rounded" /></div>}
+        {!loading && cases.length === 0 && (
+          <div className="p-8 text-center text-[11px] font-mono text-terminal-subtle">백테스트 결과 없음</div>
+        )}
+        {!loading && cases.length > 0 && (
+          <div className="overflow-x-auto">
+            <div className="grid grid-cols-[80px_140px_1fr_80px_80px_72px_72px] gap-0 px-4 py-2 border-b border-terminal-border bg-terminal-muted/20 text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">
+              <span>ID</span><span>기간</span><span>거래소 / 전략</span>
+              <span className="text-right">PnL</span><span className="text-right">Sharpe</span>
+              <span className="text-right">MDD</span><span className="text-center">결과</span>
+            </div>
+            {cases.map(c => {
+              const pass = !c.error && (c.ac_pass ?? (c.sharpe >= 1.0 && c.pnl > 0));
+              const isExp = expanded === c.case_id;
+              return (
+                <div key={c.case_id}>
+                  <div className={clsx(
+                    'grid grid-cols-[80px_140px_1fr_80px_80px_72px_72px] gap-0 px-4 py-2.5 border-b border-terminal-border/50 cursor-pointer transition-colors',
+                    isExp ? 'bg-terminal-muted/30' : 'hover:bg-terminal-muted/20',
+                    c.error ? 'opacity-50' : '',
+                  )} onClick={() => setExpanded(isExp ? null : c.case_id)}>
+                    <span className="text-[11px] font-mono font-semibold text-accent">{c.case_id}</span>
+                    <span className="text-[10px] font-mono text-terminal-subtle">{c.period}</span>
+                    <div className="flex flex-wrap gap-1 items-center">
+                      {c.exchange_ids.map(e => (
+                        <span key={e} className="text-[8px] font-mono px-1 py-0.5 bg-terminal-bg border border-terminal-border rounded text-terminal-subtle">{btEx(e)}</span>
+                      ))}
+                      {c.strategy_ids.map(s => (
+                        <span key={s} className="text-[8px] font-mono px-1 py-0.5 bg-accent/10 border border-accent/20 rounded text-accent">{btAbbr(s)}</span>
+                      ))}
+                    </div>
+                    <span className={clsx('text-[11px] font-mono font-semibold tabular-nums text-right', c.pnl > 0 ? 'text-profit' : c.pnl < 0 ? 'text-loss' : 'text-terminal-subtle')}>
+                      {c.error ? '—' : `${c.pnl >= 0 ? '+' : ''}$${Math.abs(c.pnl).toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
+                    </span>
+                    <span className={clsx('text-[11px] font-mono tabular-nums text-right', c.sharpe >= 2 ? 'text-profit' : c.sharpe >= 1 ? 'text-warn' : 'text-loss')}>
+                      {c.error ? '—' : c.sharpe.toFixed(2)}
+                    </span>
+                    <span className={clsx('text-[11px] font-mono tabular-nums text-right', c.mdd_pct > 5 ? 'text-loss' : c.mdd_pct > 2 ? 'text-warn' : 'text-profit')}>
+                      {c.error ? '—' : `${c.mdd_pct.toFixed(1)}%`}
+                    </span>
+                    <div className="flex justify-center items-center">
+                      {c.error ? <span className="text-[9px] font-mono text-loss">ERR</span> : (
+                        <span className={clsx('text-[9px] font-mono font-bold px-1.5 py-0.5 rounded',
+                          pass ? 'bg-profit/20 text-profit' : 'bg-loss/20 text-loss',
+                        )}>{pass ? 'PASS' : 'FAIL'}</span>
+                      )}
+                    </div>
+                  </div>
+                  {isExp && !c.error && (
+                    <div className="px-4 py-3 bg-terminal-muted/10 border-b border-terminal-border space-y-2">
+                      <div className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider mb-2">전략별 상세 — {c.case_id}</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {Object.entries(c.by_strategy).map(([sid, s]) => (
+                          <div key={sid} className="bg-terminal-bg border border-terminal-border rounded p-2.5">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] font-mono font-semibold text-terminal-text">{sid}</span>
+                              <span className={clsx('text-[10px] font-mono font-semibold tabular-nums', s.pnl > 0 ? 'text-profit' : s.pnl < 0 ? 'text-loss' : 'text-terminal-subtle')}>
+                                {s.pnl >= 0 ? '+' : ''}${s.pnl.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex gap-3 text-[9px] font-mono text-terminal-subtle">
+                              <span>{s.trades} trades</span>
+                              <span>WR {(s.win_rate * 100).toFixed(0)}%</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function OverviewPage() {
@@ -452,10 +603,8 @@ export default function OverviewPage() {
 
   // 누적 PnL = shadow session total (가장 신뢰할 수 있는 소스)
   const cumulPnl    = shadow?.total_pnl ?? portfolio?.total_pnl ?? data?.pnl?.total ?? 0;
-  // 일일 PnL = WS real-time pnl (오늘치만), 없으면 portfolio daily_pnl
-  const dailyPnl    = (data?.pnl?.total != null && data?.pnl?.total !== 0)
-    ? data.pnl.total
-    : (portfolio?.daily_pnl ?? 0);
+  // 일일 PnL = paper/shadow session pnl (paper mode에서는 세션 = 오늘)
+  const dailyPnl    = shadow?.total_pnl ?? portfolio?.daily_pnl ?? data?.pnl?.total ?? 0;
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const breakdown    = shadow?.by_strategy ?? [];
@@ -463,6 +612,7 @@ export default function OverviewPage() {
   const positions    = data?.positions ?? [];
   const spreadMatrix = (data as unknown as Record<string, unknown>)?.spread_matrix as
     Record<string, Record<string, number>> | null ?? null;
+  const isBacktest   = (data?.mode ?? 'paper').toLowerCase() === 'backtest';
 
   return (
     <div className="space-y-4">
@@ -470,13 +620,18 @@ export default function OverviewPage() {
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-mono font-semibold text-terminal-text">대시보드</h2>
+          <h2 className="text-sm font-mono font-semibold text-terminal-text">
+            {isBacktest ? '백테스트 결과' : '대시보드'}
+          </h2>
           <span className={clsx('text-[9px] font-mono', connected ? 'text-profit' : 'text-loss')}>
             {connected ? '● LIVE' : '● OFFLINE'}
           </span>
         </div>
         <ModeSwitch currentMode={data?.mode ?? 'paper'} />
       </div>
+
+      {/* ── Mode-conditional content ────────────────────────────────────── */}
+      {isBacktest ? <BacktestView /> : (<>
 
       {/* ── Row 1: 4 KPI Cards ──────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -515,7 +670,11 @@ export default function OverviewPage() {
       {/* ── Row 2: PnL Curve (2/3) + Risk Status (1/3) ──────────────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2">
-          <PnLChart wsPnl={data?.pnl ?? null} />
+          <PnLChart wsPnl={
+            shadow?.total_pnl
+              ? { total: shadow.total_pnl, realized: shadow.total_pnl, unrealized: 0 }
+              : (data?.pnl ?? null)
+          } />
         </div>
         <RiskStatusPanel risk={riskMetrics} wsKill={data?.kill_switch ?? false} />
       </div>
@@ -542,6 +701,8 @@ export default function OverviewPage() {
 
       {/* ── Row 6: Event Feed ────────────────────────────────────────────── */}
       <EventFeed />
+
+      </>)}
 
     </div>
   );

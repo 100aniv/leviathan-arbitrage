@@ -150,6 +150,20 @@ async def download_history(request: Request, body: DownloadHistoryRequest) -> JS
     return JSONResponse({"status": "done", "snapshots_stored": total, "symbols": body.symbols})
 
 
+@router.get("/batch_results", dependencies=[Depends(require_auth)])
+async def get_batch_results(request: Request) -> JSONResponse:
+    """Return all K-BT batch backtest results from .omc/state/."""
+    results = []
+    state_dir = _PROJECT_ROOT / ".omc" / "state"
+    for f in sorted(state_dir.glob("backtest-summary-K-BT-*.json")):
+        try:
+            data = json.loads(f.read_text())
+            results.append(data)
+        except Exception:
+            pass
+    return JSONResponse(results)
+
+
 @router.get("/data_availability", dependencies=[Depends(require_auth)])
 async def data_availability(request: Request) -> JSONResponse:
     """Check if synthetic OHLCV data is available (US-362)."""

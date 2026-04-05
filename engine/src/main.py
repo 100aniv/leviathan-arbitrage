@@ -364,9 +364,9 @@ class Engine:
 
         # US-156/164: Shadow disabled strategies and single loss defense
         if "disabled_strategies" in cfg:
-            _setdefault("SHADOW_DISABLED_STRATEGIES", ",".join(cfg["disabled_strategies"]))
+            _setdefault("PAPER_DISABLED_STRATEGIES", ",".join(cfg["disabled_strategies"]))
         if "max_single_loss_usd" in cfg:
-            _setdefault("SHADOW_MAX_LOSS_PER_TRADE_USD", cfg["max_single_loss_usd"])
+            _setdefault("PAPER_MAX_LOSS_PER_TRADE_USD", cfg["max_single_loss_usd"])
 
     async def _init_config(self) -> None:
         # Load non-sensitive config from trading.json; env vars (.env) take priority.

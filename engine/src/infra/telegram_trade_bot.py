@@ -369,7 +369,7 @@ class TradeTelegramBot(TelegramBotBase):
                         enabled_strategies.discard(strategy_name)
 
             # Also set via disabled strategies env
-            disabled = set(os.getenv("SHADOW_DISABLED_STRATEGIES", "").split(","))
+            disabled = set(os.getenv("PAPER_DISABLED_STRATEGIES", "").split(","))
             disabled = {s.strip() for s in disabled if s.strip()}
             if action == "off":
                 disabled.add(strategy_name)
