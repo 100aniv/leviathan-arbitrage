@@ -3254,12 +3254,18 @@ class Engine:
                 if shadow_stats:
                     feed_win_rate = float(shadow_stats.get("win_rate", 0.0))
 
+                # Apply paper_mode override (same as REST /status endpoint)
+                _ws_mode = self.context.execution_mode
+                _pm_obj = getattr(self.context, "paper_mode", None) or getattr(self.context, "shadow_mode", None)
+                if _pm_obj is not None and hasattr(_pm_obj, "_stats"):
+                    _ws_mode = "paper"
+
                 await ws.broadcast({
                     "type": "state_update",
                     "data": {
                         "running": self.context.running,
                         "kill_switch": self.context.kill_switch_active,
-                        "mode": self.context.execution_mode,
+                        "mode": _ws_mode,
                         "strategy_count": len(strategies),
                         "strategies": strategies,
                         "pnl": {

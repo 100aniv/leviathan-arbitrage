@@ -30,7 +30,9 @@ export function MissionControlStrip() {
     : (data?.pnl?.total ?? portfolio?.total_pnl ?? 0);
   const killActive = data?.kill_switch ?? false;
   // WS mode takes priority; fall back to portfolio, then infer 'paper' when shadow_stats active
-  const mode       = (data?.mode ?? portfolio?.mode ?? (isPaperActive ? 'paper' : '—')).toUpperCase();
+  // Normalize 'shadow' → 'paper' for display (engine may send legacy 'shadow' mode name)
+  const _rawMode   = data?.mode ?? portfolio?.mode ?? (isPaperActive ? 'paper' : '—');
+  const mode       = (_rawMode === 'shadow' ? 'paper' : _rawMode).toUpperCase();
   const activeCount = strategies?.filter(s => s.enabled).length
     ?? data?.strategies?.filter((s: { enabled: boolean }) => s.enabled).length ?? 0;
   const winRate     = shadowStats?.win_rate ?? data?.shadow_stats?.win_rate;
