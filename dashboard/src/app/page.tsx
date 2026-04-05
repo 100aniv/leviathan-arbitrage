@@ -457,9 +457,6 @@ export default function OverviewPage() {
     ? data.pnl.total
     : (portfolio?.daily_pnl ?? 0);
 
-  const cumulPos = cumulPnl >= 0;
-  const dailyPos = dailyPnl >= 0;
-
   // ── Derived ──────────────────────────────────────────────────────────────
   const breakdown    = shadow?.by_strategy ?? [];
   const strategyList = strategies ?? data?.strategies ?? [];
