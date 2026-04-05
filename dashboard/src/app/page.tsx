@@ -446,14 +446,19 @@ export default function OverviewPage() {
   // ── KPI values ───────────────────────────────────────────────────────────
   const totalAssets = portfolio?.total_balance_usdt ?? 0;
   const shadow      = data?.shadow_stats ?? null;
-  const sessionPnl  = shadow?.total_pnl ?? data?.pnl?.total ?? portfolio?.total_pnl ?? 0;
-  const cumulPnl    = data?.pnl?.total  ?? portfolio?.total_pnl ?? 0;
   const activePos   = data?.position_count ?? 0;
   const winRate     = shadow?.win_rate ?? 0;
   const totalTrades = shadow?.trades_executed ?? 0;
 
-  const sessionPos = sessionPnl >= 0;
-  const cumulPos   = cumulPnl  >= 0;
+  // 누적 PnL = shadow session total (가장 신뢰할 수 있는 소스)
+  const cumulPnl    = shadow?.total_pnl ?? portfolio?.total_pnl ?? data?.pnl?.total ?? 0;
+  // 일일 PnL = WS real-time pnl (오늘치만), 없으면 portfolio daily_pnl
+  const dailyPnl    = (data?.pnl?.total != null && data?.pnl?.total !== 0)
+    ? data.pnl.total
+    : (portfolio?.daily_pnl ?? 0);
+
+  const cumulPos = cumulPnl >= 0;
+  const dailyPos = dailyPnl >= 0;
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const breakdown    = shadow?.by_strategy ?? [];
@@ -488,17 +493,17 @@ export default function OverviewPage() {
           loading={!portfolio && !data}
         />
         <KpiCard
-          label="세션 PNL"
-          value={`${sessionPos ? '+' : ''}$${Math.abs(sessionPnl).toFixed(2)}`}
+          label="누적 PnL"
+          value={`${cumulPnl >= 0 ? '+' : ''}$${Math.abs(cumulPnl).toFixed(2)}`}
           sub={`WR ${(winRate * 100).toFixed(0)}%`}
-          up={sessionPos ? true : sessionPnl < 0 ? false : null}
+          up={cumulPnl > 0 ? true : cumulPnl < 0 ? false : null}
           loading={!data && !portfolio}
         />
         <KpiCard
-          label="누적 PNL"
-          value={`${cumulPos ? '+' : ''}$${Math.abs(cumulPnl).toFixed(2)}`}
+          label="일일 PnL"
+          value={`${dailyPnl >= 0 ? '+' : ''}$${Math.abs(dailyPnl).toFixed(2)}`}
           sub={`${totalTrades}건 체결`}
-          up={cumulPos ? true : cumulPnl < 0 ? false : null}
+          up={dailyPnl > 0 ? true : dailyPnl < 0 ? false : null}
           loading={!data && !portfolio}
         />
         <KpiCard

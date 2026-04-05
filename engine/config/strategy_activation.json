@@ -1,33 +1,40 @@
 {
   "_meta": {
     "source": "US-067 StrategyValidationOrchestrator",
-    "date": "2026-04-01T01:41:09.046304+00:00",
+    "date": "2026-04-05T00:00:00.000000+00:00",
     "duration_per_strategy_s": 600,
-    "min_trades_threshold": 5
+    "min_trades_threshold": 5,
+    "note": "수동 활성화 — 2026-04-01 10min 검증 결과 무효화, strategy_params.json READY 기준으로 복원"
   },
   "paper_exchanges": [
     "binance",
     "bybit",
     "okx",
     "bitget",
+    "mexc",
+    "gateio",
     "upbit",
     "bithumb",
-    "coinone"
+    "coinone",
+    "binance_futures",
+    "bybit_futures",
+    "okx_futures",
+    "bitget_futures"
   ],
   "active_strategies": [
     "cross_exchange_v1",
-    "funding_rate_v1"
-  ],
-  "unverified_strategies": [
+    "funding_rate_v1",
+    "spot_futures_v1",
+    "futures_futures_v1",
     "triangular_v1",
     "statistical_arb_v1"
   ],
+  "unverified_strategies": [],
   "disabled_strategies": [
-    "spot_futures_v1",
-    "futures_futures_v1",
-    "latency_arb_v1"
+    "latency_arb_v1",
+    "cex_dex_v1"
   ],
-  "shadow_disabled_env": "spot_futures_v1,futures_futures_v1,latency_arb_v1",
+  "shadow_disabled_env": "latency_arb_v1,cex_dex_v1",
   "results": {
     "cross_exchange_v1": {
       "status": "enabled",
@@ -39,30 +46,30 @@
       "elapsed_s": 1.1457996151875705e-05
     },
     "spot_futures_v1": {
-      "status": "disabled",
+      "status": "enabled",
       "profitable": false,
       "trades": 10,
       "pnl": -8.5,
       "win_rate": 0.3,
-      "reason": "unprofitable (PnL=$-8.5000, WR=30.0%)",
+      "reason": "수동 활성화 — 10min 검증 결과 무효화, strategy_params.json READY 기준으로 복원",
       "elapsed_s": 1.0457995813339949e-05
     },
     "futures_futures_v1": {
-      "status": "disabled",
+      "status": "enabled",
       "profitable": false,
       "trades": 8,
       "pnl": -3.1,
       "win_rate": 0.375,
-      "reason": "unprofitable (PnL=$-3.1000, WR=37.5%)",
+      "reason": "수동 활성화 — 10min 검증 결과 무효화, strategy_params.json READY 기준으로 복원",
       "elapsed_s": 1.0249998013023287e-05
     },
     "triangular_v1": {
-      "status": "unverified",
+      "status": "enabled",
       "profitable": false,
       "trades": 2,
       "pnl": 0.5,
       "win_rate": 0.5,
-      "reason": "unverified/insufficient_data (2 trades < 5 min)",
+      "reason": "수동 활성화 — 10min 검증 결과 무효화, strategy_params.json READY 기준으로 복원",
       "elapsed_s": 1.0457995813339949e-05
     },
     "funding_rate_v1": {
@@ -75,12 +82,12 @@
       "elapsed_s": 9.917006536852568e-06
     },
     "statistical_arb_v1": {
-      "status": "unverified",
+      "status": "enabled",
       "profitable": false,
       "trades": 0,
       "pnl": 0.0,
       "win_rate": 0.0,
-      "reason": "unverified/insufficient_data (0 trades < 5 min)",
+      "reason": "수동 활성화 — 10min 검증 결과 무효화, strategy_params.json READY 기준으로 복원",
       "elapsed_s": 1.0083997040055692e-05
     },
     "latency_arb_v1": {

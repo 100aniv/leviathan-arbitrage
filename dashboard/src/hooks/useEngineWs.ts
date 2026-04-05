@@ -14,10 +14,13 @@ export interface UseEngineWsReturn {
 const INITIAL_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS     = 30_000;
 
-function getCookieToken(): string | null {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(/(?:^|;\s*)leviathan_token=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : null;
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  // localStorage 우선 (api.ts와 동일한 소스), cookie fallback
+  return localStorage.getItem("leviathan_token") ||
+    (document.cookie.match(/(?:^|;\s*)leviathan_token=([^;]+)/)?.[1]
+      ? decodeURIComponent(document.cookie.match(/(?:^|;\s*)leviathan_token=([^;]+)/)![1])
+      : null);
 }
 
 function getWsUrl(): string {
@@ -25,8 +28,8 @@ function getWsUrl(): string {
     (typeof process !== "undefined" &&
       process.env.NEXT_PUBLIC_ENGINE_URL) ||
     "http://localhost:8000";
-  const base = engineUrl.replace(/^http/, "ws") + "/ws/feed";
-  const token = getCookieToken();
+  const base = engineUrl.replace(/^http/, "ws") + "/ws";
+  const token = getToken();
   return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 }
 
