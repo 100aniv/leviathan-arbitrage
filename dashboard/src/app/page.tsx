@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import clsx from 'clsx';
 import { PnLChart }    from '@/components/PnLChart';
 import { EventFeed }   from '@/components/EventFeed';
@@ -442,24 +442,26 @@ const btAbbr = (id: string) => BT_ABBR[id] ?? id.split('_')[0].toUpperCase().sli
 const btEx = (id: string) => id.replace('_futures','F').replace('binance','BN').replace('bybit','BB')
   .replace('okx','OKX').replace('bitget','BG').replace('upbit','UP').replace('bithumb','BH').replace('coinone','CO');
 
-function BacktestView() {
-  const [cases, setCases] = useState<BtCase[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
+async function _fetchBtStaticFallback(): Promise<BtCase[]> {
+  const ids = Array.from({ length: 18 }, (_, i) => String(i + 1).padStart(2, '0'));
+  const results = await Promise.all(ids.map(async id => {
+    try {
+      const res = await fetch(`/backtest/backtest-summary-K-BT-${id}.json`);
+      if (!res.ok) return null;
+      return res.json() as Promise<BtCase>;
+    } catch { return null; }
+  }));
+  return results.filter((r): r is BtCase => r !== null);
+}
 
-  useEffect(() => {
-    const ids = Array.from({ length: 18 }, (_, i) => String(i + 1).padStart(2, '0'));
-    Promise.all(ids.map(async id => {
-      try {
-        const res = await fetch(`/backtest/backtest-summary-K-BT-${id}.json`);
-        if (!res.ok) return null;
-        return res.json() as Promise<BtCase>;
-      } catch { return null; }
-    })).then(results => {
-      setCases(results.filter((r): r is BtCase => r !== null));
-      setLoading(false);
-    });
-  }, []);
+function BacktestView() {
+  const { data: casesData, isLoading: loading } = useApi<BtCase[]>(
+    '/api/backtest/batch_results',
+    _fetchBtStaticFallback,
+    { refreshInterval: 0 },
+  );
+  const cases = casesData ?? [];
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const valid = cases.filter(c => !c.error);
   const totalPnl = valid.reduce((s, c) => s + c.pnl, 0);
@@ -603,8 +605,8 @@ export default function OverviewPage() {
 
   // 누적 PnL = shadow session total (가장 신뢰할 수 있는 소스)
   const cumulPnl    = shadow?.total_pnl ?? portfolio?.total_pnl ?? data?.pnl?.total ?? 0;
-  // 일일 PnL = paper/shadow session pnl (paper mode에서는 세션 = 오늘)
-  const dailyPnl    = shadow?.total_pnl ?? portfolio?.daily_pnl ?? data?.pnl?.total ?? 0;
+  // 일일 PnL: portfolio.daily_pnl 우선, 없으면 세션 PnL fallback
+  const dailyPnl    = portfolio?.daily_pnl ?? shadow?.total_pnl ?? 0;
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const breakdown    = shadow?.by_strategy ?? [];
