@@ -2661,15 +2661,16 @@ class Engine:
                     async with self._db_pool.pool.acquire() as conn:
                         rows = await conn.fetch(
                             "SELECT key, value FROM engine_state"
-                            " WHERE key IN ('shadow_total_pnl', 'shadow_trades_executed')"
+                            " WHERE key IN ('paper_total_pnl', 'paper_trades_executed',"
+                            " 'shadow_total_pnl', 'shadow_trades_executed')"
                         )
                         for row in rows:
-                            if row["key"] == "shadow_total_pnl":
+                            if row["key"] in ("paper_total_pnl", "shadow_total_pnl"):
                                 self._paper_mode._stats.total_pnl = float(row["value"])
-                                logger.info("shadow_total_pnl_restored value=%s", row["value"])
-                            elif row["key"] == "shadow_trades_executed":
+                                logger.info("paper_total_pnl_restored value=%s", row["value"])
+                            elif row["key"] in ("paper_trades_executed", "shadow_trades_executed"):
                                 self._paper_mode._stats.trades_executed = int(row["value"])
-                                logger.info("shadow_trades_executed_restored value=%s", row["value"])
+                                logger.info("paper_trades_executed_restored value=%s", row["value"])
                 except Exception as exc:
                     logger.warning("shadow_stats_warm_start_failed error=%s", exc)
 
@@ -3175,9 +3176,9 @@ class Engine:
                                 VALUES ($1, $2, NOW())
                                 ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
                             """
-                            await conn.execute(_UPSERT_SHADOW, "shadow_total_pnl", str(stats.total_pnl))
-                            await conn.execute(_UPSERT_SHADOW, "shadow_trades_executed", str(stats.trades_executed))
-                        logger.debug("shadow_stats_persisted trades=%s pnl=%s", stats.trades_executed, stats.total_pnl)
+                            await conn.execute(_UPSERT_SHADOW, "paper_total_pnl", str(stats.total_pnl))
+                            await conn.execute(_UPSERT_SHADOW, "paper_trades_executed", str(stats.trades_executed))
+                        logger.debug("paper_stats_persisted trades=%s pnl=%s", stats.trades_executed, stats.total_pnl)
                     except Exception as exc:
                         logger.debug("shadow_stats_persist_error error=%s", exc)
             except asyncio.CancelledError:

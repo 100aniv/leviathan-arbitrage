@@ -48,7 +48,7 @@ async def engine_mode(request: Request) -> JSONResponse:
     mode = ctx.execution_mode
     shadow_active = getattr(ctx, "shadow_active", False)
     # Auto-detect shadow mode from runtime state
-    shadow_mode = getattr(ctx, "shadow_mode", None)
+    shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow_mode is not None and hasattr(shadow_mode, "_stats"):
         mode = "shadow"
         shadow_active = True

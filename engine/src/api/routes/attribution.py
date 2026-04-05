@@ -75,7 +75,7 @@ async def get_attribution(request: Request) -> JSONResponse:
     # Live instance already accumulates on_fill — do NOT re-add from trade_history
 
     # Shadow mode fallback: if attribution is empty and shadow has trade history, use it
-    shadow_mode = getattr(ctx, "shadow_mode", None)
+    shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow_mode is not None and hasattr(shadow_mode, "_trade_history"):
         attr_summary = attribution.summary()
         if attr_summary.get("total_trades", 0) == 0 and len(shadow_mode._trade_history) > 0:

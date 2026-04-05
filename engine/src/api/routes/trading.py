@@ -40,8 +40,8 @@ def _get_positions(ctx: Any) -> list[dict[str, Any]]:
 
 def _get_pnl(ctx: Any) -> dict[str, float]:
     """Get PnL from real PositionManager, shadow stats, or fallback to context values."""
-    # Shadow mode: use shadow stats for PnL
-    shadow_mode = getattr(ctx, "shadow_mode", None)
+    # Paper/Shadow mode: use paper stats for PnL
+    shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow_mode is not None and hasattr(shadow_mode, "_stats"):
         stats = shadow_mode._stats
         return {
@@ -108,15 +108,15 @@ async def list_trades(
     ctx = request.app.state.engine_context
     trades = list(ctx.trade_history)
 
-    # Shadow mode: use shadow_mode._trade_history if ctx.trade_history is empty
+    # Paper/Shadow mode: use paper_mode._trade_history if ctx.trade_history is empty
     if not trades:
-        shadow_mode = getattr(ctx, "shadow_mode", None)
+        shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
         if shadow_mode is not None and hasattr(shadow_mode, "_trade_history"):
             trades = list(shadow_mode._trade_history)
 
     # Fallback: query execution_log from DB when both are empty
     if not trades:
-        shadow_mode = getattr(ctx, "shadow_mode", None)
+        shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
         if shadow_mode is not None and hasattr(shadow_mode, "_db_pool") and shadow_mode._db_pool is not None:
             try:
                 pool = shadow_mode._db_pool.pool if hasattr(shadow_mode._db_pool, "pool") else shadow_mode._db_pool
@@ -202,13 +202,13 @@ async def get_trade_detail(request: Request, trade_id: str) -> JSONResponse:
             detail.setdefault("net_pnl", detail.get("pnl", 0.0))
             detail.setdefault("expected_pnl", 0.0)
             return JSONResponse(detail)
-    # Fallback: search shadow_mode._trade_history
-    shadow_mode = getattr(ctx, "shadow_mode", None)
+    # Fallback: search paper_mode._trade_history
+    shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow_mode is not None and hasattr(shadow_mode, "_trade_history"):
         for trade in shadow_mode._trade_history:
             if trade.get("id") == trade_id:
                 detail = dict(trade)
-                detail.setdefault("reason", "Shadow mode execution")
+                detail.setdefault("reason", "Paper mode execution")
                 detail.setdefault("spread_bps", 0.0)
                 detail.setdefault("fee_usd", detail.get("fee", 0.0))
                 detail.setdefault("net_pnl", detail.get("pnl", 0.0))
@@ -218,8 +218,8 @@ async def get_trade_detail(request: Request, trade_id: str) -> JSONResponse:
 
 
 def _get_shadow_by_strategy(ctx: Any) -> dict[str, dict]:
-    """Return shadow by_strategy data keyed by strategy_id, or empty dict."""
-    shadow_mode = getattr(ctx, "shadow_mode", None)
+    """Return paper/shadow by_strategy data keyed by strategy_id, or empty dict."""
+    shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow_mode is None:
         return {}
     snapshot = {}
@@ -300,9 +300,9 @@ async def get_status(request: Request) -> JSONResponse:
     """Return overall engine status."""
     ctx = request.app.state.engine_context
     mode = ctx.execution_mode
-    shadow_mode = getattr(ctx, "shadow_mode", None)
+    shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow_mode is not None and hasattr(shadow_mode, "_stats"):
-        mode = "shadow"
+        mode = "paper"
     strategy_count = len(ctx.strategies)
     if strategy_count == 0 and ctx.strategy_manager is not None:
         try:

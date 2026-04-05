@@ -18,7 +18,7 @@ def _get_strategy_list(ctx: Any) -> list[dict[str, Any]]:
     """Get strategy list from real StrategyManager or fallback to dict."""
     # Collect shadow by_strategy data for merging
     shadow_map: dict[str, dict] = {}
-    shadow_mode = getattr(ctx, "shadow_mode", None)
+    shadow_mode = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow_mode is not None:
         try:
             snapshot = shadow_mode.get_snapshot() if hasattr(shadow_mode, "get_snapshot") else {}

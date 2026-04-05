@@ -67,7 +67,7 @@ async def start_paper(request: Request, body: PaperStartRequest) -> JSONResponse
                 {"error": "force_enable requires at least one strategy_id"},
                 status_code=422,
             )
-        shadow = getattr(ctx, "shadow_mode", None)
+        shadow = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
         if shadow is not None and hasattr(shadow, "force_enable_strategies"):
             shadow.force_enable_strategies(effective_ids)
 

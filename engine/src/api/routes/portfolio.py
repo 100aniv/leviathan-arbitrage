@@ -204,7 +204,7 @@ async def get_daily_returns(request: Request) -> JSONResponse:
     ctx = request.app.state.engine_context
     returns: list[dict[str, Any]] = []
 
-    shadow = getattr(ctx, "shadow_mode", None)
+    shadow = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow is not None and hasattr(shadow, "get_snapshot"):
         try:
             snapshot = shadow.get_snapshot()
@@ -237,7 +237,7 @@ async def get_equity_curve(request: Request) -> JSONResponse:
 
     # Build equity curve from shadow mode trade history or context
     curve_data = []
-    shadow = getattr(ctx, "shadow_mode", None)
+    shadow = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow is not None:
         snapshot = shadow.get_snapshot() if hasattr(shadow, 'get_snapshot') else {}
         total_pnl = float(snapshot.get("total_pnl", 0))
@@ -276,7 +276,7 @@ async def get_portfolio_metrics(request: Request) -> JSONResponse:
         "total_pnl": 0.0,
     }
 
-    shadow = getattr(ctx, "shadow_mode", None)
+    shadow = getattr(ctx, "paper_mode", None) or getattr(ctx, "shadow_mode", None)
     if shadow is not None:
         snapshot = shadow.get_snapshot() if hasattr(shadow, 'get_snapshot') else {}
         metrics["total_pnl"] = float(snapshot.get("total_pnl", 0))
