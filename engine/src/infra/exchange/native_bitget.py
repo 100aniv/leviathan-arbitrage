@@ -36,6 +36,7 @@ class NativeBitgetAdapter(NativeAdapter):
     def __init__(self, **kwargs: Any) -> None:
         kwargs.setdefault("rate_limits", _BITGET_RATE_LIMITS)
         super().__init__(exchange_id="bitget", **kwargs)
+        self._market_type: str = "spot"  # set to "futures" by create_native_adapter
 
     # ------------------------------------------------------------------
     # Abstract implementations
@@ -94,6 +95,14 @@ class NativeBitgetAdapter(NativeAdapter):
 
     async def _rest_get_orderbook(self, symbol: str, depth: int = 20) -> OrderBook:
         sym = _normalize_symbol(symbol)
+        if self._market_type == "futures":
+            resp = await self._request(
+                "GET",
+                "/api/v2/mix/market/merge-depth",
+                params={"symbol": sym, "productType": "USDT-FUTURES", "precision": "scale0", "limit": str(depth)},
+            )
+            data = resp.get("data", {})
+            return self._build_orderbook(symbol, data.get("bids", []), data.get("asks", []))
         resp = await self._request(
             "GET",
             "/api/v2/spot/market/orderbook",
@@ -105,18 +114,37 @@ class NativeBitgetAdapter(NativeAdapter):
     async def _rest_place_order(self, order: Order) -> Trade:
         sym = _normalize_symbol(order.symbol)
         side = "buy" if order.side == OrderSide.BUY else "sell"
-        body: dict[str, Any] = {
-            "symbol": sym,
-            "side": side,
-            "orderType": "limit" if order.price else "market",
-            "size": str(order.amount),
-        }
-        if order.price:
-            body["price"] = str(order.price)
-        if order.client_order_id:
-            body["clientOid"] = order.client_order_id
 
-        resp = await self._request("POST", "/api/v2/spot/trade/place-order", data=body, signed=True)
+        if self._market_type == "futures":
+            body: dict[str, Any] = {
+                "symbol": sym,
+                "productType": "USDT-FUTURES",
+                "marginMode": "crossed",
+                "marginCoin": "USDT",
+                "size": str(order.amount),
+                "side": side,
+                "tradeSide": "open",
+                "orderType": "limit" if order.price else "market",
+                "force": "gtc",
+            }
+            if order.price:
+                body["price"] = str(order.price)
+            if order.client_order_id:
+                body["clientOid"] = order.client_order_id
+            resp = await self._request("POST", "/api/v2/mix/order/place-order", data=body, signed=True)
+        else:
+            body = {
+                "symbol": sym,
+                "side": side,
+                "orderType": "limit" if order.price else "market",
+                "size": str(order.amount),
+                "force": "gtc",
+            }
+            if order.price:
+                body["price"] = str(order.price)
+            if order.client_order_id:
+                body["clientOid"] = order.client_order_id
+            resp = await self._request("POST", "/api/v2/spot/trade/place-order", data=body, signed=True)
         rd = resp.get("data", {})
         return self._build_trade(
             order,
@@ -157,9 +185,15 @@ class NativeBitgetAdapter(NativeAdapter):
         body: dict[str, Any] = {"orderId": order_id}
         if symbol:
             body["symbol"] = _normalize_symbol(symbol)
-        resp = await self._request(
-            "POST", "/api/v2/spot/trade/cancel-order", data=body, signed=True
-        )
+        if self._market_type == "futures":
+            body["productType"] = "USDT-FUTURES"
+            resp = await self._request(
+                "POST", "/api/v2/mix/order/cancel-order", data=body, signed=True
+            )
+        else:
+            resp = await self._request(
+                "POST", "/api/v2/spot/trade/cancel-order", data=body, signed=True
+            )
         return resp.get("code") == "00000"
 
     async def _rest_cancel_all_orders(self, symbol: str | None) -> int:
@@ -173,8 +207,20 @@ class NativeBitgetAdapter(NativeAdapter):
         return len(cancelled) if isinstance(cancelled, list) else 0
 
     async def _rest_get_balances(self) -> dict[str, Balance]:
+        if self._market_type == "futures":
+            resp = await self._request(
+                "GET", "/api/v2/mix/account/accounts",
+                params={"productType": "USDT-FUTURES"}, signed=True,
+            )
+            result: dict[str, Balance] = {}
+            for item in resp.get("data", []):
+                cur = item.get("marginCoin", "")
+                free = Decimal(str(item.get("available", "0")))
+                frozen = Decimal(str(item.get("frozen", "0")))
+                result[cur] = Balance(currency=cur, free=free, used=frozen, total=free + frozen)
+            return result
         resp = await self._request("GET", "/api/v2/spot/account/assets", signed=True)
-        result: dict[str, Balance] = {}
+        result = {}
         for item in resp.get("data", []):
             cur = item.get("coin", "")
             free = Decimal(str(item.get("available", "0")))

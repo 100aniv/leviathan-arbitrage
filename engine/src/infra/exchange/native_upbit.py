@@ -46,7 +46,9 @@ def _make_jwt(access_key: str, secret_key: str, query_params: dict | None = None
         "nonce": str(uuid.uuid4()),
     }
     if query_params:
-        qs = urllib.parse.urlencode(sorted(query_params.items()))
+        # Upbit validates against the exact URL-encoded param string sent with the request.
+        # Do NOT sort — preserve insertion order to match what httpx sends in the URL.
+        qs = urllib.parse.urlencode(query_params)
         payload["query_hash"] = hashlib.sha512(qs.encode()).hexdigest()
         payload["query_hash_alg"] = "SHA512"
 
@@ -139,7 +141,9 @@ class NativeUpbitAdapter(NativeAdapter):
         if order.client_order_id:
             body["identifier"] = order.client_order_id
 
-        resp = await self._request("POST", "/v1/orders", data=body, signed=True)
+        # Upbit POST /v1/orders expects parameters as URL query params (not JSON body).
+        # The JWT query_hash is computed from the same params in the same order.
+        resp = await self._request("POST", "/v1/orders", params=body, signed=True)
         return self._build_trade(
             order,
             trade_id=resp.get("uuid", ""),

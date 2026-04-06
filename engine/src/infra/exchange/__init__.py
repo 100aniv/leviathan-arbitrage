@@ -13,6 +13,7 @@ from src.infra.exchange.native_gateio import NativeGateIOAdapter
 from src.infra.exchange.native_bingx import NativeBingXAdapter
 from src.infra.exchange.native_lbank import NativeLBankAdapter
 from src.infra.exchange.native_orangex import NativeOrangeXAdapter
+from src.infra.exchange.native_coinone import NativeCoinoneAdapter
 from src.infra.exchange.rate_limiter import ExchangeRateLimiter, RateLimitConfig
 from src.infra.exchange.websocket_manager import ConnectionConfig, ConnectionState, WebSocketManager
 
@@ -47,6 +48,7 @@ __all__ = [
     "NativeBingXAdapter",
     "NativeLBankAdapter",
     "NativeOrangeXAdapter",
+    "NativeCoinoneAdapter",
     # Infrastructure
     "HealthChecker",
     "ExchangeRateLimiter",
@@ -70,6 +72,7 @@ _NATIVE_ADAPTER_MAP: dict[str, type[NativeAdapter]] = {
     "bingx": NativeBingXAdapter,
     "lbank": NativeLBankAdapter,
     "orangex": NativeOrangeXAdapter,
+    "coinone": NativeCoinoneAdapter,
 }
 
 

@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 _REST_URL = "https://api.binance.com"
 _REST_SANDBOX_URL = "https://testnet.binance.vision"
+_REST_FUTURES_URL = "https://fapi.binance.com"
 _WS_BASE = "wss://stream.binance.com:9443"
 _WS_SANDBOX_BASE = "wss://testnet.binance.vision"
 
@@ -74,7 +75,11 @@ class BinanceNativeAdapter(NativeAdapter):
     # ------------------------------------------------------------------
 
     def _rest_base_url(self) -> str:
-        return _REST_SANDBOX_URL if self._sandbox else _REST_URL
+        if self._sandbox:
+            return _REST_SANDBOX_URL
+        if self._market_type == "futures":
+            return _REST_FUTURES_URL
+        return _REST_URL
 
     def _default_headers(self) -> dict[str, str]:
         headers: dict[str, str] = {}
@@ -149,9 +154,10 @@ class BinanceNativeAdapter(NativeAdapter):
     # ------------------------------------------------------------------
 
     async def _rest_get_orderbook(self, symbol: str, depth: int = 20) -> OrderBook:
+        path = "/fapi/v1/depth" if self._market_type == "futures" else "/api/v3/depth"
         raw = await self._request(
             "GET",
-            "/api/v3/depth",
+            path,
             params={"symbol": _symbol_to_binance(symbol), "limit": depth},
         )
         ob = self._build_orderbook(
@@ -206,7 +212,8 @@ class BinanceNativeAdapter(NativeAdapter):
         if order.client_order_id:
             params["newClientOrderId"] = order.client_order_id
 
-        raw = await self._signed_request("POST", "/api/v3/order", params=params)
+        path = "/fapi/v1/order" if self._market_type == "futures" else "/api/v3/order"
+        raw = await self._signed_request("POST", path, params=params)
 
         trade_id = str(raw.get("orderId", ""))
         filled_qty = Decimal(str(raw.get("executedQty", order.amount)))
@@ -230,9 +237,10 @@ class BinanceNativeAdapter(NativeAdapter):
     async def _rest_cancel_order(self, order_id: str, symbol: str | None) -> bool:
         if not symbol:
             raise ValueError("Binance cancel_order requires symbol")
+        path = "/fapi/v1/order" if self._market_type == "futures" else "/api/v3/order"
         await self._signed_request(
             "DELETE",
-            "/api/v3/order",
+            path,
             params={"symbol": _symbol_to_binance(symbol), "orderId": order_id},
         )
         return True
@@ -240,27 +248,42 @@ class BinanceNativeAdapter(NativeAdapter):
     async def _rest_cancel_all_orders(self, symbol: str | None) -> int:
         if not symbol:
             raise ValueError("Binance cancel_all_orders requires symbol")
+        path = "/fapi/v1/allOpenOrders" if self._market_type == "futures" else "/api/v3/openOrders"
         raw = await self._signed_request(
             "DELETE",
-            "/api/v3/openOrders",
+            path,
             params={"symbol": _symbol_to_binance(symbol)},
         )
         return len(raw) if isinstance(raw, list) else 0
 
     async def _rest_get_balances(self) -> dict[str, Balance]:
-        raw = await self._signed_request("GET", "/api/v3/account")
         balances: dict[str, Balance] = {}
-        for asset in raw.get("balances", []):
-            free = Decimal(asset["free"])
-            locked = Decimal(asset["locked"])
-            total = free + locked
-            if total > 0:
-                balances[asset["asset"]] = Balance(
-                    currency=asset["asset"],
-                    free=free,
-                    used=locked,
-                    total=total,
-                )
+        if self._market_type == "futures":
+            raw = await self._signed_request("GET", "/fapi/v2/balance")
+            for asset in raw:
+                total = Decimal(str(asset.get("balance", "0")))
+                free = Decimal(str(asset.get("availableBalance", str(total))))
+                used = total - free
+                if total > 0:
+                    balances[asset["asset"]] = Balance(
+                        currency=asset["asset"],
+                        free=free,
+                        used=used,
+                        total=total,
+                    )
+        else:
+            raw = await self._signed_request("GET", "/api/v3/account")
+            for asset in raw.get("balances", []):
+                free = Decimal(asset["free"])
+                locked = Decimal(asset["locked"])
+                total = free + locked
+                if total > 0:
+                    balances[asset["asset"]] = Balance(
+                        currency=asset["asset"],
+                        free=free,
+                        used=locked,
+                        total=total,
+                    )
         return balances
 
     async def _rest_get_positions(self) -> list[Position]:
@@ -301,7 +324,8 @@ class BinanceNativeAdapter(NativeAdapter):
             "price": str(price),
             "quantity": str(size),
         }
-        raw = await self._signed_request("POST", "/api/v3/order", params=params)
+        path = "/fapi/v1/order" if self._market_type == "futures" else "/api/v3/order"
+        raw = await self._signed_request("POST", path, params=params)
         filled_qty = Decimal(str(raw.get("executedQty", "0")))
         # Compute avg price from fills if available, otherwise fallback to requested price
         fills = raw.get("fills", [])
