@@ -465,6 +465,55 @@ _ALL_EXCHANGES = [
     "bitget", "bitget_futures",
 ]
 
+
+async def _fetch_all_balances(exchange_id: str) -> tuple[str, dict | str]:
+    """Return (exchange_id, balances_dict) or (exchange_id, error_str)."""
+    base_id = exchange_id.removesuffix("_futures")
+    creds = _CRED_MAP.get(base_id)
+    if not creds:
+        return exchange_id, "no_credentials"
+    key_env, secret_env, pass_env = creds
+    api_key = os.environ.get(key_env, "").strip()
+    api_secret = os.environ.get(secret_env, "").strip()
+    passphrase = os.environ.get(pass_env, "").strip() if pass_env else ""
+    if not api_key or not api_secret:
+        return exchange_id, "missing_credentials"
+    try:
+        adapter = create_native_adapter(
+            exchange_id=exchange_id,
+            api_key=api_key,
+            api_secret=api_secret,
+            passphrase=passphrase,
+        )
+        await adapter.connect()
+        bals = await adapter.get_balances()
+        await adapter.disconnect()
+        return exchange_id, bals
+    except Exception as exc:
+        return exchange_id, str(exc)[:100]
+
+
+def _print_balances_table(results: list[tuple[str, dict | str]]) -> None:
+    """Print all non-zero balances for every exchange in a clean table."""
+    print()
+    print(f"{'거래소':<22} {'통화':<8} {'가용(free)':>16} {'총잔고(total)':>16}")
+    print("─" * 68)
+    for exchange_id, bals in results:
+        name = _DISPLAY_NAME.get(exchange_id, exchange_id)
+        if isinstance(bals, str):
+            print(f"{name:<22} {'ERROR':<8} {bals}")
+            continue
+        nonzero = {k: v for k, v in bals.items() if v.total > Decimal("0")}
+        if not nonzero:
+            print(f"{name:<22} {'—':<8} {'0':>16} {'0':>16}  (empty)")
+        else:
+            first = True
+            for cur, b in sorted(nonzero.items()):
+                label = name if first else ""
+                print(f"{label:<22} {cur:<8} {float(b.free):>16.4f} {float(b.total):>16.4f}")
+                first = False
+    print()
+
 _DISPLAY_NAME = {
     "binance": "Binance",
     "binance_futures": "Binance Futures",
@@ -536,11 +585,19 @@ Examples:
     )
     parser.add_argument("--exchange", help="Exchange ID (e.g. binance, upbit, binance_futures)")
     parser.add_argument("--all", action="store_true", help="Run all configured exchanges and print summary table")
+    parser.add_argument("--balances", action="store_true", help="Show all non-zero balances across all exchanges (no orders placed)")
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
+
+    if args.balances:
+        async def run_balances():
+            return await asyncio.gather(*[_fetch_all_balances(ex) for ex in _ALL_EXCHANGES])
+        results = asyncio.run(run_balances())
+        _print_balances_table(list(results))
+        sys.exit(0)
 
     if args.all:
         async def run_all():

@@ -185,15 +185,16 @@ class NativeCoinoneAdapter(NativeAdapter):
             raise RuntimeError(f"Coinone get_balances failed: {error_msg}")
 
         result: dict[str, Balance] = {}
-        # v2.1 response: {"normalWallets": [{"currency": "BTC", "avail": "...", "balance": "..."}, ...]}
-        for wallet in resp.get("normalWallets", []):
+        # v2.1 response: {"balances": [{"currency": "BTC", "available": "...", "limit": "..."}, ...]}
+        # "limit" = locked/reserved amount
+        for wallet in resp.get("balances", resp.get("normalWallets", [])):
             cur = wallet.get("currency", "").upper()
             if not cur:
                 continue
-            free = Decimal(str(wallet.get("avail", "0")))
-            total = Decimal(str(wallet.get("balance", "0")))
-            used = total - free
-            result[cur] = Balance(currency=cur, free=free, used=used, total=total)
+            free = Decimal(str(wallet.get("available", wallet.get("avail", "0"))))
+            locked = Decimal(str(wallet.get("limit", wallet.get("balance", "0"))))
+            total = free + locked
+            result[cur] = Balance(currency=cur, free=free, used=locked, total=total)
         return result
 
     async def _rest_get_positions(self) -> list[Position]:
