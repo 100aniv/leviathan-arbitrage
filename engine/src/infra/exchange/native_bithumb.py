@@ -77,9 +77,15 @@ class NativeBithumbAdapter(NativeAdapter):
         return self._make_jwt_headers(query_params=params)
 
     def _make_jwt_headers(
-        self, query_params: dict[str, Any] | None = None
+        self,
+        query_params: dict[str, Any] | None = None,
+        body_data: dict[str, Any] | None = None,
     ) -> dict[str, str]:
-        """Bithumb v2 JWT 인증 헤더 생성."""
+        """Bithumb v2 JWT 인증 헤더 생성.
+
+        GET: query_hash = SHA512(urlencode(params))
+        POST/DELETE: query_hash = SHA512(json.dumps(body))
+        """
         if _pyjwt is None:
             raise RuntimeError("PyJWT is required: pip install PyJWT")
 
@@ -88,7 +94,15 @@ class NativeBithumbAdapter(NativeAdapter):
             "nonce": str(uuid.uuid4()),
             "timestamp": round(time.time() * 1000),
         }
-        if query_params:
+        if body_data:
+            # POST: URL-encoded body hash (Bithumb v2 spec)
+            query = urllib.parse.urlencode(body_data)
+            h = hashlib.sha512()
+            h.update(query.encode())
+            payload["query_hash"] = h.hexdigest()
+            payload["query_hash_alg"] = "SHA512"
+        elif query_params:
+            # GET: urlencode query string hash
             query = urllib.parse.urlencode(query_params)
             h = hashlib.sha512()
             h.update(query.encode())
@@ -140,7 +154,10 @@ class NativeBithumbAdapter(NativeAdapter):
         req_headers = {**self._default_headers(), **(headers or {})}
 
         if signed:
-            req_headers.update(self._make_jwt_headers(query_params=params or (data if method == "GET" else None)))
+            if method in ("POST", "PUT") and data:
+                req_headers.update(self._make_jwt_headers(body_data=data))
+            else:
+                req_headers.update(self._make_jwt_headers(query_params=params))
 
         if method in ("POST", "PUT", "DELETE") and data:
             resp = await self._http.request(
@@ -196,10 +213,18 @@ class NativeBithumbAdapter(NativeAdapter):
         )
 
     async def _rest_cancel_order(self, order_id: str, symbol: str | None) -> bool:
-        resp = await self._request(
-            "DELETE", "/v1/order", params={"uuid": order_id}, signed=True
+        try:
+            resp = await self._request(
+                "DELETE", "/v1/order", params={"uuid": order_id}, signed=True
+            )
+        except Exception as exc:
+            # 404 = order already filled/cancelled (treat as success)
+            if "404" in str(exc):
+                return True
+            raise
+        return isinstance(resp, dict) and (
+            resp.get("uuid") == order_id or resp.get("state") == "cancel"
         )
-        return isinstance(resp, dict) and resp.get("uuid") == order_id
 
     async def _rest_cancel_all_orders(self, symbol: str | None) -> int:
         return 0

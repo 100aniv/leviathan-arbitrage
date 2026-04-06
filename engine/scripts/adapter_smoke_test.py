@@ -309,8 +309,7 @@ async def run_smoke(exchange_id: str) -> dict:
         if current_price is None:
             raise RuntimeError("Orderbook returned no price levels")
 
-        # Futures contracts use 0.1 USDT tick size; spot uses 0.01
-        price_tick = Decimal("0.1") if exchange_id.endswith("_futures") else Decimal("0.01")
+        quote_cur = (symbol.split("/")[1] if "/" in symbol else "USDT").upper()
 
         # Binance enforces PERCENT_PRICE_BY_SIDE: BUY limit price must be >= 80% of VWAP.
         # Use 85% for Binance, 50% for all other exchanges (wide margin = safely unfillable).
@@ -318,7 +317,15 @@ async def run_smoke(exchange_id: str) -> dict:
             limit_pct = Decimal("0.85")
         else:
             limit_pct = Decimal("0.50")
-        limit_price = (current_price * limit_pct).quantize(price_tick)
+
+        # KRW: round down to nearest 1000 (호가단위) using integer arithmetic to avoid
+        # scientific notation (Decimal("1E+3").quantize → "5.2352E+7" breaks JWT hash)
+        if exchange_id.endswith("_futures"):
+            limit_price = (current_price * limit_pct).quantize(Decimal("0.1"))
+        elif quote_cur == "KRW":
+            limit_price = Decimal(int(current_price * limit_pct) // 1000 * 1000)
+        else:
+            limit_price = (current_price * limit_pct).quantize(Decimal("0.01"))
 
         # For spot: dynamically compute qty from available balance (not fixed min_qty).
         # This handles accounts with small balances — avoids insufficient-funds rejections.
@@ -452,32 +459,101 @@ def _save_step(result: dict) -> None:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+_ALL_EXCHANGES = [
+    "binance", "binance_futures",
+    "upbit", "bithumb", "coinone",
+    "bitget", "bitget_futures",
+]
+
+_DISPLAY_NAME = {
+    "binance": "Binance",
+    "binance_futures": "Binance Futures",
+    "upbit": "Upbit",
+    "bithumb": "Bithumb",
+    "coinone": "Coinone",
+    "bitget": "Bitget",
+    "bitget_futures": "Bitget Futures",
+}
+
+
+def _print_summary_table(results: list[dict]) -> None:
+    """Print a rich summary table of all smoke test results."""
+    rows = []
+    for r in results:
+        ex = r.get("exchange", "?")
+        name = _DISPLAY_NAME.get(ex, ex)
+        steps = r.get("steps", {})
+
+        def cell(step: str) -> str:
+            s = steps.get(step, {})
+            st = s.get("status", "—")
+            if st == "pass":
+                detail = s.get("detail", "")
+                if detail and step == "get_balances":
+                    return f"✅ {detail}"
+                return "✅"
+            if st == "blocked":
+                return "BLOCKED"
+            if st == "skip":
+                return "SKIP"
+            if st == "fail":
+                return "❌"
+            return "—"
+
+        overall = r.get("overall", "fail")
+        verdict = "✅ PASS" if overall in ("pass", "blocked", "skip") else "❌ FAIL"
+        rows.append((name, cell("connect"), cell("get_balances"), cell("place_order"), cell("cancel_order"), verdict))
+
+    col_w = [max(len(r[i]) for r in rows + [("거래소", "connect", "get_balances", "place_order", "cancel", "판정")]) + 2 for i in range(6)]
+    col_w[0] = max(col_w[0], 17)
+    sep = "├" + "┼".join("─" * w for w in col_w) + "┤"
+    top = "┌" + "┬".join("─" * w for w in col_w) + "┐"
+    bot = "└" + "┴".join("─" * w for w in col_w) + "┘"
+    hdr = ("거래소", "connect", "get_balances", "place_order", "cancel", "판정")
+
+    def fmt_row(cells):
+        return "│" + "│".join(f" {c:<{col_w[i]-2}} " for i, c in enumerate(cells)) + "│"
+
+    print()
+    print(top)
+    print(fmt_row(hdr))
+    for row in rows:
+        print(sep)
+        print(fmt_row(row))
+    print(bot)
+    print()
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Smoke-test a single exchange adapter (connect → balance → order → cancel).",
+        description="Smoke-test exchange adapters (connect → balance → order → cancel).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python scripts/adapter_smoke_test.py --exchange binance
-  python scripts/adapter_smoke_test.py --exchange upbit
-  python scripts/adapter_smoke_test.py --exchange binance_futures
-
-Supported exchanges:
-  binance, bybit, okx, bitget, upbit, bithumb, coinone,
-  mexc, gateio, bingx, lbank, orangex
-  (append _futures for futures market: binance_futures, bybit_futures, …)
+  python scripts/adapter_smoke_test.py --all
 """,
     )
-    parser.add_argument(
-        "--exchange",
-        required=True,
-        help="Exchange ID (e.g. binance, upbit, binance_futures)",
-    )
+    parser.add_argument("--exchange", help="Exchange ID (e.g. binance, upbit, binance_futures)")
+    parser.add_argument("--all", action="store_true", help="Run all configured exchanges and print summary table")
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
+
+    if args.all:
+        async def run_all():
+            return await asyncio.gather(*[run_smoke(ex) for ex in _ALL_EXCHANGES])
+        results = asyncio.run(run_all())
+        _print_summary_table(list(results))
+        any_fail = any(r.get("overall") not in ("pass", "skip", "blocked") for r in results)
+        sys.exit(1 if any_fail else 0)
+
+    if not args.exchange:
+        print("error: --exchange or --all required", file=sys.stderr)
+        sys.exit(2)
+
     exchange_id = args.exchange.lower().strip()
     print(_bold(f"\n=== Adapter Smoke Test: {exchange_id} ===\n"))
     result = asyncio.run(run_smoke(exchange_id))
