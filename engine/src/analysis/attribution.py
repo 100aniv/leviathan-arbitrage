@@ -53,11 +53,12 @@ class PerformanceAttribution:
         """Add multiple trade records."""
         self._trades.extend(trades)
 
-    async def load_from_db(self, pool) -> int:
+    async def load_from_db(self, pool, mode: str = "live") -> int:
         """Load historical trades from TimescaleDB execution_log.
 
         Args:
             pool: asyncpg connection pool
+            mode: execution mode filter ('live', 'paper', 'backtest')
 
         Returns:
             Number of trades loaded
@@ -68,11 +69,12 @@ class PerformanceAttribution:
                    fee_total, slippage_total, net_pnl, status
             FROM execution_log
             WHERE status = 'filled'
+              AND mode = $1
             ORDER BY ts DESC
             LIMIT 10000
         """
         async with pool.acquire() as conn:
-            rows = await conn.fetch(query)
+            rows = await conn.fetch(query, mode)
 
         loaded = 0
         for row in rows:

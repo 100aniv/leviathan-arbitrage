@@ -16,7 +16,7 @@ log: structlog.BoundLogger = structlog.get_logger(__name__)
 # Row type aliases (plain tuples handed to executemany)
 # ---------------------------------------------------------------------------
 _OrderbookRow = tuple[
-    datetime, str, str, str, str, Decimal, Decimal, Decimal, Decimal
+    datetime, str, str, str, str, Decimal, Decimal, Decimal, Decimal, str
 ]
 _ExecutionRow = tuple[
     datetime, str, str | None, str, str, str,
@@ -29,8 +29,8 @@ _ExecutionRow = tuple[
 _INSERT_ORDERBOOK = """
     INSERT INTO orderbook_snapshots
         (ts, exchange, symbol, bids_json, asks_json,
-         best_bid, best_ask, spread_bps, mid_price)
-    VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9)
+         best_bid, best_ask, spread_bps, mid_price, source)
+    VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10)
     ON CONFLICT DO NOTHING
 """
 
@@ -140,6 +140,7 @@ class MarketRecorder:
         asks: list[list[Any]],
         best_bid: Decimal,
         best_ask: Decimal,
+        source: str = "live",
     ) -> None:
         """Buffer an orderbook snapshot for async batch insert.
 
@@ -165,6 +166,7 @@ class MarketRecorder:
                 best_ask,
                 spread_bps,
                 mid_price,
+                source,
             )
             self._orderbook_queue.put_nowait(row)
             self._maybe_trigger_flush()

@@ -315,6 +315,11 @@ class BacktestMode:
                 query += f" AND exchange = ANY(${idx}::text[])"
                 params.append(self._exchanges)
                 idx += 1
+            _source = getattr(self, "_source", None)
+            if _source:
+                query += f" AND source = ${idx}"
+                params.append(_source)
+                idx += 1
 
             query += f" ORDER BY ts ASC LIMIT {_max_rows}"
 

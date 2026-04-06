@@ -6,9 +6,17 @@
   "log_level": "INFO",
 
   "capital": {
+    "allocation_mode": "percentage",
+    "reserve_pct": 20,
+    "strategies": {
+      "funding_rate":    {"allocation_pct": 35},
+      "futures_futures": {"allocation_pct": 20},
+      "spot_futures":    {"allocation_pct": 20},
+      "cross_exchange":  {"allocation_pct": 25}
+    },
     "tier": "alpha",
     "tiers": {
-      "alpha": {"spot_usd": 20, "futures_usd": 30, "spot_krw": 28000},
+      "alpha": {"spot_usd": 20, "futures_usd": 30, "spot_krw": 28000, "initial_usd": 70},
       "beta": {"initial_usd": 750},
       "production": {"initial_usd": 5000}
     }
@@ -21,9 +29,11 @@
   },
 
   "exchanges": {
-    "active": ["binance", "bybit", "okx", "bitget", "mexc", "gateio", "upbit", "bithumb", "coinone", "binance_futures", "bybit_futures", "okx_futures", "bitget_futures"],
+    "active": ["binance", "bitget", "upbit", "coinone", "bithumb", "binance_futures", "bitget_futures"],
+    "inactive_reserved": ["bybit", "okx", "mexc", "gateio", "bybit_futures", "okx_futures"],
     "symbols": ["auto"],
-    "symbol_min_exchanges": 3
+    "symbol_min_exchanges": 2,
+    "symbol_exclusions_per_exchange": {"coinone": ["BTC"]}
   },
 
   "risk": {

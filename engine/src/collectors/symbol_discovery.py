@@ -54,8 +54,17 @@ async def discover_common_symbols(
     exchanges: Sequence[str] = ("binance", "upbit", "bithumb"),
     exclude: set[str] | None = None,
     min_exchanges: int = 2,
+    exchange_exclusions: dict[str, list[str]] | None = None,
 ) -> list[str]:
     """Discover symbols common to at least `min_exchanges` of the given exchanges.
+
+    Args:
+        exchanges: Exchange IDs to query.
+        exclude: Global base-asset blacklist (stablecoins, wrapped tokens).
+        min_exchanges: Minimum number of exchanges a symbol must appear on.
+        exchange_exclusions: Per-exchange symbol exclusions, e.g.
+            {"coinone": ["BTC"]} prevents BTC from counting toward coinone's
+            contribution, so Coinone BTC signals are never generated.
 
     Returns symbols in 'BASE/USDT' format, sorted alphabetically.
     """
@@ -77,6 +86,18 @@ async def discover_common_symbols(
             except Exception as exc:
                 logger.warning("symbol_discovery_failed", exchange=ex, error=str(exc))
                 results[ex] = set()
+
+    # Apply per-exchange symbol exclusions before counting
+    if exchange_exclusions:
+        for ex, excluded_bases in exchange_exclusions.items():
+            if ex in results and excluded_bases:
+                ex_set = set(excluded_bases)
+                results[ex] = results[ex] - ex_set
+                logger.info(
+                    "symbol_discovery.exchange_excluded",
+                    exchange=ex,
+                    excluded=sorted(ex_set),
+                )
 
     if not results:
         return ["BTC/USDT", "ETH/USDT", "XRP/USDT"]

@@ -759,8 +759,11 @@ class ComplianceChecker:
                 conn = await self._db_pool.acquire()
                 try:
                     # Verify DB is reachable and execution_log table exists (core WAL target)
+                    import os as _os
+                    _mode = _os.getenv("EXECUTION_MODE", "live")
                     result = await conn.fetchval(
-                        "SELECT COUNT(*) FROM execution_log"
+                        "SELECT COUNT(*) FROM execution_log WHERE mode = $1",
+                        _mode,
                     )
                     healthy = result is not None
                 finally:

@@ -25,16 +25,15 @@
     "cross_exchange_v1",
     "funding_rate_v1",
     "spot_futures_v1",
-    "futures_futures_v1",
-    "triangular_v1",
-    "statistical_arb_v1"
+    "futures_futures_v1"
   ],
   "unverified_strategies": [],
   "disabled_strategies": [
     "latency_arb_v1",
-    "cex_dex_v1"
+    "cex_dex_v1",
+    "triangular_v1"
   ],
-  "shadow_disabled_env": "latency_arb_v1,cex_dex_v1",
+  "shadow_disabled_env": "latency_arb_v1,cex_dex_v1,triangular_v1",
   "results": {
     "cross_exchange_v1": {
       "status": "enabled",

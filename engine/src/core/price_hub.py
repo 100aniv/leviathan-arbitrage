@@ -78,3 +78,11 @@ class PriceHub:
     def exchanges_for(self, symbol: str) -> list[str]:
         """Return all exchanges that have an orderbook registered for symbol."""
         return list(self._symbol_exchanges.get(symbol, set()))
+
+    def get_mid_price(self, symbol: str) -> Optional[Decimal]:
+        """Return mid price (mean of best bid and best ask) for symbol, or None."""
+        bid = self.best_bid(symbol)
+        ask = self.best_ask(symbol)
+        if bid is None or ask is None:
+            return None
+        return (bid.price + ask.price) / Decimal("2")

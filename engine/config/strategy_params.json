@@ -11,32 +11,32 @@
     "_note": "Real-data WFE results from TimescaleDB.",
     "cross_exchange": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 13 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "triangular": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "spot_futures": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "funding_rate": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 13 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "statistical_arb": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "futures_futures": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     }
   },
@@ -87,14 +87,14 @@
     "data_type": "synthetic_gbm"
   },
   "statistical_arb": {
-    "status": "READY",
+    "status": "DISABLED",
     "wfe": 0.0,
     "max_position_size_usdt": 37,
     "entry_threshold": 0.000188,
     "exit_threshold": 0.00089,
     "stop_loss_pct": 0.005,
     "_note": "SIT-3 P3: DISABLED\u2192READY. z=2.5\u21922.0, cooldown=300\u2192120, min_history=120\u219260. 24H Shadow \ud6c4 WFE \uc7ac\ud3c9\uac00.",
-    "z_threshold": 0.8
+    "z_threshold": 2.0
   },
   "cex_dex": {
     "status": "MONITOR",
@@ -117,8 +117,11 @@
   "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 \ud1b5\uc77c, slippage_buffer 5bps \uc2e0\uaddc, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
   "_tuner_meta": {
     "best_values": {
-      "cross_exchange": 1.2
+      "cross_exchange": 0,
+      "spot_futures": 0,
+      "funding_rate": 0,
+      "futures_futures": 0
     },
-    "timestamp": "2026-04-04T05:20:58.316722+00:00"
+    "timestamp": "2026-04-06T17:19:39.375019+00:00"
   }
 }

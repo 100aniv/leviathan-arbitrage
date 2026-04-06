@@ -253,7 +253,7 @@ class LiveMode(BaseMode):
                 self._book_walk_slippage = BookWalkSlippage(books=self._books)
                 self._executor = PaperExecutor(
                     slippage_model=self._book_walk_slippage,
-                    fee_rate=Decimal("0"),
+                    fee_rate=Decimal("0.001"),  # Taker rate (Binance/Bitget 0.10%)
                     partial_fill_rate=pfr,
                     rejection_rate=rr,
                 )

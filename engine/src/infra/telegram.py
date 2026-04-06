@@ -147,16 +147,20 @@ class TelegramAlerter:
     # Public API
     # ---------------------------------------------------------------------------
 
-    async def send_alert(self, message: str, level: str = "INFO") -> bool:
+    async def send_alert(self, message: str, level: str = "INFO", mode: str = "live") -> bool:
         """Send a plain alert message with an emoji prefix.
 
         Args:
             message: Human-readable alert text (HTML allowed).
             level:   Severity level — INFO, WARNING, ERROR, or CRITICAL.
+            mode:    Execution mode ('live', 'paper', 'backtest').
+                     Paper mode suppresses trade-level alerts on TradeBot.
 
         Returns:
             True if the message was sent successfully, False otherwise.
         """
+        if mode == "paper":
+            return True  # Suppress paper-mode trade alerts from reaching TradeBot
         _LEVEL_KR = {
             "INFO": "정보",
             "WARNING": "경고",

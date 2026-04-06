@@ -148,10 +148,10 @@ class TestTradingSymbolsConfig:
             assert t.symbols == ["BTC/USDT", "ETH/USDT"]
 
     def test_min_exchanges_default(self):
-        """TRADING_SYMBOL_MIN_EXCHANGES defaults to 3."""
+        """TRADING_SYMBOL_MIN_EXCHANGES is 2 per PHOENIX config (.env)."""
         from src.core.config import TradingSettings
         t = TradingSettings()
-        assert t.symbol_min_exchanges == 3
+        assert t.symbol_min_exchanges == 2
 
     def test_min_exchanges_override(self):
         """TRADING_SYMBOL_MIN_EXCHANGES can be overridden."""
@@ -181,7 +181,9 @@ class TestEngineResolveSymbols:
         with patch("src.collectors.symbol_discovery.discover_common_symbols", new_callable=AsyncMock, return_value=mock_symbols) as mock_disc:
             await engine._resolve_symbols()
 
-            mock_disc.assert_called_once_with(min_exchanges=3)
+            # PHOENIX: exchange_exclusions added — check min_exchanges only
+            mock_disc.assert_called_once()
+            assert mock_disc.call_args.kwargs.get("min_exchanges") == 3
             assert engine._settings.trading.symbols == mock_symbols
 
     @pytest.mark.asyncio

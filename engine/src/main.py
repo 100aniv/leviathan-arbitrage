@@ -78,7 +78,7 @@ class Engine:
     RECONCILE_INTERVAL = 60
     HEALTH_CHECK_INTERVAL = 10
     HEARTBEAT_INTERVAL = 5
-    SHUTDOWN_TIMEOUT = 10
+    SHUTDOWN_TIMEOUT = 30  # PHOENIX: 10→30s graceful shutdown timeout
 
     def __init__(self, context: EngineContext | None = None) -> None:
         self.context = context or EngineContext()
@@ -408,10 +408,18 @@ class Engine:
             return
 
         from src.collectors.symbol_discovery import discover_common_symbols
+        from src.core.config import load_engine_config
 
         min_ex = self._settings.trading.symbol_min_exchanges
+        _ecfg = load_engine_config()
+        _exchange_exclusions: dict[str, list[str]] = (
+            _ecfg.get("exchanges", {}).get("symbol_exclusions_per_exchange", {})
+        )
         try:
-            symbols = await discover_common_symbols(min_exchanges=min_ex)
+            symbols = await discover_common_symbols(
+                min_exchanges=min_ex,
+                exchange_exclusions=_exchange_exclusions or None,
+            )
             if symbols:
                 self._settings.trading.symbols = symbols
                 logger.info(
@@ -996,9 +1004,24 @@ class Engine:
         _ecfg = load_engine_config()
         _cap_cfg = _ecfg.get("capital", {})
         _tier = _cap_cfg.get("tier", "alpha")
-        _capital_usd = Decimal(str(
+        _allocation_mode = _cap_cfg.get("allocation_mode", "tiers")
+        _tier_initial_usd = Decimal(str(
             _cap_cfg.get("tiers", {}).get(_tier, {}).get("initial_usd", 70)
         ))
+        if _allocation_mode == "percentage":
+            # Percentage mode: position sizes computed from live exchange balances.
+            # At strategy-config time, balances may not be fetched yet → use tier default.
+            # _btc_price_update_loop and live balance fetch will refine sizing at runtime.
+            _capital_usd = _tier_initial_usd
+            logger.info(
+                "capital.allocation_mode=percentage reserve_pct=%s strategies=%s "
+                "(runtime balance-based, startup fallback=$%.0f)",
+                _cap_cfg.get("reserve_pct", 20),
+                list(_cap_cfg.get("strategies", {}).keys()),
+                _capital_usd,
+            )
+        else:
+            _capital_usd = _tier_initial_usd
         _risk_cfg = _ecfg.get("dynamic_risk", {})
         _base_pos_pct = Decimal(str(_risk_cfg.get("base_position_pct", 3.0))) / Decimal("100")
         _max_pos_usd = _capital_usd * _base_pos_pct  # e.g., $34 × 3% = $1.02
@@ -1799,6 +1822,7 @@ class Engine:
             asyncio.create_task(self._reconcile_loop(), name="reconcile"),
             asyncio.create_task(self._heartbeat_loop(), name="ws_heartbeat"),
             asyncio.create_task(self._dashboard_feed_loop(), name="dashboard_feed"),
+            asyncio.create_task(self._btc_price_update_loop(), name="btc_price_update"),
         ]
 
         # --- Single-axis mode routing (Phase H-2) ---
@@ -3197,6 +3221,26 @@ class Engine:
             except Exception as exc:
                 logger.warning("Heartbeat error: %s", exc)
 
+    async def _btc_price_update_loop(self) -> None:
+        """Periodically refresh the BTC reference price from live PriceHub data.
+
+        Overrides the static BTC_REFERENCE_PRICE env default ($50,000) with
+        the actual live mid-price so position sizing stays accurate.
+        Updates every 60 seconds; skips if PriceHub has no BTC/USDT data yet.
+        """
+        global _BTC_REFERENCE_PRICE
+        while self.state.running:
+            try:
+                await asyncio.sleep(60)
+                if self._price_hub is not None:
+                    mid = self._price_hub.get_mid_price("BTC/USDT")
+                    if mid is not None and mid > Decimal("1000"):
+                        _BTC_REFERENCE_PRICE = mid
+                        logger.debug("btc_price_updated price=%s", mid)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.warning("btc_price_update_error: %s", exc)
 
     async def _dashboard_feed_loop(self) -> None:
         """Broadcast engine state to all WebSocket clients every second."""
