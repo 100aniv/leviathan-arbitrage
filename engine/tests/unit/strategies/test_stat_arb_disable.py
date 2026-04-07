@@ -50,11 +50,15 @@ class TestStrategyParamsJson:
 
     def test_other_strategies_retain_their_status(self):
         """Sanity: disabling stat_arb must not affect other strategies' status."""
+        # PHOENIX Phase 2: cross_exchange/spot_futures/triangular are DISABLED_PHASE2.
+        # Valid statuses now include DISABLED_PHASE2 for intentional phase gating.
         params = _load_params()
+        valid_statuses = ("READY", "MONITOR", "DISABLED", "DISABLED_PHASE2")
         for name in ("spot_futures", "funding_rate", "cross_exchange"):
-            assert params.get(name, {}).get("status") in (
-                "READY", "MONITOR"
-            ), f"{name} should still have READY/MONITOR status"
+            assert params.get(name, {}).get("status") in valid_statuses, (
+                f"{name} should have a recognized status, got: "
+                f"{params.get(name, {}).get('status')}"
+            )
 
 
 # ---------------------------------------------------------------------------

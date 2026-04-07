@@ -771,18 +771,29 @@ class Engine:
         """Create and connect native (ccxt-free) adapters for each exchange."""
         from src.infra.exchange import create_native_adapter
 
+        # Non-standard credential field name mapping for exchanges that differ from
+        # the default {eid}_api_key / {eid}_api_secret pattern.
+        _CRED_FIELD_MAP: dict[str, tuple[str, str]] = {
+            "upbit": ("upbit_access_key", "upbit_secret_key"),
+            "coinone": ("coinone_access_token", "coinone_api_secret"),
+        }
         ex_cfg = self._settings.exchange if self._settings else None
         for eid in exchanges:
             try:
-                api_key = getattr(ex_cfg, f"{eid}_api_key", "") if ex_cfg else ""
-                api_secret = getattr(ex_cfg, f"{eid}_api_secret", "") if ex_cfg else ""
-                passphrase = getattr(ex_cfg, f"{eid}_passphrase", "") if ex_cfg else ""
+                _base_eid = eid.removesuffix("_futures") if eid.endswith("_futures") else eid
+                _key_field, _secret_field = _CRED_FIELD_MAP.get(
+                    _base_eid, (f"{_base_eid}_api_key", f"{_base_eid}_api_secret")
+                )
+                api_key = getattr(ex_cfg, _key_field, "") if ex_cfg else ""
+                api_secret = getattr(ex_cfg, _secret_field, "") if ex_cfg else ""
+                passphrase = getattr(ex_cfg, f"{_base_eid}_passphrase", "") if ex_cfg else ""
                 # PHOENIX: futures exchanges share base exchange API keys
                 # (e.g. binance_futures → binance, bitget_futures → bitget)
                 if not api_key and eid.endswith("_futures") and ex_cfg:
                     _base = eid.removesuffix("_futures")
-                    api_key = getattr(ex_cfg, f"{_base}_api_key", "")
-                    api_secret = getattr(ex_cfg, f"{_base}_api_secret", "")
+                    _k, _s = _CRED_FIELD_MAP.get(_base, (f"{_base}_api_key", f"{_base}_api_secret"))
+                    api_key = getattr(ex_cfg, _k, "")
+                    api_secret = getattr(ex_cfg, _s, "")
                     passphrase = getattr(ex_cfg, f"{_base}_passphrase", "")
                 adapter = create_native_adapter(
                     exchange_id=eid,

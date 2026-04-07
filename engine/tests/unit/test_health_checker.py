@@ -58,10 +58,14 @@ class TestHealthChecker:
         assert score > 0.9
 
     def test_disconnected_score_is_low(self):
+        # PHOENIX Phase 2: connection_score uses staleness, not is_connected flag.
+        # Stale data (last_heartbeat > stale_threshold ago) drives score low.
+        import time
         checker = HealthChecker("test_exchange")
+        checker._metrics.last_heartbeat = time.monotonic() - 200  # 200s stale
         checker.record_ws_disconnect()
         score = checker.health_score
-        # Connection component (40% weight) = 0, score should be < 0.5
+        # Stale data + disconnect: connection_score=0, ws_score degraded → score < 0.5
         assert score < 0.5
 
     def test_many_disconnects_reduce_ws_stability(self):

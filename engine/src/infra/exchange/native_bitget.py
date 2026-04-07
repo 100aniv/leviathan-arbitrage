@@ -49,8 +49,10 @@ class NativeBitgetAdapter(NativeAdapter):
         kwargs.setdefault("rate_limits", _BITGET_RATE_LIMITS)
         super().__init__(exchange_id=exchange_id, **kwargs)
         self._market_type: str = "spot"  # set to "futures" by create_native_adapter
-        self._price_precisions: dict[str, int] = {}  # symbol → decimal places
-        self._qty_step_sizes: dict[str, Decimal] = {}  # symbol → step size
+        self._price_precisions: dict[str, int] = {}  # symbol → decimal places (futures)
+        self._qty_step_sizes: dict[str, Decimal] = {}  # symbol → step size (futures)
+        self._spot_qty_decimals: dict[str, int] = {}  # symbol → base qty decimal places (spot)
+        self._spot_price_decimals: dict[str, int] = {}  # symbol → price decimal places (spot)
 
     # ------------------------------------------------------------------
     # Abstract implementations
@@ -152,6 +154,41 @@ class NativeBitgetAdapter(NativeAdapter):
         quantizer = Decimal(10) ** (-decimals)
         return str(price.quantize(quantizer))
 
+    async def _fetch_spot_specs(self, symbol: str) -> None:
+        """Fetch and cache base qty / price decimal places for a spot symbol."""
+        if symbol in self._spot_qty_decimals:
+            return
+        try:
+            sym = _normalize_symbol(symbol)
+            resp = await self._request(
+                "GET",
+                "/api/v2/spot/public/symbols",
+                params={"symbol": sym},
+            )
+            for info in resp.get("data", []):
+                if info.get("symbol") == sym:
+                    self._spot_qty_decimals[symbol] = int(info.get("quantityPrecision", info.get("basePrecision", 6)))
+                    self._spot_price_decimals[symbol] = int(info.get("pricePrecision", info.get("quotePrecision", 6)))
+                    return
+            self._spot_qty_decimals[symbol] = 6  # safe default
+            self._spot_price_decimals[symbol] = 6
+        except Exception as exc:
+            logger.debug("bitget_spot_specs_fetch_failed symbol=%s: %s", symbol, exc)
+            self._spot_qty_decimals[symbol] = 6
+            self._spot_price_decimals[symbol] = 6
+
+    def _quantize_spot_size(self, symbol: str, size: Decimal) -> str:
+        decimals = self._spot_qty_decimals.get(symbol, 6)
+        quantizer = Decimal(10) ** (-decimals)
+        # ROUND_DOWN: never exceed available balance / signal size
+        from decimal import ROUND_DOWN
+        return str(size.quantize(quantizer, rounding=ROUND_DOWN))
+
+    def _quantize_spot_price(self, symbol: str, price: Decimal) -> str:
+        decimals = self._spot_price_decimals.get(symbol, 6)
+        quantizer = Decimal(10) ** (-decimals)
+        return str(price.quantize(quantizer))
+
     async def _rest_place_order(self, order: Order) -> Trade:
         sym = _normalize_symbol(order.symbol)
         side = "buy" if order.side == OrderSide.BUY else "sell"
@@ -175,10 +212,14 @@ class NativeBitgetAdapter(NativeAdapter):
                 "marginCoin": "USDT",
                 "size": str(qty),
                 "side": side,
-                "tradeSide": "open",
+                "tradeSide": "close" if order.metadata.get("reduceOnly") or order.metadata.get("tradeSide") == "close" else "open",
                 "orderType": "limit" if order.price else "market",
                 "force": "gtc",
             }
+            # hedge_mode: posSide must match the position being closed
+            # BUY+close = closing SHORT posSide, SELL+close = closing LONG posSide
+            if body["tradeSide"] == "close":
+                body["posSide"] = "short" if side == "buy" else "long"
             if order.price:
                 # PHOENIX: Fetch contract specs on first order for this symbol
                 if order.symbol not in self._price_precisions:
@@ -186,17 +227,47 @@ class NativeBitgetAdapter(NativeAdapter):
                 body["price"] = self._quantize_price(order.symbol, order.price)
             if order.client_order_id:
                 body["clientOid"] = order.client_order_id
-            resp = await self._request("POST", "/api/v2/mix/order/place-order", data=body, signed=True)
+            try:
+                resp = await self._request("POST", "/api/v2/mix/order/place-order", data=body, signed=True)
+            except Exception as _exc:
+                # PHOENIX Phase 2: error 22047 = price exceeds exchange price protection band
+                # Retry as market order to avoid rollback cascade.
+                import httpx as _httpx
+                if (
+                    isinstance(_exc, _httpx.HTTPStatusError)
+                    and _exc.response.status_code == 400
+                ):
+                    try:
+                        _err_code = _exc.response.json().get("code", "")
+                    except Exception:
+                        _err_code = ""
+                    if _err_code == "22047":
+                        logger.warning(
+                            "bitget_futures_price_limit_exceeded symbol=%s — retrying as market",
+                            order.symbol,
+                        )
+                        body["orderType"] = "market"
+                        body.pop("price", None)
+                        resp = await self._request(
+                            "POST", "/api/v2/mix/order/place-order", data=body, signed=True
+                        )
+                    else:
+                        raise
+                else:
+                    raise
         else:
+            # PHOENIX Phase 2: fetch spot symbol precision on first order to avoid checkBDScale errors
+            if order.symbol not in self._spot_qty_decimals:
+                await self._fetch_spot_specs(order.symbol)
             body = {
                 "symbol": sym,
                 "side": side,
                 "orderType": "limit" if order.price else "market",
-                "size": str(order.amount),
+                "size": self._quantize_spot_size(order.symbol, order.amount),
                 "force": "gtc",
             }
             if order.price:
-                body["price"] = str(order.price.normalize())
+                body["price"] = self._quantize_spot_price(order.symbol, order.price)
             if order.client_order_id:
                 body["clientOid"] = order.client_order_id
             resp = await self._request("POST", "/api/v2/spot/trade/place-order", data=body, signed=True)
@@ -252,7 +323,19 @@ class NativeBitgetAdapter(NativeAdapter):
         return resp.get("code") == "00000"
 
     async def _rest_cancel_all_orders(self, symbol: str | None) -> int:
-        body: dict[str, Any] = {}
+        if self._market_type == "futures":
+            body: dict[str, Any] = {"productType": "USDT-FUTURES"}
+            if symbol:
+                body["symbol"] = _normalize_symbol(symbol)
+            resp = await self._request(
+                "POST", "/api/v2/mix/order/cancel-all-orders", data=body, signed=True
+            )
+            # Response: {"data": {"successList": [...], "failureList": [...]}}
+            data = resp.get("data", {})
+            if isinstance(data, dict):
+                return len(data.get("successList", []))
+            return 0
+        body = {}
         if symbol:
             body["symbol"] = _normalize_symbol(symbol)
         resp = await self._request(
@@ -288,8 +371,8 @@ class NativeBitgetAdapter(NativeAdapter):
             return []
         try:
             resp = await self._request(
-                "GET", "/api/v2/mix/position/allPosition",
-                params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
+                "GET", "/api/v2/mix/position/all-position",  # PHOENIX: allPosition→all-position (correct v2 endpoint)
+                params={"productType": "USDT-FUTURES"},
                 signed=True,
             )
             positions = []

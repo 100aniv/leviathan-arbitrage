@@ -34,7 +34,7 @@ class HealthChecker:
         self,
         exchange_id: str,
         stale_threshold_seconds: float = 120.0,  # PHOENIX: 5→120s (REST adapters poll every ~30s)
-        max_acceptable_latency_ms: float = 500.0,
+        max_acceptable_latency_ms: float = 2000.0,  # PHOENIX Phase 2: 500→2000ms (live REST latency ~1.7s)
     ) -> None:
         self.exchange_id = exchange_id
         self.stale_threshold = stale_threshold_seconds
@@ -65,15 +65,16 @@ class HealthChecker:
     @property
     def health_score(self) -> float:
         # --- Connection score (40%) ---
-        if self._metrics.is_connected:
-            staleness = time.monotonic() - self._metrics.last_heartbeat
-            if staleness <= self.stale_threshold:
-                connection_score = 1.0
-            else:
-                # Decay to 0 over 30 seconds past stale threshold
-                connection_score = max(0.0, 1.0 - (staleness - self.stale_threshold) / 30.0)
+        # Use staleness only: with hundreds of WS subscriptions, any single symbol
+        # reconnect sets is_connected=False even while other streams are healthy.
+        # last_heartbeat is updated on every WS message and REST call, so staleness
+        # correctly reflects actual data freshness. (PHOENIX Phase 2 bug fix)
+        staleness = time.monotonic() - self._metrics.last_heartbeat
+        if staleness <= self.stale_threshold:
+            connection_score = 1.0
         else:
-            connection_score = 0.0
+            # Decay to 0 over 30 seconds past stale threshold
+            connection_score = max(0.0, 1.0 - (staleness - self.stale_threshold) / 30.0)
 
         # --- Latency score (30%) ---
         if self._metrics.api_latencies:

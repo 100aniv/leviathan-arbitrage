@@ -11,7 +11,7 @@
     "_note": "Real-data WFE results from TimescaleDB.",
     "cross_exchange": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 3 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "triangular": {
@@ -21,12 +21,12 @@
     },
     "spot_futures": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 3 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "funding_rate": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 3 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "statistical_arb": {
@@ -36,15 +36,16 @@
     },
     "futures_futures": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 3 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     }
   },
   "cross_exchange": {
     "min_spread_bps": 5.0,
-    "status": "READY",
+    "status": "DISABLED_PHASE2",
     "wfe": 1.2,
-    "data_type": "synthetic_gbm"
+    "data_type": "synthetic_gbm",
+    "_phase2_note": "original: READY. Disabled for Phase 2 Step 2-1 (FR+FF only). Re-enable in Step 2-3."
   },
   "spot_futures": {
     "min_spread_bps": 12.390907613382176,
@@ -52,9 +53,10 @@
     "entry_threshold": 0.0013620427453799166,
     "exit_threshold": 0.0001866435336362988,
     "stop_loss_pct": 0.005070404564592744,
-    "status": "READY",
+    "status": "DISABLED_PHASE2",
     "wfe": 7.578432709803439,
-    "data_type": "synthetic_gbm"
+    "data_type": "synthetic_gbm",
+    "_phase2_note": "original: READY. Disabled for Phase 2 Step 2-1 (FR+FF only). Re-enable in Step 2-3."
   },
   "funding_rate": {
     "min_funding_rate_bps": 6.551847778278454,
@@ -83,9 +85,10 @@
     "entry_threshold": 0.0005221298701815954,
     "exit_threshold": 9.601259624268907e-05,
     "stop_loss_pct": 0.0055080901917418075,
-    "status": "READY",
+    "status": "DISABLED_PHASE2",
     "wfe": 6.571801936599799,
-    "data_type": "synthetic_gbm"
+    "data_type": "synthetic_gbm",
+    "_phase2_note": "original: READY. Disabled for Phase 2 Step 2-1 (FR+FF only). Re-enable in Step 2-3."
   },
   "statistical_arb": {
     "status": "DISABLED",
@@ -118,11 +121,8 @@
   "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 \ud1b5\uc77c, slippage_buffer 5bps \uc2e0\uaddc, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
   "_tuner_meta": {
     "best_values": {
-      "cross_exchange": 0,
-      "spot_futures": 0,
-      "funding_rate": 0,
-      "futures_futures": 0
+      "cross_exchange": 1.2
     },
-    "timestamp": "2026-04-07T05:25:03.276036+00:00"
+    "timestamp": "2026-04-07T10:43:21.510136+00:00"
   }
 }

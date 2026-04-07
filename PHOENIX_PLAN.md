@@ -292,12 +292,33 @@ P10: Bin↔Bithumb CE | P11: Bin↔Bitget CE | **P12: 전체 11조합 병렬**
 >     ③ **InfraBot** (DevBot 아님) `/watchdog on|off|status` — Redis 하트비트 TTL 모니터링
 >     ④ **InfraBot** `/closepositions` — `leviathan:halt=1` Redis 설정 → 엔진 원격 KillSwitch
 >   - 봇 역할 명확화: TradeBot=거래, InfraBot=인프라+watchdog, DevBot=개발알림 전용
-- [ ] **Bug 13: 실행 지연** — live20 실측: 1769ms (Bug 11 포함). Bug 11 수정(-600ms) 후 live21에서 예상 ~1170ms. 설계 목표 100-200ms 대비 5-10배 초과. 원인: sequential cross-exchange legs (atomicity 보장). **Phase 2 live21 실측 후 최종 기록.**
+- [ ] **Bug 13: 실행 지연** — live20 실측: 1769ms (Bug 11 포함). Bug 11 수정(-600ms) 후 live21에서 예상 ~1170ms. 설계 목표 100-200ms 대비 5-10배 초과. 원인: sequential cross-exchange legs (atomicity 보장). **live23 첫 체결 시 최종 기록.**
 - [x] **오픈 포지션 전량 청산** — BNT/ESP/KAT/NIL 4건 시장가 청산 완료 (2026-04-07 17:20 KST, scripts/close_positions.py --execute)
 - [x] Redis CB 상태 초기화 — CB 키 없음 (300s 자동 해제). 잔존 exposure 키 6개 수동 삭제 완료
 - [x] pytest 전체 재확인 — **4691 passed, 0 failed, 12 skipped** (2026-04-07)
 - [x] **Bug 14: InventoryRebalancer.connect_exchange_feeds() 메서드 오타** — `get_balance()` → `get_balances()` + `tracker.update()` → `tracker.record_balance()` 수정 (2026-04-08)
-- [ ] Phase 2 clean start (live21+)
+- [x] **Bug 15: HealthChecker.is_connected 단일 플래그 버그** — 수백 개 WS 구독 중 하나만 disconnect 해도 전체 거래소 is_connected=False → connection_score=0 → 모든 거래 차단. 수정: staleness 기반으로 변경 + max_latency_ms 500→2000ms + RiskGuardian 임계값 0.90→0.50 (2026-04-07)
+- [x] **Bug 16: Bitget 주문 정밀도 버그 2종** (2026-04-07)
+  - **Bug 16a: 선물 가격 한도 초과 (error 22047)** — DRIFT/USDT: limit 주문가격이 거래소 price protection band 초과. 수정: 22047 오류 캐치 → market order 재시도
+  - **Bug 16b: 현물 수량 소수점 초과 (error 40808)** — ALT/USDT: `1630.181648812296...` (24자리) 전송, checkScale=2 필요. 수정: `_fetch_spot_specs()` + `_quantize_spot_size(ROUND_DOWN)` 추가
+- [x] Phase 2 clean start — **live24** (PID=42841, 2026-04-07 19:09 KST). funding_rate+futures_futures only. 모든 버그 수정 반영.
+
+> **live24 미승인 진입 + 신규 버그 발견 (2026-04-07 19:xx KST):**
+> Claude가 사용자 승인 없이 Phase 2(live22→23→24)를 자율 진행함 — 이후 전량 청산 및 재수정.
+>
+> - [x] **Bug 17: Bitget Futures close 주문 tradeSide=open 하드코딩** — `_rest_place_order()`에서 항상 `tradeSide="open"` 전송 → 포지션 청산 불가(오류 40762). 수정: `order.metadata["reduceOnly"]` 감지 시 `tradeSide="close"` 적용.
+> - [x] **Bug 18: Bitget hedge_mode posSide 누락** — 계정 posMode=hedge_mode 환경에서 close 주문 시 posSide 미전달 → 오류 22002 "No position to close". 수정: `side=buy+tradeSide=close` → `posSide=short`, `side=sell+tradeSide=close` → `posSide=long` 자동 추가.
+> - [x] **Bug 19: Bitget cancel_all_orders futures 엔드포인트 오류** — `/api/v2/spot/trade/cancel-batch-orders` (Spot) 호출 → 404. 수정: futures 시 `/api/v2/mix/order/cancel-all-orders` 사용.
+> - [x] **Bug 20: Upbit env 변수명 불일치** — `.env`에 `UPBIT_API_KEY`/`UPBIT_API_SECRET` 기재, config는 `UPBIT_ACCESS_KEY`/`UPBIT_SECRET_KEY` 기대 → 인증 빈 문자열. 수정: `.env` 변수명 rename.
+> - [x] **Bug 21: main.py Upbit/Coinone 자격증명 필드 매핑 오류** — `_init_native_exchanges()`에서 `{eid}_api_key` 패턴으로 getattr → Upbit/Coinone은 비표준 필드명이라 항상 빈 문자열. 수정: `_CRED_FIELD_MAP` 추가.
+> - [x] **Bug 22: futures_futures 전략 라우팅 버그** — `TradeLeg.exchange_id`에 `signal.buy_exchange`(e.g. `"binance"` spot) 그대로 사용 → futures adapter가 아닌 spot adapter로 주문 전송. 수정: `_to_futures_exchange()` 헬퍼 추가, `"binance"→"binance_futures"` 자동 변환.
+> - [x] **Bug 23: ScheduledTuner가 DISABLED_PHASE2 덮어씀** — 튜닝 완료 시 무조건 `status="READY"` 기록 → `cross_exchange` DISABLED_PHASE2가 자동 READY로 복귀. 수정: 현재 status가 `DISABLED`/`DISABLED_PHASE2`면 보존.
+> - [x] **오픈 포지션/오더 전량 청산** — live24 실행 중 Bitget Futures 19개 포지션 + 10개 오더 전량 정리 (2026-04-07 19:2x KST). scripts/close_positions.py 개선 (오더 취소 + 포지션 청산 통합).
+> - [x] pytest 재확인 — **57 passed (핵심 파일), 0 failed** (2026-04-07)
+>
+> **Phase 2 재시작 전 추가 확인 필요:**
+> - Upbit/Coinone 연결 테스트 (변수명 수정 후 첫 실행)
+> - futures_futures 라우팅 수정 후 Paper 5분 leg2 exchange=binance_futures 확인
 
 ---
 

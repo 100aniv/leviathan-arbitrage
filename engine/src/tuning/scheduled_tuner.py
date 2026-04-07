@@ -385,7 +385,6 @@ class ScheduledTuner:
             for raw_key, raw_val in raw_params.items():
                 mapped_key = mapping.get(raw_key, raw_key)  # fallback to raw key
                 entry[mapped_key] = raw_val
-            entry["status"] = "READY"
             entry["wfe"] = data.get("best_value", 0.0)
             entry["data_type"] = data.get("data_type", "synthetic_gbm")
             # SIT-3: synthetic 결과는 기존 real params를 덮어쓰지 않음
@@ -395,6 +394,13 @@ class ScheduledTuner:
                     logger.info("tuner_skip_synthetic_overwrite", strategy=strategy,
                                 reason="real data params preserved over synthetic")
                     continue
+            # PHOENIX: preserve DISABLED/DISABLED_PHASE2 status — tuner must not re-enable manually gated strategies
+            current_status = existing.get(strategy, {}).get("status", "")
+            if current_status in ("DISABLED", "DISABLED_PHASE2"):
+                entry["status"] = current_status
+                logger.info("tuner_preserve_disabled_status", strategy=strategy, status=current_status)
+            else:
+                entry["status"] = "READY"
             existing[strategy] = entry
 
         # Record real-data WFE results into _real_wfe section

@@ -227,12 +227,18 @@ class FuturesFuturesStrategy(BaseStrategy):
             )
             return None
 
+        def _to_futures_exchange(eid: str) -> str:
+            """Ensure exchange ID refers to the futures adapter (e.g. 'binance' → 'binance_futures')."""
+            if not eid.endswith("_futures"):
+                return f"{eid}_futures"
+            return eid
+
         self._metrics.trade_requests_generated += 1
         return TradeRequest(
             strategy_id=self.strategy_id,
             legs=[
                 TradeLeg(
-                    exchange_id=signal.buy_exchange,
+                    exchange_id=_to_futures_exchange(signal.buy_exchange),
                     symbol=signal.symbol,
                     side=OrderSide.BUY,
                     size=size,
@@ -241,7 +247,7 @@ class FuturesFuturesStrategy(BaseStrategy):
                     metadata={"leverage": str(self.config.max_leverage), "leg_type": "futures"},
                 ),
                 TradeLeg(
-                    exchange_id=signal.sell_exchange,
+                    exchange_id=_to_futures_exchange(signal.sell_exchange),
                     symbol=signal.symbol,
                     side=OrderSide.SELL,
                     size=size,

@@ -279,11 +279,13 @@ class TestRunShadow:
                 params_path=_ENGINE_ROOT / "config" / "strategy_params.json",
                 duration_override=0.001,
             )
-        # All 4 MONITOR strategies should appear in results
-        assert "triangular" in results
+        # PHOENIX Phase 2: cross_exchange/triangular are DISABLED_PHASE2 — not in shadow run.
+        # Only MONITOR strategies appear: cex_dex + futures_futures.
         assert "cex_dex" in results
-        assert "cross_exchange" in results
         assert "futures_futures" in results
+        # These are DISABLED_PHASE2 and should NOT appear:
+        assert "cross_exchange" not in results
+        assert "triangular" not in results
 
     def test_run_shadow_decision_propagated(self) -> None:
         from scripts.run_shadow import run_shadow

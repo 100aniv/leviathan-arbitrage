@@ -92,7 +92,7 @@ class RiskGuardian:
         max_position_pct: Decimal = Decimal("0.10"),
         max_drawdown_pct: Decimal = Decimal("0.02"),
         max_exposure_pct: Decimal = Decimal("0.30"),
-        exchange_health_threshold: Decimal = Decimal("0.90"),
+        exchange_health_threshold: Decimal = Decimal("0.50"),  # PHOENIX Phase 2: 0.90→0.50 (live calibration)
         max_single_trade_pct: Decimal = Decimal("0.05"),
         max_volatility_multiple: Decimal = Decimal("2.0"),
         max_rollback_threshold: Decimal = Decimal("0.02"),

@@ -183,11 +183,15 @@ class TestHealthScoreIntegration:
         assert score > 0.5  # connected = healthy
 
     def test_health_score_disconnected(self):
+        # PHOENIX Phase 2: connection_score now uses staleness only (not is_connected flag).
+        # A single WS disconnect reduces ws_score but not connection_score while data is fresh.
+        # True unhealthiness requires stale data (>stale_threshold seconds without heartbeat).
         dqm = DataQualityManager()
         dqm.register_exchange("binance")
         dqm.record_ws_disconnect("binance")
         score = dqm.get_health_score("binance")
-        assert score < 0.5  # disconnected = unhealthy
+        assert score < 0.9   # ws_score reduced by disconnect
+        assert score > 0.5   # still connected (data is fresh)
 
     def test_get_all_health_scores(self):
         dqm = DataQualityManager()
@@ -267,6 +271,7 @@ class TestHealthScoreIntegration:
 
     def test_guardian_check5_dqm_unhealthy_rejects(self):
         """DQM unhealthy exchange → Check #5 rejection."""
+        import time
         from src.risk.circuit_breaker import CircuitBreaker
         from src.risk.guardian import PortfolioState, RiskGuardian, TradeProposal
         from src.risk.kill_switch import clear_halt
@@ -277,7 +282,12 @@ class TestHealthScoreIntegration:
 
         dqm = DataQualityManager()
         dqm.register_exchange("binance")
-        dqm.record_ws_disconnect("binance")  # disconnected = low score
+        # Simulate stale data: set last_heartbeat to 200s ago (> 120s stale_threshold)
+        # PHOENIX Phase 2: connection_score uses staleness (not is_connected flag).
+        # Stale data + WS disconnect = truly unhealthy exchange.
+        checker = dqm._health_checkers["binance"]
+        checker._metrics.last_heartbeat = time.monotonic() - 200
+        dqm.record_ws_disconnect("binance")  # also record disconnect for ws_score penalty
         guardian.data_quality_manager = dqm
 
         proposal = TradeProposal(

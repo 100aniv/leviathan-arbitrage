@@ -85,8 +85,9 @@ async def test_legs_have_correct_exchanges_and_sides():
 
     buy_leg = next(l for l in result.legs if l.side == OrderSide.BUY)
     sell_leg = next(l for l in result.legs if l.side == OrderSide.SELL)
-    assert buy_leg.exchange_id == "binance"
-    assert sell_leg.exchange_id == "bybit"
+    # Bug 22 fix: strategy appends _futures to ensure legs route to futures adapters
+    assert buy_leg.exchange_id == "binance_futures"
+    assert sell_leg.exchange_id == "bybit_futures"
 
 
 @pytest.mark.asyncio
