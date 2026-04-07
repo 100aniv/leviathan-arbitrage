@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { getAlerts, acknowledgeAlert, resolveAlert } from "@/lib/api";
+import { SkeletonCard, FriendlyError, EmptyState } from "@/components/ui";
+import { Bell } from "lucide-react";
 import type { Alert } from "@/types";
 
 type Severity = Alert["severity"] | "ALL";
@@ -9,49 +11,45 @@ type AlertStatus = "open" | "acknowledged" | "resolved";
 
 const SEVERITY_STYLES: Record<
   Alert["severity"],
-  { bg: string; border: string; color: string; label: string }
+  { bgClass: string; borderClass: string; colorClass: string; label: string }
 > = {
-  critical: { bg: "rgba(255,77,77,0.1)",    border: "rgba(255,77,77,0.25)",    color: "#ff4d4d", label: "CRITICAL" },
-  warning:  { bg: "rgba(245,158,11,0.1)",   border: "rgba(245,158,11,0.25)",   color: "#f59e0b", label: "WARNING"  },
-  info:     { bg: "rgba(59,130,246,0.1)",   border: "rgba(59,130,246,0.25)",   color: "#3b82f6", label: "INFO"     },
+  critical: { bgClass: "bg-danger/10",   borderClass: "border-danger/25",   colorClass: "text-danger", label: "CRITICAL" },
+  warning:  { bgClass: "bg-warning/10",  borderClass: "border-warning/25",  colorClass: "text-warn",   label: "WARNING"  },
+  info:     { bgClass: "bg-info/10",     borderClass: "border-info/25",     colorClass: "text-info",   label: "INFO"     },
 };
 
-const STATUS_STYLES: Record<AlertStatus, { color: string; label: string }> = {
-  open:         { color: "#ff4d4d", label: "OPEN"   },
-  acknowledged: { color: "#f59e0b", label: "ACK"    },
-  resolved:     { color: "#00ff88", label: "CLOSED" },
+const STATUS_STYLES: Record<AlertStatus, { colorClass: string; label: string }> = {
+  open:         { colorClass: "text-loss",   label: "OPEN"   },
+  acknowledged: { colorClass: "text-warn",   label: "ACK"    },
+  resolved:     { colorClass: "text-profit", label: "CLOSED" },
 };
 
 function SeverityBadge({ severity }: { severity: Alert["severity"] }) {
   const s = SEVERITY_STYLES[severity];
   return (
-    <span
-      className="px-1.5 py-0.5 rounded text-[10px] font-mono whitespace-nowrap"
-      style={{ backgroundColor: s.bg, border: `1px solid ${s.border}`, color: s.color }}
-    >
+    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono whitespace-nowrap border ${s.bgClass} ${s.borderClass} ${s.colorClass}`}>
       {s.label}
     </span>
   );
 }
 
-function StatusBadge({ status }: { status?: AlertStatus }) {
+function AlertStatusBadge({ status }: { status?: AlertStatus }) {
   const s = STATUS_STYLES[status ?? "open"];
   return (
-    <span className="text-[10px] font-mono tabular-nums" style={{ color: s.color }}>
+    <span className={`text-[10px] font-mono tabular-nums ${s.colorClass}`}>
       {s.label}
     </span>
   );
 }
 
 export default function AlertsPage() {
-  const [alerts, setAlerts]           = useState<Alert[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState<string | null>(null);
-  const [filter, setFilter]           = useState<Severity>("ALL");
-  const [actioning, setActioning]     = useState<string | null>(null);
+  const [alerts, setAlerts]       = useState<Alert[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
+  const [filter, setFilter]       = useState<Severity>("ALL");
+  const [actioning, setActioning] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Initial fetch + polling fallback
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
@@ -69,11 +67,9 @@ export default function AlertsPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // WebSocket for real-time alert pushes
   useEffect(() => {
     const engineUrl = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8000";
     const wsBase    = engineUrl.replace(/^http/, "ws") + "/ws/feed";
-    // JWT sent via leviathan_token cookie (set at login) — no query param exposure
     const wsUrl     = wsBase;
 
     let ws: WebSocket;
@@ -130,12 +126,11 @@ export default function AlertsPage() {
         </div>
         <div className="flex items-center gap-3">
           {criticalCount > 0 && (
-            <span className="text-xs font-mono" style={{ color: "#ff4d4d" }}>{criticalCount} critical</span>
+            <span className="text-xs font-mono text-danger">{criticalCount} critical</span>
           )}
           {warningCount > 0 && (
-            <span className="text-xs font-mono" style={{ color: "#f59e0b" }}>{warningCount} warnings</span>
+            <span className="text-xs font-mono text-warn">{warningCount} warnings</span>
           )}
-          {/* Severity filter dropdown */}
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as Severity)}
@@ -157,7 +152,7 @@ export default function AlertsPage() {
           return (
             <div key={sev} className="bg-terminal-surface border border-terminal-border rounded-lg p-4">
               <p className="text-terminal-subtle text-xs font-mono">{s.label}</p>
-              <p className="text-2xl font-mono font-semibold tabular-nums mt-1" style={{ color: s.color }}>
+              <p className={`text-2xl font-mono font-semibold tabular-nums mt-1 ${s.colorClass}`}>
                 {count}
               </p>
             </div>
@@ -168,13 +163,17 @@ export default function AlertsPage() {
       {/* Table card */}
       <div className="bg-terminal-surface border border-terminal-border rounded-lg overflow-hidden">
         {loading && alerts.length === 0 ? (
-          <div className="p-8 text-center text-terminal-subtle text-xs font-mono">Loading alerts...</div>
-        ) : error ? (
-          <div className="p-8 text-center font-mono text-xs" style={{ color: "#ff4d4d" }}>{error}</div>
-        ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-terminal-subtle text-xs font-mono">
-            {alerts.length === 0 ? "No alerts — system nominal" : "No alerts match selected filter"}
+          <div className="p-6 space-y-3">
+            <SkeletonCard /><SkeletonCard /><SkeletonCard />
           </div>
+        ) : error ? (
+          <FriendlyError error={error} />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Bell}
+            title={alerts.length === 0 ? "알림 없음" : "필터 결과 없음"}
+            description={alerts.length === 0 ? "No alerts — system nominal" : "No alerts match selected filter"}
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs font-mono">
@@ -210,7 +209,7 @@ export default function AlertsPage() {
                         {alert.message}
                       </td>
                       <td className="px-4 py-2">
-                        <StatusBadge status={status} />
+                        <AlertStatusBadge status={status} />
                       </td>
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">

@@ -7,6 +7,8 @@ import {
 import {
   getStrategyMetrics, getShadowStats, getAttribution, getDailyReturns,
 } from "@/lib/api";
+import { SkeletonCard, FriendlyError, EmptyState } from "@/components/ui";
+import { BarChart2 } from "lucide-react";
 import type { StrategyMetric } from "@/types";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -14,8 +16,8 @@ import type { StrategyMetric } from "@/types";
 function heatColor(value: number, maxAbs: number): string {
   if (maxAbs === 0) return "rgba(150,150,150,0.15)";
   const ratio = Math.max(-1, Math.min(1, value / maxAbs));
-  if (ratio > 0) return `rgba(5,150,105,${0.08 + ratio * 0.7})`;
-  if (ratio < 0) return `rgba(220,38,38,${0.08 + (-ratio) * 0.7})`;
+  if (ratio > 0) return `rgba(20,158,97,${0.08 + ratio * 0.7})`;
+  if (ratio < 0) return `rgba(229,72,77,${0.08 + (-ratio) * 0.7})`;
   return "rgba(150,150,150,0.15)";
 }
 
@@ -44,7 +46,7 @@ function SharpeChart({ data }: { data: StrategyBar[] }) {
       >
         <XAxis
           type="number"
-          tick={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", fill: "#666" }}
+          tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace", fill: "#686B82" }}
           axisLine={false}
           tickLine={false}
           tickFormatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}`}
@@ -52,7 +54,7 @@ function SharpeChart({ data }: { data: StrategyBar[] }) {
         <YAxis
           type="category"
           dataKey="name"
-          tick={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", fill: "#a0a0a0" }}
+          tick={{ fontSize: 10, fontFamily: "IBM Plex Mono, monospace", fill: "#9497A9" }}
           axisLine={false}
           tickLine={false}
           width={88}
@@ -60,17 +62,17 @@ function SharpeChart({ data }: { data: StrategyBar[] }) {
         <Tooltip
           contentStyle={{
             background: "#FFFFFF",
-            border: "1px solid #E5E7EB",
+            border: "1px solid #DEDEE5",
             borderRadius: 0,
             fontSize: 11,
-            fontFamily: "JetBrains Mono, monospace",
+            fontFamily: "IBM Plex Mono, monospace",
           }}
           formatter={(v: number | undefined) => [v != null ? `${v >= 0 ? "+" : ""}${v.toFixed(4)}` : "—", "PnL"]}
           cursor={{ fill: "rgba(0,0,0,0.04)" }}
         />
         <Bar dataKey="value" radius={0}>
           {data.map((d, i) => (
-            <Cell key={i} fill={d.value >= 0 ? "#059669" : "#DC2626"} fillOpacity={0.8} />
+            <Cell key={i} fill={d.value >= 0 ? "#149E61" : "#E5484D"} fillOpacity={0.8} />
           ))}
         </Bar>
       </BarChart>
@@ -95,7 +97,6 @@ function PnLHeatmap({ cells }: { cells: HeatCell[] }) {
   return (
     <div className="overflow-x-auto">
       <div className="min-w-[600px]">
-        {/* Hour labels */}
         <div className="flex ml-10 mb-1">
           {HOURS.map((h) => (
             <div key={h} className="flex-1 text-center text-[9px] font-mono text-terminal-subtle tabular-nums">
@@ -103,7 +104,6 @@ function PnLHeatmap({ cells }: { cells: HeatCell[] }) {
             </div>
           ))}
         </div>
-        {/* Grid */}
         {DAYS.map((day, di) => (
           <div key={day} className="flex items-center mb-0.5">
             <div className="w-10 text-right pr-2 text-[9px] font-mono text-terminal-subtle shrink-0">
@@ -123,14 +123,13 @@ function PnLHeatmap({ cells }: { cells: HeatCell[] }) {
             })}
           </div>
         ))}
-        {/* Legend */}
         <div className="flex items-center gap-3 mt-2 ml-10">
           <div className="flex items-center gap-1">
-            <div className="w-10 h-2.5" style={{ background: "linear-gradient(to right, rgba(220,38,38,0.8), rgba(150,150,150,0.15))" }} />
+            <div className="w-10 h-2.5" style={{ background: "linear-gradient(to right, rgba(229,72,77,0.8), rgba(150,150,150,0.15))" }} />
             <span className="text-[9px] font-mono text-terminal-subtle">Loss</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-10 h-2.5" style={{ background: "linear-gradient(to right, rgba(150,150,150,0.15), rgba(5,150,105,0.78))" }} />
+            <div className="w-10 h-2.5" style={{ background: "linear-gradient(to right, rgba(150,150,150,0.15), rgba(20,158,97,0.78))" }} />
             <span className="text-[9px] font-mono text-terminal-subtle">Profit</span>
           </div>
         </div>
@@ -161,7 +160,6 @@ export default function AnalyticsPage() {
     }
   }, []);
 
-  // Sharpe + heatmap data (less frequent)
   const fetchChartData = useCallback(async () => {
     try {
       const [shadow, attribution, dailyReturns] = await Promise.all([
@@ -170,7 +168,6 @@ export default function AnalyticsPage() {
         getDailyReturns().catch(() => null),
       ]);
 
-      // Shadow totals for summary cards (ground truth)
       if (shadow) {
         setShadowTotals({
           pnl: shadow.total_pnl ?? 0,
@@ -179,7 +176,6 @@ export default function AnalyticsPage() {
         });
       }
 
-      // Sharpe bar — use shadow by_strategy sorted by PnL
       if (shadow?.by_strategy && shadow.by_strategy.length > 0) {
         const bars: StrategyBar[] = shadow.by_strategy
           .map((s) => ({
@@ -191,7 +187,6 @@ export default function AnalyticsPage() {
         setSharpeData(bars);
       }
 
-      // Heatmap — combine hourly attribution with daily returns
       if (attribution?.by_hour) {
         const hourlyPnl = Array.from({ length: 24 }, (_, h) => {
           const entry = attribution.by_hour.find((x) => x.key === String(h));
@@ -202,9 +197,8 @@ export default function AnalyticsPage() {
           totalAbsHourly > 0 ? v / totalAbsHourly : 1 / 24
         );
 
-        // Last 7 daily returns (fill missing with 0)
         const rawReturns = Array.isArray(dailyReturns) ? dailyReturns : dailyReturns?.returns ?? [];
-      const last7 = rawReturns.slice(-7);
+        const last7 = rawReturns.slice(-7);
         const dayPnls = Array.from({ length: 7 }, (_, i) => last7[i]?.pnl ?? 0);
 
         const cells: HeatCell[] = [];
@@ -232,7 +226,6 @@ export default function AnalyticsPage() {
   }, [fetchMetrics, fetchChartData]);
 
   const strategies = Object.values(metrics);
-  // Use shadow stats as ground truth for totals (strategy_manager metrics diverge)
   const totalPnl = shadowTotals?.pnl ?? strategies.reduce((s, m) => s + m.pnl, 0);
   const totalTrades = shadowTotals?.trades ?? strategies.reduce((s, m) => s + ((m as unknown as Record<string, number>).trades || m.fills || 0), 0);
   const totalSignals = strategies.reduce((s, m) => s + (m.signals_received || (m as unknown as Record<string, number>).trade_requests || 0), 0);
@@ -254,14 +247,14 @@ export default function AnalyticsPage() {
             {
               label: "총 손익",
               value: `${totalPnl >= 0 ? "+" : ""}$${totalPnl.toFixed(4)}`,
-              color: totalPnl >= 0 ? "#059669" : "#DC2626",
+              className: totalPnl >= 0 ? "text-profit" : "text-loss",
             },
-            { label: "총 거래",  value: totalTrades.toLocaleString(),   color: undefined },
-            { label: "총 시그널", value: totalSignals.toLocaleString(), color: undefined },
-          ].map(({ label, value, color }) => (
+            { label: "총 거래",   value: totalTrades.toLocaleString(),   className: "text-terminal-text" },
+            { label: "총 시그널", value: totalSignals.toLocaleString(),   className: "text-terminal-text" },
+          ].map(({ label, value, className }) => (
             <div key={label} className="bg-terminal-surface border border-terminal-border rounded-lg p-4">
               <p className="text-terminal-subtle text-xs font-mono">{label}</p>
-              <p className="text-xl font-mono font-semibold tabular-nums mt-1" style={color ? { color } : undefined}>
+              <p className={`text-xl font-mono font-semibold tabular-nums mt-1 ${className}`}>
                 {value}
               </p>
             </div>
@@ -269,7 +262,7 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      {/* Strategy Performance Ranking (Sharpe proxy) */}
+      {/* Strategy Performance Ranking */}
       <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4">
         <div className="mb-3">
           <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">
@@ -293,22 +286,22 @@ export default function AnalyticsPage() {
 
       {/* Strategy cards */}
       {loading && strategies.length === 0 ? (
-        <div className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-terminal-subtle text-xs font-mono">
-          Loading metrics...
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <SkeletonCard /><SkeletonCard /><SkeletonCard />
         </div>
       ) : error ? (
-        <div className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-xs font-mono" style={{ color: "#DC2626" }}>
-          {error}
-        </div>
+        <FriendlyError error={error} onRetry={fetchMetrics} />
       ) : strategies.length === 0 ? (
-        <div className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-terminal-subtle text-xs font-mono">
-          No strategy metrics available
-        </div>
+        <EmptyState
+          icon={BarChart2}
+          title="전략 메트릭 없음"
+          description="No strategy metrics available"
+        />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {strategies.map((m) => {
             const fillRatio = m.trade_requests > 0 ? (m.fills / m.trade_requests) * 100 : 0;
-            const pnlColor = m.pnl >= 0 ? "#059669" : "#DC2626";
+            const pnlPositive = m.pnl >= 0;
             const barWidth = Math.min(
               Math.abs(m.pnl) / Math.max(...strategies.map((s) => Math.abs(s.pnl)), 0.0001) * 100,
               100
@@ -321,14 +314,11 @@ export default function AnalyticsPage() {
                     <p className="text-sm font-mono font-semibold text-terminal-text">{m.type}</p>
                     <p className="text-[10px] font-mono text-terminal-subtle mt-0.5">{m.id}</p>
                   </div>
-                  <span
-                    className="px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0"
-                    style={{
-                      backgroundColor: m.enabled ? "rgba(5,150,105,0.1)" : "rgba(100,100,100,0.15)",
-                      color: m.enabled ? "#059669" : "#666",
-                      border: `1px solid ${m.enabled ? "rgba(5,150,105,0.2)" : "rgba(100,100,100,0.2)"}`,
-                    }}
-                  >
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0 ${
+                    m.enabled
+                      ? "bg-profit/10 text-profit border border-profit/20"
+                      : "bg-terminal-muted text-terminal-subtle border border-border"
+                  }`}>
                     {m.enabled ? "ACTIVE" : "IDLE"}
                   </span>
                 </div>
@@ -336,20 +326,23 @@ export default function AnalyticsPage() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] font-mono text-terminal-subtle">PnL</span>
-                    <span className="text-sm font-mono font-semibold tabular-nums" style={{ color: pnlColor }}>
+                    <span className={`text-sm font-mono font-semibold tabular-nums ${pnlPositive ? "text-profit" : "text-loss"}`}>
                       {m.pnl >= 0 ? "+" : ""}${m.pnl.toFixed(4)}
                     </span>
                   </div>
                   <div className="h-1 bg-terminal-muted rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${barWidth}%`, backgroundColor: pnlColor }} />
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${pnlPositive ? "bg-profit" : "bg-loss"}`}
+                      style={{ width: `${barWidth}%` }}
+                    />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 pt-1 border-t border-terminal-border/50">
                   {[
-                    { label: "Trades",   value: ((m as unknown as Record<string, number>).trades || m.fills || 0).toString() },
-                    { label: "Wins",     value: ((m as unknown as Record<string, number>).wins || 0).toString() },
-                    { label: "WR",       value: ((m as unknown as Record<string, number>).win_rate ? `${((m as unknown as Record<string, number>).win_rate * 100).toFixed(0)}%` : `${m.trade_requests > 0 ? ((m.fills / m.trade_requests) * 100).toFixed(0) : 0}%`) },
+                    { label: "Trades", value: ((m as unknown as Record<string, number>).trades || m.fills || 0).toString() },
+                    { label: "Wins",   value: ((m as unknown as Record<string, number>).wins || 0).toString() },
+                    { label: "WR",     value: ((m as unknown as Record<string, number>).win_rate ? `${((m as unknown as Record<string, number>).win_rate * 100).toFixed(0)}%` : `${m.trade_requests > 0 ? ((m.fills / m.trade_requests) * 100).toFixed(0) : 0}%`) },
                   ].map(({ label, value }) => (
                     <div key={label}>
                       <p className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">{label}</p>

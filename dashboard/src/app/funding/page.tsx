@@ -11,6 +11,8 @@ import {
   Cell,
 } from "recharts";
 import { getFundingRates } from "@/lib/api";
+import { SkeletonCard, FriendlyError, EmptyState } from "@/components/ui";
+import { TrendingUp } from "lucide-react";
 import type { FundingRate } from "@/types";
 
 interface HistoryEntry {
@@ -33,7 +35,6 @@ export default function FundingPage() {
       setData(result);
       setError(null);
 
-      // Accumulate history: flat entries per poll, keep last 50
       const ts = new Date().toISOString();
       const newEntries: Omit<HistoryEntry, 'cumulative'>[] = [];
       for (const [ex, exData] of Object.entries(result)) {
@@ -43,7 +44,6 @@ export default function FundingPage() {
       }
       setHistory(prev => {
         const combined = [...prev, ...newEntries].slice(-50);
-        // recompute cumulative per symbol
         const cumMap: Record<string, number> = {};
         return combined.map(e => {
           cumMap[e.symbol] = (cumMap[e.symbol] ?? 0) + e.rate;
@@ -63,7 +63,6 @@ export default function FundingPage() {
     return () => clearInterval(interval);
   }, [fetchRates]);
 
-  // Build symbol × exchange matrix
   const exchanges = Object.keys(data).sort();
   const symbolSet = new Set<string>();
   for (const exData of Object.values(data)) {
@@ -76,10 +75,16 @@ export default function FundingPage() {
     return rate >= 0 ? `+${pct}%` : `${pct}%`;
   }
 
-  function rateColor(rate: number) {
-    if (rate > 0.0001) return "#059669";
-    if (rate < -0.0001) return "#DC2626";
-    return "#8b9cb3";
+  function rateClassName(rate: number): string {
+    if (rate > 0.0001) return "text-profit";
+    if (rate < -0.0001) return "text-loss";
+    return "text-terminal-subtle";
+  }
+
+  function rateColor(rate: number): string {
+    if (rate > 0.0001) return "#149E61";
+    if (rate < -0.0001) return "#E5484D";
+    return "#9497A9";
   }
 
   return (
@@ -94,11 +99,11 @@ export default function FundingPage() {
         </div>
         <div className="flex items-center gap-4 text-[10px] font-mono text-terminal-subtle">
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#059669" }} />
+            <span className="w-2 h-2 rounded-full inline-block bg-profit" />
             profit (long pays short)
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "#DC2626" }} />
+            <span className="w-2 h-2 rounded-full inline-block bg-loss" />
             loss (short pays long)
           </span>
         </div>
@@ -107,17 +112,17 @@ export default function FundingPage() {
       {/* Table */}
       <div className="bg-terminal-surface border border-terminal-border rounded-lg overflow-hidden">
         {loading && symbols.length === 0 ? (
-          <div className="p-8 text-center text-terminal-subtle text-xs font-mono">
-            Loading funding rates...
+          <div className="p-6 space-y-3">
+            <SkeletonCard /><SkeletonCard /><SkeletonCard />
           </div>
         ) : error ? (
-          <div className="p-8 text-center text-xs font-mono" style={{ color: "#DC2626" }}>
-            {error}
-          </div>
+          <FriendlyError error={error} onRetry={fetchRates} />
         ) : symbols.length === 0 ? (
-          <div className="p-8 text-center text-terminal-subtle text-xs font-mono">
-            No funding rate data available
-          </div>
+          <EmptyState
+            icon={TrendingUp}
+            title="펀딩비 데이터 없음"
+            description="No funding rate data available"
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs font-mono">
@@ -148,7 +153,7 @@ export default function FundingPage() {
                       const entry = data[ex]?.[sym];
                       if (!entry) {
                         return (
-                          <td key={ex} className="px-4 py-2 text-right text-terminal-border tabular-nums">
+                          <td key={ex} className="px-4 py-2 text-right text-terminal-subtle tabular-nums">
                             —
                           </td>
                         );
@@ -156,8 +161,7 @@ export default function FundingPage() {
                       return (
                         <td
                           key={ex}
-                          className="px-4 py-2 text-right tabular-nums font-semibold"
-                          style={{ color: rateColor(entry.rate) }}
+                          className={`px-4 py-2 text-right tabular-nums font-semibold ${rateClassName(entry.rate)}`}
                           title={
                             entry.next_funding_time
                               ? `Next: ${new Date(entry.next_funding_time).toLocaleString()}`
@@ -187,10 +191,7 @@ export default function FundingPage() {
             return (
               <div key={ex} className="bg-terminal-surface border border-terminal-border rounded-lg p-3">
                 <p className="text-[10px] font-mono text-terminal-subtle uppercase tracking-wider">{ex}</p>
-                <p
-                  className="text-base font-mono font-semibold tabular-nums mt-1"
-                  style={{ color: rateColor(avgRate) }}
-                >
+                <p className={`text-base font-mono font-semibold tabular-nums mt-1 ${rateClassName(avgRate)}`}>
                   {fmtRate(avgRate)}
                 </p>
                 <p className="text-[10px] font-mono text-terminal-subtle mt-0.5">
@@ -205,7 +206,7 @@ export default function FundingPage() {
       {/* History section */}
       {history.length > 0 && (
         <>
-          {/* BarChart: avg rate per symbol from current data */}
+          {/* BarChart */}
           <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4 space-y-3">
             <p className="text-xs font-mono text-terminal-subtle uppercase tracking-wider">
               Funding Rate History — by Symbol
@@ -221,19 +222,19 @@ export default function FundingPage() {
               >
                 <XAxis
                   dataKey="symbol"
-                  tick={{ fill: '#6B7280', fontSize: 9, fontFamily: 'monospace' }}
+                  tick={{ fill: '#686B82', fontSize: 9, fontFamily: 'monospace' }}
                   tickLine={false}
-                  axisLine={{ stroke: '#E5E7EB' }}
+                  axisLine={{ stroke: '#DEDEE5' }}
                 />
                 <YAxis
-                  tick={{ fill: '#6B7280', fontSize: 9, fontFamily: 'monospace' }}
+                  tick={{ fill: '#686B82', fontSize: 9, fontFamily: 'monospace' }}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={v => `${v}%`}
                   width={44}
                 />
                 <Tooltip
-                  contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 0, fontFamily: 'monospace', fontSize: 11 }}
+                  contentStyle={{ background: '#FFFFFF', border: '1px solid #DEDEE5', borderRadius: 0, fontFamily: 'monospace', fontSize: 11 }}
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   formatter={(v: any) => [`${(v ?? 0) > 0 ? '+' : ''}${(+(v ?? 0)).toFixed(4)}%`, 'Avg Rate']}
                 />
@@ -241,7 +242,7 @@ export default function FundingPage() {
                   {symbols.slice(0, 12).map((sym, idx) => {
                     const rates = exchanges.map(ex => data[ex]?.[sym]?.rate ?? 0);
                     const avg = rates.reduce((s, r) => s + r, 0) / Math.max(rates.length, 1);
-                    return <Cell key={idx} fill={avg >= 0 ? '#059669' : '#DC2626'} />;
+                    return <Cell key={idx} fill={rateColor(avg)} />;
                   })}
                 </Bar>
               </BarChart>
@@ -277,10 +278,10 @@ export default function FundingPage() {
                       </td>
                       <td className="px-4 py-1.5 text-terminal-text uppercase">{e.exchange}</td>
                       <td className="px-4 py-1.5 text-terminal-text font-semibold">{e.symbol}</td>
-                      <td className="px-4 py-1.5 text-right tabular-nums font-semibold" style={{ color: rateColor(e.rate) }}>
+                      <td className={`px-4 py-1.5 text-right tabular-nums font-semibold ${rateClassName(e.rate)}`}>
                         {fmtRate(e.rate)}
                       </td>
-                      <td className="px-4 py-1.5 text-right tabular-nums" style={{ color: rateColor(e.cumulative) }}>
+                      <td className={`px-4 py-1.5 text-right tabular-nums ${rateClassName(e.cumulative)}`}>
                         {fmtRate(e.cumulative)}
                       </td>
                     </tr>

@@ -10,6 +10,7 @@ import {
   getSystemResources,
   killEngine,
 } from '@/lib/api';
+import { SkeletonCard } from '@/components/ui';
 import type {
   HealthResponse,
   StatusResponse,
@@ -56,7 +57,6 @@ function KillSwitchPanel({ isAlreadyActive }: { isAlreadyActive: boolean }) {
   const [state, setState] = useState<KillState>(isAlreadyActive ? 'halted' : 'idle');
   const [countdown, setCountdown] = useState(COUNTDOWN_SEC);
 
-  // Start countdown when confirming
   useEffect(() => {
     if (state !== 'confirming') return;
     setCountdown(COUNTDOWN_SEC);
@@ -73,7 +73,6 @@ function KillSwitchPanel({ isAlreadyActive }: { isAlreadyActive: boolean }) {
     return () => clearInterval(tick);
   }, [state]);
 
-  // Sync with server state (if engine reports kill active, show halted)
   useEffect(() => {
     if (isAlreadyActive && state === 'idle') setState('halted');
   }, [isAlreadyActive, state]);
@@ -132,7 +131,6 @@ function KillSwitchPanel({ isAlreadyActive }: { isAlreadyActive: boolean }) {
     );
   }
 
-  // confirming or ready
   const progress = state === 'ready' ? 100 : ((COUNTDOWN_SEC - countdown) / COUNTDOWN_SEC) * 100;
   const canExecute = state === 'ready';
 
@@ -142,7 +140,6 @@ function KillSwitchPanel({ isAlreadyActive }: { isAlreadyActive: boolean }) {
       aria-labelledby="ks-title"
       className="border border-loss/60 bg-terminal-surface p-4 space-y-4"
     >
-      {/* Danger header */}
       <div className="flex items-start gap-3">
         <span className="w-2.5 h-2.5 rounded-full bg-loss animate-pulse mt-0.5 shrink-0" />
         <div>
@@ -156,7 +153,6 @@ function KillSwitchPanel({ isAlreadyActive }: { isAlreadyActive: boolean }) {
         </div>
       </div>
 
-      {/* Countdown bar */}
       <div className="space-y-1.5">
         <div className="flex justify-between text-[10px] font-mono text-terminal-subtle">
           <span>{canExecute ? 'Ready to execute' : `Activating in ${countdown}s…`}</span>
@@ -172,7 +168,6 @@ function KillSwitchPanel({ isAlreadyActive }: { isAlreadyActive: boolean }) {
         </div>
       </div>
 
-      {/* Action buttons */}
       <div className="flex items-center gap-3 justify-end">
         <button
           onClick={handleCancel}
@@ -249,6 +244,36 @@ export default function SystemPage() {
   const isLoading = (healthLoading && !health) || (statusLoading && !status);
   const exchangeList = Object.entries(exchanges ?? {});
 
+  // Resource bar colors via inline style (not semantic text, pure visual bar)
+  const resourceBars = [
+    {
+      label: 'CPU Usage',
+      value: resources?.cpu_pct != null ? `${resources.cpu_pct.toFixed(1)}%` : '—',
+      bar:   resources?.cpu_pct ?? 0,
+      color: '#149E61',
+    },
+    {
+      label: 'Memory',
+      value: resources?.memory_used_gb != null && resources?.memory_total_gb != null
+        ? `${resources.memory_used_gb.toFixed(1)} / ${resources.memory_total_gb.toFixed(0)} GB`
+        : '—',
+      bar: resources?.memory_used_gb != null && resources?.memory_total_gb
+        ? Math.min(resources.memory_used_gb / resources.memory_total_gb * 100, 100)
+        : 0,
+      color: '#3b82f6',
+    },
+    {
+      label: 'Disk',
+      value: resources?.disk_used_gb != null && resources?.disk_total_gb != null
+        ? `${resources.disk_used_gb.toFixed(0)} / ${resources.disk_total_gb.toFixed(0)} GB`
+        : '—',
+      bar: resources?.disk_used_gb != null && resources?.disk_total_gb
+        ? Math.min(resources.disk_used_gb / resources.disk_total_gb * 100, 100)
+        : 0,
+      color: '#F59E0B',
+    },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -264,7 +289,7 @@ export default function SystemPage() {
         )}
       </div>
 
-      {/* Kill Switch — Operations section */}
+      {/* Kill Switch */}
       <div className="space-y-1">
         <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-terminal-subtle">
           Operations
@@ -309,7 +334,6 @@ export default function SystemPage() {
 
       {/* Exchange connections + Engine stats */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Exchange connections with WS latency */}
         <div className="bg-terminal-surface border border-terminal-border p-4">
           <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle block mb-4">
             Exchange Connections &amp; Latency
@@ -331,7 +355,6 @@ export default function SystemPage() {
                     {id}
                   </span>
                   <div className="flex items-center gap-3 ml-auto">
-                    {/* WS latency badge */}
                     <span className={`text-[10px] font-mono tabular-nums px-1.5 py-0.5 border ${
                       ex.latency_ms == null ? 'border-terminal-border text-terminal-subtle' :
                       ex.latency_ms < 50  ? 'border-profit/30 text-profit' :
@@ -414,7 +437,7 @@ export default function SystemPage() {
                 >
                   <span className="text-[11px] font-mono text-terminal-subtle">{label}</span>
                   <span className={`text-[11px] font-mono tabular-nums ${
-                    value === 'HALTED' || value === 'NO'                    ? 'text-loss'   :
+                    value === 'HALTED' || value === 'NO'                         ? 'text-loss'   :
                     value === 'READY'  || value === 'YES' || value === 'HEALTHY' ? 'text-profit' :
                     'text-terminal-text'
                   }`}>
@@ -444,7 +467,7 @@ export default function SystemPage() {
         {containersLoading && !containers ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-16 bg-terminal-muted/40 animate-pulse border border-terminal-border/30" />
+              <SkeletonCard key={i} lines={2} />
             ))}
           </div>
         ) : containers && containers.length > 0 ? (
@@ -486,34 +509,7 @@ export default function SystemPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[
-              {
-                label: 'CPU Usage',
-                value: resources?.cpu_pct != null ? `${resources.cpu_pct.toFixed(1)}%` : '—',
-                bar:   resources?.cpu_pct ?? 0,
-                color: '#00ff88',
-              },
-              {
-                label: 'Memory',
-                value: resources?.memory_used_gb != null && resources?.memory_total_gb != null
-                  ? `${resources.memory_used_gb.toFixed(1)} / ${resources.memory_total_gb.toFixed(0)} GB`
-                  : '—',
-                bar: resources?.memory_used_gb != null && resources?.memory_total_gb
-                  ? Math.min(resources.memory_used_gb / resources.memory_total_gb * 100, 100)
-                  : 0,
-                color: '#3b82f6',
-              },
-              {
-                label: 'Disk',
-                value: resources?.disk_used_gb != null && resources?.disk_total_gb != null
-                  ? `${resources.disk_used_gb.toFixed(0)} / ${resources.disk_total_gb.toFixed(0)} GB`
-                  : '—',
-                bar: resources?.disk_used_gb != null && resources?.disk_total_gb
-                  ? Math.min(resources.disk_used_gb / resources.disk_total_gb * 100, 100)
-                  : 0,
-                color: '#f59e0b',
-              },
-            ].map(({ label, value, bar, color }) => (
+            {resourceBars.map(({ label, value, bar, color }) => (
               <div key={label} className="space-y-2">
                 <div className="flex justify-between text-[11px] font-mono">
                   <span className="text-terminal-subtle">{label}</span>

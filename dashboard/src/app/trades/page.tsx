@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getTrades, getStrategies, getMode } from "@/lib/api";
 import { TradeDetail } from "@/components/TradeDetail";
+import { SkeletonCard, FriendlyError, EmptyState } from "@/components/ui";
+import { Receipt } from "lucide-react";
 import type { Trade, Strategy } from "@/types";
 
 export default function TradesPage() {
@@ -54,7 +56,6 @@ export default function TradesPage() {
     return () => clearInterval(interval);
   }, [fetchTrades]);
 
-  // Derive unique exchange options from loaded trades
   const exchanges = useMemo(
     () => Array.from(new Set(trades.flatMap((t) => [t.buy_exchange, t.sell_exchange]))).sort(),
     [trades]
@@ -97,10 +98,10 @@ export default function TradesPage() {
           <h2 className="text-lg font-mono font-semibold text-terminal-text">
             거래 내역
             <span className={`ml-2 px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
-              engineMode === "live" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
-              engineMode === "paper" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" :
-              engineMode === "backtest" ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" :
-              "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+              engineMode === "live"     ? "bg-danger/10 text-danger border border-danger/30" :
+              engineMode === "paper"    ? "bg-warning/10 text-warn border border-warning/30" :
+              engineMode === "backtest" ? "bg-info/10 text-info border border-info/30" :
+              "bg-terminal-muted text-terminal-subtle border border-border"
             }`}>
               {engineMode}
             </span>
@@ -164,17 +165,17 @@ export default function TradesPage() {
       {/* Table card */}
       <div className="bg-terminal-surface border border-terminal-border rounded-lg overflow-hidden">
         {loading && trades.length === 0 ? (
-          <div className="p-8 text-center text-terminal-subtle text-xs font-mono">
-            Loading trades...
+          <div className="p-6 space-y-3">
+            <SkeletonCard /><SkeletonCard /><SkeletonCard />
           </div>
         ) : error ? (
-          <div className="p-8 text-center font-mono text-xs" style={{ color: "#FF4757" }}>
-            {error}
-          </div>
+          <FriendlyError error={error} onRetry={fetchTrades} />
         ) : trades.length === 0 ? (
-          <div className="p-8 text-center text-terminal-subtle text-xs font-mono">
-            거래 내역이 없습니다
-          </div>
+          <EmptyState
+            icon={Receipt}
+            title="거래 내역 없음"
+            description="조건에 맞는 거래 내역이 없습니다"
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs font-mono">
@@ -217,28 +218,15 @@ export default function TradesPage() {
                     <td className="px-4 py-2 text-right text-terminal-text tabular-nums">
                       ${trade.exit_price.toFixed(2)}
                     </td>
-                    <td
-                      className="px-4 py-2 text-right tabular-nums font-semibold"
-                      style={{ color: trade.pnl >= 0 ? "#00C896" : "#FF4757" }}
-                    >
+                    <td className={`px-4 py-2 text-right tabular-nums font-semibold ${trade.pnl >= 0 ? "text-profit" : "text-loss"}`}>
                       {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(4)}
                     </td>
                     <td className="px-4 py-2">
-                      <span
-                        className="px-1.5 py-0.5 rounded text-[10px] font-mono"
-                        style={{
-                          backgroundColor:
-                            trade.status === "closed"
-                              ? "rgba(0,200,150,0.1)"
-                              : "rgba(245,158,11,0.1)",
-                          color: trade.status === "closed" ? "#00C896" : "#F59E0B",
-                          border: `1px solid ${
-                            trade.status === "closed"
-                              ? "rgba(0,200,150,0.2)"
-                              : "rgba(245,158,11,0.2)"
-                          }`,
-                        }}
-                      >
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                        trade.status === "closed"
+                          ? "bg-profit/10 text-profit border border-profit/20"
+                          : "bg-warning/10 text-warn border border-warning/20"
+                      }`}>
                         {trade.status.toUpperCase()}
                       </span>
                     </td>

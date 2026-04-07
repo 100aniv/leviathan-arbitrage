@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getPortfolioSummary, getExchangeStatus } from "@/lib/api";
+import { SkeletonCard, FriendlyError, EmptyState } from "@/components/ui";
+import { Wallet } from "lucide-react";
 import type { PortfolioSummaryResponse, ExchangeStatus } from "@/types";
 
 const EXCHANGE_LABELS: Record<string, string> = {
@@ -20,11 +22,11 @@ const EXCHANGE_LABELS: Record<string, string> = {
   coinone:         "Coinone",
 };
 
-function latencyColor(ms: number | undefined | null): string {
-  if (ms == null || isNaN(ms)) return "#888888";
-  if (ms < 100) return "#00C896";
-  if (ms < 500) return "#F59E0B";
-  return "#FF4757";
+function latencyClassName(ms: number | undefined | null): string {
+  if (ms == null || isNaN(ms)) return "text-terminal-subtle";
+  if (ms < 100) return "text-profit";
+  if (ms < 500) return "text-warn";
+  return "text-loss";
 }
 
 function formatBalance(v: number): string {
@@ -93,13 +95,13 @@ export default function AssetsPage() {
       {summary && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
-            { label: "누적 손익", value: formatPnl(totalPnl), color: totalPnl >= 0 ? "#00C896" : "#FF4757" },
-            { label: "오늘 손익", value: formatPnl(dailyPnl), color: dailyPnl >= 0 ? "#00C896" : "#FF4757" },
-            { label: "활성 포지션", value: String(activePosn), color: "var(--text-primary)" },
-          ].map(({ label, value, color }) => (
+            { label: "누적 손익",   value: formatPnl(totalPnl),    className: totalPnl >= 0 ? "text-profit" : "text-loss" },
+            { label: "오늘 손익",   value: formatPnl(dailyPnl),    className: dailyPnl >= 0 ? "text-profit" : "text-loss" },
+            { label: "활성 포지션", value: String(activePosn),     className: "text-terminal-text" },
+          ].map(({ label, value, className }) => (
             <div key={label} className="bg-terminal-surface border border-terminal-border p-4">
               <p className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">{label}</p>
-              <p className="text-xl font-mono font-semibold tabular-nums mt-1" style={{ color }}>{value}</p>
+              <p className={`text-xl font-mono font-semibold tabular-nums mt-1 ${className}`}>{value}</p>
             </div>
           ))}
         </div>
@@ -107,32 +109,29 @@ export default function AssetsPage() {
 
       {/* Exchange cards */}
       {loading && balances.length === 0 ? (
-        <div className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-terminal-subtle text-xs font-mono">
-          Loading asset data...
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard />
         </div>
       ) : error ? (
-        <div
-          className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-xs font-mono"
-          style={{ color: "#FF4757" }}
-        >
-          {error}
-        </div>
+        <FriendlyError error={error} onRetry={fetchData} />
       ) : balances.length === 0 ? (
-        <div className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-terminal-subtle text-xs font-mono">
-          No asset data available
-        </div>
+        <EmptyState
+          icon={Wallet}
+          title="자산 데이터 없음"
+          description="No asset data available"
+        />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {balances.map((ex) => {
-            const label    = EXCHANGE_LABELS[ex.exchange_id] ?? ex.exchange_id;
-            const connColor = ex.connected ? "#00C896" : "#FF4757";
+            const label     = EXCHANGE_LABELS[ex.exchange_id] ?? ex.exchange_id;
+            const connBorderColor = ex.connected ? "#149E61" : "#E5484D";
             const exStatus  = statuses[ex.exchange_id];
 
             return (
               <div
                 key={ex.exchange_id}
                 className="bg-terminal-surface border border-terminal-border rounded-lg p-4 space-y-3"
-                style={{ borderLeftColor: connColor, borderLeftWidth: "2px" }}
+                style={{ borderLeftColor: connBorderColor, borderLeftWidth: "2px" }}
               >
                 {/* Title + status badge */}
                 <div className="flex items-center justify-between gap-2">
@@ -140,15 +139,12 @@ export default function AssetsPage() {
                     <p className="text-sm font-mono font-semibold text-terminal-text">{label}</p>
                     <p className="text-[10px] font-mono text-terminal-subtle mt-0.5">{ex.exchange_id}</p>
                   </div>
-                  <span
-                    className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0"
-                    style={{
-                      backgroundColor: ex.connected ? "rgba(0,200,150,0.1)" : "rgba(255,71,87,0.1)",
-                      color: connColor,
-                      border: `1px solid ${ex.connected ? "rgba(0,200,150,0.2)" : "rgba(255,71,87,0.2)"}`,
-                    }}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: connColor }} aria-hidden />
+                  <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0 ${
+                    ex.connected
+                      ? "bg-profit/10 text-profit border border-profit/20"
+                      : "bg-loss/10 text-loss border border-loss/20"
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${ex.connected ? "bg-profit" : "bg-loss"}`} aria-hidden />
                     {ex.connected ? "LIVE" : "DOWN"}
                   </span>
                 </div>
@@ -159,11 +155,10 @@ export default function AssetsPage() {
                   <p className="text-lg font-mono font-semibold tabular-nums mt-0.5 text-terminal-text">
                     ${formatBalance(ex.balance_usdt)}
                   </p>
-                  {/* % of total bar */}
                   <div className="mt-1.5 h-1 bg-terminal-muted/30 rounded-full overflow-hidden">
                     <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${Math.min(100, ex.pct_of_total)}%`, backgroundColor: "#00B8FF" }}
+                      className="h-full rounded-full transition-all duration-700 bg-accent"
+                      style={{ width: `${Math.min(100, ex.pct_of_total)}%` }}
                     />
                   </div>
                   <p className="text-[9px] font-mono text-terminal-subtle mt-0.5 tabular-nums">
@@ -171,15 +166,12 @@ export default function AssetsPage() {
                   </p>
                 </div>
 
-                {/* Exchange status (latency + symbols) if available */}
+                {/* Exchange status */}
                 {exStatus && (
                   <div className="grid grid-cols-2 gap-2 pt-2 border-t border-terminal-border/50">
                     <div>
                       <p className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">Latency</p>
-                      <p
-                        className="text-xs font-mono tabular-nums mt-0.5"
-                        style={{ color: latencyColor(exStatus.latency_ms) }}
-                      >
+                      <p className={`text-xs font-mono tabular-nums mt-0.5 ${latencyClassName(exStatus.latency_ms)}`}>
                         {exStatus.latency_ms == null || isNaN(exStatus.latency_ms)
                           ? '—'
                           : exStatus.latency_ms < 1000

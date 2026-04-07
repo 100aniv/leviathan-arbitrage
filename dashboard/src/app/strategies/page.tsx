@@ -3,6 +3,7 @@
 import { useApi } from '@/hooks/useApi';
 import { getShadowStats, getStrategyMetrics } from '@/lib/api';
 import { StrategyPanel } from '@/components/StrategyPanel';
+import { SkeletonCard } from '@/components/ui';
 import type { ShadowStats, StrategyMetric } from '@/types';
 
 const STRATEGY_TYPES = [
@@ -15,13 +16,13 @@ const STRATEGY_TYPES = [
   { type: 'cex_dex',         label: 'CEX/DEX'         },
 ] as const;
 
-function scoreColor(score: number) {
+function scoreColorClass(score: number): string {
   if (score >= 70) return 'text-profit';
   if (score >= 40) return 'text-warn';
   return 'text-loss';
 }
 
-function scoreBgColor(score: number) {
+function scoreBgClass(score: number): string {
   if (score >= 70) return 'bg-profit';
   if (score >= 40) return 'bg-warn';
   return 'bg-loss';
@@ -84,7 +85,7 @@ export default function StrategiesPage() {
         )}
       </div>
 
-      {/* 건강도 Cards — 7 strategies */}
+      {/* Health score cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {STRATEGY_TYPES.map(({ type, label }) => {
           const breakdown = shadow?.by_strategy?.find(
@@ -123,13 +124,12 @@ export default function StrategiesPage() {
               {/* Score display */}
               {isLoading ? (
                 <div className="space-y-2">
-                  <div className="h-8 bg-terminal-muted/30 animate-pulse" />
-                  <div className="h-1.5 bg-terminal-muted/20 animate-pulse" />
+                  <SkeletonCard lines={2} className="border-0 p-0 shadow-none" />
                 </div>
               ) : (
                 <>
                   <div className="flex items-end gap-1">
-                    <span className={`text-2xl font-mono tabular-nums leading-none ${scoreColor(total)}`}>
+                    <span className={`text-2xl font-mono tabular-nums leading-none ${scoreColorClass(total)}`}>
                       {hasData ? total : '—'}
                     </span>
                     {hasData && (
@@ -139,14 +139,12 @@ export default function StrategiesPage() {
 
                   {hasData && (
                     <div className="space-y-1.5">
-                      {/* Progress bar */}
                       <div className="h-1.5 bg-terminal-muted/30 overflow-hidden">
                         <div
-                          className={`h-full transition-all duration-700 ${scoreBgColor(total)}`}
+                          className={`h-full transition-all duration-700 ${scoreBgClass(total)}`}
                           style={{ width: `${total}%` }}
                         />
                       </div>
-                      {/* Score breakdown */}
                       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
                         {[
                           { label: 'WR',   pts: wrScore,   max: 40 },
@@ -187,7 +185,7 @@ export default function StrategiesPage() {
         })}
       </div>
 
-      {/* Strategy management — toggle / details */}
+      {/* Strategy management */}
       <StrategyPanel />
     </div>
   );

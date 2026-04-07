@@ -42,11 +42,11 @@ interface DrawdownPoint {
 }
 
 const PIE_COLORS = [
-  '#22c55e', '#3b82f6', '#eab308', '#ef4444',
+  '#149E61', '#3b82f6', '#F59E0B', '#E5484D',
   '#a855f7', '#06b6d4', '#f97316', '#ec4899',
 ];
 
-// ─── 드로다운 Chart ───────────────────────────────────────────────────────────
+// ─── Drawdown Chart ───────────────────────────────────────────────────────────
 
 function DrawdownChart({ data }: { data: DrawdownPoint[] }) {
   if (data.length === 0) {
@@ -64,20 +64,20 @@ function DrawdownChart({ data }: { data: DrawdownPoint[] }) {
       <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
         <defs>
           <linearGradient id="ddGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%"  stopColor="#DC2626" stopOpacity={0.4} />
-            <stop offset="95%" stopColor="#DC2626" stopOpacity={0.02} />
+            <stop offset="5%"  stopColor="#E5484D" stopOpacity={0.4} />
+            <stop offset="95%" stopColor="#E5484D" stopOpacity={0.02} />
           </linearGradient>
         </defs>
         <XAxis
           dataKey="date"
-          tick={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#6B7280' }}
+          tick={{ fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', fill: '#686B82' }}
           axisLine={false}
           tickLine={false}
           tickFormatter={(v: string) => v.slice(5)}
           interval="preserveStartEnd"
         />
         <YAxis
-          tick={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#6B7280' }}
+          tick={{ fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', fill: '#686B82' }}
           axisLine={false}
           tickLine={false}
           tickFormatter={(v: number) => `${v.toFixed(1)}%`}
@@ -87,22 +87,22 @@ function DrawdownChart({ data }: { data: DrawdownPoint[] }) {
         <Tooltip
           contentStyle={{
             background: '#FFFFFF',
-            border: '1px solid #E5E7EB',
+            border: '1px solid #DEDEE5',
             borderRadius: 0,
             fontSize: 11,
-            fontFamily: 'JetBrains Mono, monospace',
+            fontFamily: 'IBM Plex Mono, monospace',
           }}
           formatter={(v: number | undefined) => [v != null ? `${v.toFixed(3)}%` : '—', '드로다운']}
         />
-        <ReferenceLine y={0} stroke="#E5E7EB" strokeDasharray="3 3" />
+        <ReferenceLine y={0} stroke="#DEDEE5" strokeDasharray="3 3" />
         <Area
           type="monotone"
           dataKey="drawdown"
-          stroke="#DC2626"
+          stroke="#E5484D"
           strokeWidth={1.5}
           fill="url(#ddGradient)"
           dot={false}
-          activeDot={{ r: 3, fill: '#DC2626' }}
+          activeDot={{ r: 3, fill: '#E5484D' }}
         />
       </AreaChart>
     </ResponsiveContainer>
@@ -112,7 +112,7 @@ function DrawdownChart({ data }: { data: DrawdownPoint[] }) {
 // ─── Exposure Heatmap ─────────────────────────────────────────────────────────
 
 function exposureColor(pct: number): string {
-  if (pct <= 0) return 'rgba(80,80,80,0.15)';
+  if (pct <= 0) return 'rgba(104,107,130,0.08)';
   const alpha = Math.min(pct / 30, 1) * 0.75 + 0.08;
   return `rgba(59,130,246,${alpha})`;
 }
@@ -133,7 +133,6 @@ function ExposureHeatmap({ positions }: ExposureHeatmapProps) {
   const strategies = Array.from(new Set(positions.map((p) => p.strategy_id)));
   const exchanges  = Array.from(new Set(positions.map((p) => p.exchange_id)));
 
-  // Compute USD exposure per (strategy, exchange)
   const matrix: Record<string, Record<string, number>> = {};
   let totalExposure = 0;
   for (const pos of positions) {
@@ -146,7 +145,6 @@ function ExposureHeatmap({ positions }: ExposureHeatmapProps) {
   return (
     <div className="overflow-x-auto">
       <div className="min-w-[400px]">
-        {/* Exchange header */}
         <div className="flex ml-28 mb-1">
           {exchanges.map((ex) => (
             <div key={ex} className="flex-1 text-center text-[9px] font-mono text-terminal-subtle truncate px-0.5">
@@ -154,7 +152,6 @@ function ExposureHeatmap({ positions }: ExposureHeatmapProps) {
             </div>
           ))}
         </div>
-        {/* Rows */}
         {strategies.map((strat) => (
           <div key={strat} className="flex items-center mb-0.5">
             <div className="w-28 text-right pr-2 text-[9px] font-mono text-terminal-subtle truncate shrink-0">
@@ -180,9 +177,8 @@ function ExposureHeatmap({ positions }: ExposureHeatmapProps) {
             })}
           </div>
         ))}
-        {/* Legend */}
         <div className="flex items-center gap-2 mt-2 ml-28">
-          <div className="w-16 h-2.5" style={{ background: 'linear-gradient(to right, rgba(80,80,80,0.15), rgba(59,130,246,0.83))' }} />
+          <div className="w-16 h-2.5" style={{ background: 'linear-gradient(to right, rgba(104,107,130,0.08), rgba(59,130,246,0.83))' }} />
           <span className="text-[9px] font-mono text-terminal-subtle">0% → 30%+ exposure</span>
         </div>
       </div>
@@ -228,7 +224,6 @@ export default function PortfolioPage() {
           const pts = curveData.curve;
           setCurve(pts);
 
-          // Compute drawdown series from equity curve
           let peak = pts[0].equity;
           const dd: DrawdownPoint[] = pts.map((p) => {
             if (p.equity > peak) peak = p.equity;
@@ -293,7 +288,7 @@ export default function PortfolioPage() {
                     ))}
                   </Pie>
                   <Tooltip
-                    contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 0, fontSize: 11, fontFamily: 'JetBrains Mono' }}
+                    contentStyle={{ background: '#FFFFFF', border: '1px solid #DEDEE5', borderRadius: 0, fontSize: 11, fontFamily: 'IBM Plex Mono' }}
                     formatter={(value: number | undefined, name: string | undefined): [ReactNode, string] => [`$${(value ?? 0).toLocaleString()}`, name ?? '']}
                   />
                 </PieChart>
@@ -323,11 +318,11 @@ export default function PortfolioPage() {
           <div className="mt-3">
             <ResponsiveContainer width="100%" height={100}>
               <AreaChart data={dailyReturns} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                <XAxis dataKey="date" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={(v: string) => v.slice(5)} />
-                <YAxis tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v.toFixed(0)}`} width={45} />
-                <Tooltip contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 0, fontSize: 11, fontFamily: 'JetBrains Mono' }} formatter={(v: number | undefined): [ReactNode, string] => [`$${(v ?? 0).toFixed(2)}`, 'PnL']} />
-                <ReferenceLine y={0} stroke="#E5E7EB" strokeDasharray="3 3" />
-                <Area type="monotone" dataKey="pnl" stroke="#059669" strokeWidth={1.5} fill="rgba(5,150,105,0.1)" dot={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fontFamily: 'IBM Plex Mono', fill: '#686B82' }} axisLine={false} tickLine={false} tickFormatter={(v: string) => v.slice(5)} />
+                <YAxis tick={{ fontSize: 9, fontFamily: 'IBM Plex Mono', fill: '#686B82' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v.toFixed(0)}`} width={45} />
+                <Tooltip contentStyle={{ background: '#FFFFFF', border: '1px solid #DEDEE5', borderRadius: 0, fontSize: 11, fontFamily: 'IBM Plex Mono' }} formatter={(v: number | undefined): [ReactNode, string] => [`$${(v ?? 0).toFixed(2)}`, 'PnL']} />
+                <ReferenceLine y={0} stroke="#DEDEE5" strokeDasharray="3 3" />
+                <Area type="monotone" dataKey="pnl" stroke="#149E61" strokeWidth={1.5} fill="rgba(20,158,97,0.1)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -350,9 +345,12 @@ export default function PortfolioPage() {
                 <div key={s.strategy_id} className="flex items-center gap-2">
                   <span className="text-[10px] font-mono text-terminal-subtle w-28 shrink-0 truncate">{s.strategy_id.replace(/_v\d+$/, '')}</span>
                   <div className="flex-1 h-4 bg-terminal-muted/20 overflow-hidden">
-                    <div className="h-full transition-all" style={{ width: `${w}%`, backgroundColor: s.pnl >= 0 ? '#059669' : '#DC2626', opacity: 0.7 }} />
+                    <div
+                      className={`h-full transition-all ${s.pnl >= 0 ? 'bg-profit' : 'bg-loss'}`}
+                      style={{ width: `${w}%`, opacity: 0.7 }}
+                    />
                   </div>
-                  <span className="text-[10px] font-mono tabular-nums w-20 text-right" style={{ color: s.pnl >= 0 ? '#059669' : '#DC2626' }}>
+                  <span className={`text-[10px] font-mono tabular-nums w-20 text-right ${s.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
                     {s.pnl >= 0 ? '+' : ''}${s.pnl.toFixed(2)}
                   </span>
                   <span className="text-[9px] font-mono text-terminal-subtle w-12 text-right">{s.trades}t</span>
@@ -369,7 +367,7 @@ export default function PortfolioPage() {
           <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">드로다운</span>
           {metrics && (
             <span className="ml-2 text-[10px] font-mono text-terminal-subtle">
-              최대 <span style={{ color: '#DC2626' }}>{metrics.max_drawdown_pct.toFixed(2)}%</span>
+              최대 <span className="text-loss">{metrics.max_drawdown_pct.toFixed(2)}%</span>
             </span>
           )}
         </div>

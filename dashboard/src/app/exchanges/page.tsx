@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getExchangeStatus } from "@/lib/api";
+import { SkeletonCard, FriendlyError, EmptyState } from "@/components/ui";
+import { Globe } from "lucide-react";
 import type { ExchangeStatus } from "@/types";
 
 const EXCHANGE_LABELS: Record<string, string> = {
@@ -26,11 +28,11 @@ function formatLatency(ms: number | undefined | null): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function latencyColor(ms: number | undefined | null): string {
-  if (ms == null || isNaN(ms)) return '#888888';
-  if (ms < 100)  return '#00C896';
-  if (ms < 500)  return '#F59E0B';
-  return '#FF4757';
+function latencyClassName(ms: number | undefined | null): string {
+  if (ms == null || isNaN(ms)) return 'text-terminal-subtle';
+  if (ms < 100) return 'text-profit';
+  if (ms < 500) return 'text-warn';
+  return 'text-loss';
 }
 
 function formatLastUpdate(iso: string | undefined | null): string {
@@ -83,8 +85,7 @@ export default function ExchangesPage() {
         {entries.length > 0 && (
           <div className="text-right">
             <p className="text-xs font-mono text-terminal-subtle">Connected</p>
-            <p className="text-lg font-mono font-semibold tabular-nums"
-              style={{ color: connectedCount > 0 ? "#00ff88" : "#ff4d4d" }}>
+            <p className={`text-lg font-mono font-semibold tabular-nums ${connectedCount > 0 ? "text-profit" : "text-loss"}`}>
               {connectedCount}/{entries.length}
             </p>
           </div>
@@ -93,32 +94,29 @@ export default function ExchangesPage() {
 
       {/* Cards */}
       {loading && entries.length === 0 ? (
-        <div className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-terminal-subtle text-xs font-mono">
-          Loading exchange status...
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard />
         </div>
       ) : error ? (
-        <div
-          className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-xs font-mono"
-          style={{ color: "#ff4d4d" }}
-        >
-          {error}
-        </div>
+        <FriendlyError error={error} onRetry={fetchStatuses} />
       ) : entries.length === 0 ? (
-        <div className="bg-terminal-surface border border-terminal-border rounded-lg p-8 text-center text-terminal-subtle text-xs font-mono">
-          No exchange data available
-        </div>
+        <EmptyState
+          icon={Globe}
+          title="거래소 데이터 없음"
+          description="No exchange data available"
+        />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {entries.map((ex) => {
             const label = EXCHANGE_LABELS[ex.exchange_id] ?? ex.exchange_id;
-            const connColor = ex.connected ? "#00C896" : "#FF4757";
+            const connBorderColor = ex.connected ? "#149E61" : "#E5484D";
             const balanceEntries = ex.balance ? Object.entries(ex.balance).filter(([, v]) => v > 0) : [];
 
             return (
               <div
                 key={ex.exchange_id}
                 className="bg-terminal-surface border border-terminal-border rounded-lg p-4 space-y-3"
-                style={{ borderLeftColor: connColor, borderLeftWidth: "2px" }}
+                style={{ borderLeftColor: connBorderColor, borderLeftWidth: "2px" }}
               >
                 {/* Title row */}
                 <div className="flex items-center justify-between gap-2">
@@ -126,17 +124,13 @@ export default function ExchangesPage() {
                     <p className="text-sm font-mono font-semibold text-terminal-text">{label}</p>
                     <p className="text-[10px] font-mono text-terminal-subtle mt-0.5">{ex.exchange_id}</p>
                   </div>
-                  <span
-                    className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0"
-                    style={{
-                      backgroundColor: ex.connected ? "rgba(0,200,150,0.1)" : "rgba(255,71,87,0.1)",
-                      color: connColor,
-                      border: `1px solid ${ex.connected ? "rgba(0,200,150,0.2)" : "rgba(255,71,87,0.2)"}`,
-                    }}
-                  >
+                  <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0 ${
+                    ex.connected
+                      ? "bg-profit/10 text-profit border border-profit/20"
+                      : "bg-loss/10 text-loss border border-loss/20"
+                  }`}>
                     <span
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ backgroundColor: connColor }}
+                      className={`w-1.5 h-1.5 rounded-full ${ex.connected ? "bg-profit" : "bg-loss"}`}
                       aria-hidden
                     />
                     {ex.connected ? "LIVE" : "DOWN"}
@@ -147,8 +141,7 @@ export default function ExchangesPage() {
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-terminal-border/50">
                   <div>
                     <p className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">Latency</p>
-                    <p className="text-sm font-mono tabular-nums mt-0.5"
-                      style={{ color: latencyColor(ex.latency_ms) }}>
+                    <p className={`text-sm font-mono tabular-nums mt-0.5 ${latencyClassName(ex.latency_ms)}`}>
                       {formatLatency(ex.latency_ms)}
                     </p>
                   </div>

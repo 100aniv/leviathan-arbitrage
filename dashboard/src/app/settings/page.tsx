@@ -21,7 +21,7 @@ function InfoTip({ text }: { text: string }) {
         ⓘ
       </button>
       {show && (
-        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-terminal-bg border border-terminal-border rounded text-[10px] font-mono text-terminal-text whitespace-nowrap z-50 shadow-lg">
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-bg-elevated border border-border rounded text-[10px] font-mono text-text-primary whitespace-nowrap z-50 shadow-card">
           {text}
         </span>
       )}
@@ -37,12 +37,14 @@ const ALL_EXCHANGES = [
 const MODE_LABELS: Record<string, string> = {
   backtest: "Backtest",
   paper: "Paper",
+  shadow: "Shadow",
   live: "Live",
 };
 
 const MODE_DESCRIPTIONS: Record<string, string> = {
   backtest: "과거 데이터 + SimExecutor — 오프라인 전략 성능 검증",
   paper: "실시간 WS + SimExecutor — 실제 시장 데이터 기반 가상 거래 (주문 없음)",
+  shadow: "실시간 WS + Paper — Shadow 모드 실행",
   live: "실시간 WS + AtomicExecutor 전액 — LiveGate 통과 필요",
 };
 
@@ -213,13 +215,11 @@ export default function SettingsPage() {
 
       {/* Feedback */}
       {feedback && (
-        <div
-          className={`px-4 py-2 rounded font-mono text-xs border ${
-            feedback.type === "success"
-              ? "bg-profit/10 border-profit/30 text-profit"
-              : "bg-loss/10 border-loss/30 text-loss"
-          }`}
-        >
+        <div className={`px-4 py-2 rounded font-mono text-xs border ${
+          feedback.type === "success"
+            ? "bg-profit/10 border-profit/30 text-profit"
+            : "bg-loss/10 border-loss/30 text-loss"
+        }`}>
           {feedback.message}
         </div>
       )}
@@ -377,7 +377,7 @@ export default function SettingsPage() {
                   }`}
                 >
                   <span
-                    className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-terminal-text transition-transform ${
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-text-primary transition-transform ${
                       s.enabled ? "translate-x-5" : "translate-x-0"
                     }`}
                   />
@@ -418,7 +418,7 @@ export default function SettingsPage() {
                     }`}
                   >
                     {active && (
-                      <svg viewBox="0 0 10 10" className="w-2 h-2 fill-terminal-bg">
+                      <svg viewBox="0 0 10 10" className="w-2 h-2 fill-bg-elevated">
                         <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
                       </svg>
                     )}
@@ -442,7 +442,7 @@ export default function SettingsPage() {
         </button>
       </section>
 
-      {/* ── Danger Zone ─────────────────────────────────────────────────────── */}
+      {/* Danger Zone */}
       <section className="border-2 border-loss/50 rounded-lg p-5 space-y-4 bg-loss/5">
         <div>
           <h3 className="text-sm font-mono font-semibold text-loss uppercase tracking-[0.15em]">
