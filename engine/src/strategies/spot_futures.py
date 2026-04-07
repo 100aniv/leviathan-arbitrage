@@ -40,7 +40,7 @@ class SpotFuturesConfig(BaseModel):
     """Configuration for SpotFuturesStrategy."""
 
     min_basis_bps: Decimal = Field(default=Decimal("15"), ge=Decimal("0"))
-    max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
+    max_position_size: Decimal = Field(default=Decimal("50000"), gt=Decimal("0"))  # USD notional cap
     max_holding_hours: float = Field(default=8.0, gt=0.0)
     funding_rate_threshold: Decimal = Field(default=Decimal("0.001"), ge=Decimal("0"))
     enable_basis_ou_filter: bool = Field(default=True)
@@ -209,7 +209,9 @@ class SpotFuturesStrategy(BaseStrategy):
 
         spot_symbol = str(signal.metadata.get("spot_symbol", signal.symbol))
         futures_symbol = str(signal.metadata.get("futures_symbol", signal.symbol))
-        size = min(signal.volume, self.config.max_position_size)
+        # PHOENIX: max_position_size is USD notional cap — divide by price to get base units
+        _sf_avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
+        size = min(signal.volume, (self.config.max_position_size / _sf_avg_price) if _sf_avg_price > 0 else signal.volume)
 
         # Contango: sell futures (expensive), buy spot (cheap)
         # Backwardation: buy futures (cheap), sell spot (expensive)

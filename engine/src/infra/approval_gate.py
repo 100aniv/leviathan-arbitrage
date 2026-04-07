@@ -36,6 +36,18 @@ async def request_live_approval(
         True  — operator approved
         False — rejected, timed out, or Telegram not configured
     """
+    # PHOENIX: live_gate.bypass=true → auto-approve (no Telegram required)
+    try:
+        from src.core.config import load_engine_config
+        _ecfg = load_engine_config()
+        if _ecfg.get("live_gate", {}).get("bypass", False):
+            logger.warning(
+                "approval_gate.bypass_active stage=%s — auto-approve (live_gate.bypass=true)", stage
+            )
+            return True
+    except Exception:
+        pass
+
     token = os.getenv("DEV_TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("DEV_TELEGRAM_CHAT_ID", "")
 

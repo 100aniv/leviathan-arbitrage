@@ -31,6 +31,15 @@ from src.core.order_book import OrderBook
 
 logger = logging.getLogger(__name__)
 
+
+def _default_funding_scanner_exchanges() -> list[str]:
+    """Return futures exchanges from env var or FUTURES_TO_SPOT SSOT (no hardcoding)."""
+    from src.core.exchanges import FUTURES_TO_SPOT
+    env_val = os.environ.get("FUNDING_SCANNER_EXCHANGES", "")
+    if env_val:
+        return [e.strip() for e in env_val.split(",") if e.strip()]
+    return sorted(FUTURES_TO_SPOT.keys())
+
 # US-269: Settlement period per exchange (hours); used to normalize rates to 8H equivalent
 SETTLEMENT_HOURS: dict[str, float] = {
     "binance_futures": 8.0,
@@ -69,13 +78,7 @@ class MultiSignalConfig:
         default_factory=lambda: os.environ.get("ENABLE_MULTI_FUNDING_SCANNER", "true").lower() != "false"
     )
     funding_scanner_exchanges: list[str] = field(
-        default_factory=lambda: [
-            e.strip()
-            for e in os.environ.get(
-                "FUNDING_SCANNER_EXCHANGES", "binance_futures,bybit_futures,okx_futures"
-            ).split(",")
-            if e.strip()
-        ]
+        default_factory=_default_funding_scanner_exchanges
     )
 
 

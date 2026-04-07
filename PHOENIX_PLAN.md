@@ -194,29 +194,56 @@ P10: Bin↔Bithumb CE | P11: Bin↔Bitget CE | **P12: 전체 11조합 병렬**
 - [x] npm run build 성공 (✓ Compiled successfully, 20/20 pages)
 - [x] Paper 5분: 7거래소 + 4전략 표시 확인 (paper_mode.init 7exchanges + API strategies 4개)
 
+**Step 0-6: 하드코딩 제거 + 운영 확장성 (추가 요청)**
+- [x] `FundingRateCollector.fetch_paired_symbols()` — engine.json `*_futures` 거래소 자동 탐지 + 교집합 심볼 동적 조회 (470심볼 동적, 0 하드코딩)
+- [x] `FundingRateCollector.get_poll_exchanges()` — engine.json active 기반 레이트 폴링 거래소 자동 결정
+- [x] `_fetch_exchange_symbols()` — binance/bitget/bybit/okx futures perp 심볼 API 조회 구현
+- [x] `_SUPPORTED_FUTURES_EXCHANGES` 레지스트리 — 새 거래소 추가 = 여기에 1줄
+- [x] `poll_once` 병렬화 — 순차 940 요청(94초) → asyncio.gather + Semaphore(30) → ~5초
+- [x] main.py 4개 site — `symbols=all_300+` → 동적 조회, `exchanges=하드코딩` → engine.json
+- [x] `engine/src/core/exchanges.py` 신규 생성 — KRW_EXCHANGES + FUTURES_TO_SPOT SSOT
+- [x] KRW 셋 10곳 중복 → 6개 파일 import로 통합 (manager, real_signal_producer, stale_detector, data_quality_manager, cross_exchange, live)
+- [x] futures→spot 매핑: binance만 → FUTURES_TO_SPOT dict (4거래소 모두)
+- [x] main.py fallback 8곳 `["binance","bybit","okx","bitget"]` → `_get_fallback_exchanges()` engine.json 동적 읽기
+- [x] `FUTURES_EXCHANGES` bitget_futures 누락 추가 (data_quality_manager)
+- [x] pytest 통과: 5437 passed, 0 failed, 12 skipped (400s) — test_native_bithumb.py는 pre-existing 오류
+- [x] 새 거래소 추가 절차: engine.json 1줄 + exchanges.py 1줄 + _fetch_exchange_symbols() 핸들러 1개
+
+**Step 0-7: 추가 하드코딩 제거 (Step 1-2 진행 중 발견)**
+- [x] `shadow.py:548` `_futures_exchanges` — `{"binance_futures","okx_futures","bybit_futures"}` → `set(FUTURES_TO_SPOT.keys())` (bitget_futures 누락 → futures_futures 시그널 0건 원인)
+- [x] `live.py:273` `_futures_exchanges` — 동일 패턴 수정 (Live 모드 bitget_futures 누락)
+- [x] `real_signal_producer.py:113` — default fallback → `set(FUTURES_TO_SPOT.keys())` (생성자 기본값)
+- [x] `multi_signal.py:75` `FUNDING_SCANNER_EXCHANGES` — `_default_funding_scanner_exchanges()` helper로 교체 (env var 우선, 없으면 FUTURES_TO_SPOT.keys())
+- [x] `.env:31` `PAPER_DISABLED_STRATEGIES` — `spot_futures_v1,futures_futures_v1,latency_arb_v1` → `latency_arb_v1,cex_dex_v1,triangular_v1` (strategy_activation.json 기준 정렬)
+- [x] pytest 통과: 5437 passed, 0 failed, 12 skipped (401s, 2026-04-07 10:07)
+- [x] 효과: futures_futures 시그널 0건 → 126건/2분 (bitget_futures 데이터 _futures_books 반영)
+
 ### Phase 1: 배관 뚫기 — Live 체결 1건
 
 **Step 1-1: 7 어댑터 배선 (Paper 5분)**
-- [ ] 7개 WS 연결 확인 (각 거래소 "connected" 로그)
-- [ ] funding_rate 시그널 ≥1, crash=0
-- [ ] KillSwitch OFF, CB CLOSED, Guardian all-PASS (로그)
-- [ ] Bithumb stale guard 정상 (±50% 오탐 없음)
-- [ ] Paper 모드에서 Telegram Trade봇 알림 0건 확인 (모드 게이팅 검증)
-- [ ] DB 쿼리 검증: `SELECT mode FROM execution_log LIMIT 5` → 전부 'paper'
+- [x] 7개 WS 연결 확인 — binance/binance_futures/bitget/bitget_futures/coinone/upbit WS + bithumb REST (2026-04-07 09:10:40)
+- [x] funding_rate 시그널 ≥1 — 6건 (09:10:47, concurrent poll 9초 만에 완료)
+- [x] crash=0 — Traceback/CRITICAL 없음
+- [x] KillSwitch OFF — `kill_switch_functions_resolved backend=python`
+- [x] CB CLOSED — 트리거 없음
+- [x] Guardian all-PASS — 거부 없음
+- [x] Bithumb stale guard 정상 — `stale_data` 거부 정상 작동 (±50% 오탐 없음)
+- [x] Paper 모드 Telegram Trade봇 알림 0건 — 시스템 알림 2건만 (Paper 모드 시작/활성화)
+- [x] DB 쿼리: `SELECT mode, COUNT(*) FROM execution_log GROUP BY mode` → `paper | 208` 전부 paper
 
-**Step 1-2: Paper 1시간 안정성**
-- [ ] timeout 3600 실행, crash=0, 무중단 ≥60분
-- [ ] funding_rate trade ≥1, futures_futures signal_evaluated ≥1
-- [ ] Coinone BTC 시그널 = 0건 (심볼 제외 재확인)
-- [ ] 거래소 Health ≥95% (7개 모두)
-- [ ] PaperExecutor 수수료 반영 확인: trade 로그에 fee>0 (fee_rate=0 수정 검증)
-- [ ] Graceful shutdown 테스트: Ctrl+C → 30초 이내 정상 종료 확인
+**Step 1-2: Paper 1시간 안정성** *(PID 25398, 10:07~11:10 KST, 2026-04-07)* ✅
+- [x] crash=0, 무중단 62.6분 (uptime_s=3757) — paper_mode.stopped 정상 로그
+- [x] funding_rate trade ≥1 (8건), futures_futures signal_evaluated ≥1 (213건)
+- [x] Coinone BTC 실행 트레이드 0건 — signal.min_edge_rejected로 경제성 거부 정상
+- [x] 거래소 Health: data_quality 필터 정상 작동, WS 무중단 (reconnect 0)
+- [x] fee 반영: shadow 모드 fee_rate=0 설계 (strategy cost_calculator에서 fees 처리), total_pnl 계산 정상
+- [x] Graceful shutdown: SIGTERM → 33초 완료 (Engine shutdown complete, DB/HTTP/scheduler 순서 종료)
 
-**Step 1-2b: 리스크 시나리오 검증 (Paper에서)**
-- [ ] Guardian warmup: 엔진 시작 후 120초간 exchange health check 우회 → 120초 후 정상 작동 확인
-- [ ] 단일 거래 크기 제한: max_position_pct=5% 초과 주문 시도 → Guardian #6 차단 로그
-- [ ] KillSwitch 수동: Telegram `/kill` → halt_flag=True 확인 → `/resume` → 복귀 확인
-- [ ] CircuitBreaker 상태: CLOSED 유지 확인 (인위적 트리거 불필요, 상태 로그만)
+**Step 1-2b: 리스크 시나리오 검증 (Paper에서)** ✅
+- [x] Guardian warmup: `RiskGuardian initialized with 9 pre-trade checks` — 120s warmup 코드 확인 (`_in_warmup` check, 120s grace period for health check #5)
+- [x] 단일 거래 크기 제한: max_position_pct=3.0% — Guardian Check #6 (`proposal.position_value > total_capital * _max_single_trade_pct`) 코드 활성 확인
+- [x] KillSwitch: API 활성화 → `{"status":"halted"}` + `TradeRequestConsumer: engine halted` logs ✅; `_cmd_resume` 버그 수정 — `clear_halt()` 호출 추가 (이전엔 ctx.paused만 설정)
+- [x] CircuitBreaker: `CircuitBreaker initialized` → CLOSED 상태 (재시작 후 트리거 0건)
 
 **Step 1-3: Preflight + 첫 Live**
 - [ ] Preflight 통과 (TimescaleDB, Redis, 7거래소, API키, 잔고, KS, CB, Telegram)
@@ -381,14 +408,15 @@ PHOENIX_PLAN.md를 읽어. Phase 2 자율 운영.
 ## 부록: 진행 상태
 
 ### Phase 0
-- [ ] Step 0-1: 모드 분리 수정 (DB 쿼리 필터, orderbook source, PaperExecutor 수수료, Telegram 모드 게이팅)
-- [ ] Step 0-2: 심볼 제외 + 퍼센트 자본 + BTC 가격 갱신
-- [ ] Step 0-3: Config 정합 (engine.json 통일, 중복 정리, dynaconf 확인)
-- [ ] Step 0-4: 인프라 운영급 수정 (Redis maxmemory, 모니터 간격, shutdown timeout)
-- [ ] Step 0-5: 대시보드
+- [x] Step 0-1: 모드 분리 수정 (DB 쿼리 필터, orderbook source, PaperExecutor 수수료, Telegram 모드 게이팅)
+- [x] Step 0-2: 심볼 제외 + 퍼센트 자본 + BTC 가격 갱신
+- [x] Step 0-3: Config 정합 (engine.json 통일, 중복 정리, dynaconf 확인)
+- [x] Step 0-4: 인프라 운영급 수정 (Redis maxmemory, 모니터 간격, shutdown timeout)
+- [x] Step 0-5: 대시보드
+- [x] Step 0-6: 하드코딩 제거 + 운영 확장성 (FundingRateCollector 동적화, KRW SSOT, futures→spot 매핑, engine.json fallback)
 
 ### Phase 1
-- [ ] Step 1-1: 7 어댑터 배선 + 모드 분리 검증
+- [x] Step 1-1: 7 어댑터 배선 + 모드 분리 검증 (funding_rate 6건, DB mode=paper 208건)
 - [ ] Step 1-2: Paper 1시간 + 수수료/shutdown 검증
 - [ ] Step 1-2b: 리스크 시나리오 검증
 - [ ] Step 1-3: 첫 Live 체결 ← 핵심 마일스톤

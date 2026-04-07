@@ -263,6 +263,22 @@ class TradeRequestConsumer:
             )
             return
 
+        # PHOENIX: Filter trades where any leg notional < $10 (exchange min $5 + buffer)
+        # Prevents imbalanced positions from per-adapter min_notional boosts.
+        _MIN_TRADE_NOTIONAL = Decimal("10")
+        _small_legs = [
+            leg for leg in trade_request.legs
+            if leg.price and leg.price > 0 and leg.size * leg.price < _MIN_TRADE_NOTIONAL
+        ]
+        if _small_legs:
+            logger.info(
+                "trade_consumer.min_notional_filtered strategy=%s legs=%d max_notional_usd=%.2f",
+                trade_request.strategy_id,
+                len(_small_legs),
+                float(max(l.size * l.price for l in _small_legs if l.price)),
+            )
+            return
+
         # Convert legs to orders
         legs = trade_request.legs
         if len(legs) < 2:

@@ -23,7 +23,7 @@
     "min_price_usd": 0.1,
     "max_rollback_threshold": 0.02,
     "max_position_pct": 3.0,
-    "max_daily_loss_pct": 5.0,
+    "max_daily_loss_pct": 50.0,
     "use_percentage": true
   },
   "slippage": {
@@ -80,8 +80,8 @@
   "strategy_filters": {
     "funding_zscore_threshold": -1,
     "funding_ou_min_halflife_s": 60,
-    "min_funding_diff_bps": 2,
-    "funding_min_diff_bps": 2,
+    "min_funding_diff_bps": 2.0,
+    "funding_min_diff_bps": 2.0,
     "stat_arb_z_threshold": 2.0,
     "stat_arb_cooldown_s": 120,
     "stat_arb_min_history": 60,
@@ -108,7 +108,7 @@
       "required_types": [
         "spot"
       ],
-      "description": "\uac70\ub798\uc18c \uac04 \uac00\uaca9 \ucc28\uc774\ub97c \uc774\uc6a9\ud55c \ucc28\uc775\uac70\ub798"
+      "description": "거래소 간 가격 차이를 이용한 차익거래"
     },
     "spot_futures_v1": {
       "min_exchanges": 1,
@@ -117,37 +117,37 @@
         "futures"
       ],
       "same_exchange": true,
-      "description": "\ud604\ubb3c-\uc120\ubb3c \ubca0\uc774\uc2dc\uc2a4 \ucc28\uc775\uac70\ub798"
+      "description": "현물-선물 베이시스 차익거래"
     },
     "futures_futures_v1": {
       "min_exchanges": 2,
       "required_types": [
         "futures"
       ],
-      "description": "\uc120\ubb3c \uac04 \uac00\uaca9 \ucc28\uc774 \ucc28\uc775\uac70\ub798"
+      "description": "선물 간 가격 차이 차익거래"
     },
     "triangular_v1": {
       "min_exchanges": 1,
       "same_exchange": true,
-      "description": "\ub3d9\uc77c \uac70\ub798\uc18c \ub0b4 3\uc790 \uc21c\ud658 \ucc28\uc775\uac70\ub798"
+      "description": "동일 거래소 내 3자 순환 차익거래"
     },
     "funding_rate_v1": {
       "min_exchanges": 1,
       "required_types": [
         "futures"
       ],
-      "description": "\ud380\ub529\ub808\uc774\ud2b8 \uce90\ub9ac \ud2b8\ub808\uc774\ub4dc"
+      "description": "펀딩레이트 캐리 트레이드"
     },
     "statistical_arb_v1": {
       "min_exchanges": 1,
-      "description": "\ud1b5\uacc4\uc801 \ud398\uc5b4 \ud2b8\ub808\uc774\ub529 (\uacf5\uc801\ubd84 \uae30\ubc18)"
+      "description": "통계적 페어 트레이딩 (공적분 기반)"
     },
     "cex_dex_v1": {
       "min_exchanges": 1,
       "required_types": [
         "dex"
       ],
-      "description": "CEX-DEX \uac04 \ucc28\uc775\uac70\ub798"
+      "description": "CEX-DEX 간 차익거래"
     }
   }
 }

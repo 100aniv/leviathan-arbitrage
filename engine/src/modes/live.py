@@ -30,6 +30,7 @@ from decimal import Decimal
 from typing import Any, Protocol, runtime_checkable
 
 from src.core.config import get_settings
+from src.core.exchanges import KRW_EXCHANGES
 from src.core.models import Order, OrderSide, OrderType, Signal
 from src.core.rust_bridge import get_orderbook_class
 from src.friction.fee_model import FeeModel
@@ -268,10 +269,9 @@ class LiveMode(BaseMode):
                     exc,
                 )
 
-        # Futures exchanges for identification
-        self._futures_exchanges: set[str] = {
-            "binance_futures", "okx_futures", "bybit_futures"
-        }
+        # Futures exchanges for identification — dynamic from FUTURES_TO_SPOT SSOT
+        from src.core.exchanges import FUTURES_TO_SPOT
+        self._futures_exchanges: set[str] = set(FUTURES_TO_SPOT.keys())
 
         # RealDataSignalProducer (spot_futures, funding_rate, stat_arb, etc.)
         self._real_signal_producer: Any | None = None
@@ -319,7 +319,7 @@ class LiveMode(BaseMode):
         self._krw_rate: float = _raw_krw_rate
         self._krw_rate_task: asyncio.Task | None = None
         self._krw_stale: bool = False
-        self._krw_exchanges: set[str] = {"upbit", "bithumb", "coinone"}
+        self._krw_exchanges: set[str] = set(KRW_EXCHANGES)
 
         # Bithumb delta orderbook handling
         self._delta_exchanges: set[str] = {"bithumb"}
@@ -767,6 +767,21 @@ class LiveMode(BaseMode):
 
         # --- Execute via DI executor ---
         try:
+            # PHOENIX: Filter trades where any leg notional < $10 (exchange min $5 + buffer)
+            # Prevents imbalanced positions from per-adapter leg-level adjustments.
+            _MIN_TRADE_NOTIONAL = Decimal("10")
+            _small_legs = [
+                leg for leg in trade_request.legs
+                if leg.price and leg.price > 0 and leg.size * leg.price < _MIN_TRADE_NOTIONAL
+            ]
+            if _small_legs:
+                logger.debug(
+                    "live_mode.min_notional_filtered strategy=%s small_legs=%d max_notional=%.2f",
+                    sid, len(_small_legs),
+                    float(max(l.size * l.price for l in _small_legs if l.price)),
+                )
+                return
+
             orders = self._legs_to_orders(trade_request)
             if not orders:
                 logger.warning("live_mode.no_valid_orders strategy=%s", sid)
@@ -1164,9 +1179,12 @@ class LiveMode(BaseMode):
                                 ex: {sym: e.rate for sym, e in syms.items()}
                                 for ex, syms in rates.items()
                             }
-                            await self._real_signal_producer.on_funding_rates_updated(
+                            fr_signals = await self._real_signal_producer.on_funding_rates_updated(
                                 float_rates, self._books
                             )
+                            for _fr_sig in (fr_signals or []):
+                                if self._strategy_manager is not None:
+                                    await self._route_signal_to_strategies(_fr_sig)
                 except Exception as exc:
                     logger.warning("live_mode.funding_rate_fetch_error: %s", exc)
                 await asyncio.sleep(interval)

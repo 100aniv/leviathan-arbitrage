@@ -32,6 +32,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from src.core.config import get_settings
+from src.core.exchanges import KRW_EXCHANGES, FUTURES_TO_SPOT
 from src.core.models import Signal
 from src.core.multi_signal import MultiStrategySignalProducer
 from src.core.order_book import OrderBook
@@ -48,10 +49,6 @@ _Rates = dict[str, dict[str, float]]
 
 # KRW/USDT 환율 (하드코딩 기본값 — 동적 갱신은 _KRW_TO_USDT_RATE 인스턴스 변수로 오버라이드 가능)
 _DEFAULT_KRW_TO_USDT_RATE = Decimal("0.000714")  # ~1400 KRW/USDT
-
-# KRW 거래소 식별자
-_KRW_EXCHANGES = frozenset({"upbit", "bithumb", "coinone"})
-
 
 def _normalize_price_to_usdt(price: Decimal, exchange: str, symbol: str,
                                krw_rate: Decimal = _DEFAULT_KRW_TO_USDT_RATE) -> Decimal:
@@ -113,7 +110,8 @@ class RealDataSignalProducer:
     ) -> None:
         self._producer = multi_signal_producer
         self._scanner = triangular_scanner
-        self._futures_exchanges: set[str] = futures_exchanges or {"binance_futures", "okx_futures", "bybit_futures"}
+        from src.core.exchanges import FUTURES_TO_SPOT
+        self._futures_exchanges: set[str] = futures_exchanges or set(FUTURES_TO_SPOT.keys())
         self._latency_tracker = latency_tracker
         self._stale_detector = stale_detector
         self._regime_detector = regime_detector
@@ -138,7 +136,7 @@ class RealDataSignalProducer:
         self._stat_arb_min_history = int(get_config("strategy_filters.stat_arb_min_history", default=120))
         # In backtest mode: skip Korean exchange filter (data is synthetic, not stale)
         # and skip wall-clock cooldowns (simulated time is passed instead)
-        self._stat_arb_korean = {"upbit", "bithumb", "coinone"}  # skip stale data (live only)
+        self._stat_arb_korean = set(KRW_EXCHANGES)  # skip stale data (live only)
         # Bug 1-A: cache latest funding rates so _evaluate_spot_futures can use them
         self._latest_rates: _Rates = {}
         # US-230: rolling spread history for outlier filter
@@ -209,7 +207,7 @@ class RealDataSignalProducer:
         )
 
         # Spot-futures basis (disabled for Korean exchanges in live — stale data)
-        if self._backtest_mode or exchange_id not in ("upbit", "bithumb", "coinone"):
+        if self._backtest_mode or exchange_id not in KRW_EXCHANGES:
             signals.extend(
                 await self._evaluate_spot_futures(
                     exchange_id, symbol, all_books, futures_books
@@ -318,11 +316,10 @@ class RealDataSignalProducer:
         if not spot_books or not fut_books:
             return signals
 
-        _korean = {"upbit", "bithumb", "coinone"}
         for spot_ex, spot_book in spot_books.items():
             if spot_ex in self._futures_exchanges:
                 continue  # skip futures exchange entries in spot books
-            if spot_ex in _korean:
+            if spot_ex in KRW_EXCHANGES:
                 continue  # Korean stale orderbook data → fake basis spreads
 
             for fut_ex, fut_book in fut_books.items():
@@ -361,7 +358,7 @@ class RealDataSignalProducer:
                         _sf_median = statistics.median(_sf_history)
                         if _sf_median > 0 and _sf_basis_bps > self._spread_filter_multiplier * _sf_median:
                             continue
-                    spot_base = spot_ex.replace("binance_futures", "binance")
+                    spot_base = FUTURES_TO_SPOT.get(spot_ex, spot_ex)
                     # Bug 1-A: use cached funding rate from latest snapshot
                     _funding_rate = self._latest_rates.get(fut_ex, {}).get(symbol, 0.0)
                     signal = await self._producer.produce_spot_futures_signal(
@@ -402,7 +399,7 @@ class RealDataSignalProducer:
                         _sf_median_back = statistics.median(_sf_history_back)
                         if _sf_median_back > 0 and _sf_basis_bps_back > self._spread_filter_multiplier * _sf_median_back:
                             continue
-                    spot_base = spot_ex.replace("binance_futures", "binance")
+                    spot_base = FUTURES_TO_SPOT.get(spot_ex, spot_ex)
                     _funding_rate = self._latest_rates.get(fut_ex, {}).get(symbol, 0.0)
                     signal = await self._producer.produce_spot_futures_signal(
                         exchange_id=spot_base,

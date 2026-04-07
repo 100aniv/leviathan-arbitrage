@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+from src.core.exchanges import KRW_EXCHANGES
 from src.core.models import OrderSide, OrderType, Signal, Trade
 from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeRequest
 
@@ -30,7 +31,7 @@ class CrossExchangeConfig(BaseModel):
     """Configuration for CrossExchangeStrategy."""
 
     min_spread_bps: Decimal = Field(default=Decimal("10"), ge=Decimal("0"))
-    max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
+    max_position_size: Decimal = Field(default=Decimal("50000"), gt=Decimal("0"))  # USD notional cap
     rebalance_threshold: Decimal = Field(default=Decimal("0.05"), ge=Decimal("0"))
     latency_boost: bool = Field(default=False)
     min_latency_advantage_ms: float = Field(default=5.0, ge=0.0)
@@ -116,8 +117,7 @@ class CrossExchangeStrategy(BaseStrategy):
         # US-198: Korean exchange filter for latency_boost mode
         # Korean exchanges have stale orderbook data, making latency-based decisions unreliable
         if self.config.latency_boost:
-            _KOREAN = frozenset({"upbit", "bithumb", "coinone"})
-            if signal.buy_exchange in _KOREAN or signal.sell_exchange in _KOREAN:
+            if signal.buy_exchange in KRW_EXCHANGES or signal.sell_exchange in KRW_EXCHANGES:
                 self._metrics.signals_filtered += 1
                 return None
 
@@ -173,7 +173,9 @@ class CrossExchangeStrategy(BaseStrategy):
                 self._metrics.signals_filtered += 1
                 return None
 
-        size = min(signal.volume, self.config.max_position_size)
+        # PHOENIX: max_position_size is USD notional cap — divide by price to get base units
+        _ce_avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
+        size = min(signal.volume, (self.config.max_position_size / _ce_avg_price) if _ce_avg_price > 0 else signal.volume)
 
         # Use pre-computed net_profit from SignalGenerator (already includes fee+slippage+network+rollback).
         # DO NOT re-calculate friction here — that causes double-counting (see CLAUDE.md "이중 슬리피지 금지").

@@ -1,11 +1,20 @@
-"""FundingRateCollector — REST polling collector for funding rates across 4 exchanges.
+"""FundingRateCollector — REST polling collector for funding rates across futures exchanges.
 
-Supports Binance Futures, Bybit, OKX, and Bitget.
-Stores results in FundingRateStore for use by ShadowMode signal generation.
+Supports any futures exchange configured in engine.json (exchanges.active, *_futures suffix).
+Symbol discovery is fully dynamic: fetches available perpetual contracts from each exchange
+at runtime and returns the intersection — no hardcoded symbol lists.
+
+Adding a new exchange:
+  1. Add it to engine.json exchanges.active with a ``_futures`` suffix.
+  2. Add a handler branch in ``_fetch_exchange_symbols()`` for the exchange name.
+  3. Add a branch in ``_fetch()`` dispatch (rate polling).
+  No other changes needed — auto-discovery handles the rest.
 """
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -16,18 +25,32 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Exchange endpoints
+# Exchange endpoints (rate polling — per-symbol REST calls)
 # ---------------------------------------------------------------------------
 
 EXCHANGE_ENDPOINTS: dict[str, str] = {
     "binance_futures": "https://fapi.binance.com/fapi/v1/premiumIndex",
     "bybit": "https://api.bybit.com/v5/market/tickers",
+    "bybit_futures": "https://api.bybit.com/v5/market/tickers",
     "okx": "https://www.okx.com/api/v5/public/funding-rate",
+    "okx_futures": "https://www.okx.com/api/v5/public/funding-rate",
     "bitget": "https://api.bitget.com/api/v2/mix/market/current-fund-rate",
+    "bitget_futures": "https://api.bitget.com/api/v2/mix/market/current-fund-rate",
 }
 
 DEFAULT_SYMBOLS = ["BTC/USDT", "ETH/USDT"]
 DEFAULT_EXCHANGES = ["binance_futures", "bybit", "okx", "bitget"]
+
+# Registry of futures exchanges this collector knows how to query for symbol lists.
+# Engine.json naming convention (e.g. "binance_futures", "bitget_futures").
+# To add support for a new exchange: add its engine.json name here and a handler
+# in _fetch_exchange_symbols().
+_SUPPORTED_FUTURES_EXCHANGES: frozenset[str] = frozenset({
+    "binance_futures",
+    "bitget_futures",
+    "bybit_futures",
+    "okx_futures",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +176,9 @@ class FundingRateCollector:
     async def poll_once(self) -> dict[str, dict[str, FundingRateEntry]]:
         """Fetch funding rates from all configured exchanges for all symbols.
 
+        Requests are executed concurrently (semaphore-limited to 30) to avoid
+        sequential bottleneck when symbols list is large (100+).
+
         Returns the newly fetched entries (also stored in self.store).
         Lazily creates an HTTP client if none was provided or start() wasn't called.
         """
@@ -160,15 +186,12 @@ class FundingRateCollector:
             self._http_client = httpx.AsyncClient(timeout=10.0)
             self._owns_client = True
 
-        fetched: dict[str, dict[str, FundingRateEntry]] = {}
+        semaphore = asyncio.Semaphore(30)
 
-        for symbol in self.symbols:
-            for exchange in self.exchanges:
+        async def _fetch_safe(exchange: str, symbol: str) -> tuple[str, str, FundingRateEntry | None]:
+            async with semaphore:
                 try:
-                    entry = await self._fetch(exchange, symbol)
-                    if entry is not None:
-                        self.store.set_rate(exchange, symbol, entry.rate, entry.next_funding_time)
-                        fetched.setdefault(exchange, {})[symbol] = entry
+                    return exchange, symbol, await self._fetch(exchange, symbol)
                 except Exception as exc:  # noqa: BLE001
                     logger.debug(
                         "funding_rate_collector.fetch_failed",
@@ -176,29 +199,218 @@ class FundingRateCollector:
                         symbol=symbol,
                         error=str(exc),
                     )
+                    return exchange, symbol, None
+
+        tasks = [
+            _fetch_safe(exchange, symbol)
+            for symbol in self.symbols
+            for exchange in self.exchanges
+        ]
+        results = await asyncio.gather(*tasks)
+
+        fetched: dict[str, dict[str, FundingRateEntry]] = {}
+        for exchange, symbol, entry in results:
+            if entry is not None:
+                self.store.set_rate(exchange, symbol, entry.rate, entry.next_funding_time)
+                fetched.setdefault(exchange, {})[symbol] = entry
 
         if fetched:
             logger.debug(
                 "funding_rate_collector.updated",
                 exchanges=list(fetched.keys()),
-                symbols=self.symbols,
+                symbol_count=len(self.symbols),
             )
 
         return fetched
+
+    # -----------------------------------------------------------------------
+    # Dynamic exchange / symbol discovery
+    # -----------------------------------------------------------------------
+
+    @staticmethod
+    def _get_active_futures_exchanges() -> list[str]:
+        """Read engine.json and return active futures exchanges (engine.json naming).
+
+        Filters ``exchanges.active`` to entries with a ``_futures`` suffix that this
+        collector knows how to query.  Falls back to DEFAULT_EXCHANGES on any error.
+        """
+        try:
+            config_path = os.path.normpath(
+                os.path.join(os.path.dirname(__file__), "..", "..", "config", "engine.json")
+            )
+            with open(config_path) as f:
+                cfg = json.load(f)
+            active: list[str] = cfg.get("exchanges", {}).get("active", [])
+            result = [ex for ex in active if ex in _SUPPORTED_FUTURES_EXCHANGES]
+            return result if result else list(DEFAULT_EXCHANGES)
+        except Exception as exc:
+            logger.warning(
+                "funding_rate_collector.engine_config_read_failed",
+                error=str(exc),
+            )
+            return list(DEFAULT_EXCHANGES)
+
+    @staticmethod
+    async def _fetch_exchange_symbols(
+        client: httpx.AsyncClient,
+        exchange: str,
+    ) -> set[str]:
+        """Fetch all active perpetual USDT symbols for one futures exchange.
+
+        ``exchange`` uses engine.json naming (e.g. ``"binance_futures"``).
+        Returns symbols in ``"BASE/USDT"`` format, or an empty set on failure.
+
+        To support a new exchange: add a branch here matching its engine.json name.
+        """
+        try:
+            if exchange == "binance_futures":
+                resp = await client.get("https://fapi.binance.com/fapi/v1/exchangeInfo")
+                resp.raise_for_status()
+                return {
+                    s["baseAsset"] + "/USDT"
+                    for s in resp.json().get("symbols", [])
+                    if s.get("quoteAsset") == "USDT"
+                    and s.get("status") == "TRADING"
+                    and s.get("contractType") == "PERPETUAL"
+                }
+            elif exchange == "bitget_futures":
+                resp = await client.get(
+                    "https://api.bitget.com/api/v2/mix/market/contracts",
+                    params={"productType": "USDT-FUTURES"},
+                )
+                resp.raise_for_status()
+                return {
+                    d["baseCoin"] + "/USDT"
+                    for d in resp.json().get("data", [])
+                    if d.get("quoteCoin") == "USDT"
+                }
+            elif exchange == "bybit_futures":
+                resp = await client.get(
+                    "https://api.bybit.com/v5/market/instruments-info",
+                    params={"category": "linear", "limit": 1000},
+                )
+                resp.raise_for_status()
+                return {
+                    item["baseCoin"] + "/USDT"
+                    for item in resp.json().get("result", {}).get("list", [])
+                    if item.get("quoteCoin") == "USDT"
+                    and item.get("status") == "Trading"
+                    and item.get("contractType") == "LinearPerpetual"
+                }
+            elif exchange == "okx_futures":
+                resp = await client.get(
+                    "https://www.okx.com/api/v5/public/instruments",
+                    params={"instType": "SWAP"},
+                )
+                resp.raise_for_status()
+                return {
+                    item["ctValCcy"] + "/USDT"
+                    for item in resp.json().get("data", [])
+                    if item.get("settleCcy") == "USDT"
+                    and item.get("state") == "live"
+                    and item.get("instId", "").endswith("-USDT-SWAP")
+                }
+            else:
+                logger.warning(
+                    "funding_rate_collector.unsupported_futures_exchange_for_symbols",
+                    exchange=exchange,
+                )
+                return set()
+        except Exception as exc:
+            logger.warning(
+                "funding_rate_collector.symbol_fetch_failed",
+                exchange=exchange,
+                error=str(exc),
+            )
+            return set()
+
+    @staticmethod
+    async def fetch_paired_symbols(
+        exchanges: list[str] | None = None,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> list[str]:
+        """Dynamically discover futures symbols tradeable on ALL active futures exchanges.
+
+        When ``exchanges`` is ``None`` (the default), auto-discovers the exchange list
+        from ``engine.json`` (``exchanges.active`` filtered by ``_futures`` suffix).
+        Returns the intersection of available perpetual symbols in ``"BASE/USDT"`` format.
+        Falls back to ``DEFAULT_SYMBOLS`` on network failure or empty intersection.
+
+        Usage (no hardcoding required)::
+
+            symbols = await FundingRateCollector.fetch_paired_symbols()
+        """
+        if exchanges is None:
+            exchanges = FundingRateCollector._get_active_futures_exchanges()
+
+        if not exchanges:
+            logger.warning("funding_rate_collector.no_futures_exchanges_configured")
+            return list(DEFAULT_SYMBOLS)
+
+        own_client = http_client is None
+        client = http_client or httpx.AsyncClient(timeout=15.0)
+        try:
+            results = await asyncio.gather(
+                *[FundingRateCollector._fetch_exchange_symbols(client, ex) for ex in exchanges],
+                return_exceptions=True,
+            )
+
+            symbol_sets: list[set[str]] = [
+                r for r in results if isinstance(r, set) and r
+            ]
+
+            if not symbol_sets:
+                logger.warning(
+                    "funding_rate_collector.no_symbols_discovered",
+                    exchanges=exchanges,
+                )
+                return list(DEFAULT_SYMBOLS)
+
+            intersection = set.intersection(*symbol_sets) if len(symbol_sets) > 1 else symbol_sets[0]
+            result = sorted(intersection)
+            logger.info(
+                "funding_rate_collector.paired_symbols_ready",
+                total=len(result),
+                exchanges=exchanges,
+            )
+            return result if result else list(DEFAULT_SYMBOLS)
+
+        except Exception as exc:
+            logger.warning(
+                "funding_rate_collector.fetch_paired_symbols_failed",
+                error=str(exc),
+            )
+            return list(DEFAULT_SYMBOLS)
+        finally:
+            if own_client:
+                await client.aclose()
+
+    @classmethod
+    def get_poll_exchanges(cls) -> list[str]:
+        """Return the list of exchanges to poll funding rates from.
+
+        Reads ``engine.json`` dynamically — no hardcoding.  Adding a new futures
+        exchange to ``engine.json`` automatically includes it here.
+        """
+        return cls._get_active_futures_exchanges()
 
     # -----------------------------------------------------------------------
     # Internal dispatch
     # -----------------------------------------------------------------------
 
     async def _fetch(self, exchange: str, symbol: str) -> FundingRateEntry | None:
-        """Dispatch to the exchange-specific fetcher."""
+        """Dispatch to the exchange-specific fetcher.
+
+        Accepts both legacy names (``"bybit"``) and engine.json names
+        (``"bybit_futures"``) for forward compatibility.
+        """
         if exchange == "binance_futures":
             return await self._fetch_binance(symbol)
-        elif exchange == "bybit":
+        elif exchange in ("bybit", "bybit_futures"):
             return await self._fetch_bybit(symbol)
-        elif exchange == "okx":
+        elif exchange in ("okx", "okx_futures"):
             return await self._fetch_okx(symbol)
-        elif exchange == "bitget":
+        elif exchange in ("bitget", "bitget_futures"):
             return await self._fetch_bitget(symbol)
         else:
             logger.warning("funding_rate_collector.unknown_exchange", exchange=exchange)

@@ -31,7 +31,7 @@ class FundingRateConfig(BaseModel):
     """Configuration for FundingRateStrategy."""
 
     min_funding_diff_bps: Decimal = Field(default=Decimal("2"), ge=Decimal("0"))  # trading.json 우선
-    max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
+    max_position_size: Decimal = Field(default=Decimal("50000"), gt=Decimal("0"))  # USD notional cap
     max_holding_periods: int = Field(default=12, ge=1)  # SIT-3: 3→12 (4일 carry)
     hedge_ratio: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
     settlement_window_minutes: float = Field(default=0.0, ge=0.0)
@@ -168,17 +168,33 @@ class FundingRateStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
-        # SIT-3: 저가 코인 USD 사이징 보정. carry trade는 충분한 포지션이 있어야 수익.
-        # 기존 base-unit sizing 유지하되, USD 가치가 $100 미만이면 $1000 USD까지 확대.
+        # PHOENIX: max_position_size is USD notional cap (set in main.py).
+        # Convert to base units using avg price so any coin works correctly.
         avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
-        base_size = min(signal.volume, self.config.max_position_size)
+        _max_base = (self.config.max_position_size / avg_price) if avg_price > 0 else self.config.max_position_size
+        base_size = min(signal.volume, _max_base)
         _position_usd = base_size * avg_price if avg_price > 0 else Decimal("0")
-        _min_pos_usd = self.config.max_position_size * avg_price * Decimal("0.1") if avg_price > 0 else Decimal("1")
-        if _position_usd < _min_pos_usd and avg_price > 0:
-            # 저가 코인: max_position_size까지 확대 (자본 비율 기반)
-            size = min(signal.volume, self.config.max_position_size)
-        else:
-            size = base_size
+
+        # PHOENIX: Ensure minimum notional $10 (exchange minimum is $5; use $10 for safety margin)
+        _MIN_NOTIONAL_USD = Decimal("10")
+        if _position_usd < _MIN_NOTIONAL_USD and avg_price > 0:
+            min_size_needed = (_MIN_NOTIONAL_USD / avg_price).quantize(Decimal("0.00000001"))
+            if min_size_needed <= _max_base:
+                base_size = min_size_needed
+                _position_usd = base_size * avg_price
+                logger.debug(
+                    "funding_rate.min_notional_adjusted sym=%s pos_usd=%.2f → %.2f",
+                    signal.symbol, float(_position_usd / avg_price * avg_price), float(_position_usd),
+                )
+            else:
+                self._metrics.signals_filtered += 1
+                logger.debug(
+                    "funding_rate.min_notional_skip sym=%s pos_usd=%.2f max_base=%.4f",
+                    signal.symbol, float(_position_usd), float(_max_base),
+                )
+                return None
+
+        size = base_size
         # Apply hedge ratio to the long leg size
         long_size = (size * self.config.hedge_ratio).quantize(Decimal("0.00000001"))
 

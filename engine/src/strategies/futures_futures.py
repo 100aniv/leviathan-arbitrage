@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
+from src.core.exchanges import KRW_EXCHANGES
 from src.core.models import OrderSide, OrderType, Signal, Trade
 from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeRequest
 
@@ -24,7 +25,7 @@ class FuturesFuturesConfig(BaseModel):
     """Configuration for FuturesFuturesStrategy."""
 
     min_spread_bps: Decimal = Field(default=Decimal("15"), ge=Decimal("0"))
-    max_position_size: Decimal = Field(default=Decimal("1.0"), gt=Decimal("0"))
+    max_position_size: Decimal = Field(default=Decimal("50000"), gt=Decimal("0"))  # USD notional cap
     max_leverage: int = Field(default=5, ge=1, le=20)
     margin_safety_pct: Decimal = Field(default=Decimal("0.20"), ge=Decimal("0"))
     max_notional_usd: Decimal | None = Field(default=Decimal("200"))  # US-233: hard notional cap
@@ -37,7 +38,7 @@ class FuturesFuturesConfig(BaseModel):
     enable_stale_guard: bool = Field(default=False)
     # CB: KRW spot-only exchanges don't support futures contracts — exclude by default
     excluded_exchanges: list[str] = Field(
-        default_factory=lambda: ["coinone", "upbit", "bithumb"]
+        default_factory=lambda: sorted(KRW_EXCHANGES)
     )
 
 
@@ -172,7 +173,9 @@ class FuturesFuturesStrategy(BaseStrategy):
                 )
                 return None
 
-        size = min(signal.volume, self.config.max_position_size)
+        # PHOENIX: max_position_size is USD notional cap — divide by price to get base units
+        _ff_price = signal.buy_price if signal.buy_price > 0 else Decimal("1")
+        size = min(signal.volume, (self.config.max_position_size / _ff_price) if _ff_price > 0 else signal.volume)
 
         # S10: Optional per-trade notional cap
         if self.config.max_notional_usd is not None:

@@ -48,6 +48,20 @@ logger = logging.getLogger(__name__)
 _BTC_REFERENCE_PRICE = _s.btc_reference_price
 
 
+def _get_fallback_exchanges() -> list[str]:
+    """engine.json의 active 거래소 중 spot 거래소만 반환 (fallback 용)."""
+    try:
+        import json as _json
+        p = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "config", "engine.json"))
+        with open(p) as f:
+            cfg = _json.load(f)
+        active = cfg.get("exchanges", {}).get("active", [])
+        # spot 거래소만 (futures 제외)
+        return [ex for ex in active if not ex.endswith("_futures")] or ["binance", "bitget"]
+    except Exception:
+        return ["binance", "bitget"]
+
+
 class DataMode:
     """Data source mode for the engine."""
     SYNTHETIC = "synthetic"          # GBM paper data (default for PAPER mode)
@@ -721,7 +735,7 @@ class Engine:
         )
         exchanges = (
             self._settings.trading.active_exchanges if self._settings
-            else ["binance", "bybit", "okx", "bitget"]
+            else _get_fallback_exchanges()
         )
         if use_native:
             await self._init_native_exchanges(exchanges, sandbox=True)
@@ -741,7 +755,7 @@ class Engine:
         exchanges = (
             _cfg_exchanges
             or (self._settings.trading.active_exchanges if self._settings
-                else ["binance", "bybit", "okx", "bitget"])
+                else _get_fallback_exchanges())
         )
 
         # Native adapters are the default for shadow/live (ccxt-free)
@@ -757,6 +771,13 @@ class Engine:
                 api_key = getattr(ex_cfg, f"{eid}_api_key", "") if ex_cfg else ""
                 api_secret = getattr(ex_cfg, f"{eid}_api_secret", "") if ex_cfg else ""
                 passphrase = getattr(ex_cfg, f"{eid}_passphrase", "") if ex_cfg else ""
+                # PHOENIX: futures exchanges share base exchange API keys
+                # (e.g. binance_futures → binance, bitget_futures → bitget)
+                if not api_key and eid.endswith("_futures") and ex_cfg:
+                    _base = eid.removesuffix("_futures")
+                    api_key = getattr(ex_cfg, f"{_base}_api_key", "")
+                    api_secret = getattr(ex_cfg, f"{_base}_api_secret", "")
+                    passphrase = getattr(ex_cfg, f"{_base}_passphrase", "")
                 adapter = create_native_adapter(
                     exchange_id=eid,
                     api_key=api_key,
@@ -1036,26 +1057,26 @@ class Engine:
         sf_p = tuned.get("spot_futures", {})
         sf_config = SpotFuturesConfig(
             min_basis_bps=Decimal(str(sf_p.get("min_basis_bps", 15))),
-            max_position_size=_max_pos_usd / _BTC_REFERENCE_PRICE,
+            max_position_size=_max_pos_usd,  # PHOENIX: USD notional cap (strategies divide by price)
         ) if sf_p.get("status") in ("READY", "MONITOR") else None
 
         fr_p = tuned.get("funding_rate", {})
         fr_config = FundingRateConfig(
             min_funding_diff_bps=Decimal(str(fr_p.get("min_funding_diff_bps", 5))),
-            max_position_size=_max_pos_usd / _BTC_REFERENCE_PRICE,
+            max_position_size=_max_pos_usd,  # PHOENIX: USD notional cap (strategies divide by price)
         ) if fr_p.get("status") in ("READY", "MONITOR") else None
 
         ce_p = tuned.get("cross_exchange", {})
         ce_config = CrossExchangeConfig(
             min_spread_bps=Decimal(str(ce_p.get("min_spread_bps", 10))),
-            max_position_size=_max_pos_usd / _BTC_REFERENCE_PRICE,
+            max_position_size=_max_pos_usd,  # PHOENIX: USD notional cap (strategies divide by price)
             min_book_depth_usd=_book_depth_usd,
         ) if ce_p.get("status") in ("READY", "MONITOR") else None
 
         ff_p = tuned.get("futures_futures", {})
         ff_config = FuturesFuturesConfig(
             min_spread_bps=Decimal(str(ff_p.get("min_spread_bps", 8))),
-            max_position_size=_max_pos_usd / _BTC_REFERENCE_PRICE,
+            max_position_size=_max_pos_usd,  # PHOENIX: USD notional cap (strategies divide by price)
             min_book_depth_usd=_book_depth_usd,
         ) if ff_p.get("status") in ("READY", "MONITOR") else None
 
@@ -1201,9 +1222,15 @@ class Engine:
                 _max_pos_pct = Decimal(str(_risk_cfg["max_position_pct"])) / Decimal("100")
             else:
                 _max_pos_pct = Decimal("0.10")  # fallback: 10%
+            # Load max_drawdown_pct from config (max_daily_loss_pct), fallback to 50% for alpha testing
+            if _use_pct and "max_daily_loss_pct" in _risk_cfg:
+                _max_dd_pct = Decimal(str(_risk_cfg["max_daily_loss_pct"])) / Decimal("100")
+            else:
+                _max_dd_pct = Decimal("0.50")  # fallback: 50% (permissive for alpha testing)
             self._risk_guardian = RiskGuardian(
                 circuit_breaker=self._circuit_breaker,
                 max_position_pct=_max_pos_pct,
+                max_drawdown_pct=_max_dd_pct,
             )
             logger.info(
                 "RiskGuardian initialized with 9 pre-trade checks, max_position_pct=%.1f%%",
@@ -1333,7 +1360,9 @@ class Engine:
             logger.info("DynamicSizer wired to SignalGenerator")
 
         # US-133: AtomicOrderExecutor (IOC) — initialize for live execution mode
-        execution_mode_env = get_settings().operational.execution_mode.lower()
+        # Read from engine.json "mode" (authoritative config) not .env (secrets only per architecture)
+        from src.core.config import load_engine_config
+        execution_mode_env = load_engine_config().get("mode", "paper").lower()
         if execution_mode_env == "live":
             try:
                 from src.execution.atomic import AtomicOrderExecutor
@@ -2217,7 +2246,7 @@ class Engine:
                 pass
 
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-        exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
+        exchanges = self._settings.trading.active_exchanges if self._settings else _get_fallback_exchanges()
 
         self._collector_manager = CollectorManager(
             symbols=symbols,
@@ -2280,11 +2309,15 @@ class Engine:
             latency_tracker=getattr(self, "_latency_tracker", None),
         )
 
-        # Create FundingRateCollector
+        # Dynamic symbol + exchange discovery — reads engine.json at runtime.
         funding_rate_collector = None
         try:
+            _fr_symbols = await FundingRateCollector.fetch_paired_symbols(
+                http_client=getattr(self, "_http_client", None),
+            )
             funding_rate_collector = FundingRateCollector(
-                symbols=symbols,
+                symbols=_fr_symbols,
+                exchanges=FundingRateCollector.get_poll_exchanges(),
                 http_client=getattr(self, "_http_client", None),
             )
         except Exception as exc:
@@ -2607,7 +2640,7 @@ class Engine:
             from src.modes.paper import PaperMode
 
             symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-            exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
+            exchanges = self._settings.trading.active_exchanges if self._settings else _get_fallback_exchanges()
 
             # Create MultiStrategySignalProducer for 6 additional strategies
             from src.core.multi_signal import MultiStrategySignalProducer
@@ -2617,9 +2650,14 @@ class Engine:
                 latency_tracker=getattr(self, "_latency_tracker", None),
             )
 
-            # Create FundingRateCollector with shared HTTP client (4 exchanges, all symbols)
+            # Dynamic symbol + exchange discovery — reads engine.json at runtime.
+            # No hardcoding: adding a *_futures exchange to engine.json auto-activates it.
+            _fr_symbols = await FundingRateCollector.fetch_paired_symbols(
+                http_client=getattr(self, "_http_client", None),
+            )
             funding_rate_collector = FundingRateCollector(
-                symbols=symbols,
+                symbols=_fr_symbols,
+                exchanges=FundingRateCollector.get_poll_exchanges(),
                 http_client=getattr(self, "_http_client", None),
             )
 
@@ -2753,15 +2791,19 @@ class Engine:
         from src.modes.strategy_validation import StrategyValidationOrchestrator
 
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-        exchanges = self._settings.trading.active_exchanges if self._settings else ["binance", "bybit", "okx", "bitget"]
+        exchanges = self._settings.trading.active_exchanges if self._settings else _get_fallback_exchanges()
 
         multi_signal_producer = MultiStrategySignalProducer(
             event_bus=self._event_bus,
             latency_tracker=getattr(self, "_latency_tracker", None),
         )
 
+        _fr_symbols_sv = await FundingRateCollector.fetch_paired_symbols(
+            http_client=getattr(self, "_http_client", None),
+        )
         funding_rate_collector = FundingRateCollector(
-            symbols=symbols,
+            symbols=_fr_symbols_sv,
+            exchanges=FundingRateCollector.get_poll_exchanges(),
             http_client=getattr(self, "_http_client", None),
         )
 
@@ -2829,11 +2871,7 @@ class Engine:
         from src.modes.progressive_shadow import ProgressiveShadowOrchestrator
 
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-        exchanges = (
-            self._settings.trading.active_exchanges
-            if self._settings
-            else ["binance", "bybit", "okx", "bitget"]
-        )
+        exchanges = self._settings.trading.active_exchanges if self._settings else _get_fallback_exchanges()
 
         # Create MultiStrategySignalProducer for 6 additional strategies
         from src.core.multi_signal import MultiStrategySignalProducer
@@ -2843,9 +2881,13 @@ class Engine:
             latency_tracker=getattr(self, "_latency_tracker", None),
         )
 
-        # Create FundingRateCollector with shared HTTP client (4 exchanges, all symbols)
+        # Dynamic symbol + exchange discovery — reads engine.json at runtime.
+        _fr_symbols_ps = await FundingRateCollector.fetch_paired_symbols(
+            http_client=getattr(self, "_http_client", None),
+        )
         funding_rate_collector = FundingRateCollector(
-            symbols=symbols,
+            symbols=_fr_symbols_ps,
+            exchanges=FundingRateCollector.get_poll_exchanges(),
             http_client=getattr(self, "_http_client", None),
         )
 

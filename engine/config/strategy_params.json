@@ -64,7 +64,8 @@
     "stop_loss_pct": 0.016645099172000764,
     "status": "READY",
     "wfe": 10.464224768228176,
-    "data_type": "synthetic_gbm"
+    "data_type": "synthetic_gbm",
+    "enable_ou_filter": false
   },
   "futures_futures": {
     "min_spread_bps": 47.50987042361101,
@@ -122,6 +123,6 @@
       "funding_rate": 0,
       "futures_futures": 0
     },
-    "timestamp": "2026-04-06T17:19:39.375019+00:00"
+    "timestamp": "2026-04-07T05:25:03.276036+00:00"
   }
 }

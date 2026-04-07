@@ -198,6 +198,13 @@ class TradeTelegramBot(TelegramBotBase):
         ctx = self._engine_context
         if ctx:
             ctx.paused = False
+            ctx.kill_switch_active = False
+            ctx.running = True
+        try:
+            from src.risk.kill_switch import clear_halt
+            clear_halt()
+        except Exception:
+            pass
         return "▶️ 거래 재개\n신규 거래가 재개되었습니다."
 
     async def _cmd_alerts(self, text: str, chat_id: int, message: dict) -> str | None:

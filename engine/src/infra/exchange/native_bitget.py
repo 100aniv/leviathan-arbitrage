@@ -116,12 +116,22 @@ class NativeBitgetAdapter(NativeAdapter):
         side = "buy" if order.side == OrderSide.BUY else "sell"
 
         if self._market_type == "futures":
+            qty = order.amount
+            # PHOENIX: Enforce Bitget Futures MIN_NOTIONAL ($5) — use $6 safety buffer
+            if order.price and order.price > 0:
+                _MIN_NOTIONAL = Decimal("6")
+                if qty * order.price < _MIN_NOTIONAL:
+                    qty = (_MIN_NOTIONAL / order.price).quantize(Decimal("0.000001"))
+                    logger.debug(
+                        "bitget_futures_min_notional_adjusted symbol=%s qty=%s notional=%.2f",
+                        order.symbol, qty, float(qty * order.price),
+                    )
             body: dict[str, Any] = {
                 "symbol": sym,
                 "productType": "USDT-FUTURES",
                 "marginMode": "crossed",
                 "marginCoin": "USDT",
-                "size": str(order.amount),
+                "size": str(qty),
                 "side": side,
                 "tradeSide": "open",
                 "orderType": "limit" if order.price else "market",

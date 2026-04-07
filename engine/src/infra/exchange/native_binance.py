@@ -69,6 +69,7 @@ class BinanceNativeAdapter(NativeAdapter):
             **kwargs,
         )
         self._market_type = market_type  # "spot" or "futures"
+        self._step_sizes: dict[str, Decimal] = {}  # PHOENIX: LOT_SIZE cache (symbol → stepSize)
 
     # ------------------------------------------------------------------
     # URL / header overrides
@@ -187,6 +188,53 @@ class BinanceNativeAdapter(NativeAdapter):
                 expected,
             )
 
+    async def _get_lot_step(self, symbol: str) -> Decimal:
+        """Fetch and cache LOT_SIZE stepSize for futures symbol."""
+        binance_sym = _symbol_to_binance(symbol)
+        if binance_sym not in self._step_sizes:
+            try:
+                path = "/fapi/v1/exchangeInfo"
+                resp = await self._http.get(path, params={"symbol": binance_sym})
+                resp.raise_for_status()
+                info = resp.json()
+                for s in info.get("symbols", []):
+                    if s["symbol"] == binance_sym:
+                        for f in s.get("filters", []):
+                            if f["filterType"] == "LOT_SIZE":
+                                self._step_sizes[binance_sym] = Decimal(str(f["stepSize"]))
+            except Exception as exc:
+                logger.debug("lot_size_fetch_failed symbol=%s: %s", symbol, exc)
+            if binance_sym not in self._step_sizes:
+                self._step_sizes[binance_sym] = Decimal("0.001")  # safe default
+        return self._step_sizes[binance_sym]
+
+    async def _get_spot_lot_step(self, symbol: str) -> Decimal:
+        """Fetch and cache LOT_SIZE stepSize for spot symbol."""
+        binance_sym = _symbol_to_binance(symbol)
+        cache_key = f"spot_{binance_sym}"
+        if cache_key not in self._step_sizes:
+            try:
+                path = "/api/v3/exchangeInfo"
+                resp = await self._http.get(path, params={"symbol": binance_sym})
+                resp.raise_for_status()
+                info = resp.json()
+                for s in info.get("symbols", []):
+                    if s["symbol"] == binance_sym:
+                        for f in s.get("filters", []):
+                            if f["filterType"] == "LOT_SIZE":
+                                self._step_sizes[cache_key] = Decimal(str(f["stepSize"]))
+            except Exception as exc:
+                logger.debug("spot_lot_size_fetch_failed symbol=%s: %s", symbol, exc)
+            if cache_key not in self._step_sizes:
+                self._step_sizes[cache_key] = Decimal("0.00000001")  # safe default
+        return self._step_sizes[cache_key]
+
+    def _quantize_qty(self, qty: Decimal, step: Decimal) -> Decimal:
+        """Floor qty to nearest step_size multiple (avoid LOT_SIZE 400 errors)."""
+        if step <= 0:
+            return qty
+        return (qty // step) * step
+
     async def _rest_place_order(self, order: Order) -> Trade:
         side = "BUY" if order.side == OrderSide.BUY else "SELL"
         order_type = "LIMIT" if order.order_type == OrderType.LIMIT else "MARKET"
@@ -202,22 +250,73 @@ class BinanceNativeAdapter(NativeAdapter):
                 params["price"] = str(order.price)
             params["timeInForce"] = "GTC"
         else:
-            # MARKET order: use quoteOrderQty (USD) for BUY to avoid LOT_SIZE issues
-            # For SELL, must use quantity (base asset)
-            if side == "BUY" and order.price and order.price > 0:
+            # MARKET order
+            # Futures: always use quantity (base asset) — quoteOrderQty not supported on fapi
+            # Spot BUY: use quoteOrderQty (USD) to avoid LOT_SIZE issues
+            if side == "BUY" and order.price and order.price > 0 and self._market_type != "futures":
                 quote_qty = order.amount * order.price
                 params["quoteOrderQty"] = str(round(float(quote_qty), 2))
             else:
-                params["quantity"] = str(order.amount)
+                qty = order.amount
+                if self._market_type == "futures":
+                    step = await self._get_lot_step(order.symbol)
+                    qty = self._quantize_qty(qty, step)
+                    # PHOENIX: Enforce Binance Futures MIN_NOTIONAL ($5) — use $6 safety buffer
+                    if order.price and order.price > 0:
+                        _MIN_NOTIONAL = Decimal("6")
+                        while qty * order.price < _MIN_NOTIONAL and step > 0:
+                            qty = qty + step
+                        logger.debug(
+                            "futures_qty_adjusted symbol=%s qty=%s notional=%.2f",
+                            order.symbol, qty, float(qty * order.price),
+                        )
+                else:
+                    # Spot SELL: quantize to LOT_SIZE to avoid decimal precision / LOT_SIZE errors
+                    step = await self._get_spot_lot_step(order.symbol)
+                    qty = self._quantize_qty(qty, step)
+                params["quantity"] = str(qty)
         if order.client_order_id:
             params["newClientOrderId"] = order.client_order_id
 
+        import asyncio as _asyncio
         path = "/fapi/v1/order" if self._market_type == "futures" else "/api/v3/order"
         raw = await self._signed_request("POST", path, params=params)
 
         trade_id = str(raw.get("orderId", ""))
+
+        # PHOENIX: Binance Futures MARKET orders return status="NEW" executedQty="0" initially.
+        # Poll order status up to 3 times (200ms each) until status="FILLED".
+        if (
+            self._market_type == "futures"
+            and order.order_type == OrderType.MARKET
+            and raw.get("status") in ("NEW", None)
+            and trade_id
+        ):
+            for _attempt in range(3):
+                await _asyncio.sleep(0.2)
+                try:
+                    _qp = {"symbol": _symbol_to_binance(order.symbol), "orderId": trade_id}
+                    raw = await self._signed_request("GET", path, params=_qp)
+                    if raw.get("status") == "FILLED":
+                        logger.debug(
+                            "futures_market_fill_polled symbol=%s orderId=%s attempt=%d",
+                            order.symbol, trade_id, _attempt + 1,
+                        )
+                        break
+                except Exception as _pe:
+                    logger.debug("futures_poll_failed orderId=%s: %s", trade_id, _pe)
+
         filled_qty = Decimal(str(raw.get("executedQty", order.amount)))
-        fill_price = Decimal(str(raw.get("price", order.price or "0")))
+        # Futures MARKET orders: fill price is in avgPrice, not price (price=0 for MARKET)
+        _price_field = raw.get("avgPrice") or raw.get("price") or str(order.price or "0")
+        fill_price = Decimal(str(_price_field))
+        # If still executedQty=0 after polling, fall back to requested amount (async fill confirmed)
+        if filled_qty == Decimal("0") and order.order_type == OrderType.MARKET and trade_id:
+            filled_qty = order.amount
+            logger.warning(
+                "futures_executedQty_zero_fallback symbol=%s orderId=%s — using order.amount",
+                order.symbol, trade_id,
+            )
         fee = Decimal("0")
         fee_currency: str | None = None
         if raw.get("fills"):
@@ -238,11 +337,14 @@ class BinanceNativeAdapter(NativeAdapter):
         if not symbol:
             raise ValueError("Binance cancel_order requires symbol")
         path = "/fapi/v1/order" if self._market_type == "futures" else "/api/v3/order"
-        await self._signed_request(
-            "DELETE",
-            path,
-            params={"symbol": _symbol_to_binance(symbol), "orderId": order_id},
-        )
+        params: dict[str, Any] = {"symbol": _symbol_to_binance(symbol)}
+        # Binance orderId is an integer; UUID strings use origClientOrderId
+        try:
+            int(order_id)
+            params["orderId"] = order_id
+        except (ValueError, TypeError):
+            params["origClientOrderId"] = order_id
+        await self._signed_request("DELETE", path, params=params)
         return True
 
     async def _rest_cancel_all_orders(self, symbol: str | None) -> int:
