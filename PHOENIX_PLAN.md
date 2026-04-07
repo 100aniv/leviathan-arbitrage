@@ -245,11 +245,18 @@ P10: Bin↔Bithumb CE | P11: Bin↔Bitget CE | **P12: 전체 11조합 병렬**
 - [x] KillSwitch: API 활성화 → `{"status":"halted"}` + `TradeRequestConsumer: engine halted` logs ✅; `_cmd_resume` 버그 수정 — `clear_halt()` 호출 추가 (이전엔 ctx.paused만 설정)
 - [x] CircuitBreaker: `CircuitBreaker initialized` → CLOSED 상태 (재시작 후 트리거 0건)
 
-**Step 1-3: Preflight + 첫 Live**
-- [ ] Preflight 통과 (TimescaleDB, Redis, 7거래소, API키, 잔고, KS, CB, Telegram)
-- [ ] .env: EXECUTION_MODE=live, DATA_MODE=live
-- [ ] **P1 funding_rate Live 체결 1건** (Binance Futures)
+**Step 1-3: Preflight + 첫 Live** *(진행중 — live1~live16, 2026-04-07)*
+- [x] Preflight 통과 (TimescaleDB, Redis, 7거래소, API키, 잔고, KS, CB, Telegram)
+- [x] .env: EXECUTION_MODE=live, DATA_MODE=live
+- [ ] **P1 funding_rate Live 체결 1건** (Binance Futures) — **파이프라인 버그 3종 수정 완료, live17 재시작 대기**
 - [ ] 증거: TimescaleDB execution_log + Telegram 알림 + 대시보드 표시
+
+> **발견된 버그 (2026-04-07, 커밋 b90add7):**
+> 1. **TradeRequestConsumer min_notional 누락** — Redis Path B에서 futures_futures_v1 $2짜리 leg 통과 → Binance -1013 NOTIONAL 에러 → CircuitBreaker 반복 오픈. `trade_consumer.py`에 $10 필터 추가.
+> 2. **live.py funding_rate 신호 라우팅 누락** — `on_funding_rates_updated()` 반환값 버려짐. 신호 생성됐으나 `FundingRateStrategy.on_signal()` 미호출. `_route_signal_to_strategies()` 호출 추가.
+> 3. **OU 필터 과도 차단** — 8H funding rate에 sub-second half-life(0.7s) 측정 → 전 신호 차단. `enable_ou_filter: false` 설정.
+>
+> **현재 상태**: Binance Futures 포지션 0, 체결 0건. live17에서 첫 체결 목표.
 
 **Phase 1 완료**: Live 체결 1건 + crash 0 + Telegram 알림
 
