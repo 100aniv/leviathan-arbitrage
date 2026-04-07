@@ -151,9 +151,15 @@ class InventoryRebalancer:
 
         for name, adapter in exchanges.items():
             try:
-                balance = await adapter.get_balance()
-                if balance:
-                    self.tracker.update(name, balance)
-                    logger.info("Balance feed connected: %s", name)
+                balances = await adapter.get_balances()
+                usdt = balances.get("USDT")
+                if usdt:
+                    self.tracker.record_balance(
+                        exchange_id=name,
+                        total_usd=float(usdt.total),
+                        available_usd=float(usdt.free),
+                        locked_usd=float(usdt.used),
+                    )
+                    logger.info("Balance feed connected: %s total=%.2f USDT", name, float(usdt.total))
             except Exception as exc:
                 logger.warning("Balance feed failed for %s: %s", name, exc)

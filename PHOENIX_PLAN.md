@@ -249,7 +249,7 @@ P10: Bin↔Bithumb CE | P11: Bin↔Bitget CE | **P12: 전체 11조합 병렬**
 - [x] Preflight 통과 (TimescaleDB, Redis, 7거래소, API키, 잔고, KS, CB, Telegram)
 - [x] .env: EXECUTION_MODE=live, DATA_MODE=live
 - [x] **P1 funding_rate Live 체결 1건** (Binance Futures + Bitget Futures) — **live20에서 달성**
-- [ ] 증거: TimescaleDB execution_log + Telegram 알림 + 대시보드 표시 *(잔여)*
+- [x] 증거: TimescaleDB execution_log `funding_rate_v1 | live | 1건 | -$0.3065 | 2026-04-07 06:34:05 UTC` + Telegram 알림 수신 확인 *(2026-04-08)*
 
 > **발견된 버그 (2026-04-07):**
 > 1. **TradeRequestConsumer min_notional 누락** *(커밋 b90add7)* — Redis Path B에서 futures_futures_v1 $2짜리 leg 통과 → Binance -1013 NOTIONAL 에러 → CircuitBreaker 반복 오픈. `trade_consumer.py`에 min_notional 필터 추가.
@@ -292,10 +292,11 @@ P10: Bin↔Bithumb CE | P11: Bin↔Bitget CE | **P12: 전체 11조합 병렬**
 >     ③ **InfraBot** (DevBot 아님) `/watchdog on|off|status` — Redis 하트비트 TTL 모니터링
 >     ④ **InfraBot** `/closepositions` — `leviathan:halt=1` Redis 설정 → 엔진 원격 KillSwitch
 >   - 봇 역할 명확화: TradeBot=거래, InfraBot=인프라+watchdog, DevBot=개발알림 전용
-- [ ] **Bug 13: 실행 지연** — Bug 11 수정(600ms 제거) 후 예상 ~460ms. 설계 목표 100-200ms 대비 2-4배 초과. 원인: sequential cross-exchange legs (atomicity 보장). futures_futures는 parallel execution 필요 (Phase 2 실측 후 결정). **Phase 2에서 실측값으로 문서 업데이트 예정.**
+- [ ] **Bug 13: 실행 지연** — live20 실측: 1769ms (Bug 11 포함). Bug 11 수정(-600ms) 후 live21에서 예상 ~1170ms. 설계 목표 100-200ms 대비 5-10배 초과. 원인: sequential cross-exchange legs (atomicity 보장). **Phase 2 live21 실측 후 최종 기록.**
 - [x] **오픈 포지션 전량 청산** — BNT/ESP/KAT/NIL 4건 시장가 청산 완료 (2026-04-07 17:20 KST, scripts/close_positions.py --execute)
 - [x] Redis CB 상태 초기화 — CB 키 없음 (300s 자동 해제). 잔존 exposure 키 6개 수동 삭제 완료
 - [x] pytest 전체 재확인 — **4691 passed, 0 failed, 12 skipped** (2026-04-07)
+- [x] **Bug 14: InventoryRebalancer.connect_exchange_feeds() 메서드 오타** — `get_balance()` → `get_balances()` + `tracker.update()` → `tracker.record_balance()` 수정 (2026-04-08)
 - [ ] Phase 2 clean start (live21+)
 
 ---

@@ -771,9 +771,12 @@ class LiveMode(BaseMode):
             # Prevents imbalanced positions from per-adapter leg-level adjustments.
             from src.core.config_loader import get_config
             _MIN_TRADE_NOTIONAL = Decimal(str(get_config("execution.min_trade_notional_usd", default=10)))
+            _USD_QUOTES = {"USDT", "USDC", "USD", "BUSD", "DAI"}
             _small_legs = [
                 leg for leg in trade_request.legs
-                if leg.price and leg.price > 0 and leg.size * leg.price < _MIN_TRADE_NOTIONAL
+                if leg.price and leg.price > 0
+                and leg.symbol.split("/")[-1].upper() in _USD_QUOTES
+                and leg.size * leg.price < _MIN_TRADE_NOTIONAL
             ]
             if _small_legs:
                 logger.debug(
