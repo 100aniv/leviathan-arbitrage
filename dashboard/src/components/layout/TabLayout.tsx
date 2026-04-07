@@ -2,9 +2,13 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Home, Settings2, BarChart2, ShieldCheck, Settings, Bell, LogOut, Database, Activity } from "lucide-react";
 import ko from "@/i18n/ko.json";
+import { useApi } from "@/hooks/useApi";
+import { getStatus } from "@/lib/api";
+import type { StatusResponse } from "@/types";
 
 const TABS = [
   { id: "home",     label: ko.nav.home,     href: "/",         icon: Home },
@@ -40,9 +44,21 @@ export function TabLayout({ children }: TabLayoutProps) {
       <header className="sticky top-0 z-50 bg-bg-base border-b border-border h-14 flex items-center px-4 md:px-6 gap-4">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {/* 브랜드 */}
-          <span className="font-display font-bold text-text-primary tracking-tight text-lg">
-            LEVIATHAN
-          </span>
+          <Link href="/" className="flex items-center gap-2 min-w-0">
+            <Image
+              src="/logo.png"
+              alt="로고"
+              width={28}
+              height={28}
+              className="rounded-md object-cover shrink-0"
+            />
+            <span className="font-display font-bold text-text-primary tracking-tight text-lg">
+              LEVIATHAN
+            </span>
+            <span className="hidden sm:block text-xs text-text-tertiary font-medium shrink-0">
+              XXX STUDIO
+            </span>
+          </Link>
           {/* 연결 상태 뱃지 */}
           <ConnectionBadge />
         </div>
@@ -158,10 +174,26 @@ export function TabLayout({ children }: TabLayoutProps) {
   );
 }
 
-/* 연결 상태 표시 컴포넌트 */
+/* 연결 상태 표시 컴포넌트 — /api/v1/status 폴링 */
 function ConnectionBadge() {
-  // TODO: useEngineStatus 훅으로 실제 연결 상태 연동
-  const connected = true;
+  const { data, error } = useApi<StatusResponse>(
+    "/status",
+    getStatus,
+    { refreshInterval: 10_000 },
+  );
+
+  // 데이터 없고 에러도 없으면 로딩 중 → 마지막 상태 유지 (neutral)
+  const connected = error ? false : (data?.running ?? null);
+
+  if (connected === null) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[6px] text-small font-medium bg-bg-surface text-text-tertiary">
+        <span className="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-pulse" aria-hidden />
+        {ko.header.reconnecting}
+      </span>
+    );
+  }
+
   return (
     <span
       className={`

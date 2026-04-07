@@ -669,6 +669,63 @@ export default function OverviewPage() {
         />
       </div>
 
+      {/* ── Row 1.5: Exchange Balance Swipe Cards ───────────────────────── */}
+      {exchangeStatus && (
+        <div>
+          <p className="text-small font-medium text-text-secondary mb-2">거래소별 잔고</p>
+          {/* scroll-snap 컨테이너 — 오른쪽 페이드로 "더 있다" 힌트 */}
+          <div className="relative">
+            <div
+              className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory scroll-smooth"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+              {Object.entries(exchangeStatus).map(([id, s]) => {
+                const b = s.balance ?? {};
+                const usdt = b['USDT'] ?? b['usdt'] ?? 0;
+                const krw  = b['KRW']  ?? b['krw']  ?? 0;
+                const balStr = krw > 0
+                  ? `₩${krw.toLocaleString('ko-KR')}`
+                  : usdt > 0
+                  ? `$${usdt.toFixed(2)}`
+                  : null;
+                return (
+                  <div
+                    key={id}
+                    className="w-36 h-24 shrink-0 snap-start flex flex-col justify-between bg-bg-surface border border-border rounded-[14px] p-3 transition-shadow hover:shadow-md"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-caption font-bold text-text-primary truncate flex-1 mr-1">
+                        {shortEx(id)}
+                      </span>
+                      <span className={clsx('w-2 h-2 rounded-full shrink-0 transition-colors', s.connected ? 'bg-success' : 'bg-danger')} />
+                    </div>
+                    <div>
+                      {balStr ? (
+                        <p className="text-body font-bold tabular-nums text-text-primary leading-tight">{balStr}</p>
+                      ) : (
+                        <p className="text-small text-text-tertiary">잔고 없음</p>
+                      )}
+                      <p className={clsx('text-small mt-0.5', s.connected ? 'text-success' : 'text-danger')}>
+                        {s.connected
+                          ? s.latency_ms != null ? `${s.latency_ms}ms` : '연결됨'
+                          : '연결 끊김'}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* 스크롤 끝 여백 */}
+              <div className="w-4 shrink-0" aria-hidden />
+            </div>
+            {/* 오른쪽 페이드 힌트 — 더 카드가 있다는 시각적 신호 */}
+            <div
+              className="pointer-events-none absolute right-0 top-0 bottom-2 w-12 bg-gradient-to-l from-bg-base to-transparent"
+              aria-hidden
+            />
+          </div>
+        </div>
+      )}
+
       {/* ── Row 2: PnL Curve (2/3) + Risk Status (1/3) ──────────────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2">

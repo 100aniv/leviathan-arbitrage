@@ -4,6 +4,32 @@
 
 ---
 
+## 0. 문서 구조 (Index)
+
+본 문서는 **§1~7 = 영구 계획**, **§8 = 2026-04-07 재검증/패치 추가분** 구조.
+중복 방지 원칙: Phase 2 카나리 표/자본/Step 정의는 **§3 이 SSOT**, §8.x 는 분석/패치/프롬프트만.
+
+| 섹션 | 내용 | 비고 |
+|---|---|---|
+| §1 | 스코프 (거래소/전략/자본) | 불변 |
+| §2 | 설정 아키텍처 | 불변 |
+| §3 | **Phase 0/1/2/3 체크리스트 — Phase 2 v2 SSOT** | 카나리 단일 출처 |
+| §4 | 리스크 + 인프라 운영 기준 | |
+| §5 | 워크플로우 (PHOENIX Loop) | |
+| §6 | Claude Code 호출 프롬프트 | |
+| §7 | 정직한 평가 + 진행 상태 부록 | |
+| §8.1~8.3 | 코드 재검증 결과 + 레이턴시 패치 | 분석 |
+| §8.4 | Phase 2 재설계 — **§3 으로 통합됨 (배경만 보존)** | 포인터 |
+| §8.5 | 워크플로우 자동운영 4축 | |
+| §8.6 | Phase 2 진입 전 잔여 체크리스트 (→ 9번은 §8.7.8 로 대체) | |
+| §8.7 | UIUX 대시보드 재설계 (12 Steps) | |
+| §8.8 | US-250 Reconciler Bitget 유령 포지션 못 잡은 이유 + 패치 3건 | |
+| §8.9 | Shadow→Paper 네이밍 분류 보고서 (Cat A~D) | C단계 |
+| §8.10 | (예정) 실제 리네이밍 본 작업 — Phase 2 종료 후 | TBD |
+| §8.11 | v2 재편 운영 프롬프트 (카나리/UIUX 세션 지시문) | 근거 표는 §3 |
+
+---
+
 ## 1. 스코프 (절대 확장 금지)
 
 ### 거래소 (5 Spot + 2 Futures = 7 어댑터, 전부 Native WS)
@@ -317,8 +343,23 @@ P10: Bin↔Bithumb CE | P11: Bin↔Bitget CE | **P12: 전체 11조합 병렬**
 > - [x] pytest 재확인 — **57 passed (핵심 파일), 0 failed** (2026-04-07)
 >
 > **Phase 2 재시작 전 추가 확인 필요:**
-> - Upbit/Coinone 연결 테스트 (변수명 수정 후 첫 실행)
+> - Upbit/Coinone 연결 테스트 (변수명 수정 후 첫 실행) ← live_mode.init 7거래소 연결 확인됨
 > - futures_futures 라우팅 수정 후 Paper 5분 leg2 exchange=binance_futures 확인
+>
+> **Step 2-1 시작 전 신규 버그 발견 (2026-04-07 22:41 KST):**
+> - [x] **Bug 24: DISABLED_PHASE2 상태가 전략 실행을 막지 못함** — `main.py`에서 `ff_config=None`이어도 `FuturesFuturesStrategy(..., config=None)` 인스턴스 생성 후 strategy 리스트에 포함됨. 결과: funding_rate 단독 의도에도 futures_futures_v1 체결 5건 발생 (total_pnl -$0.19). 수정: `if ff_config else None` 추가 + `if s is not None and` 필터 적용 (`main.py:1122~1142`). 확인: `strategies_started count=1`.
+> - [x] **자본 step2_1 tier 수정** — `initial_usd: 200` → `initial_usd: 120` (Binance/Bitget Futures 각 ~$60 실보유액 기준). 손실 임계: 5%=$6, 10%=$12(KillSwitch).
+> - [x] **Bitget Futures 잔재 포지션 정리** — 22002 "No position to close" 6건 → 실포지션 없음 확인. Redis exposure 키 26개 삭제.
+>
+> **Step 2-1 1차 시작: PID=82345, 2026-04-07 22:41 KST** (세션 재시작으로 35분 후 중단)
+>
+> **Step 2-1 공식 재시작: PID=94908, 2026-04-07 23:16 KST, 로그=step2-1_canary_20260407_231621.log**
+> - funding_rate_v1 단독 (strategies_started count=1 확인)
+> - 자본: step2_1_auto tier, initial_usd=$41.69 (BinFut $10.16 + BitFut $31.53, 실잔고 90%)
+> - 손실 임계: 5%=$2.08(경고) / 7%=$2.92(전략비활) / 10%=$4.17(KillSwitch)
+> - EXECUTION_MODE=live, DATA_MODE=live, max_daily_loss_pct=10.0%
+> - 종료 예정: 2026-04-09 23:16 KST (+48H)
+> - 8H 체크포인트: 07:16/15:16/23:16 KST × 2일
 
 ---
 
@@ -363,81 +404,86 @@ InfraBot /watchdog on 활성화 시:
 
 ---
 
-### Phase 2: 카나리 — 단계별 확장 (§8.4 재설계 반영)
+### Phase 2: 카나리 — 단계별 확장 (v2, 2026-04-07 재편)
 
-> **재설계 (2026-04-07)**: 이전 11조합 동시 + 72H + auto-tuner 활성화 계획은 너무 공격적.
-> Live20-23 19 Bitget 포지션 누적 + CB 74x OPEN 사고 이후 보수적 단계별 확장으로 전환.
-> Auto-tuner는 Phase 3로 이동 (Phase 2는 TCA 데이터 수집 구간 — 튜너가 교란변수).
+> **재편 근거 (v1 → v2)**: 초기 v1 은 funding_rate 1번 배치 (리스크 최소화). 그러나 funding_rate 체결 빈도가 낮아 Fix Loop 학습 효과가 약함. 첫 카나리 자본 $120 규모에서는 **학습 최대화** 가 더 합리적 — 체결 빈도 높은 전략부터 돌려 라운드트립(진입→청산→PnL→로그) 사이클을 많이 경험해야 버그가 빨리 나옴. 자본은 $60/거래소 소액 유지. 각 Step 24H 통일 (48H 불필요).
+>
+> **v1 잔재**: 이전 v1 계획은 11조합 동시 + 72H + auto-tuner 활성화로 과공격적이었음. Live20-23 19 Bitget 포지션 누적 + CB 74x OPEN 사고 이후 보수적 단계별 확장으로 전환. Auto-tuner는 Phase 3로 이동 (Phase 2는 TCA 데이터 수집 구간 — 튜너가 교란변수).
 
-| Step | 시간 | 활성 전략 | 자본 | PnL 임계 | KillSwitch 임계 |
+| Step | 시간 | 활성 전략 | 자본 (futures_usd × 2) | 손실 tier | 학습 포커스 |
 |---|---|---|---|---|---|
-| 2-1 (안정화) | **48H** | funding_rate **단독** (1-leg) | $200 (5%) | -$1 | DD 5% |
-| 2-1.5 (신규) | 24H | + futures_futures (1소 내) | $400 (10%) | -$2 | DD 5% |
-| 2-2 | 24H | + spot_futures | $600 (15%) | -$3 | DD 7% |
-| 2-3 | 24H | + cross_exchange Coinone 쌍 | $800 (20%) | -$4 | DD 7% |
-| 2-4 | 24H | + cross_exchange Upbit 쌍 | $1000 (25%) | -$5 | DD 7% |
-| 2-5 | 24H | + cross_exchange Bithumb+Global 쌍 | $1200 (30%) | -$6 | DD 7% |
-| 2-6 | 24H | + 글로벌 cross_exchange (Bin↔Bitget) | $1600 (40%) | -$8 | DD 7% |
-| 2-7 (auto-tuner) | **Phase 3로 이동** | — | — | — | — |
-| 2-8 (72H 통합) | 72H | 검증된 조합 전체 | $4000 (100%) | -$10 | DD 10% |
+| 2-1 | 24H | **futures_futures 단독** (선물간 차익) | $60 × 2 = $120 | 5% ($6) | 체결 빈도 중상, 2-leg 원자성, 라운드트립 |
+| 2-1.5 | 24H | + spot_futures | 동일 | 5% ($6) | 현물-선물 캐시앤캐리, 3-leg 조합 |
+| 2-2 | 24H | + funding_rate | 동일 | 7% ($8.4) | 방향성 중립 보조 수익, 펀딩 정산 주기 |
+| 2-3 | 24H | + cross_exchange (Bin↔Bitget 글로벌, KRW 제외) | 동일 | 7% ($8.4) | 글로벌 CE, L2 전송비 |
+| 2-4 | 24H | + CE Coinone | 동일 | 7% ($8.4) | KRW 첫 도입, L1 전송비 $2.50 |
+| 2-5 | 24H | + CE Upbit (키 갱신 후) | 동일 | 7% ($8.4) | Upbit 수수료 0.139%, invalid_access_key 해결 필요 |
+| 2-6 | 24H | + CE Bithumb | 동일 | 10% ($12) | Bithumb stale data 가드 실전 |
+| 2-7 | **Phase 3로 이동** | (auto-tuner) | — | — | — |
+| 2-8 | 72H | 검증된 조합 전체 | 실잔고 fetch 기반 | 10% | 최종 통합 검증 |
 
-**손실 tier 변경**: 5%/7%/10% (이전 단일 임계값보다 단계별 보수적)
+누적 기간: ~10일. 각 Step 진입 전 게이트 13항목 평가. 체결 ≥ 5건 + crash=0 + KillSwitch=0 + CB OPEN < 5 필수.
 
-#### Step 2-1 (안정화): funding_rate 단독 48H
+#### Step 2-1: futures_futures 단독 24H
 
-- [ ] 자본 $200 (5%), funding_rate 1-leg 단독
+- [ ] 자본 $60 × 2 = $120, futures_futures 단독 (선물간 차익)
 - [ ] crash=0, KillSwitch=0, CB OPEN < 5회
-- [ ] PnL > -$1 (아니면 자동 정지 + 텔레그램 알림 → 다음날 검토)
-- [ ] funding_rate carry trade 시뮬레이션 검증 (1기간 PnL만으로 판단 금지)
-- [ ] latency_measured strategy=funding_rate 평균 < 1000ms
+- [ ] PnL > -$6 (5% 손실 tier, 아니면 자동 정지 + 텔레그램 알림 → 다음날 검토)
+- [ ] 체결 ≥ 5건 (24H 에 샘플 확보 최소선)
+- [ ] latency_measured strategy=futures_futures 평균 < 1000ms
+- [ ] 2-leg 원자성 검증: 한쪽 leg 실패 시 rollback 경로 작동 로그
 
-#### Step 2-1.5 (신규 안정화 게이트): + futures_futures 24H
+#### Step 2-1.5: + spot_futures 24H
 
-- [ ] funding_rate + futures_futures 동시 가동, 자본 $400 (10%)
-- [ ] **48H Step 2-1 이후만 진입 가능** (조건 미달 시 자동 정지, 사장님 깨움 X)
-- [ ] futures_futures = 단일 거래소 내 1-leg → 2-leg 안정성 검증
+- [ ] futures_futures + spot_futures 동시, 자본 동일 ($120)
+- [ ] **Step 2-1 게이트 통과 후만 진입 가능** (조건 미달 시 자동 정지, 사장님 깨움 X)
+- [ ] spot_futures OU 파라미터 정적 동작 (튜너 OFF)
 - [ ] crash=0, CB OPEN < 5회
 
-#### Step 2-2: + spot_futures 24H
+#### Step 2-2: + funding_rate 24H
 
-- [ ] 자본 $600 (15%), per-strategy CB 단일 전략 손실 > 잔고 5% 시 자동 비활성화
-- [ ] spot_futures OU 파라미터 동작 (튜너 OFF 상태에서 정적 파라미터)
-- [ ] CB OPEN < 10회 (cross_exchange 진입 직전이라 임계 완화)
+- [ ] 3전략 동시, 자본 동일, 손실 tier 7% ($8.4)
+- [ ] funding_rate carry trade 시뮬레이션 검증 (1기간 PnL만으로 판단 금지)
+- [ ] per-strategy CB: 단일 전략 손실 > 잔고 5% 시 자동 비활성화
+- [ ] 펀딩 정산 3회 (00/08/16 UTC) 커버 확인
 
-#### Step 2-3: + cross_exchange Coinone 쌍 24H
+#### Step 2-3: + cross_exchange (Bin↔Bitget 글로벌) 24H
 
-- [ ] Coinone BTC 제외 유지 (Live 재확인)
+- [ ] KRW 거래소 제외, Binance↔Bitget L2 $0.16 전송 반영
+- [ ] 스프레드 작아 시그널 적을 수 있음 = 정상
+- [ ] DD < 7%
+
+#### Step 2-4: + CE Coinone 24H
+
+- [ ] Coinone BTC 제외 유지, 수수료 0.02% (API 할인)
 - [ ] L1 전송비 $2.50 cost_calculator 반영 확인
 - [ ] kimchi premium 없으면 0건 체결 = 정상
 - [ ] DD < 7%
 
-#### Step 2-4: + cross_exchange Upbit 쌍 24H
+#### Step 2-5: + CE Upbit 24H
 
-- [ ] Upbit 0.139% 수수료 + L1 $4.50 반영
+- [ ] **전제**: Upbit API 키 재발급 + `.env` UPBIT_ACCESS_KEY/UPBIT_SECRET_KEY 갱신 완료 (invalid_access_key 해결)
+- [ ] Upbit Maker 0.05% / Taker 0.139% + L1 $4.50 반영
 - [ ] 최소 스프레드 $5+ 진입 확인
 - [ ] DD < 7%
 
-#### Step 2-5: + cross_exchange Bithumb+Global 쌍 24H
+#### Step 2-6: + CE Bithumb 24H
 
 - [ ] Bithumb stale guard 실전: fake spread 차단 로그, ±50% 가드 오탐 0건
-- [ ] DD < 7%
-
-#### Step 2-6: + 글로벌 cross_exchange (Bin↔Bitget) 24H
-
-- [ ] Bin↔Bitget L2 $0.16 전송, 스프레드 작아 시그널 적을 수 있음 = 정상
-- [ ] DD < 7%
+- [ ] 2단계 REST 검증 경로 작동
+- [ ] DD < 10% (손실 tier 완화)
 
 #### Step 2-7: Auto-tuner — **Phase 3로 이동**
 
-> **이동 근거 (§8.4 확정)**:
+> **이동 근거**:
 > 1. Phase 2는 TCA 데이터 수집 구간 — 튜너가 파라미터 변경 시 교란변수
 > 2. 11조합 전부 안정 동작 검증되기 전 Optuna 돌리면 local optimum이 버그 회피 경로로 수렴
 > 3. `scheduled_tuner.py:397-403` DISABLED_PHASE2 보존 로직이 이미 그 전제 코드화
-> 4. Gemini가 지적한 설정 3중 분산 미해소 상태에서 튜너가 어느 파일을 쓰는지 자체가 모호
+> 4. 설정 3중 분산 미해소 상태에서 튜너가 어느 파일을 쓰는지 자체가 모호
 
 #### Step 2-8: 검증된 조합 전체 통합 72H
 
-- [ ] 자본 $4000 (100%), 검증된 조합 전체 활성
+- [ ] 실잔고 fetch 기반 자본 (tier 자동), 검증된 조합 전체 활성
 - [ ] crash=0, DD < 10%, PnL > -$10
 - [ ] 전략별 체결 ≥ 1 (CE는 premium 없으면 0건 허용)
 - [ ] DB 모드 분리 최종 확인: `SELECT DISTINCT mode FROM execution_log` → 'live'만 존재
@@ -447,12 +493,13 @@ InfraBot /watchdog on 활성화 시:
 
 **Phase 2 완료**: 검증된 조합 72시간 무중단 + crash 0 + DD < 10% + PnL > -$10
 
-#### Step 2-1.5 안정화 게이트 운영 규칙
+#### 공통 운영 규칙
 
-- 조건 미달 시 텔레그램 알림 + **자동 정지** (사장님 깨움 X, 다음날 검토)
+- 각 Step 조건 미달 시 텔레그램 알림 + **자동 정지** (사장님 깨움 X, 다음날 검토)
 - 조건 충족 시 다음 Step으로 **자동 진입** (FSM transition)
 - 모든 Step의 종료 조건은 `engine/src/workflow/phase2_fsm.py`에서 머신 판독 가능 형태로 정의 (§8.5)
 - 각 Step 종료 시 `.omc/state/phase2/step-{N}-evidence.json` 자동 저장 (§8.5)
+- 카나리 실행 중 코드 수정 금지 (모니터링만). 치명 버그 시 graceful shutdown → Fix → 재기동
 
 ### Phase 3: 확장 (Phase 2 후 실 데이터 기반 결정)
 
@@ -661,33 +708,23 @@ sequential lock acquire   :   2-5ms   (수정가능: gather)
 
 **핵심 인정**: 구조적 하한선 ~210ms는 cross_exchange에서 절대 못 깨짐. 글로벌 ↔ 한국 RTT가 인프라 한계. 엣지 서버(AWS ap-northeast-2) 배포는 Phase 3 작업.
 
-### 8.4 Phase 2 보수적 재설계 (자동운영 전 필수)
+### 8.4 Phase 2 재설계 — §3 으로 통합됨
 
-이전 Phase 2 계획은 4전략 × 11조합 동시 + 72H + auto-tuner 활성화로 너무 공격적. Live20-23에서 19 Bitget 포지션 누적 + CB 74x OPEN을 보면 안정화가 우선.
+> **이 섹션은 §3 Phase 2 카나리 (v2, 2026-04-07 재편) 로 단일화되었음.**
+> 중복 제거: Step 표 / 자본 / 손실 tier / 게이트 조건 모두 §3 이 SSOT.
+> 본 §8.4 는 재설계 배경(이전 v1 대비 변경 사유)만 기록으로 남김.
 
-**재설계 (Option A — 단계별 확장):**
+**재설계 배경 (역사 기록)**
+- v1 계획: 4전략 × 11조합 동시 + 72H + auto-tuner 활성 → 너무 공격적
+- Live20-23 결과: 19 Bitget 포지션 누적 + CB 74x OPEN → 안정화 우선 필요
+- v1→v2 전환 (학습 최대화 원칙): funding_rate 1번 → futures_futures 1번
+- 자본 축소: $200 → 실잔고 $60×2 = $120
 
-| Step | 시간 | 활성 전략 | 자본 | PnL 임계 | KillSwitch 임계 |
-|---|---|---|---|---|---|
-| 2-1 (안정화) | **48H (was 24H)** | funding_rate **단독** (1-leg) | $200 (5%) | -$1 (was $0) | DD 5% |
-| 2-1.5 (신규) | 24H | + futures_futures (1소 내) | $400 (10%) | -$2 | DD 5% |
-| 2-2 | 24H | + spot_futures | $600 (15%) | -$3 | DD 7% |
-| 2-3~6 | 각 24H | cross_exchange 쌍 1개씩 | +$200/단계 | tier별 | DD 7% |
-| 2-7 (auto-tuner) | **Phase 3로 이동** | — | — | — | — |
-| 2-8 (72H 통합) | 72H | 검증된 조합 전체 | $4000 | -$10 | DD 10% |
-
-**손실 tier 변경**: 5%/7%/10% (이전 단일 임계값보다 단계별 보수적)
-
-**`Step 2-1.5 안정화 게이트` 신규 추가:**
-- 48시간 funding_rate 단독 운영
-- crash 0건, KillSwitch 미발동, CB OPEN < 5회 시에만 다음 Step 진입
-- 조건 미달 시 텔레그램 알림 + 자동 정지 (사장님 깨움 X, 다음날 검토)
-
-**Auto-tuner Phase 3 이동 근거 (확정):**
-1. Phase 2는 TCA 데이터 수집 구간 — 튜너가 파라미터 변경 시 교란변수
-2. 11조합 전부 안정 동작 검증되기 전 Optuna 돌리면 local optimum이 버그 회피 경로로 수렴
-3. `scheduled_tuner.py:397-403` DISABLED_PHASE2 보존 로직이 이미 그 전제 코드화
-4. Gemini가 지적한 설정 3중 분산 미해소 상태에서 튜너가 어느 파일을 쓰는지 자체가 모호
+**Auto-tuner Phase 3 이동 확정 근거**
+1. Phase 2는 TCA 데이터 수집 구간 — 튜너 파라미터 변경 시 교란변수
+2. 11조합 안정 검증 전 Optuna → local optimum 이 버그 회피 경로로 수렴
+3. `scheduled_tuner.py:397-403` DISABLED_PHASE2 보존 로직이 이미 코드화
+4. Gemini 지적 설정 3중 분산 미해소 상태에서 튜너 쓰기 대상 모호
 
 ### 8.5 워크플로우 통합 — 완전 자동 운영 (잘 때 돌릴 수 있게)
 
@@ -1037,3 +1074,469 @@ cd engine && python -m pytest tests/ -x --tb=short
 
 → §8.7 v2 Step 1에서 이 위반을 강제로 잡고, 이후 모든 PR에 "DESIGN-kraken.md 토큰만 사용" lint 추가 (eslint 또는 stylelint 규칙)
 
+
+---
+
+---
+
+## 8.8 기존 PositionRecovery / PositionReconciler 가 Bitget 유령 포지션 6개를 못 잡은 이유 (US-250 패치)
+
+> **전제 정정**: 부트 reconcile / 주기 reconcile 은 **이미 US-250 으로 구현돼 있다**. `engine/src/execution/position_recovery.py` (부트 WAL 스캔) + `engine/src/execution/reconciler.py` (60초 주기 엔진 vs 거래소 대조) + `main.py` 에서 초기화/호출 경로 존재. 따라서 "신규 구현" 이 아니라 **기존 구현이 Bitget 6개를 못 잡은 원인** 을 찾아서 고치는 게 맞는 접근.
+
+### 8.8.1 근본원인 (코드 확인)
+
+**원인 1 — `_reconcile_loop` 이 live 모드에서 무동작** (`main.py:3168-3180`)
+```python
+async def _reconcile_loop(self) -> None:
+    while self.state.running:
+        await asyncio.sleep(interval)
+        # Only reconcile when shadow mode is active and Redis is available
+        if self._paper_mode is None or self._redis_client is None:
+            continue
+```
+- Live 모드에서는 `_paper_mode is None` → 루프가 매 interval 마다 `continue` 로 빠져나감
+- 즉 **US-250 PositionReconciler 는 shadow 모드 전용이 돼 버렸음**. Live 에서 60초 주기 engine↔exchange 대조가 아예 안 돌아감
+- 이게 "코드는 있지만 enforcement 없음" 의 대표적 사례
+
+**원인 2 — `PositionRecovery.scan()` 은 `execution_log` WAL 기반** (`position_recovery.py`)
+- 부트 시 WAL 에 기록된 미종결 거래만 스캔
+- 이전 futures_futures 테스트 세션이 **WAL 를 남기지 않고 죽었거나**, 또는 WAL 가 dev/shadow DB 에 기록돼서 live 부트 시 다른 DB 를 봐서 놓침
+- 즉 WAL 없으면 유령 포지션 스캔 대상에서 빠짐
+
+**원인 3 — discrepancy 감지 후 액션 부재** (`main.py:3230-3237`)
+- `PositionReconciler.reconcile()` 이 discrepancy 를 반환해도 코드는 `logger.debug` 만 남김
+- 알림도 없고, 자동 청산도 없고, FSM 정지도 없음 → 감지해도 무해
+
+### 8.8.2 필요한 패치 (3건, 기존 US-250 수정)
+
+**패치 A — `_reconcile_loop` 모드 게이트 제거** (우선순위 P0)
+
+`main.py:3174` 의 shadow-only 게이트를 제거하고, **live 모드에서도 PositionReconciler 를 돌린다**. `_paper_mode` 의존성을 걷어내고 직접 거래소 어댑터에서 `fetch_positions()` 호출하도록 변경.
+
+```python
+# BEFORE
+if self._paper_mode is None or self._redis_client is None:
+    continue
+
+# AFTER
+if self._redis_client is None:
+    continue
+# PositionReconciler 는 거래소 어댑터에서 직접 fetch 하므로 mode 무관
+```
+
+**패치 B — discrepancy 감지 시 알림 + 정지** (P0)
+
+`main.py:3230` 의 `_on_reconcile_discrepancy` 콜백 강화:
+1. InfraBot 으로 즉시 알림 (discrepancy 내역 + 거래소별 실포지션 덤프)
+2. discrepancy 수 > 0 이면 **신규 주문 halt** (`leviathan:halt` SET) + KillSwitch Tier 1 트리거
+3. 사장님이 수동으로 `/reconcile_resolve` 명령을 내릴 때까지 엔진은 READY_WAITING 상태
+
+**패치 C — 부트 시 WAL 독립적 거래소 스캔 추가** (P1)
+
+`PositionRecovery.scan()` 이후 추가로 **거래소 직접 조회** 단계를 붙인다:
+1. WAL 스캔 결과 (engine 이 아는 포지션) 를 구한 뒤
+2. 활성 거래소 전부에 `fetch_positions()` 호출
+3. 거래소에는 있지만 WAL 에 없는 포지션 = orphan
+4. Orphan > 0 이면 InfraBot 알림 + FSM READY_WAITING_RECONCILE 로 정지
+
+### 8.8.3 실행 타이밍
+
+- **지금 Step 2-1 카나리 48H 동안은 패치하지 않음** — 엔진 재기동 필요
+- **Step 2-1 완료 직후** 게이트에 세 패치 머지 포함. Step 2-1.5 (futures_futures 추가) 는 다중 전략이라 reconcile 이 반드시 작동해야 함
+- 패치 후 검증: 유령 포지션 시뮬레이션 테스트 (Bitget sandbox 에 수동 포지션 생성 → 엔진 부트 → FSM 정지 확인)
+
+### 8.8.4 §8.6 체크리스트 추가 항목
+
+Step 2-1.5 진입 전 게이트에 10번째 항목 추가:
+- [ ] **10. Reconcile live 모드 작동 확인**: `_reconcile_loop` 이 live 모드에서 60초 주기로 `fetch_positions()` 호출하는 로그 확인. discrepancy 인위 주입 테스트 → InfraBot 알림 + halt 트리거 확인.
+
+### 8.8.5 사장님 사과
+
+제가 처음 §8.8 을 "신규 기능 제안 (Startup Reconciliation + Graceful Shutdown)" 으로 쓴 건 **기존 US-250 구현을 확인하지 않은 전형적 false gap 보고** 였습니다. 사장님이 "어제 이야기했던 거 같은데" 라고 지적하신 게 정확했고, 실제로 코드에 다 있었습니다. 이 섹션은 그 오류 정정본입니다. 앞으로 "없다" 고 쓰기 전에 `grep -r` 먼저 돌리겠습니다.
+
+---
+
+## 8.9 Shadow → Paper 네이밍 리팩토링 전수조사 (분류 보고서, C단계)
+
+> **목적**: Step 2-1 카나리 48H 중 코드 무수정으로 할 수 있는 조사 작업. 59개 파일 668건의 `shadow` 언급을 4 카테고리로 분류해서, Step 2-8 완료 후 §8.10 본 리팩토링에서 어떤 파일을 어떻게 처리할지 결정자료로 삼는다. 카나리 중단 없음.
+
+### 8.9.1 현황 요약 (2026-04-07 조사)
+
+- **검색 범위**: `engine/src/` 전체 (dashboard 제외)
+- **매치 건수**: 668 occurrences
+- **영향 파일**: 59개
+- **가장 큰 덩어리**: `modes/shadow.py` 2679줄 / 100건, `main.py` 87건, `modes/shadow.py` 46건 × `tuning/shadow_runner.py`, `progressive_shadow.py` 44건
+
+### 8.9.2 핵심 발견 — 리네이밍은 "거의 다 됐지만 뚜껑만 씌운 상태"
+
+`modes/paper.py` 의 헤더 주석이 결정적 증거:
+
+```python
+"""LEVIATHAN Paper Mode — canonical import path (Phase I+).
+
+This module re-exports all public symbols from `src.modes.shadow` so that
+callers can use either import path:
+
+    from src.modes.paper import PaperMode          # preferred (Phase I+)
+    from src.modes.shadow import ShadowMode        # legacy alias (still works)
+
+The actual implementation lives in `src.modes.shadow` for now to minimise
+churn on the 40+ test files that import from that path.  A future cleanup
+pass can inline the implementation here and reduce shadow.py to a pure shim.
+"""
+```
+
+**즉 상태는 이렇습니다**:
+- `modes/shadow.py` (2679줄) = **실제 구현체**. 내부 클래스는 이미 `PaperMode`, `PaperRateLimiter`, `PaperStats` 로 개명됨
+- `modes/paper.py` (43줄) = **re-export 파일**. paper 경로로도 import 가능하게 해주는 shim
+- `ShadowMode`, `ShadowRateLimiter`, `ShadowStats` = **backward-compat alias**
+- 즉 **"Shadow → Paper 리네임" 작업의 95% 는 이미 완료**. 다만 파일 이름과 일부 변수/로그 메시지는 shadow 로 남아 있음
+
+이건 "뚜껑만 씌웠다" 기보다는 **"개명은 했는데 파일을 옮기지 않았다"** 가 더 정확합니다. 40+개 테스트 파일이 `from src.modes.shadow import` 를 쓰고 있어서 파일 이동이 큰 리스크라 미룬 것.
+
+### 8.9.3 4 카테고리 분류
+
+| 카테고리 | 의미 | 처리 방법 | 해당 파일 |
+|---|---|---|---|
+| **Cat-A: 진짜 이동 필요** | 파일명 자체가 shadow, 실제 구현체 | 파일명 변경 + 모든 import 경로 업데이트 | `modes/shadow.py` → `modes/paper_impl.py`, `modes/progressive_shadow.py` → `modes/progressive_paper.py`, `tuning/shadow_runner.py` → `tuning/paper_runner.py`, `analysis/shadow_live_reporter.py` → `analysis/paper_live_reporter.py`, `api/routes/shadow.py` → `api/routes/paper.py` (paper.py 이미 존재 → 머지 필요) |
+| **Cat-B: 이름만 남은 것** | 주석/로그/docstring/변수명만 shadow, 기능은 paper | 문자열 치환 (sed 가능) | `main.py` (87건 대부분), 각 modes/*.py, api/routes/*, core/*, infra/* |
+| **Cat-C: DB 스키마** | 테이블명/컬럼명에 shadow 박혀 있음 | 마이그레이션 필요 (데이터 이전 리스크) | `003_shadow_stage_results.sql` (테이블 `shadow_stage_results`), `004_shadow_peak_equity.sql` (테이블 `shadow_peak_equity`), `005_extend_retention.sql` (retention 룰이 shadow 테이블 참조) |
+| **Cat-D: 의도적 legacy alias** | backward-compat 목적으로 일부러 남긴 것 | **유지** (삭제하면 40+ 테스트 깨짐) | `modes/paper.py` 의 `ShadowMode = PaperMode` alias 3줄, `modes/__init__.py` 의 재수출 |
+
+### 8.9.4 파일별 분류표 (59개 전수)
+
+**Cat-A (파일명 이동 필요) — 5개**:
+- `engine/src/modes/shadow.py` (2679줄, 100건) → `modes/paper_impl.py` 또는 `paper.py` 에 인라인
+- `engine/src/modes/progressive_shadow.py` (619줄, 44건) → `modes/progressive_paper.py`
+- `engine/src/tuning/shadow_runner.py` (46건) → `tuning/paper_runner.py`
+- `engine/src/analysis/shadow_live_reporter.py` (1건, 파일명만) → `analysis/paper_live_reporter.py`
+- `engine/src/api/routes/shadow.py` (12건) → 기존 `api/routes/paper.py` (3건) 와 머지
+
+**Cat-B (주석/로그/변수만 수정) — 51개**:
+```
+main.py(87) workflow/fsm.py(7) workflow/sit3_gate.py(3) workflow/cli.py(1)
+workflow/checkpoint_engine.py(1) workflow/schemas/state_schema.json(5)
+workflow/state_schema.py(5) workflow/consistency.py(2) ml/canary.py(1)
+strategies/base.py(7) strategies/manager.py(3) strategies/statistical_arb.py(1)
+cli/tune_cli.py(18) cli/backtest_cli.py(1) cli/leviathan_cli.py(5)
+bot_gateway.py(1) api/routes/portfolio.py(21) api/routes/risk.py(8)
+api/routes/settings.py(7) api/routes/attribution.py(11) api/routes/trading.py(30)
+api/routes/strategies.py(8) api/server.py(3) modes/preflight.py(22)
+modes/base.py(3) modes/backtest.py(2) modes/live_gate.py(2) modes/live.py(15)
+modes/strategy_validation.py(21) modes/__init__.py(2) tuning/evaluator.py(2)
+tuning/optimizer.py(8) tuning/scheduled_tuner.py(30) tuning/regime_detector.py(1)
+analysis/walk_forward.py(1) collectors/bithumb_collector.py(1) dex/mock_adapter.py(7)
+infra/telegram.py(14) infra/telegram_trade_bot.py(7) infra/telegram_dev_bot.py(25)
+infra/metrics.py(2) core/live_gate_continuous.py(10) core/real_signal_producer.py(9)
+core/adaptive_threshold.py(2) core/metrics_collector.py(1) core/stale_detector.py(1)
+core/signal.py(1) core/price_hub.py(1) core/config.py(17) core/engine.py(확인필요)
+```
+
+**Cat-C (DB 마이그레이션 필요) — 3개**:
+- `infra/db/migrations/003_shadow_stage_results.sql` — 테이블 `shadow_stage_results`
+- `infra/db/migrations/004_shadow_peak_equity.sql` — 테이블 `shadow_peak_equity`
+- `infra/db/migrations/005_extend_retention.sql` — 위 테이블 참조
+
+처리 옵션:
+- **옵션 C1 (안전)**: 기존 테이블 유지, 새 테이블 `paper_stage_results` 생성 + 복제 마이그레이션 + dual-write 기간 + 검증 후 구 테이블 drop. 다운타임 0, 리스크 낮음.
+- **옵션 C2 (빠름)**: `ALTER TABLE RENAME`. 다운타임 있음, 엔진 재기동 필요, 참조 코드 동시 교체 필요.
+- **추천**: C1 (실운영 카나리 종료 후에도 안전하게).
+
+**Cat-D (유지) — 0개 (alias 는 파일 내 코드, 독립 파일 없음)**
+
+### 8.9.5 작업량 추정 (§8.10 본 리팩토링 사전 견적)
+
+| 카테고리 | 작업 | 예상 시간 | 리스크 |
+|---|---|---|---|
+| Cat-A (5개 파일 이동) | 파일명 변경 + 40+ 테스트 import 경로 + main.py import 경로 | 4-6h | 중 (테스트 전수 통과 필요) |
+| Cat-B (51개 주석/로그) | sed 일괄 치환 + 수동 검토 + pytest | 2-3h | 낮음 |
+| Cat-C (DB 마이그레이션 C1) | 006_rename_shadow_to_paper.sql 작성 + dual-write + 검증 + drop | 4-8h | 중-고 (데이터 이전) |
+| 통합 테스트 | pytest 5,473 전수 + check_all 9/9 + Shadow 1h dry-run | 2h | — |
+| **합계** | | **12-19h (2-3일)** | |
+
+### 8.9.6 실행 타이밍 (최종)
+
+- **지금**: §8.9 분류 보고서 작성 완료 (이 섹션). 카나리 무영향. ✅
+- **Step 2-1 완료 후 (48H 뒤)**: §8.8 reconcile 패치 3건만 머지, §8.9 리팩토링은 미수행
+- **Step 2-2 ~ Step 2-8 진행 중**: §8.7 대시보드 병렬, §8.10 리팩토링 미수행 (카나리 중 대형 리팩토링 금지)
+- **Step 2-8 완료 후 (~11일 뒤, Phase 2 전체 종료)**: §8.10 본 리팩토링 진행
+  - 순서: Cat-B (저리스크) → Cat-A (중리스크) → Cat-C (고리스크)
+  - 각 카테고리마다 별도 브랜치 + PR + pytest 통과 확인
+  - 완료 후 PHOENIX_PLAN.md / SSOT.md / CLAUDE.md 에서 "shadow" 용어 전면 제거 (문서 정합성)
+
+### 8.9.7 Phase 2 카나리 중 주의사항
+
+- Cat-A/B/C 파일 **일체 수정 금지** (Step 2-1 ~ Step 2-8)
+- 새 코드 작성 시 `from src.modes.paper import PaperMode` 경로만 사용 (shadow import 경로 추가 금지)
+- 로그 메시지에 "shadow" 등장해도 패닉 금지 — 기능은 paper. 카나리 결과 판독 시 혼동 주의
+- `api/routes/shadow.py` 가 살아있으므로 대시보드 §8.7 에서 해당 라우터 호출 시 라우트 경로는 `/shadow/*` 그대로 사용 (§8.10 에서 `/paper/*` 로 통합 예정)
+
+### 8.9.8 §8.10 (본 리팩토링) 선행 조건
+
+- Phase 2 Step 2-8 완료 + 게이트 13항목 평가 완료
+- TF Final 진입 전 (TF 중 대형 리팩토링 불가)
+- 별도 브랜치 `refactor/shadow-to-paper` 생성
+- 백업: 리팩토링 시작 전 `git tag pre-rename-2026xxxx`
+
+---
+
+## 8.11 v2 재편 운영 프롬프트 (카나리/UIUX 세션 동기화)
+
+> **재편 근거 요약** (상세 표는 §3 으로 이동):
+> - v1 (funding_rate 1번, 48H) = 리스크 최소화 → 체결 10~20건으로 버그 발견율 낮음
+> - v2 (futures_futures 1번, 24H) = 학습 최대화 → 체결 30~60건/24H, Fix Loop 효율 3배
+> - 트레이드오프: 손실 위험 -$3 → -$6 (수용 가능), 학습 효과 ↑↑↑
+> - v1→v2 순서 매핑은 §3 Phase 2 표 참조
+
+### 8.11.6 카나리 세션 전달 지시 (재기동 프롬프트)
+
+v2 적용을 위해 카나리 세션에 다음 지시 전달:
+
+```
+순서 재편 (v2 학습 최대화). 근거: PHOENIX_PLAN.md §8.11
+
+1. 현 Step 2-1 (funding_rate) graceful shutdown
+   - 포지션 0건이므로 KillSwitch 호출 불요
+   - InfraBot 알림 "v1 중단, v2 재기동"
+
+2. 설정 변경:
+   - engine/config/strategy_params.json:
+       funding_rate: READY → DISABLED_PHASE2
+       futures_futures: DISABLED_PHASE2 → READY
+       spot_futures / cross_exchange: DISABLED_PHASE2 유지
+   - engine/config/engine.json tier "step2_1" 유지 ($60×2)
+   - phase2_fsm.py STEP_2_1 정의: funding_rate → futures_futures
+     (상태명은 그대로, 활성 전략만 교체)
+
+3. 재기동 후 확인:
+   - futures_futures 시그널 발생 (real_signal_producer.futures_futures_signal)
+   - funding_rate 시그널 없음 (DISABLED 확인)
+   - FSM STEP_2_1_RUNNING
+   - crash/KillSwitch/CB OPEN 없음
+
+4. 24H 카나리 후 게이트 13항목 평가:
+   - futures_futures 체결 ≥ 5건
+   - PF / Sharpe / MDD 산출 가능한 샘플 확보
+   - 미달 시 Fix Loop, 달성 시 Step 2-1.5 자동 진입
+```
+
+### 8.11.7 UIUX (§8.7) 세션 동기화
+
+UIUX 세션은 현재 §8.7 진행 중. 순서 재편은 engine 영역이라 UIUX 코드에 직접 영향 없음. 다만 대시보드가 Phase 2 상태 표시(현재 Step, 활성 전략) 를 하드코딩하면 안 되고 FSM state / strategy_params.json 을 읽어 동적 렌더링해야 함. §8.7 Step 4 (4탭 IA — 운용 탭) 구현 시 이 점 반영.
+
+**UIUX 세션 지시 (재편 동안 일시 정지)**:
+
+```
+현재 진행 중인 Step 까지만 마무리 후 체크포인트 저장하고 일시 정지.
+근거: PHOENIX_PLAN.md §8.11 Phase 2 Step 순서 재편 진행 중.
+엔진 재기동 후 FSM / 활성 전략이 바뀌므로, UIUX 가 현재 상태 기준으로 만들어지면 재작업 발생.
+
+절차:
+1. 현재 Step 완료까지만 진행 (중간에 끊지 말 것)
+2. checkpoint save (워크플로우 CLI)
+3. git stash 또는 WIP 커밋으로 작업 보존
+4. "정지 완료" InfraBot 알림
+5. 사장님 재개 지시 대기
+
+엔진 재기동 + 카나리 초록불 확인 후 "UIUX 재개" 지시 오면 체크포인트 복원 후 이어서 진행.
+```
+
+### 8.11.8 실행 순서 (사장님 수동 단계)
+
+1. ✅ (완료) PHOENIX_PLAN.md §8.4 v2 표 갱신 + §8.11 근거 추가 — 이 세션
+2. **UIUX 세션** 에 §8.11.7 지시 전달 → 현재 Step 까지 마무리 + 체크포인트 + 정지
+3. UIUX 정지 확인 ("정지 완료" 알림 수신)
+4. **카나리 세션** 에 §8.11.6 지시 전달 → graceful shutdown + v2 재기동
+5. 카나리 재기동 확인 → 이 세션에 "카나리 확인해줘" 요청 → 초록불 판정
+6. **UIUX 세션** 에 "재개" 지시 → 체크포인트 복원 후 §8.7 이어서 진행
+
+**순서 엄수 이유**: UIUX 가 먼저 정지 안 하면 카나리 재기동 중 FSM 전환을 대시보드가 잘못 렌더링할 수 있음. 카나리 먼저 정지하면 UIUX 에이전트가 엔진 로그 없어 혼란. 반드시 UIUX → 카나리 → 카나리 확인 → UIUX 재개 순서.
+
+---
+
+## § Telegram 포맷 통일 완료 (2026-04-08)
+
+**변경**: `engine/src/modes/live.py` 체결 알림 포맷을 shadow/paper 와 동일한 `send_fill_enhanced()` 로 통일.
+
+- **이전**: `send_alert_kr("live_trade_executed", {...})` → telegram.py `else` 분기 → `⚠️ 경보: live_trade_executed` 제네릭 메시지 (strategy/pnl 정보 손실)
+- **이후**: `send_fill_enhanced({mode: "🔴 [LIVE]", strategy, symbol, buy_exchange, sell_exchange, pnl, spread_bps, fee, slippage_bps, latency_ms})` → shadow/paper 동일 포맷
+- **모드 게이팅 제거**: 이전 `self._execution_mode == "live"` 조건 제거 → paper 실행 모드에서도 `🟢 [PAPER]` 레이블로 알림 발송 (shadow.py 와 동일 동작)
+- **데이터 추출**: `trade_request.legs` 에서 `OrderSide.BUY/SELL` 기준으로 buy_exchange/sell_exchange/symbol 추출 (shadow 멀티레그 경로와 동일 패턴)
+
+---
+
+## 8.12 대시보드 실데이터 연동 + 누락 페이지 UX 완성 (2026-04-08)
+
+> **배경**: §8.7 12-Step 완료 후 3개 페이지가 stub 상태로 남음 + 모든 페이지 실시간 데이터 미연동 문제 제기.
+> **UX 원칙**: 토스/업비트 패턴 — 정보 계층 명확, 위험 행동에 안전장치, 빈 상태에서도 "왜 없는지" 설명.
+
+### 8.12.1 현황 분석
+
+| 페이지 | 상태 | UX 문제 |
+|--------|------|---------|
+| `/` 홈 | ✅ 실데이터 연결 | 거래소 잔고 스와이프 카드 미구현 |
+| `/manage` | ⚠️ 부분 구현 | Paper→Live 안전장치 없음 / 자본설정 편집 모드 없음 / 피드백 없음 |
+| `/insights` | ⚠️ 부분 구현 | 빈 상태 설명 없음 / KPI 툴팁 없음 / 거래내역 필터 없음 |
+| `TabLayout` | ⚠️ 부분 구현 | ConnectionBadge 하드코딩 / 로고·회사명 없음 / LEVIATHAN 링크 없음 |
+
+**실데이터 없는 진짜 원인**: 로그인 미완료 시 JWT 없음 → 401 → 로그인 리다이렉트. 구조 자체는 정상.
+
+### 8.12.2 UX 목표 (4가지)
+
+1. **신뢰**: 연결 상태·데이터 신선도를 항상 표시 (ConnectionBadge, 폴링 주기)
+2. **안전**: 위험 행동(Paper→Live, 전략 비활성화)에 2단계 확인
+3. **맥락**: 빈 화면이 아닌 "왜 비어있는지 + 다음에 할 일" 안내
+4. **효율**: 모바일 터치 최적화 (스와이프 카드, 44px 터치 타겟)
+
+### 8.12.3 컴포넌트별 UX 설계
+
+#### A. TabLayout 헤더 (`components/layout/TabLayout.tsx`)
+```
+[XXX STUDIO 로고 28px] [LEVIATHAN → /] [XXX STUDIO*] [● 연결됨]   [⚙]
+*sm:hidden — 모바일에서 숨김
+```
+- `ConnectionBadge`: 3상태 (로딩=pulse/gray, 연결=green, 끊김=red)
+- LEVIATHAN 전체 영역이 `/` 링크 (로고 + 텍스트 + 회사명 포함)
+
+#### B. 홈 거래소 잔고 스와이프 카드 (`app/page.tsx`)
+```
+[← 스와이프 →]
+┌─────────┐ ┌─────────┐ ┌─────────┐  … (오른쪽 페이드 힌트)
+│ BI      │ │ BY      │ │ OKX     │
+│ Binance │ │ Bybit   │ │         │
+│ $0.00   │ │ $0.00   │ │ $0.00   │
+│ ● 연결됨│ │ ● 연결됨│ │ ● 연결됨│
+│ 23ms    │ │ 31ms    │ │         │
+└─────────┘ └─────────┘ └─────────┘
+```
+- CSS scroll-snap (라이브러리 불필요): `scroll-snap-type: x mandatory`
+- 오른쪽 페이드: `after:absolute after:right-0 after:bg-gradient-to-l after:from-bg-base`
+- 카드 크기: `w-36 h-[100px] flex-shrink-0 scroll-snap-align-start`
+- 위치: KPI 4개 카드 **바로 아래** (Row 1.5)
+
+#### C. /manage — Mode Toggle (`app/manage/page.tsx`)
+```
+[현재 운용 모드]
+┌──────────────────────────────────────────┐
+│  모의 운용     /     실거래              │
+│  [████████] Paper  (       ) Live        │
+│  실제 돈이 사용되지 않습니다             │
+└──────────────────────────────────────────┘
+```
+**Paper → Live 클릭 시 확인 모달**:
+```
+┌─────────────────────────────────┐
+│ ⚠️  실거래 전환                  │
+│                                 │
+│ 실제 자산으로 거래가 시작됩니다. │
+│ 정말 전환하시겠습니까?           │
+│                                 │
+│ [취소]  [실거래 전환 →]          │
+└─────────────────────────────────┘
+```
+Live→Paper는 즉시 전환 (안전 방향이므로 확인 불필요).
+
+#### D. /manage — 전략 카드 UX
+- **Optimistic update**: 토글 클릭 즉시 UI 업데이트 → 실패 시 롤백 + 에러 토스트
+- **빈 전략 목록**: `<EmptyState>` + "엔진 시작 후 전략이 표시됩니다"
+- 카드 레이아웃: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`
+
+#### E. /manage — 자본 설정 UX (view/edit 2모드)
+```
+[View 모드 — 기본]          [Edit 모드 — "수정" 클릭 후]
+┌───────────────────┐       ┌───────────────────────────┐
+│ 최소 거래 엣지    │       │ 최소 거래 엣지   [—●————]  │
+│ 10 bps            │  →수정│ 10 bps           슬라이더  │
+│ 최대 포지션 USD   │       │ 최대 포지션 USD  [—————●—] │
+│ $5,000            │       │ $5,000                     │
+│           [수정]  │       │          [취소]  [저장 ✓]  │
+└───────────────────┘       └───────────────────────────┘
+```
+저장 성공: 인라인 "✓ 저장됐습니다" 3초 표시 후 사라짐.
+
+#### F. /insights — 에쿼티 커브 빈 상태
+```
+┌─────────────────────────────────────────┐
+│         📈                              │
+│   아직 수익 곡선이 없어요               │
+│                                         │
+│   Shadow 모드를 10분 이상 실행하면      │
+│   수익 곡선이 나타납니다.               │
+└─────────────────────────────────────────┘
+```
+
+#### G. /insights — KPI 카드 ⓘ 툴팁
+각 KPI 카드 우측 상단에 `ⓘ` 버튼 → hover/클릭 시 Tailwind tooltip:
+- 승률: "수익 체결 / 전체 체결. 50% 이상이면 양호합니다."
+- Sharpe: "위험 단위당 초과 수익. 연간 기준 1.0 이상이면 양호, 2.0+ 우수."
+- 최대낙폭: "고점 대비 최대 손실률. 낮을수록 안전합니다."
+- 총손익: "Session 시작 이후 실현 손익 합계."
+
+#### H. /insights — 거래 내역 필터
+- 기간 칩이 trades 필터에도 동시 적용
+- 전략 필터 칩: `all | 펀딩레이트 | 통계차익 | ...`
+- 필터 칩은 trades가 있는 전략만 표시
+
+### 8.12.4 구현 순서 (Step 1~6)
+
+| Step | 파일 | 내용 | UX 포인트 |
+|------|------|------|----------|
+| 1 | `TabLayout.tsx` | 로고+링크+실 ConnectionBadge | 3상태 badge |
+| 2 | `app/page.tsx` | 거래소 잔고 스와이프 카드 | scroll-snap + 페이드 |
+| 3 | `manage/page.tsx` | Paper→Live 확인 모달 | 위험 행동 안전장치 |
+| 4 | `manage/page.tsx` | 자본설정 view/edit 2모드 + 저장 피드백 | 명확한 상태 전환 |
+| 5 | `insights/page.tsx` | 빈 상태 메시지 + KPI ⓘ 툴팁 | 맥락 제공 |
+| 6 | `insights/page.tsx` | 거래내역 기간+전략 필터 연동 | 탐색 효율 |
+
+### 8.12.5 추가 요구사항 (2026-04-08 사장님 추가)
+
+- [ ] 모바일 반응형: 모든 신규 섹션 `sm:` breakpoint 대응
+- [ ] React scroll-snap: 외부 라이브러리 없이 CSS만으로 구현
+- [ ] XXX STUDIO 회사명 + 로고 헤더 노출
+- [ ] LEVIATHAN 클릭 → 홈(`/`) 이동
+- [ ] `public/logo.png` 복사 완료 (2026-04-08) ✅
+
+### 8.12.6 검증 기준
+
+- [ ] `npx tsc --noEmit` → 0 errors
+- [ ] `/manage` 방문 → 전략 카드 + 거래소 그리드 표시 (빈 상태 포함)
+- [ ] Paper→Live 클릭 → 확인 모달 표시
+- [ ] `/insights` 방문 → KPI 카드 4개 표시 (빈 상태 친절 메시지)
+- [ ] 홈 → 거래소 잔고 카드 가로 스크롤 가능
+- [ ] 모바일(375px) → 하단 탭바 + 스와이프 카드 정상
+
+---
+
+## § 2026-04-08 Step 2-1 v2 모니터링 발견 이슈 및 수정
+
+### 발견된 버그
+
+| # | 파일 | 버그 | 수정 |
+|---|------|------|------|
+| 1 | `strategy_activation.json` | `funding_rate_v1` active_strategies에 잔존 → InfraBot 잘못된 전략 보고 | disabled_strategies로 이동 |
+| 2 | `trading.json` | `disabled_strategies: []` → funding_rate 미비활성화 | `["funding_rate_v1"]` 추가 |
+| 3 | `phoenix_step21_monitor.py` | STRATEGY/CAPITAL/STEP_START 이전 세션값 하드코딩 | futures_futures_v1/$120/현재시각으로 수정 |
+| 4 | `live.py` | Telegram `spread_bps=0.0, fee=0.0` 하드코딩 | exec_result에서 실제값 추출 |
+| 5 | `live.py` | DB `fee_total, gross_spread_bps` NULL 기록 | 실제 fill가격+fee 전달 |
+| 6 | `real_signal_producer.py` | `ex_a == ex_b` 동일거래소 신호 미필터 (3건 체결) | ex_a == ex_b이면 continue |
+| 7 | `real_signal_producer.py` | `futures_spread_outlier` 로그 스팸 153K건/174min | 쿨다운 60s→300s + 글로벌 5s 스로틀 |
+| 8 | `trading.json` | `futures_min_spread_bps` 미설정(기본 15bps) → 1.5s 순차실행 환경서 손실 | 150 bps로 설정 |
+
+### 레이턴시 분석
+
+- 크로스 거래소 실행: **1061~1685ms** (Amendment 4 순차 실행 프로토콜)
+- 동일 거래소 실행: 87~573ms
+- 68~71 bps 스프레드 + 1.5초 지연 → 스프레드 소멸 → 손실
+
+### 다음 재시작 시 적용 내역
+
+- `funding_rate_v1` 비활성화 (strategy_activation.json + trading.json)
+- `futures_min_spread_bps = 150` (수익 가능 최소 기준)
+- `ex_a == ex_b` 필터 (동일거래소 신호 차단)
+- 로그 스팸 감소 (153K→~35건/174min)
+- live.py Telegram/DB 포맷 shadow와 통일
+
+### Telegram 포맷 통일
+
+- live.py `send_alert_kr("live_trade_executed")` → `send_fill_enhanced()` 통일
+- 모드 레이블: 🔴 [LIVE] / 🟢 [PAPER] / 🟣 [SHADOW]
