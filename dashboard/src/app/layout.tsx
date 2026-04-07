@@ -1,29 +1,28 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Sidebar } from "@/components/Sidebar";
-import { MissionControlStrip } from "@/components/MissionControlStrip";
+// Step 1: Pretendard — 한글 최우선 폰트 (DESIGN-kraken.md SSOT)
+import "@fontsource/pretendard/400.css";
+import "@fontsource/pretendard/500.css";
+import "@fontsource/pretendard/600.css";
+import "@fontsource/pretendard/700.css";
+import { TabLayout } from "@/components/layout/TabLayout";
 
 export const metadata: Metadata = {
-  title: "LEVIATHAN · War Room Dashboard",
-  description: "Global Arbitrage Engine Control Panel",
+  title: "LEVIATHAN · 운용 대시보드",
+  description: "레비아탄 자동 차익거래 엔진 운용 현황",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <body className="flex min-h-screen bg-terminal-bg text-terminal-text font-sans" suppressHydrationWarning>
-        <Sidebar />
-        <div className="flex flex-col flex-1 min-w-0">
-          {/* MissionControlStrip — mt-14 pushes it below the mobile hamburger (h-14) */}
-          <div className="mt-14 md:mt-0 shrink-0">
-            <MissionControlStrip />
-          </div>
-
-          {/* Page content */}
-          <main className="flex-1 overflow-auto p-6">
-            {children}
-          </main>
-        </div>
+    // Step 1 핵심: className="dark" 제거 — DESIGN-kraken.md 라이트 테마 강제
+    <html lang="ko" suppressHydrationWarning>
+      <body
+        className="min-h-screen bg-bg-base text-text-primary font-sans"
+        suppressHydrationWarning
+      >
+        <TabLayout>
+          {children}
+        </TabLayout>
       </body>
     </html>
   );

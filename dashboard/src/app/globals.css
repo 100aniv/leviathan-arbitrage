@@ -2,35 +2,69 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+/* ── Pretendard Variable — 한글 최우선 폰트 ── */
+/* @fontsource-variable/pretendard 패키지 설치 후 layout.tsx에서 import */
 
 :root {
-  /* ── Core Palette (XXX STUDIO × LEVIATHAN) — Dark Theme ── */
-  --bg:       #0A0B0E;   /* near-black main background */
-  --surface:  #12141A;   /* card / panel */
-  --border:   rgba(255,255,255,0.07);
-  --muted:    #1C1F28;   /* hover / tertiary */
-  --text:     #E8EAF0;   /* primary text (near-white) */
-  --subtle:   #6B7280;   /* muted text */
-  --profit:   #00C896;   /* success green */
-  --loss:     #FF4757;   /* danger red */
-  --accent:   #00B8FF;   /* XXX STUDIO brand blue */
-  --warn:     #F59E0B;   /* warning amber */
+  /* ── Kraken Design System — Light Theme (DESIGN-kraken.md SSOT) ── */
 
-  /* ── Semantic Aliases ── */
-  --bg-primary:    var(--bg);
-  --bg-secondary:  var(--surface);
-  --bg-tertiary:   var(--muted);
-  --text-primary:  var(--text);
-  --text-muted:    var(--subtle);
-  --success:       var(--profit);
-  --danger:        var(--loss);
-  --warning:       var(--warn);
+  /* 배경 */
+  --bg-base:     #FFFFFF;
+  --bg-surface:  #FAFAFB;
+  --bg-elevated: #FFFFFF;
+  --bg-muted:    #F5F5F7;
 
-  /* ── Accent Glow ── */
-  --accent-subtle:  rgba(0, 184, 255, 0.10);
-  --profit-subtle:  rgba(0, 200, 150, 0.10);
-  --loss-subtle:    rgba(255, 71, 87, 0.10);
+  /* 텍스트 */
+  --text-primary:   #101114;
+  --text-secondary: #686B82;
+  --text-tertiary:  #9497A9;
+
+  /* 브랜드 (Kraken Purple) */
+  --brand:         #7132F5;
+  --brand-hover:   #5741D8;
+  --brand-deep:    #5B1ECF;
+  --brand-subtle:  rgba(133, 91, 251, 0.10);
+
+  /* 보더 */
+  --border:        #DEDEE5;
+  --border-subtle: rgba(104, 107, 130, 0.12);
+
+  /* 시맨틱 */
+  --success:       #149E61;
+  --success-bg:    rgba(20, 158, 97, 0.12);
+  --success-text:  #026B3F;
+  --danger:        #E5484D;
+  --danger-bg:     rgba(229, 72, 77, 0.10);
+  --warning:       #F59E0B;
+  --warning-bg:    rgba(245, 158, 11, 0.10);
+  --info:          #3B82F6;
+  --info-bg:       rgba(59, 130, 246, 0.10);
+
+  /* 수익/손실 (글로벌 표준 — 색맹 대응: 아이콘+텍스트 동반 필수) */
+  --profit:        #149E61;
+  --profit-bg:     rgba(20, 158, 97, 0.12);
+  --loss:          #E5484D;
+  --loss-bg:       rgba(229, 72, 77, 0.10);
+
+  /* 레거시 aliases (마이그레이션 전 컴포넌트 호환) */
+  --bg:            var(--bg-base);
+  --surface:       var(--bg-surface);
+  --muted:         var(--bg-muted);
+  --text:          var(--text-primary);
+  --subtle:        var(--text-secondary);
+  --accent:        var(--brand);
+  --accent-subtle: var(--brand-subtle);
+  --profit-subtle: var(--profit-bg);
+  --loss-subtle:   var(--loss-bg);
+
+  /* 타이포 */
+  --font-display: 'Pretendard Variable', Pretendard, 'IBM Plex Sans', system-ui, sans-serif;
+  --font-body:    'Pretendard Variable', Pretendard, 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono:    'IBM Plex Mono', 'Fira Code', monospace;
+
+  /* 쉐도우 */
+  --shadow-card:  rgba(0, 0, 0, 0.03) 0px 4px 24px;
+  --shadow-micro: rgba(16, 24, 40, 0.04) 0px 1px 4px;
 }
 
 *,
@@ -42,19 +76,27 @@
 html,
 body {
   height: 100%;
-  background-color: var(--bg);
-  color: var(--text);
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: var(--muted); }
-::-webkit-scrollbar-thumb { background: #2A2D38; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #3A3D4A; }
+/* 숫자 tabular-nums 기본 적용 */
+[data-numeric] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
 
-/* ── Modern Keyframes ── */
+/* 스크롤바 — 라이트 테마 */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-muted); }
+::-webkit-scrollbar-thumb { background: #DEDEE5; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #C7C8D4; }
+
+/* ── Keyframes ── */
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }
@@ -70,76 +112,111 @@ body {
   to   { opacity: 1; }
 }
 
-@keyframes pulseAccent {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 184, 255, 0); }
-  50%       { box-shadow: 0 0 12px 2px rgba(0, 184, 255, 0.25); }
-}
-
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position:  200% 0; }
 }
 
+@keyframes pulseGreen {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(20, 158, 97, 0); }
+  50%       { box-shadow: 0 0 0 6px rgba(20, 158, 97, 0.15); }
+}
+
 @layer components {
+  /* ── 카드 (라이트 테마) ── */
   .card {
-    @apply bg-terminal-surface border border-terminal-border rounded-xl p-4;
+    @apply bg-bg-surface border border-border rounded-[16px] p-4;
+    box-shadow: var(--shadow-card);
     transition: box-shadow 200ms ease, transform 200ms ease;
   }
   .card:hover {
     transform: translateY(-1px);
-    box-shadow: 0 8px 32px rgba(0, 184, 255, 0.12);
+    box-shadow: 0 8px 32px rgba(113, 50, 245, 0.08);
   }
   .card-header {
-    @apply text-xs font-mono text-terminal-subtle uppercase tracking-widest mb-3;
+    @apply text-caption font-medium text-text-secondary uppercase tracking-widest mb-3;
   }
   .stat-value {
-    @apply text-2xl font-mono font-semibold tabular-nums;
+    @apply text-2xl font-semibold tabular-nums text-text-primary;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
     animation: countUp 300ms ease;
   }
 
-  /* ── Status Badges ── */
+  /* ── 배지 ── */
   .badge-profit {
-    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-profit border border-profit/30;
-    background: var(--profit-subtle);
+    @apply inline-flex items-center gap-1 rounded-[6px] px-2 py-0.5 text-small font-medium;
+    color: var(--success-text);
+    background: var(--profit-bg);
   }
   .badge-loss {
-    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-loss border border-loss/30;
-    background: var(--loss-subtle);
+    @apply inline-flex items-center gap-1 rounded-[6px] px-2 py-0.5 text-small font-medium;
+    color: var(--danger);
+    background: var(--loss-bg);
   }
   .badge-accent {
-    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-accent border border-accent/30;
-    background: var(--accent-subtle);
+    @apply inline-flex items-center gap-1 rounded-[6px] px-2 py-0.5 text-small font-medium;
+    color: var(--brand);
+    background: var(--brand-subtle);
   }
   .badge-warn {
-    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono text-warn border border-warn/30;
-    background: rgba(245,158,11,0.1);
+    @apply inline-flex items-center gap-1 rounded-[6px] px-2 py-0.5 text-small font-medium;
+    color: #92400E;
+    background: var(--warning-bg);
+  }
+  .badge-neutral {
+    @apply inline-flex items-center gap-1 rounded-[8px] px-2 py-0.5 text-small font-medium;
+    color: #484B5E;
+    background: rgba(104, 107, 130, 0.12);
   }
 
-  /* ── Glassmorphism Panel ── */
-  .glass {
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    will-change: transform;
-    contain: layout style;
+  /* ── 버튼 — Kraken 스타일 ── */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-[12px] px-4 py-[13px] text-body font-medium text-white;
+    background: var(--brand);
+    transition: background 150ms ease;
   }
+  .btn-primary:hover { background: var(--brand-hover); }
 
-  /* ── Stale Data Indicator ── */
-  .stale {
-    opacity: 0.45;
-    transition: opacity 400ms ease;
+  .btn-outlined {
+    @apply inline-flex items-center justify-center gap-2 rounded-[12px] px-4 py-[13px] text-body font-medium;
+    color: var(--brand-hover);
+    border: 1px solid var(--brand-hover);
+    background: #FFFFFF;
+    transition: background 150ms ease;
   }
+  .btn-outlined:hover { background: var(--brand-subtle); }
 
-  /* ── Skeleton Loading ── */
+  .btn-subtle {
+    @apply inline-flex items-center justify-center gap-2 rounded-[12px] px-2 py-2 text-body font-medium;
+    color: var(--brand);
+    background: var(--brand-subtle);
+    transition: background 150ms ease;
+  }
+  .btn-subtle:hover { background: rgba(133, 91, 251, 0.18); }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-[12px] px-4 py-[13px] text-body font-medium text-text-primary;
+    background: rgba(148, 151, 169, 0.08);
+    transition: background 150ms ease;
+  }
+  .btn-secondary:hover { background: rgba(148, 151, 169, 0.15); }
+
+  /* ── 스켈레톤 로딩 (라이트) ── */
   .skeleton {
-    background: linear-gradient(90deg, #12141A 25%, #1C1F28 50%, #12141A 75%);
+    background: linear-gradient(90deg, #F5F5F7 25%, #ECECF0 50%, #F5F5F7 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
   }
 
-  /* ── Realtime Ticker ── */
+  /* ── 데이터 스테일 ── */
+  .stale {
+    opacity: 0.45;
+    transition: opacity 400ms ease;
+  }
+
+  /* ── 실시간 업데이트 ── */
   .ticker-update {
     animation: countUp 300ms ease;
   }
@@ -147,8 +224,8 @@ body {
 
 @layer utilities {
   .text-balance     { text-wrap: balance; }
-  .tabular-nums     { font-variant-numeric: tabular-nums; }
-  .font-mono-nums   { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+  .tabular-nums     { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+  .font-mono-nums   { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
   .fade-in          { animation: fadeIn 300ms ease; }
-  .pulse-accent     { animation: pulseAccent 2s ease-in-out infinite; }
+  .pulse-green      { animation: pulseGreen 2s ease-in-out infinite; }
 }

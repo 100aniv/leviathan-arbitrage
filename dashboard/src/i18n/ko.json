@@ -1,0 +1,235 @@
+{
+  "_meta": {
+    "lang": "ko",
+    "version": "1.0.0",
+    "description": "LEVIATHAN 대시보드 한국어 전문용어 사전 + UI 카피"
+  },
+
+  "nav": {
+    "home": "홈",
+    "manage": "운용",
+    "insights": "분석",
+    "safety": "안전",
+    "system": "시스템",
+    "backtest": "백테스트",
+    "alerts": "알림",
+    "settings": "설정",
+    "logout": "로그아웃"
+  },
+
+  "header": {
+    "title": "LEVIATHAN",
+    "connected": "연결됨",
+    "disconnected": "연결 끊김",
+    "reconnecting": "재연결 중",
+    "quickMenu": "빠른 메뉴"
+  },
+
+  "mode": {
+    "paper": "모의 운용",
+    "live": "실거래",
+    "shadow": "그림자 모드",
+    "backtest": "백테스트",
+    "paperDesc": "실제 돈이 사용되지 않습니다",
+    "liveDesc": "실제 자산으로 거래합니다",
+    "confirmSwitch": "모드를 변경하시겠습니까?",
+    "switchToLive": "실거래로 전환",
+    "switchToPaper": "모의 운용으로 전환"
+  },
+
+  "home": {
+    "totalAssets": "총 자산",
+    "todayPnL": "오늘 손익",
+    "monthPnL": "이번 달 손익",
+    "exchangeBalances": "거래소별 잔고",
+    "activePositions": "활성 포지션",
+    "recentTrades": "최근 체결",
+    "viewAll": "전체 보기",
+    "noPositions": "현재 활성 포지션 없음",
+    "noPositionsDesc": "전략이 기회를 탐지하면 포지션이 열립니다",
+    "noTrades": "체결 내역 없음",
+    "vsYesterday": "어제 대비",
+    "safetyStatus": "안전 상태"
+  },
+
+  "manage": {
+    "currentMode": "현재 운용 모드",
+    "strategies": "전략",
+    "exchanges": "거래소",
+    "capitalSettings": "자본 설정",
+    "minTradeAmount": "최소 거래 금액",
+    "capitalPerExchange": "거래소당 자본",
+    "dailyLossLimit": "일일 손실 한도",
+    "whyThisValue": "이 값이 뭔가요?",
+    "strategyEnabled": "활성",
+    "strategyDisabled": "비활성",
+    "yesterdayPnL": "어제 손익",
+    "sevenDayChart": "7일 추이",
+    "connected": "연결됨",
+    "disconnected": "연결 끊김"
+  },
+
+  "insights": {
+    "period": {
+      "today": "오늘",
+      "week": "7일",
+      "month": "30일",
+      "all": "전체"
+    },
+    "equityCurve": "자산 추이",
+    "winRate": "승률",
+    "winRateDesc": "수익 체결 / 전체 체결",
+    "sharpe": "샤프 비율",
+    "sharpeDesc": "위험 대비 수익률 지표. 높을수록 좋습니다. (연간 환산)",
+    "avgProfit": "평균 수익",
+    "avgProfitDesc": "체결 1건당 평균 손익",
+    "maxDrawdown": "최대 낙폭",
+    "maxDrawdownDesc": "최고점 대비 최대 손실률. 낮을수록 좋습니다.",
+    "byStrategy": "전략별",
+    "byExchange": "거래소별",
+    "bySymbol": "심볼별",
+    "byHour": "시간대별",
+    "tradeHistory": "거래 내역",
+    "searchTrades": "심볼, 거래소 검색",
+    "tcaReport": "TCA 리포트 PDF 받기",
+    "noData": "데이터 없음",
+    "noDataDesc": "선택한 기간에 거래 내역이 없습니다"
+  },
+
+  "safety": {
+    "status": "안전 상태",
+    "normal": "정상",
+    "caution": "주의",
+    "danger": "위험",
+    "normalDesc": "모든 시스템이 정상 동작 중입니다",
+    "cautionDesc": "일부 지표가 임계값에 근접했습니다",
+    "dangerDesc": "즉각적인 조치가 필요합니다",
+    "emergencyStop": "긴급 정지",
+    "emergencyStopDesc": "모든 거래를 즉시 중단하고 포지션을 청산합니다",
+    "confirmStop": "정말 멈출까요?",
+    "confirmStopDesc": "모든 활성 포지션이 시장가로 청산됩니다",
+    "enterPassword": "비밀번호를 입력하세요",
+    "countdownPrefix": "초 후 실행",
+    "cancel": "취소",
+    "execute": "실행",
+    "dailyLossUsage": "일일 손실 한도 사용률",
+    "maxDrawdownUsage": "최대 낙폭",
+    "netExposure": "순 익스포저",
+    "circuitBreakerRate": "차단기 발동률",
+    "recentEvents": "최근 안전 이벤트",
+    "positions": "활성 포지션",
+    "closePosition": "수동 청산",
+    "canaryProgress": "카나리 진행",
+    "heartbeat": "하트비트 상태",
+    "latency": "지연시간 측정",
+    "noEvents": "최근 안전 이벤트 없음",
+    "noPositions": "청산이 필요한 포지션 없음"
+  },
+
+  "position": {
+    "exchange": "거래소",
+    "symbol": "심볼",
+    "side": "방향",
+    "buy": "매수",
+    "sell": "매도",
+    "quantity": "수량",
+    "entryPrice": "진입가",
+    "markPrice": "현재가",
+    "unrealizedPnL": "평가손익",
+    "holdingTime": "보유 시간",
+    "strategy": "전략",
+    "close": "청산"
+  },
+
+  "trade": {
+    "time": "체결 시간",
+    "exchange": "거래소",
+    "symbol": "심볼",
+    "side": "방향",
+    "price": "체결가",
+    "quantity": "수량",
+    "fee": "수수료",
+    "pnl": "손익",
+    "strategy": "전략"
+  },
+
+  "strategy": {
+    "cross_exchange": "교차 거래소 차익",
+    "cross_exchangeDesc": "서로 다른 거래소 간 가격 차이를 이용합니다",
+    "spot_futures": "현물-선물 차익",
+    "spot_futuresDesc": "현물과 선물 가격 차이를 이용합니다",
+    "futures_futures": "선물-선물 차익",
+    "futures_futuresDesc": "서로 다른 선물 간 가격 차이를 이용합니다",
+    "triangular": "삼각 차익",
+    "triangularDesc": "세 거래쌍 간의 환율 불균형을 이용합니다",
+    "funding_rate": "펀딩비 수익",
+    "funding_rateDesc": "선물 펀딩비를 이용한 무위험 수익 전략입니다",
+    "statistical_arb": "통계적 차익",
+    "statistical_arbDesc": "과거 가격 상관관계를 이용한 평균 회귀 전략입니다",
+    "cex_dex": "CEX-DEX 차익",
+    "cex_dexDesc": "중앙화/탈중앙화 거래소 간 가격 차이를 이용합니다"
+  },
+
+  "metric": {
+    "bps": "베이시스 포인트 (1bp = 0.01%)",
+    "sharpe": "샤프 비율 — 위험 단위당 초과 수익. 1 이상이면 양호, 2 이상이면 우수합니다",
+    "mdd": "최대 낙폭 — 고점 대비 최대 손실률",
+    "winRate": "승률 — 수익 거래 비율",
+    "profitFactor": "수익 배수 — 총 수익 / 총 손실",
+    "netExposure": "순 익스포저 — 매수 포지션 - 매도 포지션의 절대값",
+    "circuitBreaker": "차단기 — 급격한 손실 시 거래를 일시 중단합니다",
+    "killSwitch": "킬스위치 — 모든 거래를 즉시 중단합니다",
+    "funding_rate": "펀딩비 — 선물 계약 보유자가 주기적으로 주고받는 비용",
+    "slippage": "슬리피지 — 예상 체결가와 실제 체결가의 차이"
+  },
+
+  "error": {
+    "networkError": "인터넷 연결을 확인해 주세요",
+    "authError": "다시 로그인해 주세요",
+    "serverError": "서버에 일시적인 문제가 발생했습니다. 잠시 후 다시 시도해 주세요",
+    "notFound": "요청한 정보를 찾을 수 없습니다",
+    "timeout": "응답 시간이 초과됐습니다. 잠시 후 다시 시도해 주세요",
+    "unknown": "알 수 없는 오류가 발생했습니다",
+    "retry": "다시 시도",
+    "goHome": "홈으로 가기"
+  },
+
+  "empty": {
+    "noData": "데이터 없음",
+    "noDataDesc": "아직 표시할 정보가 없습니다",
+    "noTrades": "체결 내역 없음",
+    "noTradesDesc": "전략이 활성화되면 체결 내역이 표시됩니다",
+    "noPositions": "활성 포지션 없음",
+    "noPositionsDesc": "차익 기회가 발생하면 포지션이 열립니다",
+    "noAlerts": "알림 없음",
+    "noAlertsDesc": "시스템이 정상 작동 중입니다",
+    "noEvents": "이벤트 없음"
+  },
+
+  "time": {
+    "justNow": "방금 전",
+    "minutesAgo": "분 전",
+    "hoursAgo": "시간 전",
+    "daysAgo": "일 전",
+    "kst": "KST"
+  },
+
+  "common": {
+    "loading": "불러오는 중",
+    "refresh": "새로고침",
+    "more": "더 보기",
+    "less": "접기",
+    "confirm": "확인",
+    "cancel": "취소",
+    "save": "저장",
+    "reset": "초기화",
+    "enable": "활성화",
+    "disable": "비활성화",
+    "on": "켜짐",
+    "off": "꺼짐",
+    "status": "상태",
+    "details": "상세",
+    "close": "닫기",
+    "ok": "확인"
+  }
+}
