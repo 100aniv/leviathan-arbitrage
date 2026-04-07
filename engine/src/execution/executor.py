@@ -22,7 +22,7 @@ from src.risk.kill_switch import halt_local, is_halted
 logger = logging.getLogger(__name__)
 
 # Health score threshold (Amendment 4 step 1)
-_HEALTH_THRESHOLD = 0.7  # Phase H-Final: 0.9→0.7 (소액 alpha 초기 연결 시 0.85)
+_HEALTH_THRESHOLD = 0.6  # PHOENIX: REST-only adapters score 0.65 (stale after 20s but before API call)
 # Partial fill acceptance threshold
 _PARTIAL_FILL_THRESHOLD = Decimal("0.80")
 # Blueprint compliance: LEG_TIMEOUT_MS from settings singleton
@@ -535,15 +535,9 @@ class AtomicExecutor:
             )
 
         # Step 2-3: Balance/margin checks — skipped in unit layer (handled by guardian)
-        # Step 4: Re-read orderbooks to verify spread (best effort)
-        try:
-            ob_a = await adapter_a.get_orderbook_snapshot(leg1_order.symbol)
-            ob_b = await adapter_b.get_orderbook_snapshot(leg2_order.symbol)
-            # Basic spread sanity: buy ask < sell bid implies positive edge
-            # (simplified; full edge calc done by strategy layer)
-        except Exception as exc:
-            logger.warning("orderbook_snapshot_failed error=%s", exc)
-            # Non-fatal: proceed with stale data
+        # Step 4: Re-read orderbooks REMOVED — adds ~600ms REST latency.
+        # Strategy layer (SignalGenerator + CEXOrderbookSlippage) pre-validates spread.
+        # ob_a, ob_b variables not used downstream, so removal is safe.
 
         # Step 5: max_rollback_cost check (Amendment 3C) — delegated to guardian
         # Step 6-7: Acquire execution locks on BOTH exchanges (sorted to prevent deadlock)

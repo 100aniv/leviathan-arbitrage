@@ -108,7 +108,7 @@ class TestShadowModeDefaultRates:
 
     def test_shadow_env_var_partial_fill_rate(self) -> None:
         """SHADOW_PARTIAL_FILL_RATE env var overrides default partial_fill_rate."""
-        with patch.dict(os.environ, {"SHADOW_PARTIAL_FILL_RATE": "0.10"}):
+        with patch.dict(os.environ, {"PAPER_PARTIAL_FILL_RATE": "0.10"}):
             shadow = make_shadow_mode()
         assert shadow._paper_executor.partial_fill_rate == Decimal("0.10"), (
             f"Expected partial_fill_rate=0.10, got {shadow._paper_executor.partial_fill_rate}"
@@ -116,7 +116,7 @@ class TestShadowModeDefaultRates:
 
     def test_shadow_env_var_rejection_rate(self) -> None:
         """SHADOW_REJECTION_RATE env var overrides default rejection_rate."""
-        with patch.dict(os.environ, {"SHADOW_REJECTION_RATE": "0.05"}):
+        with patch.dict(os.environ, {"PAPER_REJECTION_RATE": "0.05"}):
             shadow = make_shadow_mode()
         assert shadow._paper_executor.rejection_rate == Decimal("0.05"), (
             f"Expected rejection_rate=0.05, got {shadow._paper_executor.rejection_rate}"

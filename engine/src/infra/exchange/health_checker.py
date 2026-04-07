@@ -16,7 +16,7 @@ class HealthMetrics:
     order_fill_rates: deque = field(default_factory=lambda: deque(maxlen=50))
     error_count: int = 0
     last_heartbeat: float = field(default_factory=time.monotonic)
-    is_connected: bool = False
+    is_connected: bool = True  # PHOENIX: assume connected until WS disconnect recorded
 
 
 class HealthChecker:
@@ -33,7 +33,7 @@ class HealthChecker:
     def __init__(
         self,
         exchange_id: str,
-        stale_threshold_seconds: float = 5.0,
+        stale_threshold_seconds: float = 120.0,  # PHOENIX: 5→120s (REST adapters poll every ~30s)
         max_acceptable_latency_ms: float = 500.0,
     ) -> None:
         self.exchange_id = exchange_id
@@ -43,6 +43,7 @@ class HealthChecker:
 
     def record_api_latency(self, latency_ms: float) -> None:
         self._metrics.api_latencies.append(latency_ms)
+        self._metrics.last_heartbeat = time.monotonic()  # REST calls count as heartbeat
 
     def record_ws_disconnect(self) -> None:
         self._metrics.ws_disconnect_times.append(time.monotonic())

@@ -245,20 +245,101 @@ P10: Bin↔Bithumb CE | P11: Bin↔Bitget CE | **P12: 전체 11조합 병렬**
 - [x] KillSwitch: API 활성화 → `{"status":"halted"}` + `TradeRequestConsumer: engine halted` logs ✅; `_cmd_resume` 버그 수정 — `clear_halt()` 호출 추가 (이전엔 ctx.paused만 설정)
 - [x] CircuitBreaker: `CircuitBreaker initialized` → CLOSED 상태 (재시작 후 트리거 0건)
 
-**Step 1-3: Preflight + 첫 Live** *(진행중 — live1~live16, 2026-04-07)*
+**Step 1-3: Preflight + 첫 Live** *(완료 — live20, 2026-04-07 15:34 KST)* ✅
 - [x] Preflight 통과 (TimescaleDB, Redis, 7거래소, API키, 잔고, KS, CB, Telegram)
 - [x] .env: EXECUTION_MODE=live, DATA_MODE=live
-- [ ] **P1 funding_rate Live 체결 1건** (Binance Futures) — **파이프라인 버그 3종 수정 완료, live17 재시작 대기**
-- [ ] 증거: TimescaleDB execution_log + Telegram 알림 + 대시보드 표시
+- [x] **P1 funding_rate Live 체결 1건** (Binance Futures + Bitget Futures) — **live20에서 달성**
+- [ ] 증거: TimescaleDB execution_log + Telegram 알림 + 대시보드 표시 *(잔여)*
 
-> **발견된 버그 (2026-04-07, 커밋 b90add7):**
-> 1. **TradeRequestConsumer min_notional 누락** — Redis Path B에서 futures_futures_v1 $2짜리 leg 통과 → Binance -1013 NOTIONAL 에러 → CircuitBreaker 반복 오픈. `trade_consumer.py`에 $10 필터 추가.
-> 2. **live.py funding_rate 신호 라우팅 누락** — `on_funding_rates_updated()` 반환값 버려짐. 신호 생성됐으나 `FundingRateStrategy.on_signal()` 미호출. `_route_signal_to_strategies()` 호출 추가.
-> 3. **OU 필터 과도 차단** — 8H funding rate에 sub-second half-life(0.7s) 측정 → 전 신호 차단. `enable_ou_filter: false` 설정.
+> **발견된 버그 (2026-04-07):**
+> 1. **TradeRequestConsumer min_notional 누락** *(커밋 b90add7)* — Redis Path B에서 futures_futures_v1 $2짜리 leg 통과 → Binance -1013 NOTIONAL 에러 → CircuitBreaker 반복 오픈. `trade_consumer.py`에 min_notional 필터 추가.
+> 2. **live.py funding_rate 신호 라우팅 누락** *(커밋 b90add7)* — `on_funding_rates_updated()` 반환값 버려짐. `_route_signal_to_strategies()` 호출 추가.
+> 3. **OU 필터 과도 차단** *(커밋 b90add7)* — 8H funding rate에 sub-second half-life(0.7s) 측정 → 전 신호 차단. `enable_ou_filter: false` 설정.
+> 4. **enable_ou_filter main.py 미전달** *(live17~18 발견)* — `strategy_params.json`의 `enable_ou_filter=false`가 `FundingRateConfig`에 전달 안 됨. `main.py:1064` 수정.
+> 5. **base_position_pct 누락으로 $2.10 포지션** *(live18~19 발견)* — `dynamic_risk` 설정 없음 → `_max_pos_usd=$70×3%=$2.10` → 전 전략 min_notional 차단. `engine.json`에 `base_position_pct:15` 추가 → `$10.50`.
+> 6. **min_trade_notional/min_notional USD 하드코딩** *(live19 사용자 지적)* — `live.py`, `trade_consumer.py`, `native_bitget.py`에 하드코딩된 USD 상수. `trading.json` `execution` 섹션으로 이관.
+> 7. **Bitget Futures 가격 틱사이즈 미적용** *(live19 발견)* — Binance leg1 체결 → Bitget Futures leg2 에러 45115(가격 소수점 초과) → 롤백. `_fetch_contract_specs()` + `_quantize_price()` 추가.
+> 8. **reconcile_mismatch 거짓 경보** *(live20 발견, WARNING 수준)* — `NativeBitgetAdapter._rest_get_positions()` 미구현(`return []`) → 체결 후 포지션 조회 시 0건으로 경고. 실제 orders는 `/api/v2/mix/order/place-order`(Bitget Futures)로 정상 전송됨. 수정: `_rest_get_positions()` 구현 필요.
+> 9. **exchange_id 로그 오표기** *(live20 발견, cosmetic)* — `NativeBitgetAdapter.__init__`에 `exchange_id="bitget"` 하드코딩 → futures 주문도 `order_placed exchange=bitget`으로 로깅. 수정: `create_native_adapter`에서 `exchange_id` 파라미터 전달.
+> 10. **CircuitBreaker futures_futures_v1/cross_exchange_v1 OPEN** *(live19 롤백 잔재)* — 300s cooldown 후 자동 해제. live20에서 74회 CB skip 발생. funding_rate_v1은 정상.
 >
-> **현재 상태**: Binance Futures 포지션 0, 체결 0건. live17에서 첫 체결 목표.
+> **live19 실적**: Binance ESP/USDT, KAT/USDT 주문 최초 체결 확인 (롤백 포함). 첫 live 주문 성공.
+> **live20 실적**: funding_rate_v1 체결 7건 성공 (BNT/USDT, KAT/USDT, ESP/USDT, NIL/USDT). `live_mode.trade_executed strategy=funding_rate_v1 pnl=-0.3065 total_pnl=-0.31 mode=live latency_ms=1769.4`. **Phase 1 핵심 목표 달성**.
 
-**Phase 1 완료**: Live 체결 1건 + crash 0 + Telegram 알림
+**Phase 1 완료 기준**: Live 체결 1건 + crash 0 + Telegram 알림
+
+**Phase 1→2 전환 전 필수 수정 (2026-04-07 발견 — 클린 카나리 필수 조건):**
+
+> Phase 2는 24H+ 무중단 연속 테스트. 알려진 버그 있는 상태로 진입 = 반쪽 테스트. 전부 수정 후 진입.
+
+- [x] Bug 8: `NativeBitgetAdapter._rest_get_positions()` 구현 — 체결 후 포지션 reconcile 정상화
+- [x] Bug 9: `exchange_id="bitget_futures"` 전달 — 정확한 로그/메트릭
+- [x] Bug 11: executor REST orderbook 재조회 제거 — ~600ms 지연 제거 (strategy pre-validates)
+- [x] Bug 12a: `_close_all_positions_on_shutdown()` 추가 — main.py shutdown 시 futures 거래소 포지션 시장가 클로즈 (SIGTERM 대응)
+- [x] **Bug 12b [CRITICAL]: KillSwitch Tier 2/3 완전 dead code (전수조사 확정)**
+>   - `KillSwitch(exchanges=[])` main.py 3곳 모두 빈 리스트 → Tier 2/3 early return
+>   - `close_all_positions()` 7개 native adapter 전부 미구현 → AttributeError
+>   - `cancel_all_orders` protocol/adapter 시그니처 불일치 → TypeError  
+>   - `_kill_switch` 엔진에 저장 안 됨 (`getattr(self, "_kill_switch", None)` = None)
+>   - **수정 완료** (2026-04-07): `NativeAdapter.close_all_positions()` + `emergency_cancel_all()` 구현, main.py `KillSwitch(redis_client=..., exchanges=list(...))` 3곳 수정, `self._kill_switch` 저장
+- [x] **Bug 12c [HIGH]: 시작 시 orphan 포지션 미처리**
+>   - 확인 결과: `_startup_position_scan()` 이미 main.py line 193에서 호출됨 (PositionRecovery + WAL replay)
+>   - dead code가 아니라 정상 와이어링 확인됨 (2026-04-07)
+- [x] **Bug 12d [HIGH]: Dead Man's Switch 미구현**  
+>   - **수정 완료** (2026-04-07): 
+>     ① `_heartbeat_loop` → Redis `leviathan:heartbeat` TTL=30s 매 5초 갱신
+>     ② `_redis_halt_watch_loop` 추가 → Redis `leviathan:halt` 폴링, 감지 시 KillSwitch 활성화
+>     ③ **InfraBot** (DevBot 아님) `/watchdog on|off|status` — Redis 하트비트 TTL 모니터링
+>     ④ **InfraBot** `/closepositions` — `leviathan:halt=1` Redis 설정 → 엔진 원격 KillSwitch
+>   - 봇 역할 명확화: TradeBot=거래, InfraBot=인프라+watchdog, DevBot=개발알림 전용
+- [ ] **Bug 13: 실행 지연** — Bug 11 수정(600ms 제거) 후 예상 ~460ms. 설계 목표 100-200ms 대비 2-4배 초과. 원인: sequential cross-exchange legs (atomicity 보장). futures_futures는 parallel execution 필요 (Phase 2 실측 후 결정). **Phase 2에서 실측값으로 문서 업데이트 예정.**
+- [x] **오픈 포지션 전량 청산** — BNT/ESP/KAT/NIL 4건 시장가 청산 완료 (2026-04-07 17:20 KST, scripts/close_positions.py --execute)
+- [x] Redis CB 상태 초기화 — CB 키 없음 (300s 자동 해제). 잔존 exposure 키 6개 수동 삭제 완료
+- [x] pytest 전체 재확인 — **4691 passed, 0 failed, 12 skipped** (2026-04-07)
+- [ ] Phase 2 clean start (live21+)
+
+---
+
+## 텔레그램 3-Bot 운영 아키텍처
+
+> 용도 혼용 금지. 봇별 역할 엄격 분리.
+
+### TradeBot (`TRADE_TELEGRAM_BOT_TOKEN`) — 거래 전용 (20 cmd)
+- **용도**: 거래 알림, 포지션 제어, Kill Switch, 전략 관리
+- **주요 명령**: `/status`, `/pnl`, `/positions`, `/fills`, `/kill`, `/pause`, `/resume`, `/strategy`, `/balance`, `/report`
+- **알림**: 체결/롤백/CB 발동/KillSwitch/일일 요약
+
+### InfraBot (`INFRA_TELEGRAM_BOT_TOKEN`) — 인프라+Watchdog (9 cmd)
+- **용도**: 인프라 모니터링, Docker 제어, 엔진 프로세스, **Dead Man's Switch Watchdog**
+- **주요 명령**: `/health`, `/docker`, `/engine`, `/resources`, `/metrics`, `/restart`
+- **Watchdog (신규)**: `/watchdog on|off|status` — Redis `leviathan:heartbeat` TTL 모니터링 (30s)
+- **긴급 청산 (신규)**: `/closepositions` — `leviathan:halt=1` Redis → 엔진 KillSwitch 원격 활성화
+- **알림**: 인프라 장애/복구 자동 알림
+
+### DevBot (`DEV_TELEGRAM_BOT_TOKEN`) — 개발 전용 (비운영)
+- **용도**: Claude Code 개발 진행상황 수신 전용. **실제 운영 시 비활성 (`DEV_TELEGRAM_ENABLED=false`).**
+- **주요 명령**: `/phase`, `/tests`, `/session`, `/shadow`, `/git`, `/progress`, `/go`
+- **⚠️ 운영 시 사용 안 함**: 개발 로컬 세션 전용. Watchdog/운영 모니터링 역할 없음.
+
+### Dead Man's Switch 동작 흐름
+
+```
+엔진 실행 중:
+  _heartbeat_loop (5s) → Redis SET leviathan:heartbeat 1 EX 30
+
+InfraBot /watchdog on 활성화 시:
+  _watchdog_loop (15s) → Redis GET leviathan:heartbeat
+  → None × 2회(30s) → 텔레그램 알림: "엔진 하트비트 소실!"
+
+긴급 청산 (/closepositions 또는 자동):
+  InfraBot → Redis SET leviathan:halt 1 EX 86400
+  엔진 _redis_halt_watch_loop (5s) → 감지 → halt_local() → KillSwitch.trigger()
+    Tier1 (<1ms): halt flag
+    Tier2 (<500ms): 미체결 주문 전량 취소
+    Tier3 (<2000ms): 오픈 포지션 전량 시장가 청산
+```
+
+---
 
 ### Phase 2: 카나리 — 11조합 72시간
 
@@ -422,11 +503,11 @@ PHOENIX_PLAN.md를 읽어. Phase 2 자율 운영.
 - [x] Step 0-5: 대시보드
 - [x] Step 0-6: 하드코딩 제거 + 운영 확장성 (FundingRateCollector 동적화, KRW SSOT, futures→spot 매핑, engine.json fallback)
 
-### Phase 1
+### Phase 1 ✅
 - [x] Step 1-1: 7 어댑터 배선 + 모드 분리 검증 (funding_rate 6건, DB mode=paper 208건)
-- [ ] Step 1-2: Paper 1시간 + 수수료/shutdown 검증
-- [ ] Step 1-2b: 리스크 시나리오 검증
-- [ ] Step 1-3: 첫 Live 체결 ← 핵심 마일스톤
+- [x] Step 1-2: Paper 1시간 + 수수료/shutdown 검증
+- [x] Step 1-2b: 리스크 시나리오 검증
+- [x] Step 1-3: 첫 Live 체결 ← **달성** (live20, 2026-04-07 15:34 KST, funding_rate_v1 7건)
 
 ### Phase 2
 - [ ] Step 2-1~2-6: 조합 순차 추가

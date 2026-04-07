@@ -251,11 +251,11 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`
 - **슬리피지**: CEXOrderbookSlippage만 활성 (PowerLaw k=0.0 비활성)
 - **설정**: `engine/.env` (엔진용) + 루트 `.env` (Docker용) — **두 파일 반드시 동기화**
-- **텔레그램 3-Bot** (S21 레거시 제거 완료): `engine/src/infra/telegram_*_bot.py` — TradeBot(20cmd), DevBot(16cmd+/go), InfraBot(7cmd)
+- **텔레그램 3-Bot** (S21 레거시 제거 완료): `engine/src/infra/telegram_*_bot.py` — TradeBot(20cmd), InfraBot(9cmd), DevBot(17cmd, 비운영)
   - **TradeBot**: `TRADE_TELEGRAM_BOT_TOKEN` — 거래 알림 + Kill Switch + 포지션/체결/전략 제어
-  - **DevBot**: `DEV_TELEGRAM_BOT_TOKEN` — 원격 개발 제어 + Watchdog `/go` 수동 재개
-  - **InfraBot**: `INFRA_TELEGRAM_BOT_TOKEN` — 인프라 모니터링 (/health, /resources psutil, /metrics, /restart)
-  - **Watchdog**: Dev봇 자체가 watchdog (`python -m src.infra.telegram_dev_bot` 또는 `bash scripts/watchdog.sh`)
+  - **InfraBot**: `INFRA_TELEGRAM_BOT_TOKEN` — 인프라 모니터링 + **Dead Man's Switch Watchdog** (/watchdog on|off|status, /closepositions)
+  - **DevBot**: `DEV_TELEGRAM_BOT_TOKEN` — **개발 전용 (비운영)**: Claude Code 개발 진행상황 수신. 실제 운영 시 비활성.
+  - **Watchdog**: InfraBot `/watchdog on` → Redis `leviathan:heartbeat` TTL 모니터링. 소실 시 알림 + /closepositions 사용
   - **Docker monitoring**: INFRA_TELEGRAM_BOT_TOKEN 사용 (docker-compose.yml에서 매핑)
   - **Alertmanager**: 3봇 토큰 sed 치환 (INFRA/TRADE/DEV placeholder)
   - **레거시 제거**: SmartTelegramAlerter/TelegramCommandHandler 삭제, main.py 3봇 직접 초기화

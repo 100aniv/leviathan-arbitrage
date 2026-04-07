@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "source": "US-067 StrategyValidationOrchestrator",
+    "date": "2026-04-01T01:34:38.645598+00:00",
+    "duration_per_strategy_s": 600,
+    "min_trades_threshold": 5
+  },
+  "active_strategies": [],
+  "unverified_strategies": [],
+  "disabled_strategies": [
+    "spot_futures_v1",
+    "triangular_v1"
+  ],
+  "shadow_disabled_env": "spot_futures_v1,triangular_v1",
+  "results": {},
+  "combined_validation": {
+    "error": "no_profitable_strategies"
+  }
+}

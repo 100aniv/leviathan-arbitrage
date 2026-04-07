@@ -34,7 +34,7 @@ def _make_shadow_mode(env_disabled: str = "") -> ShadowMode:
     mock_executor = MagicMock()
     mock_executor.slippage_model = MagicMock(spec=[])
 
-    with patch.dict(os.environ, {"SHADOW_DISABLED_STRATEGIES": env_disabled}):
+    with patch.dict(os.environ, {"PAPER_DISABLED_STRATEGIES": env_disabled}):
         shadow = ShadowMode(
             signal_generator=MagicMock(),
             paper_executor=mock_executor,

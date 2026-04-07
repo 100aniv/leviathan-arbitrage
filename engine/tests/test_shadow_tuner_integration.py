@@ -1,7 +1,7 @@
 """Tests for US-234: ShadowMode + AdaptiveThreshold + RegimeDetector integration.
 
 Verifies:
-- _shadow_regime_check_loop: regime_detector.detect() 60s 주기 호출
+- _paper_regime_check_loop: regime_detector.detect() 60s 주기 호출
 - _shadow_adaptive_threshold_loop: adaptive_threshold.adjust() 300s 주기 호출
 - CRISIS regime → _shadow_min_edge_factor 2.0 상향
 - 정상 레짐 복귀 → _shadow_min_edge_factor 1.0 복원
@@ -60,8 +60,8 @@ def _make_shadow_mode(
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_shadow_regime_check_loop_calls_detect():
-    """_shadow_regime_check_loop이 regime_detector.detect()를 호출해야 한다."""
+async def test_paper_regime_check_loop_calls_detect():
+    """_paper_regime_check_loop이 regime_detector.detect()를 호출해야 한다."""
     from src.tuning.regime_detector import MarketRegime
 
     mock_detector = MagicMock()
@@ -81,7 +81,7 @@ async def test_shadow_regime_check_loop_calls_detect():
             shadow._running = False
 
     with patch("asyncio.sleep", side_effect=fake_sleep):
-        await shadow._shadow_regime_check_loop()
+        await shadow._paper_regime_check_loop()
 
     mock_detector.detect.assert_called_once()
 
@@ -149,7 +149,7 @@ async def test_crisis_regime_sets_min_edge_factor_2x():
             shadow._running = False
 
     with patch("asyncio.sleep", side_effect=fake_sleep):
-        await shadow._shadow_regime_check_loop()
+        await shadow._paper_regime_check_loop()
 
     assert shadow._shadow_min_edge_factor == 2.0
 
@@ -182,7 +182,7 @@ async def test_normal_regime_restores_min_edge_factor_1x():
             shadow._running = False
 
     with patch("asyncio.sleep", side_effect=fake_sleep):
-        await shadow._shadow_regime_check_loop()
+        await shadow._paper_regime_check_loop()
 
     assert shadow._shadow_min_edge_factor == 1.0
 
@@ -344,6 +344,6 @@ async def test_regime_check_loop_exits_if_none():
         shadow._running = False
 
     with patch("asyncio.sleep", side_effect=fake_sleep):
-        await shadow._shadow_regime_check_loop()
+        await shadow._paper_regime_check_loop()
 
     assert sleep_count == 1

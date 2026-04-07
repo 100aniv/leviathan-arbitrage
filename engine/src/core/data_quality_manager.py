@@ -28,6 +28,7 @@ from typing import Any
 import structlog
 
 from src.core.config import get_settings
+from src.core.exchanges import KRW_EXCHANGES
 from src.infra.exchange.health_checker import HealthChecker
 
 logger = structlog.get_logger(__name__)
@@ -56,8 +57,7 @@ _ANOMALY_ISOLATION_S = _op().anomaly_isolation_s
 _ANOMALY_WARMUP = _op().anomaly_warmup
 
 # --- Exchange classification ---
-KOREAN_EXCHANGES = frozenset({"upbit", "bithumb", "coinone"})
-FUTURES_EXCHANGES = frozenset({"binance_futures", "bybit_futures", "okx_futures"})
+FUTURES_EXCHANGES = frozenset({"binance_futures", "bybit_futures", "okx_futures", "bitget_futures"})
 
 
 @dataclass
@@ -279,7 +279,7 @@ class DataQualityManager:
             return _FRESHNESS_FUTURES_S
         if eid_lower == "bithumb":
             return _FRESHNESS_BITHUMB_S
-        if eid_lower in KOREAN_EXCHANGES:
+        if eid_lower in KRW_EXCHANGES:
             return _FRESHNESS_KOREAN_S
         return _FRESHNESS_DEFAULT_S
 

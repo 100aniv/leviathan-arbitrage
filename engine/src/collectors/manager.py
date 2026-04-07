@@ -20,6 +20,7 @@ from src.collectors.bybit_futures_collector import BybitFuturesCollector
 from src.collectors.bitget_futures_collector import BitgetFuturesCollector
 from src.collectors.mexc_collector import MexcCollector
 from src.collectors.gateio_collector import GateioCollector
+from src.core.exchanges import KRW_EXCHANGES
 
 logger = structlog.get_logger(__name__)
 
@@ -33,9 +34,6 @@ class CollectorManager:
 
     # Default exchanges to collect from
     DEFAULT_EXCHANGES = ["binance", "bybit", "okx", "bitget", "mexc", "gateio", "upbit", "bithumb", "coinone", "binance_futures", "okx_futures", "bybit_futures", "bitget_futures"]
-
-    # Korean exchanges that trade primarily in KRW (not USDT)
-    KOREAN_EXCHANGES = {"upbit", "bithumb", "coinone"}
 
     def __init__(
         self,
@@ -57,7 +55,7 @@ class CollectorManager:
 
     def _get_exchange_symbols(self, exchange_id: str) -> list[str]:
         """Map trading symbols for exchange. Korean exchanges use KRW pairs."""
-        if exchange_id in self.KOREAN_EXCHANGES:
+        if exchange_id in KRW_EXCHANGES:
             return [s.replace("/USDT", "/KRW") for s in self.symbols]
         return self.symbols
 

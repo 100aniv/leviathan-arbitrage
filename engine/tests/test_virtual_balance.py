@@ -71,7 +71,7 @@ def test_rebalance_warning():
         tracker.deduct("binance", Decimal("9500"))
 
     events = [e["event"] for e in cap_logs]
-    assert "shadow_mode.rebalance_needed" in events
+    assert "paper_mode.rebalance_needed" in events
 
 
 def test_reset():

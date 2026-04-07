@@ -544,8 +544,9 @@ class PaperMode:
         # Funding rates cache: exchange_id -> symbol -> rate
         self._funding_rates: dict[str, dict[str, float]] = {}
 
-        # Futures exchanges for identification
-        self._futures_exchanges: set[str] = {"binance_futures", "okx_futures", "bybit_futures"}
+        # Futures exchanges for identification — dynamic from FUTURES_TO_SPOT SSOT
+        from src.core.exchanges import FUTURES_TO_SPOT
+        self._futures_exchanges: set[str] = set(FUTURES_TO_SPOT.keys())
 
         # US-066: Stale orderbook defense — cross-validation + blacklist
         _op = get_settings().operational

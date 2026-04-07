@@ -94,7 +94,7 @@ class TestTradeTelegramBot:
             clear=True,
         ):
             bot = TradeTelegramBot()
-            assert bot._get_shadow_snapshot() is None
+            assert bot._get_paper_snapshot() is None
 
     @pytest.mark.asyncio
     async def test_get_pnl_text_no_snapshot(self):

@@ -187,7 +187,7 @@ async def test_structlog_warning():
     shadow._rate_limiter.try_acquire.return_value = False
 
     with structlog.testing.capture_logs() as cap_logs:
-        await shadow._execute_shadow_trade(_make_signal())
+        await shadow._execute_paper_trade(_make_signal())
 
     events = [e["event"] for e in cap_logs]
-    assert "shadow_mode.rate_limit_exceeded" in events
+    assert "paper_mode.rate_limit_exceeded" in events

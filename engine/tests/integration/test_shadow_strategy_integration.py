@@ -121,13 +121,13 @@ async def test_shadow_routes_cross_exchange_signal_via_manager():
     manager._strategies["cross_exchange_spot_v1"] = strategy
 
     shadow = make_shadow_mode(strategy_manager=manager)
-    shadow._execute_shadow_trade_request = AsyncMock()
+    shadow._execute_paper_trade_request = AsyncMock()
 
     signal = make_signal(strategy_id="cross_exchange_spot")
     await shadow._route_signal_to_strategies(signal)
 
     strategy.on_signal.assert_awaited_once_with(signal)
-    shadow._execute_shadow_trade_request.assert_awaited_once_with(trade_req)
+    shadow._execute_paper_trade_request.assert_awaited_once_with(trade_req)
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +147,7 @@ async def test_shadow_routes_multi_strategy_signals_via_manager():
     manager._strategies["funding_rate_arb_v1"] = fr_strategy
 
     shadow = make_shadow_mode(strategy_manager=manager)
-    shadow._execute_shadow_trade_request = AsyncMock()
+    shadow._execute_paper_trade_request = AsyncMock()
 
     # Send cross_exchange signal — only cx_strategy should get it
     signal = make_signal(strategy_id="cross_exchange_spot")
@@ -166,13 +166,13 @@ async def test_shadow_routes_multi_strategy_signals_via_manager():
 async def test_shadow_fallback_without_strategy_manager():
     """When strategy_manager is None, _route_signal_to_strategies returns immediately."""
     shadow = make_shadow_mode(strategy_manager=None)
-    shadow._execute_shadow_trade = AsyncMock()
+    shadow._execute_paper_trade = AsyncMock()
 
     signal = make_signal()
     await shadow._route_signal_to_strategies(signal)
 
     # No fallback triggered — just returns
-    shadow._execute_shadow_trade.assert_not_awaited()
+    shadow._execute_paper_trade.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -182,13 +182,13 @@ async def test_shadow_fallback_without_strategy_manager():
 
 @pytest.mark.asyncio
 async def test_shadow_fallback_on_routing_exception():
-    """Routing exception triggers _execute_shadow_trade() + ROUTING_FALLBACK_TOTAL counter."""
+    """Routing exception triggers _execute_paper_trade() + ROUTING_FALLBACK_TOTAL counter."""
     bus = make_event_bus()
     manager = StrategyManager(bus)
     manager.route_signal = AsyncMock(side_effect=RuntimeError("redis down"))
 
     shadow = make_shadow_mode(strategy_manager=manager)
-    shadow._execute_shadow_trade = AsyncMock()
+    shadow._execute_paper_trade = AsyncMock()
 
     signal = make_signal()
 
@@ -197,7 +197,7 @@ async def test_shadow_fallback_on_routing_exception():
     await shadow._route_signal_to_strategies(signal)
     after = ROUTING_FALLBACK_TOTAL.labels(reason="routing_exception")._value.get()
 
-    shadow._execute_shadow_trade.assert_awaited_once_with(signal)
+    shadow._execute_paper_trade.assert_awaited_once_with(signal)
     assert after > before
 
 
@@ -234,7 +234,7 @@ async def test_per_strategy_metrics_not_double_counted():
     manager._strategies["cross_exchange_spot_v1"] = strategy
 
     shadow = make_shadow_mode(strategy_manager=manager)
-    shadow._execute_shadow_trade_request = AsyncMock()
+    shadow._execute_paper_trade_request = AsyncMock()
 
     signal = make_signal(strategy_id="cross_exchange_spot")
     await shadow._route_signal_to_strategies(signal)
@@ -244,7 +244,7 @@ async def test_per_strategy_metrics_not_double_counted():
     assert strategy._metrics.signals_received == 0
     assert strategy._metrics.trade_requests_generated == 0
     # Trade request was still processed correctly
-    shadow._execute_shadow_trade_request.assert_awaited_once_with(trade_req)
+    shadow._execute_paper_trade_request.assert_awaited_once_with(trade_req)
 
 
 # ---------------------------------------------------------------------------
@@ -336,14 +336,14 @@ async def test_empty_route_result_no_fallback():
     manager.route_signal = AsyncMock(return_value=[])
 
     shadow = make_shadow_mode(strategy_manager=manager)
-    shadow._execute_shadow_trade = AsyncMock()
-    shadow._execute_shadow_trade_request = AsyncMock()
+    shadow._execute_paper_trade = AsyncMock()
+    shadow._execute_paper_trade_request = AsyncMock()
 
     signal = make_signal()
     before = ROUTING_FALLBACK_TOTAL.labels(reason="routing_exception")._value.get()
     await shadow._route_signal_to_strategies(signal)
     after = ROUTING_FALLBACK_TOTAL.labels(reason="routing_exception")._value.get()
 
-    shadow._execute_shadow_trade.assert_not_awaited()
-    shadow._execute_shadow_trade_request.assert_not_awaited()
+    shadow._execute_paper_trade.assert_not_awaited()
+    shadow._execute_paper_trade_request.assert_not_awaited()
     assert after == before  # Counter did not increment

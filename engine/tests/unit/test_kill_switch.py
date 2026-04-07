@@ -155,12 +155,12 @@ class TestKillSwitchTier2:
     async def test_tier2_cancels_orders_on_one_exchange(self):
         mock_exchange = AsyncMock()
         mock_exchange.exchange_id = "binance"
-        mock_exchange.cancel_all_orders = AsyncMock(return_value=["ord1", "ord2"])
+        mock_exchange.emergency_cancel_all = AsyncMock(return_value=["ord1", "ord2"])
 
         ks = KillSwitch(redis_client=None, exchanges=[mock_exchange])
         event = await ks.trigger()
 
-        mock_exchange.cancel_all_orders.assert_called_once()
+        mock_exchange.emergency_cancel_all.assert_called_once()
         assert "ord1" in event.cancelled_orders
         assert "ord2" in event.cancelled_orders
 
@@ -175,11 +175,11 @@ class TestKillSwitchTier2:
 
         exchange1 = AsyncMock()
         exchange1.exchange_id = "binance"
-        exchange1.cancel_all_orders = slow_cancel
+        exchange1.emergency_cancel_all = slow_cancel
 
         exchange2 = AsyncMock()
         exchange2.exchange_id = "okx"
-        exchange2.cancel_all_orders = slow_cancel
+        exchange2.emergency_cancel_all = slow_cancel
 
         ks = KillSwitch(redis_client=None, exchanges=[exchange1, exchange2])
         t0 = time.perf_counter()
@@ -194,7 +194,7 @@ class TestKillSwitchTier2:
         """Exchange cancel failure is logged; kill switch still completes."""
         mock_exchange = AsyncMock()
         mock_exchange.exchange_id = "binance"
-        mock_exchange.cancel_all_orders = AsyncMock(side_effect=Exception("API error"))
+        mock_exchange.emergency_cancel_all = AsyncMock(side_effect=Exception("API error"))
 
         ks = KillSwitch(redis_client=None, exchanges=[mock_exchange])
         event = await ks.trigger()

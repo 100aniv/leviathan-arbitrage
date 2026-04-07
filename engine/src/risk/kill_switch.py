@@ -269,7 +269,7 @@ class KillSwitch:
         async def cancel_exchange(adapter: Any) -> list[str]:
             try:
                 cancelled = await asyncio.wait_for(
-                    adapter.cancel_all_orders(timeout_ms=2000),
+                    adapter.emergency_cancel_all(timeout_ms=2000),
                     timeout=2.0,
                 )
                 logger.info(
@@ -290,7 +290,7 @@ class KillSwitch:
                 # Retry once
                 try:
                     return await asyncio.wait_for(
-                        adapter.cancel_all_orders(timeout_ms=2000),
+                        adapter.emergency_cancel_all(timeout_ms=2000),
                         timeout=2.0,
                     )
                 except Exception as retry_exc:

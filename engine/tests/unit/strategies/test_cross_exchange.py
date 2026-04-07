@@ -104,7 +104,8 @@ async def test_legs_have_correct_exchanges_and_sides():
 
 @pytest.mark.asyncio
 async def test_size_capped_by_max_position_size():
-    config = CrossExchangeConfig(min_spread_bps=Decimal("10"), max_position_size=Decimal("0.2"))
+    # max_position_size is USD notional: $10010 / avg_price($50050) = 0.2 BTC cap
+    config = CrossExchangeConfig(min_spread_bps=Decimal("10"), max_position_size=Decimal("10010"))
     strategy = CrossExchangeStrategy("cex_spot", make_calculator(), config)
     await strategy.start()
     signal = make_signal(volume=Decimal("1.0"))  # more than max

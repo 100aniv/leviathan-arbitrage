@@ -19,8 +19,8 @@ from src.core.data_quality_manager import (
     DataQualityManager,
     DataQualityResult,
     FUTURES_EXCHANGES,
-    KOREAN_EXCHANGES,
 )
+from src.core.exchanges import KRW_EXCHANGES as KOREAN_EXCHANGES
 
 
 # ======================================================================

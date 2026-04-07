@@ -583,8 +583,8 @@ class TestUS242MockDEXAdapter:
         assert price > Decimal("0")
 
     def test_build_dex_adapter_mock_enabled(self):
-        """Engine._build_dex_adapter returns MockDEXAdapter when SHADOW_MOCK_DEX=true."""
-        with patch.dict(os.environ, {"SHADOW_MOCK_DEX": "true"}, clear=False):
+        """Engine._build_dex_adapter returns MockDEXAdapter when PAPER_MOCK_DEX=true."""
+        with patch.dict(os.environ, {"PAPER_MOCK_DEX": "true"}, clear=False):
             os.environ.pop("DEX_RPC_URL", None)
             os.environ.pop("DEX_POOL_ADDRESS", None)
             from src.main import Engine
@@ -594,11 +594,11 @@ class TestUS242MockDEXAdapter:
             assert adapter.dex_id == "mock_dex"
 
     def test_build_dex_adapter_mock_disabled(self):
-        """Engine._build_dex_adapter returns None when SHADOW_MOCK_DEX not set."""
+        """Engine._build_dex_adapter returns None when PAPER_MOCK_DEX not set."""
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("DEX_RPC_URL", None)
             os.environ.pop("DEX_POOL_ADDRESS", None)
-            os.environ.pop("SHADOW_MOCK_DEX", None)
+            os.environ.pop("PAPER_MOCK_DEX", None)
             from src.main import Engine
             engine = Engine.__new__(Engine)
             adapter = engine._build_dex_adapter()

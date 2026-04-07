@@ -58,7 +58,7 @@ class NativeAdapter(abc.ABC):
         passphrase: str = "",
         sandbox: bool = False,
         rate_limits: dict[str, RateLimitConfig] | None = None,
-        stale_threshold_seconds: float = 5.0,
+        stale_threshold_seconds: float = 120.0,  # PHOENIX: 5→120s (REST adapters poll every ~30s)
         slippage_k: Decimal = Decimal("1.0"),
         slippage_gamma: Decimal = Decimal("0.5"),
     ) -> None:
@@ -334,6 +334,15 @@ class NativeAdapter(abc.ABC):
             json=data if method in ("POST", "PUT", "DELETE") and data else None,
             headers=req_headers,
         )
+        if resp.is_error:
+            try:
+                body = resp.json()
+            except Exception:
+                body = resp.text
+            logger.error(
+                "http_error exchange=%s status=%s body=%s",
+                self.exchange_id, resp.status_code, body,
+            )
         resp.raise_for_status()
         return resp.json()
 
@@ -479,6 +488,86 @@ class NativeAdapter(abc.ABC):
     # ------------------------------------------------------------------
     # Optional overrides
     # ------------------------------------------------------------------
+
+    async def close_all_positions(self, timeout_ms: int = 3000) -> list[str]:
+        """KillSwitchTarget: Close all open futures positions at market price.
+
+        Returns list of closed position descriptions. Non-fatal per position.
+        Spot-only adapters return [] (no positions to close).
+        """
+        from src.core.models import OrderType
+        closed = []
+        try:
+            positions = await asyncio.wait_for(
+                self.get_positions(), timeout=timeout_ms / 1000
+            )
+        except Exception as exc:
+            logger.warning("close_all_positions_get_failed exchange=%s error=%s", self.exchange_id, exc)
+            return []
+
+        for pos in positions:
+            if pos.size == 0:
+                continue
+            close_side = OrderSide.SELL if pos.size > 0 else OrderSide.BUY
+            close_order = Order(
+                exchange_id=self.exchange_id,
+                symbol=pos.symbol,
+                side=close_side,
+                order_type=OrderType.MARKET,
+                amount=abs(pos.size),
+                metadata={"reduceOnly": True},
+            )
+            try:
+                await asyncio.wait_for(
+                    self.place_order(close_order), timeout=timeout_ms / 1000
+                )
+                closed.append(f"{pos.symbol}:{close_side}:{abs(pos.size)}")
+                logger.info(
+                    "kill_switch_tier3_closed exchange=%s symbol=%s side=%s size=%s",
+                    self.exchange_id, pos.symbol, close_side, abs(pos.size),
+                )
+            except Exception as exc:
+                logger.error(
+                    "kill_switch_tier3_close_failed exchange=%s symbol=%s error=%s",
+                    self.exchange_id, pos.symbol, exc,
+                )
+        return closed
+
+    async def emergency_cancel_all(self, timeout_ms: int = 2000) -> list[str]:
+        """KillSwitchTarget: Cancel ALL open orders across all symbols.
+
+        Unlike cancel_all_orders(symbol=...) which requires a specific symbol,
+        this fetches open orders first then cancels all of them.
+        Returns list of cancelled order IDs.
+        """
+        cancelled = []
+        try:
+            if hasattr(self, 'get_open_orders'):
+                orders = await asyncio.wait_for(
+                    self.get_open_orders(), timeout=timeout_ms / 1000
+                )
+                for order in orders:
+                    try:
+                        symbol = getattr(order, 'symbol', None)
+                        await asyncio.wait_for(
+                            self.cancel_order(order.order_id, symbol=symbol),
+                            timeout=timeout_ms / 1000,
+                        )
+                        cancelled.append(str(order.order_id))
+                    except Exception as exc:
+                        logger.error(
+                            "kill_switch_tier2_cancel_failed exchange=%s order=%s error=%s",
+                            self.exchange_id, order.order_id, exc,
+                        )
+            else:
+                # Fallback: try cancel_all_orders if available
+                count = await asyncio.wait_for(
+                    self.cancel_all_orders(symbol=None), timeout=timeout_ms / 1000
+                )
+                cancelled = [f"batch:{count}"]
+        except Exception as exc:
+            logger.warning("emergency_cancel_all_failed exchange=%s error=%s", self.exchange_id, exc)
+        return cancelled
 
     def _ws_ticker_url(self, symbol: str) -> str:
         """Return WS URL for ticker stream. Subclasses must override."""

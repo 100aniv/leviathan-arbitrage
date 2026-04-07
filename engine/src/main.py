@@ -235,6 +235,12 @@ class Engine:
                 and self._exchanges):
             await self._cancel_open_orders()
 
+        # Close open positions in live mode after cancelling orders
+        if (self._settings is not None
+                and self._settings.execution_mode == "live"
+                and self._exchanges):
+            await self._close_all_positions_on_shutdown()
+
         # Disconnect exchanges
         for eid, adapter in self._exchanges.items():
             try:
@@ -1064,6 +1070,7 @@ class Engine:
         fr_config = FundingRateConfig(
             min_funding_diff_bps=Decimal(str(fr_p.get("min_funding_diff_bps", 5))),
             max_position_size=_max_pos_usd,  # PHOENIX: USD notional cap (strategies divide by price)
+            enable_ou_filter=fr_p.get("enable_ou_filter", True),  # PHOENIX Bug4: pass from strategy_params.json
         ) if fr_p.get("status") in ("READY", "MONITOR") else None
 
         ce_p = tuned.get("cross_exchange", {})
@@ -1771,6 +1778,51 @@ class Engine:
                             pass
         logger.info("Open order cancellation complete: %d orders cancelled", total_cancelled)
 
+    async def _close_all_positions_on_shutdown(self) -> None:
+        """Close all open futures positions before shutdown (live mode only).
+
+        Called after _cancel_open_orders(). Non-fatal: logs errors and continues.
+        """
+        logger.info("Closing open positions before shutdown...")
+        from src.core.models import Order, OrderSide, OrderType
+        from decimal import Decimal
+
+        total_closed = 0
+        for eid, adapter in self._exchanges.items():
+            if not eid.endswith("_futures"):
+                continue
+            try:
+                positions = await asyncio.wait_for(adapter.get_positions(), timeout=10.0)
+            except Exception as exc:
+                logger.warning("shutdown_get_positions_failed exchange=%s error=%s", eid, exc)
+                continue
+
+            for pos in positions:
+                if pos.size == 0:
+                    continue
+                close_side = OrderSide.SELL if pos.size > 0 else OrderSide.BUY
+                close_order = Order(
+                    exchange_id=eid,
+                    symbol=pos.symbol,
+                    side=close_side,
+                    order_type=OrderType.MARKET,
+                    amount=abs(pos.size),
+                    metadata={"reduceOnly": True},
+                )
+                try:
+                    await asyncio.wait_for(adapter.place_order(close_order), timeout=10.0)
+                    logger.info(
+                        "shutdown_position_closed exchange=%s symbol=%s side=%s size=%s",
+                        eid, pos.symbol, close_side, abs(pos.size)
+                    )
+                    total_closed += 1
+                except Exception as exc:
+                    logger.error(
+                        "shutdown_position_close_failed exchange=%s symbol=%s error=%s",
+                        eid, pos.symbol, exc
+                    )
+        logger.info("Position close on shutdown complete: %d positions closed", total_closed)
+
     def _record_alert(self, alert_type: str, severity: str, message: str, metadata: dict | None = None) -> None:
         """Record a system alert for the dashboard API."""
         from datetime import datetime, timezone
@@ -1852,6 +1904,7 @@ class Engine:
             asyncio.create_task(self._heartbeat_loop(), name="ws_heartbeat"),
             asyncio.create_task(self._dashboard_feed_loop(), name="dashboard_feed"),
             asyncio.create_task(self._btc_price_update_loop(), name="btc_price_update"),
+            asyncio.create_task(self._redis_halt_watch_loop(), name="redis_halt_watch"),
         ]
 
         # --- Single-axis mode routing (Phase H-2) ---
@@ -2742,7 +2795,12 @@ class Engine:
                     from src.modes.live_gate import LiveGate
                     from src.risk.kill_switch import KillSwitch
 
-                    kill_switch = KillSwitch()  # uses module-level halt flag
+                    # Wire with ALL exchange adapters for Tier 2/3 to function
+                    kill_switch = KillSwitch(
+                        redis_client=getattr(self, '_redis_client', None),
+                        exchanges=list(self._exchanges.values()),
+                    )
+                    self._kill_switch = kill_switch  # store for shutdown and compliance
                     # US-286: DQM health scores as exchange_health_fn
                     _ehf = self._data_quality_manager.get_all_health_scores if self._data_quality_manager else None
                     self._live_gate = LiveGate(
@@ -2935,7 +2993,12 @@ class Engine:
                 from src.modes.live_gate import LiveGate
                 from src.risk.kill_switch import KillSwitch
 
-                kill_switch = KillSwitch()
+                # Wire with ALL exchange adapters for Tier 2/3 to function
+                kill_switch = KillSwitch(
+                    redis_client=getattr(self, '_redis_client', None),
+                    exchanges=list(self._exchanges.values()),
+                )
+                self._kill_switch = kill_switch  # store for shutdown and compliance
                 # US-286: DQM health scores as exchange_health_fn
                 _ehf2 = self._data_quality_manager.get_all_health_scores if self._data_quality_manager else None
                 self._live_gate = LiveGate(
@@ -3258,10 +3321,51 @@ class Engine:
                 await asyncio.sleep(self.HEARTBEAT_INTERVAL)
                 if self.context.ws_manager:
                     await self.context.ws_manager.send_heartbeat()
+                # Dead Man's Switch: InfraBot watchdog monitors this key (TTL=30s, written every 5s)
+                if self._redis_client is not None:
+                    try:
+                        await self._redis_client.set("leviathan:heartbeat", "1", ex=30)
+                    except Exception:
+                        pass  # Redis 실패는 비치명적
             except asyncio.CancelledError:
                 break
             except Exception as exc:
                 logger.warning("Heartbeat error: %s", exc)
+
+    async def _redis_halt_watch_loop(self) -> None:
+        """Redis leviathan:halt 키 폴링 — InfraBot 원격 halt 명령 수신.
+
+        InfraBot이 엔진 하트비트 소실 감지 시 leviathan:halt=1 설정.
+        이 루프가 감지하면 in-process KillSwitch 활성화.
+        """
+        from src.risk.kill_switch import is_halted, halt_local
+        while self.state.running:
+            try:
+                await asyncio.sleep(5)
+                if self._redis_client is None:
+                    continue
+                try:
+                    val = await self._redis_client.get("leviathan:halt")
+                    if val and not is_halted():
+                        logger.critical(
+                            "redis_external_halt_received — "
+                            "InfraBot 또는 외부 프로세스가 halt 명령 전송"
+                        )
+                        halt_local()
+                        if self._kill_switch is not None:
+                            asyncio.create_task(
+                                self._kill_switch.trigger(),
+                                name="external_halt_kill_switch",
+                            )
+                        self.state.running = False
+                        self.context.running = False
+                        self._shutdown_event.set()
+                except Exception:
+                    pass
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.warning("redis_halt_watch_error: %s", exc)
 
     async def _btc_price_update_loop(self) -> None:
         """Periodically refresh the BTC reference price from live PriceHub data.

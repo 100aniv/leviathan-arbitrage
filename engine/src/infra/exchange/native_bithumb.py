@@ -43,6 +43,11 @@ def _to_market(symbol: str) -> str:
     return symbol
 
 
+def _normalize_symbol(symbol: str) -> str:
+    """'BTC/KRW' → 'BTC_KRW' (Bithumb WS subscribe format)."""
+    return symbol.replace("/", "_")
+
+
 def _coin_from_symbol(symbol: str) -> str:
     """'BTC/KRW' → 'BTC'"""
     if "/" in symbol:

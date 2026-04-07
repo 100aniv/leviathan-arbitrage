@@ -115,7 +115,7 @@ async def test_funding_rate_stored_in_leg_metadata():
 async def test_hedge_ratio_applied_to_long_leg():
     config = FundingRateConfig(
         min_funding_diff_bps=Decimal("5"),
-        max_position_size=Decimal("1.0"),
+        max_position_size=Decimal("50005"),  # USD notional: $50005 / avg($50005) = 1.0 BTC cap
         hedge_ratio=Decimal("0.95"),
     )
     strategy = FundingRateStrategy("fr_arb", make_calculator(), config)

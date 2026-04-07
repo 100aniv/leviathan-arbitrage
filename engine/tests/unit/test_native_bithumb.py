@@ -83,9 +83,10 @@ class TestInit:
     def test_ws_url(self, adapter):
         assert adapter._ws_orderbook_url("BTC/KRW") == "wss://pubwss.bithumb.com/pub/ws"
 
-    def test_default_headers_form_encoded(self, adapter):
+    def test_default_headers_json(self, adapter):
+        # Bithumb v2 REST API uses JSON (not form-urlencoded)
         headers = adapter._default_headers()
-        assert headers["Content-Type"] == "application/x-www-form-urlencoded"
+        assert headers["Content-Type"] == "application/json"
 
 
 # ---------------------------------------------------------------------------
@@ -93,44 +94,43 @@ class TestInit:
 # ---------------------------------------------------------------------------
 
 class TestAuthHeaders:
+    """Bithumb v2 uses JWT Bearer auth (not legacy HMAC Api-Key/Api-Sign)."""
+
     def test_auth_headers_keys_present(self, adapter):
-        headers = adapter._auth_headers("POST", "/trade/place", None, {"order_currency": "BTC"})
-        assert "Api-Key" in headers
-        assert "Api-Sign" in headers
-        assert "Api-Nonce" in headers
+        headers = adapter._auth_headers("GET", "/v1/accounts", None, None)
+        assert "Authorization" in headers
+        assert headers["Authorization"].startswith("Bearer ")
 
     def test_api_key_matches(self, adapter):
-        headers = adapter._auth_headers("POST", "/test", None, {})
-        assert headers["Api-Key"] == "bithumb_key"
+        import jwt as _jwt
+        headers = adapter._auth_headers("GET", "/v1/accounts", None, None)
+        token = headers["Authorization"].replace("Bearer ", "")
+        payload = _jwt.decode(token, options={"verify_signature": False})
+        assert payload["access_key"] == "bithumb_key"
 
-    def test_nonce_is_numeric_string(self, adapter):
-        headers = adapter._auth_headers("POST", "/test", None, {})
-        nonce = headers["Api-Nonce"]
-        assert nonce.isdigit()
+    def test_nonce_is_uuid_string(self, adapter):
+        import jwt as _jwt
+        headers = adapter._auth_headers("GET", "/v1/accounts", None, None)
+        token = headers["Authorization"].replace("Bearer ", "")
+        payload = _jwt.decode(token, options={"verify_signature": False})
+        assert "nonce" in payload
 
-    def test_signature_is_sha512_hex(self, adapter):
-        headers = adapter._auth_headers("POST", "/test", None, {})
-        sig = headers["Api-Sign"]
-        # SHA512 hex = 128 chars
-        assert len(sig) == 128
-        assert all(c in "0123456789abcdef" for c in sig)
+    def test_signature_is_jwt(self, adapter):
+        import jwt as _jwt
+        headers = adapter._auth_headers("GET", "/v1/accounts", None, None)
+        token = headers["Authorization"].replace("Bearer ", "")
+        # Verify using the actual api_secret
+        payload = _jwt.decode(token, "bithumb_secret", algorithms=["HS256"])
+        assert payload["access_key"] == "bithumb_key"
 
     def test_signature_correctness(self, adapter):
-        """Manually recompute the HMAC-SHA512 signature."""
-        path = "/trade/place"
-        form_data = {"order_currency": "BTC", "type": "bid"}
-
-        with patch("src.infra.exchange.native_bithumb.time") as mock_time:
-            mock_time.time.return_value = 1700000000.0
-            headers = adapter._auth_headers("POST", path, None, form_data)
-
-        nonce = "1700000000000"
-        query_str = urllib.parse.urlencode(sorted(form_data.items()))
-        prehash = path + chr(0) + query_str + chr(0) + nonce
-        expected_sig = hmac.new(
-            b"bithumb_secret", prehash.encode(), hashlib.sha512
-        ).hexdigest()
-        assert headers["Api-Sign"] == expected_sig
+        """JWT signed with api_secret; payload contains access_key + nonce + timestamp."""
+        import jwt as _jwt
+        headers = adapter._auth_headers("GET", "/v1/accounts", None, None)
+        token = headers["Authorization"].replace("Bearer ", "")
+        payload = _jwt.decode(token, "bithumb_secret", algorithms=["HS256"])
+        assert payload["access_key"] == "bithumb_key"
+        assert "timestamp" in payload
 
 
 # ---------------------------------------------------------------------------
@@ -207,53 +207,43 @@ class TestParseWsOrderbook:
 # ---------------------------------------------------------------------------
 
 class TestRestGetOrderbook:
+    """Bithumb v2: GET /v1/orderbook?markets=KRW-BTC returns list of orderbook objects."""
+
     @pytest.mark.asyncio
     async def test_returns_orderbook(self, adapter):
-        mock_resp = {
-            "status": "0000",
-            "data": {
-                "bids": [{"price": "50000000", "quantity": "0.5"}],
-                "asks": [{"price": "50100000", "quantity": "0.3"}],
-            },
-        }
+        mock_resp = [{"market": "KRW-BTC", "orderbook_units": [
+            {"bid_price": "50000000", "bid_size": "0.5",
+             "ask_price": "50100000", "ask_size": "0.3"},
+        ]}]
         adapter._http = MagicMock()
         adapter._http.request = AsyncMock(return_value=MagicMock(
-            json=lambda: mock_resp,
-            raise_for_status=lambda: None,
+            json=lambda: mock_resp, raise_for_status=lambda: None,
         ))
-
         ob = await adapter._rest_get_orderbook("BTC/KRW", 20)
         assert ob.symbol == "BTC/KRW"
         assert ob.exchange_id == "bithumb"
         assert ob.bids[0].price == Decimal("50000000")
 
     @pytest.mark.asyncio
-    async def test_uses_correct_path(self, adapter):
-        """Path includes coin name: /public/orderbook/BTC_KRW"""
-        mock_resp = {"data": {"bids": [], "asks": []}}
+    async def test_uses_markets_param(self, adapter):
+        """v2 uses params={'markets':'KRW-ETH'} not path-based routing."""
         adapter._http = MagicMock()
         adapter._http.request = AsyncMock(return_value=MagicMock(
-            json=lambda: mock_resp,
-            raise_for_status=lambda: None,
+            json=lambda: [], raise_for_status=lambda: None,
         ))
-
         await adapter._rest_get_orderbook("ETH/KRW", 20)
-        call_args = adapter._http.request.call_args
-        path = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("url", "")
-        assert "ETH_KRW" in path
+        call_kwargs = adapter._http.request.call_args[1]
+        assert call_kwargs.get("params", {}).get("markets") == "KRW-ETH"
 
     @pytest.mark.asyncio
-    async def test_depth_passed_as_count(self, adapter):
-        mock_resp = {"data": {"bids": [], "asks": []}}
+    async def test_empty_response_returns_empty_orderbook(self, adapter):
         adapter._http = MagicMock()
         adapter._http.request = AsyncMock(return_value=MagicMock(
-            json=lambda: mock_resp,
-            raise_for_status=lambda: None,
+            json=lambda: [], raise_for_status=lambda: None,
         ))
-
-        await adapter._rest_get_orderbook("BTC/KRW", 10)
-        call_kwargs = adapter._http.request.call_args[1]
-        assert call_kwargs.get("params", {}).get("count") == 10
+        ob = await adapter._rest_get_orderbook("BTC/KRW", 10)
+        assert ob.bids == []
+        assert ob.asks == []
 
 
 # ---------------------------------------------------------------------------
@@ -261,15 +251,15 @@ class TestRestGetOrderbook:
 # ---------------------------------------------------------------------------
 
 class TestRestPlaceOrder:
+    """Bithumb v2: POST /v1/orders returns {"uuid": "...", ...}."""
+
     @pytest.mark.asyncio
     async def test_buy_order(self, adapter):
-        mock_resp = {"status": "0000", "data": {"order_id": "ORD-123"}}
+        mock_resp = {"uuid": "ORD-123", "side": "bid"}
         adapter._http = MagicMock()
         adapter._http.request = AsyncMock(return_value=MagicMock(
-            json=lambda: mock_resp,
-            raise_for_status=lambda: None,
+            json=lambda: mock_resp, raise_for_status=lambda: None,
         ))
-
         order = _make_order(side=OrderSide.BUY)
         trade = await adapter._rest_place_order(order)
         assert trade.side == OrderSide.BUY
@@ -277,13 +267,11 @@ class TestRestPlaceOrder:
 
     @pytest.mark.asyncio
     async def test_sell_order(self, adapter):
-        mock_resp = {"status": "0000", "data": {"order_id": "ORD-456"}}
+        mock_resp = {"uuid": "ORD-456", "side": "ask"}
         adapter._http = MagicMock()
         adapter._http.request = AsyncMock(return_value=MagicMock(
-            json=lambda: mock_resp,
-            raise_for_status=lambda: None,
+            json=lambda: mock_resp, raise_for_status=lambda: None,
         ))
-
         order = _make_order(side=OrderSide.SELL)
         trade = await adapter._rest_place_order(order)
         assert trade.side == OrderSide.SELL
@@ -291,13 +279,11 @@ class TestRestPlaceOrder:
 
     @pytest.mark.asyncio
     async def test_amount_matches_order(self, adapter):
-        mock_resp = {"status": "0000", "data": {"order_id": "ORD-789"}}
+        mock_resp = {"uuid": "ORD-789"}
         adapter._http = MagicMock()
         adapter._http.request = AsyncMock(return_value=MagicMock(
-            json=lambda: mock_resp,
-            raise_for_status=lambda: None,
+            json=lambda: mock_resp, raise_for_status=lambda: None,
         ))
-
         order = _make_order(amount=Decimal("0.05"))
         trade = await adapter._rest_place_order(order)
         assert trade.amount == Decimal("0.05")
@@ -308,15 +294,15 @@ class TestRestPlaceOrder:
 # ---------------------------------------------------------------------------
 
 class TestRestCancelOrder:
+    """Bithumb v2: DELETE /v1/order returns {"uuid": "...", "state": "cancel"}."""
+
     @pytest.mark.asyncio
     async def test_cancel_success(self, adapter):
-        mock_resp = {"status": "0000"}
+        mock_resp = {"uuid": "ORD-123", "state": "cancel"}
         adapter._http = MagicMock()
         adapter._http.request = AsyncMock(return_value=MagicMock(
-            json=lambda: mock_resp,
-            raise_for_status=lambda: None,
+            json=lambda: mock_resp, raise_for_status=lambda: None,
         ))
-
         result = await adapter._rest_cancel_order("ORD-123", "BTC/KRW")
         assert result is True
 
@@ -343,38 +329,30 @@ class TestRestCancelOrder:
 # ---------------------------------------------------------------------------
 
 class TestRestGetBalances:
+    """Bithumb v2: GET /v1/accounts returns list[{"currency","balance","locked",...}]."""
+
     @pytest.mark.asyncio
     async def test_balances_parsed(self, adapter):
-        mock_resp = {
-            "status": "0000",
-            "data": {
-                "available_btc": "0.5",
-                "total_btc": "0.6",
-                "available_krw": "1000000",
-                "total_krw": "1000000",
-            },
-        }
+        mock_resp = [
+            {"currency": "BTC", "balance": "0.5", "locked": "0.1"},
+            {"currency": "KRW", "balance": "1000000", "locked": "0"},
+        ]
         adapter._http = MagicMock()
         adapter._http.request = AsyncMock(return_value=MagicMock(
-            json=lambda: mock_resp,
-            raise_for_status=lambda: None,
+            json=lambda: mock_resp, raise_for_status=lambda: None,
         ))
-
         balances = await adapter._rest_get_balances()
         assert "BTC" in balances
         assert balances["BTC"].free == Decimal("0.5")
-        assert balances["BTC"].total == Decimal("0.6")
         assert balances["BTC"].used == Decimal("0.1")
+        assert balances["BTC"].total == Decimal("0.6")
 
     @pytest.mark.asyncio
     async def test_empty_data_returns_empty(self, adapter):
-        mock_resp = {"status": "0000", "data": {}}
         adapter._http = MagicMock()
         adapter._http.request = AsyncMock(return_value=MagicMock(
-            json=lambda: mock_resp,
-            raise_for_status=lambda: None,
+            json=lambda: [], raise_for_status=lambda: None,
         ))
-
         balances = await adapter._rest_get_balances()
         assert balances == {}
 

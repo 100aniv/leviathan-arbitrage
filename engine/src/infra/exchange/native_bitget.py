@@ -10,6 +10,7 @@ import time
 from decimal import Decimal
 from typing import Any
 
+from src.core.config_loader import get_config
 from src.core.models import Balance, FeeRate, Order, OrderBook, OrderSide, Position, Trade
 from src.infra.exchange.native_adapter import NativeAdapter
 from src.infra.exchange.rate_limiter import RateLimitConfig
@@ -30,13 +31,26 @@ def _normalize_symbol(symbol: str) -> str:
     return symbol.replace("/", "")
 
 
+def _denormalize_symbol(symbol: str) -> str:
+    """'BTCUSDT' -> 'BTC/USDT' (best-effort: assumes USDT quote)."""
+    if "/" in symbol:
+        return symbol
+    for quote in ("USDT", "USDC", "BTC", "ETH", "BNB"):
+        if symbol.endswith(quote):
+            base = symbol[: -len(quote)]
+            return f"{base}/{quote}"
+    return symbol
+
+
 class NativeBitgetAdapter(NativeAdapter):
     """Native Bitget spot adapter — direct HTTP/WebSocket, no ccxt."""
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, exchange_id: str = "bitget", **kwargs: Any) -> None:
         kwargs.setdefault("rate_limits", _BITGET_RATE_LIMITS)
-        super().__init__(exchange_id="bitget", **kwargs)
+        super().__init__(exchange_id=exchange_id, **kwargs)
         self._market_type: str = "spot"  # set to "futures" by create_native_adapter
+        self._price_precisions: dict[str, int] = {}  # symbol → decimal places
+        self._qty_step_sizes: dict[str, Decimal] = {}  # symbol → step size
 
     # ------------------------------------------------------------------
     # Abstract implementations
@@ -111,15 +125,43 @@ class NativeBitgetAdapter(NativeAdapter):
         data = resp["data"]
         return self._build_orderbook(symbol, data["bids"], data["asks"])
 
+    async def _fetch_contract_specs(self, symbol: str) -> None:
+        """Fetch and cache price/qty precision for a futures symbol."""
+        if symbol in self._price_precisions:
+            return
+        try:
+            sym = _normalize_symbol(symbol)
+            resp = await self._request(
+                "GET",
+                "/api/v2/mix/market/contracts",
+                params={"symbol": sym, "productType": "USDT-FUTURES"},
+            )
+            for contract in resp.get("data", []):
+                if contract.get("symbol") == sym:
+                    self._price_precisions[symbol] = int(contract.get("pricePlace", 6))
+                    self._qty_step_sizes[symbol] = Decimal(str(contract.get("sizeMultiplier", "0.0001")))
+                    return
+            # Fallback: infer from price magnitude
+            self._price_precisions[symbol] = 6
+        except Exception as exc:
+            logger.debug("bitget_contract_specs_fetch_failed symbol=%s: %s", symbol, exc)
+            self._price_precisions[symbol] = 6  # safe default
+
+    def _quantize_price(self, symbol: str, price: Decimal) -> str:
+        decimals = self._price_precisions.get(symbol, 6)
+        quantizer = Decimal(10) ** (-decimals)
+        return str(price.quantize(quantizer))
+
     async def _rest_place_order(self, order: Order) -> Trade:
         sym = _normalize_symbol(order.symbol)
         side = "buy" if order.side == OrderSide.BUY else "sell"
 
         if self._market_type == "futures":
             qty = order.amount
-            # PHOENIX: Enforce Bitget Futures MIN_NOTIONAL ($5) — use $6 safety buffer
+            # PHOENIX: Enforce Bitget Futures MIN_NOTIONAL — load from config
+            _ex_min = get_config("execution.exchange_min_notional.bitget_futures", default=6)
+            _MIN_NOTIONAL = Decimal(str(_ex_min))
             if order.price and order.price > 0:
-                _MIN_NOTIONAL = Decimal("6")
                 if qty * order.price < _MIN_NOTIONAL:
                     qty = (_MIN_NOTIONAL / order.price).quantize(Decimal("0.000001"))
                     logger.debug(
@@ -138,7 +180,10 @@ class NativeBitgetAdapter(NativeAdapter):
                 "force": "gtc",
             }
             if order.price:
-                body["price"] = str(order.price)
+                # PHOENIX: Fetch contract specs on first order for this symbol
+                if order.symbol not in self._price_precisions:
+                    await self._fetch_contract_specs(order.symbol)
+                body["price"] = self._quantize_price(order.symbol, order.price)
             if order.client_order_id:
                 body["clientOid"] = order.client_order_id
             resp = await self._request("POST", "/api/v2/mix/order/place-order", data=body, signed=True)
@@ -151,7 +196,7 @@ class NativeBitgetAdapter(NativeAdapter):
                 "force": "gtc",
             }
             if order.price:
-                body["price"] = str(order.price)
+                body["price"] = str(order.price.normalize())
             if order.client_order_id:
                 body["clientOid"] = order.client_order_id
             resp = await self._request("POST", "/api/v2/spot/trade/place-order", data=body, signed=True)
@@ -239,7 +284,40 @@ class NativeBitgetAdapter(NativeAdapter):
         return result
 
     async def _rest_get_positions(self) -> list[Position]:
-        return []
+        if self._market_type != "futures":
+            return []
+        try:
+            resp = await self._request(
+                "GET", "/api/v2/mix/position/allPosition",
+                params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
+                signed=True,
+            )
+            positions = []
+            for item in resp.get("data", []):
+                symbol_raw = item.get("symbol", "")
+                symbol = _denormalize_symbol(symbol_raw)
+                hold_side = item.get("holdSide", "long")
+                total = Decimal(str(item.get("total", "0")))
+                if total == 0:
+                    continue
+                size = total if hold_side == "long" else -total
+                entry_price = Decimal(str(item.get("averageOpenPrice", "0")))
+                unrealized_pnl = Decimal(str(item.get("unrealizedPL", "0")))
+                mark_price_str = item.get("markPrice", item.get("averageOpenPrice", "0"))
+                mark_price = Decimal(str(mark_price_str))
+                positions.append(Position(
+                    exchange_id=self.exchange_id,
+                    symbol=symbol,
+                    size=size,
+                    entry_price=entry_price,
+                    mark_price=mark_price,
+                    unrealized_pnl=unrealized_pnl,
+                    leverage=int(item.get("leverage", 1)),
+                ))
+            return positions
+        except Exception as exc:
+            logger.warning("bitget_get_positions_failed: %s", exc)
+            return []
 
     async def _rest_get_fee_rate(self, symbol: str) -> FeeRate:
         return FeeRate(

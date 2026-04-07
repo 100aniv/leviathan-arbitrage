@@ -24,7 +24,7 @@ from src.core.models import OrderSide
 
 def _make_shadow(monkeypatch, disabled: str = ""):
     """Create a minimal ShadowMode with given SHADOW_DISABLED_STRATEGIES."""
-    monkeypatch.setenv("SHADOW_DISABLED_STRATEGIES", disabled)
+    monkeypatch.setenv("PAPER_DISABLED_STRATEGIES", disabled)
     from src.modes.shadow import ShadowMode
 
     mock_executor = MagicMock()

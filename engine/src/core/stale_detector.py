@@ -21,6 +21,7 @@ from typing import Any
 import structlog
 
 from src.core.config import get_settings
+from src.core.exchanges import KRW_EXCHANGES
 
 logger = structlog.get_logger(__name__)
 
@@ -50,8 +51,6 @@ class StaleOrderbookDetector:
         # On fat-tail loss:
         detector.add_blacklist(exchange, symbol)
     """
-
-    KOREAN_EXCHANGES = {"upbit", "bithumb", "coinone"}
 
     def __init__(
         self,
@@ -116,7 +115,7 @@ class StaleOrderbookDetector:
         except Exception:
             return True
 
-        is_korean = exchange in self.KOREAN_EXCHANGES
+        is_korean = exchange in KRW_EXCHANGES
         symbol_books: dict[str, Any] = all_books.get(symbol, {})
         comparison_prices: list[float] = []
 
@@ -124,7 +123,7 @@ class StaleOrderbookDetector:
             if other_exchange == exchange:
                 continue
             # For Korean exchange: only use non-Korean as reference (Scenario 2 mitigation)
-            if is_korean and other_exchange in self.KOREAN_EXCHANGES:
+            if is_korean and other_exchange in KRW_EXCHANGES:
                 continue
             try:
                 ob_bid = other_book.best_bid()

@@ -125,8 +125,8 @@ class TestDefaultLegDelayValues:
     def test_env_var_leg_delay(self) -> None:
         """SHADOW_LEG_DELAY_MIN_MS and MAX_MS env vars override defaults."""
         with patch.dict(os.environ, {
-            "SHADOW_LEG_DELAY_MIN_MS": "100",
-            "SHADOW_LEG_DELAY_MAX_MS": "500",
+            "PAPER_LEG_DELAY_MIN_MS": "100",
+            "PAPER_LEG_DELAY_MAX_MS": "500",
         }):
             shadow = make_shadow_mode()
         assert shadow._leg_delay_min_ms == 100.0, (

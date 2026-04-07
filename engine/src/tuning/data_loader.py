@@ -188,6 +188,7 @@ class DataLoader:
         self,
         strategy: str | None = None,
         days: int = 7,
+        mode: str = "live",
     ) -> OHLCVWindow:
         """최근 N일 execution_log를 1시간 OHLCV 형태로 변환."""
         if self._conn is None:
@@ -204,11 +205,13 @@ class DataLoader:
             FROM execution_log
             WHERE ts >= NOW() - make_interval(days => $1)
               AND ($2::text IS NULL OR strategy_id = $2)
+              AND mode = $3
             GROUP BY time
             ORDER BY time ASC
             """,
             days,
             strategy,
+            mode,
         )
 
         if not rows:
@@ -233,6 +236,7 @@ class DataLoader:
     async def load_execution_spreads(
         self,
         days: int = 7,
+        mode: str = "live",
     ) -> list[SpreadRecord]:
         """최근 N일 execution_log에서 buy/sell price로 spread 데이터 추출."""
         if self._conn is None:
@@ -247,9 +251,11 @@ class DataLoader:
                 (sell_price - buy_price - fee_total) AS net_spread
             FROM execution_log
             WHERE ts >= NOW() - make_interval(days => $1)
+              AND mode = $2
             ORDER BY ts ASC
             """,
             days,
+            mode,
         )
 
         return [

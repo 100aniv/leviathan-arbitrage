@@ -169,7 +169,7 @@ class TestLossCapBehavior:
     @pytest.mark.asyncio
     async def test_loss_cap_env_override(self, monkeypatch):
         """SHADOW_MAX_LOSS_PER_TRADE_USD=100 sets cap at $100."""
-        monkeypatch.setenv("SHADOW_MAX_LOSS_PER_TRADE_USD", "100")
+        monkeypatch.setenv("PAPER_MAX_LOSS_PER_TRADE_USD", "100")
         from src.modes.shadow import ShadowMode
 
         mode = ShadowMode(signal_generator=MagicMock(), paper_executor=MagicMock())

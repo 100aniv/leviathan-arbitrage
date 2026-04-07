@@ -118,4 +118,6 @@ def create_native_adapter(
     # Set market_type for futures (adapter must support it)
     if market_type == "futures" and hasattr(adapter, "_market_type"):
         adapter._market_type = market_type
+    # Pass full exchange_id (e.g. "bitget_futures") lowercased for correct logging
+    adapter.exchange_id = eid
     return adapter

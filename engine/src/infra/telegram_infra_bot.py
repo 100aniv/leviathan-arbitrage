@@ -9,6 +9,7 @@ Phase S20-C: /engine 명령 DevBot에서 이동 (역할 재정의).
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from typing import Any
 
@@ -33,6 +34,10 @@ class InfraTelegramBot(TelegramBotBase):
         self._monitor_daemon: Any = None
         self._pending_restarts: dict[int, tuple[str, float]] = {}
         self._pending_engines: dict[int, float] = {}
+        self._pending_closepositions: dict[int, float] = {}
+        self._watchdog_enabled: bool = False
+        self._watchdog_task: asyncio.Task | None = None
+        self._redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
         self.register_command("/health", self._cmd_health)
         self.register_command("/docker", self._cmd_docker)
@@ -41,10 +46,13 @@ class InfraTelegramBot(TelegramBotBase):
         self.register_command("/resources", self._cmd_resources)
         self.register_command("/restart", self._cmd_restart)
         self.register_command("/engine", self._cmd_engine)
+        self.register_command("/watchdog", self._cmd_watchdog)
+        self.register_command("/closepositions", self._cmd_closepositions)
         self.register_command("/help", self._cmd_help)
 
         self.register_callback("restart_", self._cb_restart)
         self.register_callback("engine_", self._cb_engine)
+        self.register_callback("closepos_", self._cb_closepositions)
 
     def set_startup_checker(self, checker: Any) -> None:
         """StartupChecker 인스턴스 주입."""
@@ -517,6 +525,153 @@ class InfraTelegramBot(TelegramBotBase):
                 return "오류"
         return None
 
+    async def _cmd_watchdog(self, text: str, chat_id: int, message: dict) -> str:
+        """엔진 하트비트 감시 — Dead Man's Switch 모니터링."""
+        parts = text.strip().split()
+        action = parts[1] if len(parts) > 1 else "status"
+
+        if action == "on":
+            if not self._watchdog_enabled:
+                self._watchdog_enabled = True
+                self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+                return (
+                    "🐕 Watchdog 활성화\n"
+                    "━━━━━━━━━━━━━━━\n"
+                    "Redis leviathan:heartbeat 모니터링 시작\n"
+                    "30초 이상 무응답 시 알림 전송"
+                )
+            return "🐕 Watchdog 이미 활성화 상태"
+
+        if action == "off":
+            self._watchdog_enabled = False
+            if self._watchdog_task:
+                self._watchdog_task.cancel()
+                self._watchdog_task = None
+            return "🐕 Watchdog 비활성화됨"
+
+        if action == "status":
+            status = "활성화 ✅" if self._watchdog_enabled else "비활성화 ❌"
+            return (
+                f"🐕 Watchdog 상태: {status}\n"
+                f"Redis URL: {self._redis_url}\n"
+                f"모니터 키: leviathan:heartbeat (TTL=30s)"
+            )
+
+        return "사용법: /watchdog on|off|status"
+
+    async def _watchdog_loop(self) -> None:
+        """Redis leviathan:heartbeat 키 TTL 모니터링.
+
+        엔진이 5초마다 TTL=30s 키를 갱신. 만료 시 → 엔진 장애.
+        """
+        missed = 0
+        while self._watchdog_enabled:
+            try:
+                await asyncio.sleep(15)
+                import redis.asyncio as aioredis
+                r = aioredis.from_url(self._redis_url, socket_timeout=5)
+                try:
+                    val = await r.get("leviathan:heartbeat")
+                    if val is None:
+                        missed += 1
+                        if missed >= 2:  # 30초 이상 무응답
+                            await self.send_message(
+                                f"🚨 엔진 하트비트 소실!\n"
+                                f"━━━━━━━━━━━━━━━\n"
+                                f"leviathan:heartbeat 키 없음\n"
+                                f"연속 무응답: {missed}회 ({missed * 15}초)\n\n"
+                                f"즉시 확인:\n"
+                                f"  /health — 인프라 상태\n"
+                                f"  /engine status — 엔진 상태\n"
+                                f"  /closepositions — 긴급 청산"
+                            )
+                        else:
+                            logger.warning("watchdog_heartbeat_missed count=%d", missed)
+                    else:
+                        if missed > 0:
+                            await self.send_message(
+                                f"✅ 엔진 하트비트 복구\n"
+                                f"무응답 {missed}회 후 정상화"
+                            )
+                        missed = 0
+                finally:
+                    await r.aclose()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.warning("watchdog_loop_error error=%s", exc)
+
+    async def _cmd_closepositions(self, text: str, chat_id: int, message: dict) -> str:
+        """긴급 포지션 전량 청산 — Redis leviathan:halt 설정 → 엔진 KillSwitch 활성화."""
+        kb = InlineKeyboard()
+        kb.row(
+            ("🚨 전량 청산 실행", "closepos_confirm"),
+            ("❌ 취소", "closepos_cancel"),
+        )
+        await self.send_message(
+            "⚠️ 긴급 포지션 전량 청산\n"
+            "━━━━━━━━━━━━━━━\n"
+            "Redis에 leviathan:halt=1 을 설정합니다.\n\n"
+            "▶ 엔진 실행 중: KillSwitch Tier1 즉시 활성화\n"
+            "  → Tier2: 미체결 주문 전량 취소\n"
+            "  → Tier3: 오픈 포지션 전량 시장가 청산\n\n"
+            "▶ 엔진 중단 상태: 재시작 시 Redis halt 감지\n\n"
+            "정말 실행하시겠습니까?",
+            reply_markup=kb.to_markup(),
+            chat_id=str(chat_id),
+        )
+        self._pending_closepositions[chat_id] = time.time()
+        return None  # type: ignore[return-value]
+
+    async def _cb_closepositions(self, callback_query: dict) -> str | None:
+        """Close positions 인라인 키보드 콜백."""
+        data = callback_query["data"]
+        msg = callback_query["message"]
+        chat_id: int = msg["chat"]["id"]
+        message_id: int = msg["message_id"]
+
+        if data == "closepos_cancel":
+            self._pending_closepositions.pop(chat_id, None)
+            await self.edit_message(chat_id, message_id, "✅ 청산 취소됨")
+            return "취소됨"
+
+        if data == "closepos_confirm":
+            pending_ts = self._pending_closepositions.get(chat_id)
+            if pending_ts is None or (time.time() - pending_ts) > 60:
+                self._pending_closepositions.pop(chat_id, None)
+                await self.edit_message(chat_id, message_id, "⏰ 시간 초과 — 다시 /closepositions")
+                return "시간 초과"
+
+            del self._pending_closepositions[chat_id]
+            await self.edit_message(chat_id, message_id, "🚨 Redis halt 명령 전송 중...")
+
+            try:
+                import redis.asyncio as aioredis
+                r = aioredis.from_url(self._redis_url, socket_timeout=5)
+                try:
+                    await r.set("leviathan:halt", "1", ex=86400)
+                    await self.edit_message(
+                        chat_id, message_id,
+                        "✅ leviathan:halt=1 전송 완료\n"
+                        "━━━━━━━━━━━━━━━\n"
+                        "엔진이 실행 중이면 5초 내 KillSwitch 활성화됩니다.\n"
+                        "엔진이 중단된 경우 재시작 시 halt 감지 후 자동 청산.\n\n"
+                        "상태 확인: /health /engine status"
+                    )
+                finally:
+                    await r.aclose()
+                return "halt 명령 전송 완료"
+            except Exception as exc:
+                logger.error("closepositions_redis_error error=%s", exc)
+                await self.edit_message(
+                    chat_id, message_id,
+                    f"❌ Redis 연결 실패: {exc}\n\n"
+                    f"수동 청산 필요:\n"
+                    f"  scripts/close_positions.py --execute"
+                )
+                return "Redis 오류"
+        return None
+
     async def _cmd_help(self, text: str, chat_id: int, message: dict) -> str:
         """도움말."""
         return (
@@ -529,6 +684,8 @@ class InfraTelegramBot(TelegramBotBase):
             "🖥️ /resources — 시스템 리소스\n"
             "🔄 /restart &lt;svc&gt; — 서비스 재시작\n"
             "🔧 /engine &lt;action&gt; — 엔진 제어\n"
+            "🐕 /watchdog &lt;on|off|status&gt; — 하트비트 감시\n"
+            "🚨 /closepositions — 긴급 포지션 전량 청산\n"
             "❓ /help — 이 도움말"
         )
 

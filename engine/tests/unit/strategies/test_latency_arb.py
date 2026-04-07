@@ -151,7 +151,8 @@ async def test_no_trade_when_costs_exceed_profit():
 
 @pytest.mark.asyncio
 async def test_size_capped_by_max_position_size():
-    strategy = make_strategy(make_tracker(), max_position_size=Decimal("0.2"))
+    # max_position_size is USD notional: $10010 / avg_price($50050) = 0.2 BTC cap
+    strategy = make_strategy(make_tracker(), max_position_size=Decimal("10010"))
     await strategy.start()
 
     result = await strategy.on_signal(make_signal(volume=Decimal("1.0")))
