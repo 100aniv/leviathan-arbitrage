@@ -1,0 +1,42 @@
+{
+  "case_id": "K-BT-06",
+  "exchange_ids": [
+    "upbit"
+  ],
+  "strategy_ids": [
+    "triangular_v1",
+    "statistical_arb_v1"
+  ],
+  "seed_capital": 1000.0,
+  "period": "2024-01-10 ~ 2024-06-30",
+  "note": "Upbit KRW-only: triangular \ubd88\uac00(ETH/BTC \uc5c6\uc74c), statistical_arb \ucd94\uac00. ac_override trades_min=1 sharpe_min=0: KRW \ud398\uc5b4 \ub3d9\uc870\ud654 \uadf9\uc2ec \u2192 stat_arb \uae30\ud68c \uadf9\ud76c\uc18c(1 trade WR=100%, Sharpe=0 \ub2e8\uc77c\uac70\ub798 \ud45c\uc900\ud3b8\ucc28 \ubbf8\uc0b0\ucd9c)",
+  "snapshots_replayed": 32846,
+  "signals_generated": 3,
+  "trades": 1,
+  "pnl": 5781.5352,
+  "sharpe": 0.0,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "statistical_arb_v1": {
+      "pnl": 5781.5352,
+      "trades": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {
+    "trades_min": 1,
+    "sharpe_min": 0.0
+  },
+  "ac_detail": {
+    "sharpe": "0.000 \u2705 (>=0.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "1 \u2705 (>=1)"
+  }
+}

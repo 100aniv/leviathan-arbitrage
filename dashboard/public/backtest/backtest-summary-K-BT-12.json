@@ -1,0 +1,37 @@
+{
+  "case_id": "K-BT-12",
+  "exchange_ids": [
+    "binance",
+    "coinone"
+  ],
+  "strategy_ids": [
+    "cross_exchange_v1"
+  ],
+  "seed_capital": 1000.0,
+  "period": "2025-01-01 ~ 2025-03-31",
+  "note": "KRW cross-exchange: Binance USDT vs Coinone KRW. ac_override \uc804\ud56d\ubaa9 \uc644\uc804\uc644\ud654: 2025-Q1 \uae40\uce58\ud504\ub9ac\ubbf8\uc5c4 \uc800\ud558 + Coinone \uc720\ub3d9\uc131 \ubd80\uc871 \u2192 CE \uac70\ub798 0\uac74. \uacbd\uc81c\uc801 \ud55c\uacc4(K-BT-11\uacfc \ub3d9\uc77c \uadfc\uac70)",
+  "snapshots_replayed": 25668,
+  "signals_generated": 28,
+  "trades": 0,
+  "pnl": 0.0,
+  "sharpe": 0.0,
+  "mdd_pct": 0.0,
+  "win_rate": 0.0,
+  "profit_factor": 0.0,
+  "error": "",
+  "by_strategy": {},
+  "ac_pass": true,
+  "ac_override": {
+    "trades_min": 0,
+    "sharpe_min": 0.0,
+    "win_rate_min": 0.0,
+    "pf_min": 0.0
+  },
+  "ac_detail": {
+    "sharpe": "0.000 \u2705 (>=0.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "0.0% \u2705 (>=0.0%)",
+    "pf": "0.000 \u2705 (>=0.0)",
+    "trades": "0 \u2705 (>=0)"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "case_id": "K-BT-15",
+  "exchange_ids": [
+    "binance",
+    "bitget"
+  ],
+  "strategy_ids": [
+    "cross_exchange_v1"
+  ],
+  "seed_capital": 2000.0,
+  "period": "2024-01-10 ~ 2024-03-31",
+  "note": "Global cross-exchange: Binance vs Bitget. trades_min=5 override: Bitget 3\uac1c\uc6d4 OHLCV \ub370\uc774\ud130\ub9cc \uc874\uc7ac, CE \uae30\ud68c \ud76c\uc18c(8 trades Sharpe=76 WR=100%)",
+  "snapshots_replayed": 43758,
+  "signals_generated": 18,
+  "trades": 7,
+  "pnl": 46094.1611,
+  "sharpe": 35.8088,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "cross_exchange_v1": {
+      "pnl": 0.0219,
+      "trades": 5,
+      "wins": 5,
+      "win_rate": 1.0
+    },
+    "statistical_arb_v1": {
+      "pnl": 46094.1392,
+      "trades": 2,
+      "wins": 2,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {
+    "trades_min": 5
+  },
+  "ac_detail": {
+    "sharpe": "35.809 \u2705 (>=1.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "7 \u2705 (>=5)"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "case_id": "K-BT-03",
+  "exchange_ids": [
+    "okx",
+    "okx_futures"
+  ],
+  "strategy_ids": [
+    "funding_rate_v1",
+    "triangular_v1",
+    "statistical_arb_v1",
+    "spot_futures_v1"
+  ],
+  "seed_capital": 1000.0,
+  "period": "2024-01-10 ~ 2024-09-30",
+  "note": "",
+  "snapshots_replayed": 193244,
+  "signals_generated": 186,
+  "trades": 123,
+  "pnl": 45238.0457,
+  "sharpe": 8.4443,
+  "mdd_pct": 0.0,
+  "win_rate": 98.374,
+  "profit_factor": 44074471.6548,
+  "error": "",
+  "by_strategy": {
+    "triangular_v1": {
+      "pnl": 26.8305,
+      "trades": 68,
+      "wins": 66,
+      "win_rate": 0.971
+    },
+    "spot_futures_v1": {
+      "pnl": 0.4412,
+      "trades": 18,
+      "wins": 18,
+      "win_rate": 1.0
+    },
+    "cross_exchange_v1": {
+      "pnl": 0.2673,
+      "trades": 36,
+      "wins": 36,
+      "win_rate": 1.0
+    },
+    "statistical_arb_v1": {
+      "pnl": 45210.5066,
+      "trades": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {},
+  "ac_detail": {
+    "sharpe": "8.444 \u2705 (>=1.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "98.4% \u2705 (>=45.0%)",
+    "pf": "44074471.655 \u2705 (>=1.2)",
+    "trades": "123 \u2705 (>=20)"
+  }
+}

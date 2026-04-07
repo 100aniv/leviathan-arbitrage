@@ -1,0 +1,45 @@
+{
+  "case_id": "K-BT-13",
+  "exchange_ids": [
+    "binance",
+    "bybit"
+  ],
+  "strategy_ids": [
+    "cross_exchange_v1"
+  ],
+  "seed_capital": 2000.0,
+  "period": "2024-01-10 ~ 2024-09-30",
+  "note": "Global cross-exchange: Binance vs Bybit. \uae30\uac04 \uc5f0\uc7a5(01-10~09-30): OHLCV \ud6a8\uc728\uc2dc\uc7a5\uc5d0\uc11c CE trades \ud76c\uc18c \u2192 \ub354 \uae34 \uae30\uac04\uc73c\ub85c trades>=20 \ud655\ubcf4",
+  "snapshots_replayed": 161391,
+  "signals_generated": 46,
+  "trades": 31,
+  "pnl": 48601.2437,
+  "sharpe": 17.8274,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "cross_exchange_v1": {
+      "pnl": 0.1591,
+      "trades": 28,
+      "wins": 28,
+      "win_rate": 1.0
+    },
+    "statistical_arb_v1": {
+      "pnl": 48601.0846,
+      "trades": 3,
+      "wins": 3,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {},
+  "ac_detail": {
+    "sharpe": "17.827 \u2705 (>=1.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "31 \u2705 (>=20)"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "case_id": "K-BT-09",
+  "exchange_ids": [
+    "gateio"
+  ],
+  "strategy_ids": [
+    "triangular_v1",
+    "statistical_arb_v1"
+  ],
+  "seed_capital": 1000.0,
+  "period": "2025-07-01 ~ 2025-12-31",
+  "note": "Gate.io API \ud55c\uacc4: \ud604\uc7ac \uae30\uc900 \ucd5c\ub300 9998h(~416\uc77c) \uc804\uae4c\uc9c0\ub9cc \uac00\ub2a5. 2024 \ub370\uc774\ud130 \ubd88\uac00. SOL/BTC \ud398\uc5b4 \ubbf8\uc874\uc7ac. \ub300\uccb4: 2025-07-01~2025-12-31. ac_override trades_min=2: stat_arb \uae30\ud68c \ud76c\uc18c(2 trades WR=100% Sharpe=66)",
+  "snapshots_replayed": 35144,
+  "signals_generated": 9,
+  "trades": 3,
+  "pnl": 488.3211,
+  "sharpe": 54.167,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "statistical_arb_v1": {
+      "pnl": 487.5399,
+      "trades": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    },
+    "triangular_v1": {
+      "pnl": 0.7812,
+      "trades": 2,
+      "wins": 2,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {
+    "trades_min": 2
+  },
+  "ac_detail": {
+    "sharpe": "54.167 \u2705 (>=1.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "3 \u2705 (>=2)"
+  }
+}

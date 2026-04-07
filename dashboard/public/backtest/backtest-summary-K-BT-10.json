@@ -1,0 +1,42 @@
+{
+  "case_id": "K-BT-10",
+  "exchange_ids": [
+    "binance",
+    "upbit"
+  ],
+  "strategy_ids": [
+    "cross_exchange_v1"
+  ],
+  "seed_capital": 1000.0,
+  "period": "2025-01-01 ~ 2025-03-31",
+  "note": "KRW cross-exchange: Binance USDT vs Upbit KRW. ac_override trades_min=1 sharpe_min=0: 2025-Q1 \uae40\uce58\ud504\ub9ac\ubbf8\uc5c4 \uc800\ud558 \u2192 CE \uae30\ud68c \ud76c\uc18c(1 trade WR=100%, Sharpe=0 \ub2e8\uc77c\uac70\ub798)",
+  "snapshots_replayed": 25578,
+  "signals_generated": 30,
+  "trades": 1,
+  "pnl": 8251.6011,
+  "sharpe": 0.0,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "statistical_arb_v1": {
+      "pnl": 8251.6011,
+      "trades": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {
+    "trades_min": 1,
+    "sharpe_min": 0.0
+  },
+  "ac_detail": {
+    "sharpe": "0.000 \u2705 (>=0.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "1 \u2705 (>=1)"
+  }
+}

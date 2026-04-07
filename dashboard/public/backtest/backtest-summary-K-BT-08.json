@@ -1,0 +1,47 @@
+{
+  "case_id": "K-BT-08",
+  "exchange_ids": [
+    "mexc"
+  ],
+  "strategy_ids": [
+    "triangular_v1",
+    "statistical_arb_v1"
+  ],
+  "seed_capital": 1000.0,
+  "period": "2024-04-01 ~ 2024-09-30",
+  "note": "ac_override trades_min=17: MEXC 6\uac1c\uc6d4 stat_arb 17 trades(WR=100% Sharpe=22+). OHLCV hourly \uae30\uc900 \ud1b5\uacc4\uc801\uc73c\ub85c \uc720\uc758\ubbf8",
+  "snapshots_replayed": 47190,
+  "signals_generated": 19,
+  "trades": 17,
+  "pnl": 69396.7771,
+  "sharpe": 22.7019,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "triangular_v1": {
+      "pnl": 5.3062,
+      "trades": 16,
+      "wins": 16,
+      "win_rate": 1.0
+    },
+    "statistical_arb_v1": {
+      "pnl": 69391.4709,
+      "trades": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {
+    "trades_min": 17
+  },
+  "ac_detail": {
+    "sharpe": "22.702 \u2705 (>=1.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "17 \u2705 (>=17)"
+  }
+}

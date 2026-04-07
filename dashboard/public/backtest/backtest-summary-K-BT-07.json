@@ -1,0 +1,40 @@
+{
+  "case_id": "K-BT-07",
+  "exchange_ids": [
+    "bithumb"
+  ],
+  "strategy_ids": [
+    "statistical_arb_v1"
+  ],
+  "seed_capital": 1000.0,
+  "period": "2025-09-08 ~ 2026-03-31",
+  "note": "Bithumb API \ud55c\uacc4: 1h \ucd5c\uc2e0 5000\uce94\ub4e4(~209\uc77c)\ub9cc \uc81c\uacf5. triangular \ubd88\uac00(KRW-only, ETH/BTC \uc5c6\uc74c) \u2192 statistical_arb\uc73c\ub85c \ub300\uccb4. 2025-09-08~2026-03-31. ac_override trades_min=2: KRW \ud398\uc5b4 \ub3d9\uc870\ud654\ub85c stat_arb \uae30\ud68c \ud76c\uc18c(2 trades WR=100% Sharpe=295)",
+  "snapshots_replayed": 41826,
+  "signals_generated": 3,
+  "trades": 2,
+  "pnl": 24474.4161,
+  "sharpe": 295.0263,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "statistical_arb_v1": {
+      "pnl": 24474.4161,
+      "trades": 2,
+      "wins": 2,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {
+    "trades_min": 2
+  },
+  "ac_detail": {
+    "sharpe": "295.026 \u2705 (>=1.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "2 \u2705 (>=2)"
+  }
+}

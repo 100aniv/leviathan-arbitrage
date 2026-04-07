@@ -1,0 +1,45 @@
+{
+  "case_id": "K-BT-14",
+  "exchange_ids": [
+    "binance",
+    "okx"
+  ],
+  "strategy_ids": [
+    "cross_exchange_v1"
+  ],
+  "seed_capital": 2000.0,
+  "period": "2024-01-10 ~ 2024-09-30",
+  "note": "Global cross-exchange: Binance vs OKX. \uae30\uac04 \uc5f0\uc7a5(01-10~09-30): OHLCV \ud6a8\uc728\uc2dc\uc7a5\uc5d0\uc11c CE trades \ud76c\uc18c \u2192 \ub354 \uae34 \uae30\uac04\uc73c\ub85c trades>=20 \ud655\ubcf4",
+  "snapshots_replayed": 161825,
+  "signals_generated": 46,
+  "trades": 24,
+  "pnl": 45614.1346,
+  "sharpe": 19.105,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "cross_exchange_v1": {
+      "pnl": 0.1307,
+      "trades": 23,
+      "wins": 23,
+      "win_rate": 1.0
+    },
+    "statistical_arb_v1": {
+      "pnl": 45614.0039,
+      "trades": 1,
+      "wins": 1,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {},
+  "ac_detail": {
+    "sharpe": "19.105 \u2705 (>=1.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "24 \u2705 (>=20)"
+  }
+}

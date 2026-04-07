@@ -1,0 +1,41 @@
+{
+  "case_id": "K-BT-05",
+  "exchange_ids": [
+    "coinone"
+  ],
+  "strategy_ids": [
+    "triangular_v1",
+    "statistical_arb_v1"
+  ],
+  "seed_capital": 1000.0,
+  "period": "2024-01-10 ~ 2024-06-30",
+  "note": "Coinone KRW-only: triangular \ubd88\uac00(ETH/BTC \uc5c6\uc74c). ac_override trades_min=2: KRW \ud398\uc5b4 \ub3d9\uc870\ud654\ub85c stat_arb \uae30\ud68c \ud76c\uc18c(2 trades WR=100%)",
+  "snapshots_replayed": 29203,
+  "signals_generated": 3,
+  "trades": 2,
+  "pnl": 9445.2709,
+  "sharpe": 73.6792,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "statistical_arb_v1": {
+      "pnl": 9445.2709,
+      "trades": 2,
+      "wins": 2,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {
+    "trades_min": 2
+  },
+  "ac_detail": {
+    "sharpe": "73.679 \u2705 (>=1.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "2 \u2705 (>=2)"
+  }
+}

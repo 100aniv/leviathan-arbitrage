@@ -1,0 +1,57 @@
+{
+  "case_id": "K-BT-16",
+  "exchange_ids": [
+    "binance_futures",
+    "bitget_futures"
+  ],
+  "strategy_ids": [
+    "futures_futures_v1"
+  ],
+  "seed_capital": 2000.0,
+  "period": "2024-01-10 ~ 2024-03-31",
+  "note": "Futures-futures: Binance Futures vs Bitget Futures",
+  "snapshots_replayed": 42940,
+  "signals_generated": 58,
+  "trades": 46,
+  "pnl": 46126.7151,
+  "sharpe": 13.9479,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "cross_exchange_v1": {
+      "pnl": 0.0899,
+      "trades": 13,
+      "wins": 13,
+      "win_rate": 1.0
+    },
+    "spot_futures_v1": {
+      "pnl": 0.2735,
+      "trades": 8,
+      "wins": 8,
+      "win_rate": 1.0
+    },
+    "futures_futures_v1": {
+      "pnl": 0.7114,
+      "trades": 23,
+      "wins": 23,
+      "win_rate": 1.0
+    },
+    "statistical_arb_v1": {
+      "pnl": 46125.6403,
+      "trades": 2,
+      "wins": 2,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {},
+  "ac_detail": {
+    "sharpe": "13.948 \u2705 (>=1.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "46 \u2705 (>=20)"
+  }
+}

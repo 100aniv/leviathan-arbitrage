@@ -1,0 +1,51 @@
+{
+  "case_id": "K-BT-17",
+  "exchange_ids": [
+    "binance_futures",
+    "bybit_futures"
+  ],
+  "strategy_ids": [
+    "futures_futures_v1"
+  ],
+  "seed_capital": 2000.0,
+  "period": "2024-01-10 ~ 2024-03-31",
+  "note": "Futures-futures: Binance Futures vs Bybit Futures",
+  "snapshots_replayed": 58216,
+  "signals_generated": 47,
+  "trades": 39,
+  "pnl": 48635.3598,
+  "sharpe": 15.8878,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "futures_futures_v1": {
+      "pnl": 1.002,
+      "trades": 24,
+      "wins": 24,
+      "win_rate": 1.0
+    },
+    "cross_exchange_v1": {
+      "pnl": 0.2226,
+      "trades": 12,
+      "wins": 12,
+      "win_rate": 1.0
+    },
+    "statistical_arb_v1": {
+      "pnl": 48634.1352,
+      "trades": 3,
+      "wins": 3,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {},
+  "ac_detail": {
+    "sharpe": "15.888 \u2705 (>=1.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "39 \u2705 (>=20)"
+  }
+}

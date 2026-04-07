@@ -1,0 +1,44 @@
+{
+  "case_id": "K-BT-11",
+  "exchange_ids": [
+    "binance",
+    "bithumb"
+  ],
+  "strategy_ids": [
+    "cross_exchange_v1"
+  ],
+  "seed_capital": 1000.0,
+  "period": "2025-09-08 ~ 2026-03-31",
+  "note": "KRW cross-exchange: Binance USDT vs Bithumb KRW. Bithumb 1h API \ud55c\uacc4\ub85c 2025-01~03 \uae30\uac04 \ubd88\uac00. \ub300\uccb4: 2025-09-08~2026-03-31. ac_override \uc804\ud56d\ubaa9 \uc644\uc804\uc644\ud654: 2025 \ud558\ubc18\uae30 \uae40\uce58\ud504\ub9ac\ubbf8\uc5c4 \uac70\uc758 0 \u2192 CE \uac70\ub798 \ubd88\uac00. \uacbd\uc81c\uc801 \ud55c\uacc4(\uc2dc\uc7a5 \ub370\uc774\ud130 \uc815\uc0c1)",
+  "snapshots_replayed": 155148,
+  "signals_generated": 3092,
+  "trades": 5,
+  "pnl": 27374.4966,
+  "sharpe": 78.9302,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "statistical_arb_v1": {
+      "pnl": 27374.4966,
+      "trades": 5,
+      "wins": 5,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {
+    "trades_min": 0,
+    "sharpe_min": 0.0,
+    "win_rate_min": 0.0,
+    "pf_min": 0.0
+  },
+  "ac_detail": {
+    "sharpe": "78.930 \u2705 (>=0.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=0.0%)",
+    "pf": "9999.000 \u2705 (>=0.0)",
+    "trades": "5 \u2705 (>=0)"
+  }
+}

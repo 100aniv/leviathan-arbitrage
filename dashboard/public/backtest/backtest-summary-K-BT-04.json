@@ -1,0 +1,60 @@
+{
+  "case_id": "K-BT-04",
+  "exchange_ids": [
+    "bitget",
+    "bitget_futures"
+  ],
+  "strategy_ids": [
+    "funding_rate_v1",
+    "triangular_v1",
+    "statistical_arb_v1",
+    "spot_futures_v1"
+  ],
+  "seed_capital": 1000.0,
+  "period": "2024-01-10 ~ 2024-03-31",
+  "note": "",
+  "snapshots_replayed": 28568,
+  "signals_generated": 28,
+  "trades": 20,
+  "pnl": 11795.527,
+  "sharpe": 27.0587,
+  "mdd_pct": 0.0,
+  "win_rate": 100.0,
+  "profit_factor": 9999.0,
+  "error": "",
+  "by_strategy": {
+    "spot_futures_v1": {
+      "pnl": 0.1991,
+      "trades": 4,
+      "wins": 4,
+      "win_rate": 1.0
+    },
+    "cross_exchange_v1": {
+      "pnl": 0.0259,
+      "trades": 5,
+      "wins": 5,
+      "win_rate": 1.0
+    },
+    "triangular_v1": {
+      "pnl": 2.7469,
+      "trades": 8,
+      "wins": 8,
+      "win_rate": 1.0
+    },
+    "statistical_arb_v1": {
+      "pnl": 11792.5551,
+      "trades": 3,
+      "wins": 3,
+      "win_rate": 1.0
+    }
+  },
+  "ac_pass": true,
+  "ac_override": {},
+  "ac_detail": {
+    "sharpe": "27.059 \u2705 (>=1.0)",
+    "mdd_pct": "0.00% \u2705 (<=15.0%)",
+    "win_rate": "100.0% \u2705 (>=45.0%)",
+    "pf": "9999.000 \u2705 (>=1.2)",
+    "trades": "20 \u2705 (>=20)"
+  }
+}
