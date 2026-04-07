@@ -87,9 +87,11 @@ class NativeAdapter(abc.ABC):
 
     async def connect(self) -> None:
         """Initialize HTTP client and mark connected."""
+        # PHOENIX §8.3 Tier1 patch 3-6: connect timeout 5s→1s
+        # (failed-fast on dead routes; 1s is generous for ap-northeast TLS handshake)
         self._http = httpx.AsyncClient(
             base_url=self._rest_base_url(),
-            timeout=httpx.Timeout(10.0, connect=5.0),
+            timeout=httpx.Timeout(10.0, connect=1.0),
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             headers=self._default_headers(),
         )

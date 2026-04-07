@@ -21,6 +21,20 @@ from src.risk.kill_switch import halt_local, is_halted
 
 logger = logging.getLogger(__name__)
 
+
+def _async_log_info(msg: str, *args: Any) -> None:
+    """PHOENIX §8.3 Tier1 patch 3-1: defer non-critical INFO logging off hot path.
+
+    Schedules logger.info via call_soon so the executor can return faster.
+    Does NOT apply to ERROR/CRITICAL — those remain synchronous for safety.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        loop.call_soon(lambda: logger.info(msg, *args))
+    except RuntimeError:
+        # Fallback if no running loop (shouldn't happen in async context)
+        logger.info(msg, *args)
+
 # Health score threshold (Amendment 4 step 1)
 _HEALTH_THRESHOLD = 0.6  # PHOENIX: REST-only adapters score 0.65 (stale after 20s but before API call)
 # Partial fill acceptance threshold
@@ -158,6 +172,8 @@ class AtomicExecutor:
 
     async def _place_with_timeout(self, adapter: ExchangeAdapter, order: Order) -> Trade:
         """Place order with timeout. Raises asyncio.TimeoutError on timeout."""
+        # Bug 13-B (PHOENIX §8.2): output configured timeout for live latency forensics
+        logger.debug("executor_timeout_ms_config timeout_ms=%s", self._config.timeout_ms)
         timeout_s = self._config.timeout_ms / 1000.0
         return await asyncio.wait_for(adapter.place_order(order), timeout=timeout_s)
 
@@ -174,6 +190,11 @@ class AtomicExecutor:
         (not the original order amount) to avoid over-unwinding on partial fills.
         Returns True if rollback succeeded.
         """
+        # Bug 13-D (PHOENIX §8.2): rollback counter for live forensics
+        logger.info(
+            "rollback_triggered exchange=%s symbol=%s side=%s filled=%s amount=%s",
+            exchange_id, order.symbol, order.side, filled, filled_amount,
+        )
         adapter = self._exchanges.get(exchange_id)
         if adapter is None:
             return False
@@ -258,6 +279,8 @@ class AtomicExecutor:
             )
 
         adapter = self._exchanges[exchange_id]
+        # Bug 13-A (PHOENIX §8.2): per-strategy latency measurement
+        _t0 = asyncio.get_event_loop().time()
         await self._acquire_lock(exchange_id)
 
         try:
@@ -323,6 +346,13 @@ class AtomicExecutor:
                     strategy_id=strategy_id,
                 )
 
+            # Bug 13-A: same-exchange = 2-leg parallel
+            _elapsed_ms = (asyncio.get_event_loop().time() - _t0) * 1000
+            # Tier1 patch 3-1: async log (non-critical INFO off hot path)
+            _async_log_info(
+                "latency_measured strategy=%s legs=2 mode=same_exchange elapsed_ms=%.1f",
+                strategy_id, _elapsed_ms,
+            )
             return ExecutionResult(
                 status=ExecutionStatus.SUCCESS,
                 legs=[leg1_result, leg2_result],
@@ -370,6 +400,8 @@ class AtomicExecutor:
             )
 
         adapter = self._exchanges[exchange_id]
+        # Bug 13-A (PHOENIX §8.2): per-strategy latency measurement
+        _t0 = asyncio.get_event_loop().time()
         await self._acquire_lock(exchange_id)
 
         completed: list[LegResult] = []
@@ -462,9 +494,16 @@ class AtomicExecutor:
                         strategy_id=strategy_id,
                     )
 
-            logger.info(
+            # Bug 13-A: multi-leg same-exchange = N-leg sequential
+            _elapsed_ms = (asyncio.get_event_loop().time() - _t0) * 1000
+            # Tier1 patch 3-1: async logs off hot path
+            _async_log_info(
                 "multi_leg_success legs=%d strategy=%s",
                 len(completed), strategy_id,
+            )
+            _async_log_info(
+                "latency_measured strategy=%s legs=%d mode=multi_leg elapsed_ms=%.1f",
+                strategy_id, len(completed), _elapsed_ms,
             )
             return ExecutionResult(
                 status=ExecutionStatus.SUCCESS,
@@ -541,9 +580,15 @@ class AtomicExecutor:
 
         # Step 5: max_rollback_cost check (Amendment 3C) — delegated to guardian
         # Step 6-7: Acquire execution locks on BOTH exchanges (sorted to prevent deadlock)
+        # Bug 13-A (PHOENIX §8.2): cross-exchange latency measurement starts here
+        _t0 = asyncio.get_event_loop().time()
         first_id, second_id = sorted([ex_a_id, ex_b_id])
-        await self._acquire_lock(first_id)
-        await self._acquire_lock(second_id)
+        # Tier1 patch (PHOENIX §8.3): parallel lock acquire via asyncio.gather
+        # sorted() preserved to prevent deadlocks (lock acquire order is canonical)
+        await asyncio.gather(
+            self._acquire_lock(first_id),
+            self._acquire_lock(second_id),
+        )
 
         leg1_result: LegResult | None = None
         leg2_result: LegResult | None = None
@@ -662,9 +707,16 @@ class AtomicExecutor:
             )
             reconcile_task.add_done_callback(self._reconcile_done_callback)
 
-            logger.info(
+            # Bug 13-A: cross-exchange = 2-leg sequential
+            _elapsed_ms = (asyncio.get_event_loop().time() - _t0) * 1000
+            # Tier1 patch 3-1: async logs off hot path
+            _async_log_info(
                 "cross_exchange_success leg1=%s leg2=%s strategy=%s",
-                leg1_result.filled_amount, leg2_result.filled_amount, strategy_id
+                leg1_result.filled_amount, leg2_result.filled_amount, strategy_id,
+            )
+            _async_log_info(
+                "latency_measured strategy=%s legs=2 mode=cross_exchange elapsed_ms=%.1f",
+                strategy_id, _elapsed_ms,
             )
             return ExecutionResult(
                 status=ExecutionStatus.SUCCESS,

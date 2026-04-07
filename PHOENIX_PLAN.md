@@ -363,45 +363,96 @@ InfraBot /watchdog on 활성화 시:
 
 ---
 
-### Phase 2: 카나리 — 11조합 72시간
+### Phase 2: 카나리 — 단계별 확장 (§8.4 재설계 반영)
 
-**Step 2-1**: P1+P2 (Futures FR) 24시간
-- [ ] 체결≥3건, 수수료 실측≤예상×1.5, crash=0
-- [ ] TCA 리포트: 슬리피지 실측 vs 예측 비교 (slippage_feedback.py)
+> **재설계 (2026-04-07)**: 이전 11조합 동시 + 72H + auto-tuner 활성화 계획은 너무 공격적.
+> Live20-23 19 Bitget 포지션 누적 + CB 74x OPEN 사고 이후 보수적 단계별 확장으로 전환.
+> Auto-tuner는 Phase 3로 이동 (Phase 2는 TCA 데이터 수집 구간 — 튜너가 교란변수).
 
-**Step 2-2**: +P3 (Futures-Futures) 48시간
-- [ ] BinFut↔BitFut 양 레그 동시 체결 확인 (AtomicExecutor partial fill 대응)
-- [ ] crash=0, 이전 P1+P2 안정 유지
+| Step | 시간 | 활성 전략 | 자본 | PnL 임계 | KillSwitch 임계 |
+|---|---|---|---|---|---|
+| 2-1 (안정화) | **48H** | funding_rate **단독** (1-leg) | $200 (5%) | -$1 | DD 5% |
+| 2-1.5 (신규) | 24H | + futures_futures (1소 내) | $400 (10%) | -$2 | DD 5% |
+| 2-2 | 24H | + spot_futures | $600 (15%) | -$3 | DD 7% |
+| 2-3 | 24H | + cross_exchange Coinone 쌍 | $800 (20%) | -$4 | DD 7% |
+| 2-4 | 24H | + cross_exchange Upbit 쌍 | $1000 (25%) | -$5 | DD 7% |
+| 2-5 | 24H | + cross_exchange Bithumb+Global 쌍 | $1200 (30%) | -$6 | DD 7% |
+| 2-6 | 24H | + 글로벌 cross_exchange (Bin↔Bitget) | $1600 (40%) | -$8 | DD 7% |
+| 2-7 (auto-tuner) | **Phase 3로 이동** | — | — | — | — |
+| 2-8 (72H 통합) | 72H | 검증된 조합 전체 | $4000 (100%) | -$10 | DD 10% |
 
-**Step 2-3**: +P4+P5 (Spot-Futures) 48시간
-- [ ] Bin/Bit 각 Spot↔Fut 베이시스 체결 확인, OU 파라미터 반응 기록
-- [ ] per-strategy CB: 단일 전략 손실 > 잔고 5% 시 자동 비활성화 확인
+**손실 tier 변경**: 5%/7%/10% (이전 단일 임계값보다 단계별 보수적)
 
-**Step 2-4**: +P6+P7 (CE Coinone) 48시간
-- [ ] KRW↔USDT 환산 정확도, Coinone BTC 제외 유지 (Live 재확인)
-- [ ] L1 전송비 $2.50 cost_calculator 반영 확인, kimchi premium 없으면 0건 = 정상
+#### Step 2-1 (안정화): funding_rate 단독 48H
 
-**Step 2-5**: +P8+P9 (CE Upbit) 48시간
-- [ ] Upbit 0.139% 수수료 + L1 $4.50 반영, 최소 스프레드 $5+ 진입 확인
+- [ ] 자본 $200 (5%), funding_rate 1-leg 단독
+- [ ] crash=0, KillSwitch=0, CB OPEN < 5회
+- [ ] PnL > -$1 (아니면 자동 정지 + 텔레그램 알림 → 다음날 검토)
+- [ ] funding_rate carry trade 시뮬레이션 검증 (1기간 PnL만으로 판단 금지)
+- [ ] latency_measured strategy=funding_rate 평균 < 1000ms
 
-**Step 2-6**: +P10+P11 (CE Bithumb+Global) 48시간
+#### Step 2-1.5 (신규 안정화 게이트): + futures_futures 24H
+
+- [ ] funding_rate + futures_futures 동시 가동, 자본 $400 (10%)
+- [ ] **48H Step 2-1 이후만 진입 가능** (조건 미달 시 자동 정지, 사장님 깨움 X)
+- [ ] futures_futures = 단일 거래소 내 1-leg → 2-leg 안정성 검증
+- [ ] crash=0, CB OPEN < 5회
+
+#### Step 2-2: + spot_futures 24H
+
+- [ ] 자본 $600 (15%), per-strategy CB 단일 전략 손실 > 잔고 5% 시 자동 비활성화
+- [ ] spot_futures OU 파라미터 동작 (튜너 OFF 상태에서 정적 파라미터)
+- [ ] CB OPEN < 10회 (cross_exchange 진입 직전이라 임계 완화)
+
+#### Step 2-3: + cross_exchange Coinone 쌍 24H
+
+- [ ] Coinone BTC 제외 유지 (Live 재확인)
+- [ ] L1 전송비 $2.50 cost_calculator 반영 확인
+- [ ] kimchi premium 없으면 0건 체결 = 정상
+- [ ] DD < 7%
+
+#### Step 2-4: + cross_exchange Upbit 쌍 24H
+
+- [ ] Upbit 0.139% 수수료 + L1 $4.50 반영
+- [ ] 최소 스프레드 $5+ 진입 확인
+- [ ] DD < 7%
+
+#### Step 2-5: + cross_exchange Bithumb+Global 쌍 24H
+
 - [ ] Bithumb stale guard 실전: fake spread 차단 로그, ±50% 가드 오탐 0건
-- [ ] Bin↔Bitget L2 $0.16 전송, 스프레드 작으므로 시그널 적을 수 있음 = 정상
+- [ ] DD < 7%
 
-**Step 2-7**: Auto-tuner 활성화
-- [ ] .env: ENABLE_INLINE_TUNER=true, optuna+apscheduler 설치 확인
-- [ ] 초기 튜닝 (엔진 시작 5분 후) + spot_futures OU 파라미터 개선 여부 기록
-- [ ] Devil's Advocate rollback 정상, Telegram 결과 알림
+#### Step 2-6: + 글로벌 cross_exchange (Bin↔Bitget) 24H
 
-**Step 2-8**: P12 전체 11조합 72시간
-- [ ] crash=0, MDD<5%, PnL≥$0, 전략별 체결≥1 (CE는 premium 없으면 0건 허용)
-- [ ] auto-tuner 1회+ 완료, Bithumb stale guard 오탐 0건
+- [ ] Bin↔Bitget L2 $0.16 전송, 스프레드 작아 시그널 적을 수 있음 = 정상
+- [ ] DD < 7%
+
+#### Step 2-7: Auto-tuner — **Phase 3로 이동**
+
+> **이동 근거 (§8.4 확정)**:
+> 1. Phase 2는 TCA 데이터 수집 구간 — 튜너가 파라미터 변경 시 교란변수
+> 2. 11조합 전부 안정 동작 검증되기 전 Optuna 돌리면 local optimum이 버그 회피 경로로 수렴
+> 3. `scheduled_tuner.py:397-403` DISABLED_PHASE2 보존 로직이 이미 그 전제 코드화
+> 4. Gemini가 지적한 설정 3중 분산 미해소 상태에서 튜너가 어느 파일을 쓰는지 자체가 모호
+
+#### Step 2-8: 검증된 조합 전체 통합 72H
+
+- [ ] 자본 $4000 (100%), 검증된 조합 전체 활성
+- [ ] crash=0, DD < 10%, PnL > -$10
+- [ ] 전략별 체결 ≥ 1 (CE는 premium 없으면 0건 허용)
 - [ ] DB 모드 분리 최종 확인: `SELECT DISTINCT mode FROM execution_log` → 'live'만 존재
 - [ ] Redis 메모리: `redis-cli info memory` → maxmemory-policy=noeviction, used < 80%
 - [ ] 72시간 중 WS 재연결 횟수 기록 (exchange_health_check 로그)
 - [ ] attribution.py 분석 실행 → live 거래만 포함되는지 확인
 
-**Phase 2 완료**: 11조합 72시간 무중단 + crash 0 + MDD < 5%
+**Phase 2 완료**: 검증된 조합 72시간 무중단 + crash 0 + DD < 10% + PnL > -$10
+
+#### Step 2-1.5 안정화 게이트 운영 규칙
+
+- 조건 미달 시 텔레그램 알림 + **자동 정지** (사장님 깨움 X, 다음날 검토)
+- 조건 충족 시 다음 Step으로 **자동 진입** (FSM transition)
+- 모든 Step의 종료 조건은 `engine/src/workflow/phase2_fsm.py`에서 머신 판독 가능 형태로 정의 (§8.5)
+- 각 Step 종료 시 `.omc/state/phase2/step-{N}-evidence.json` 자동 저장 (§8.5)
 
 ### Phase 3: 확장 (Phase 2 후 실 데이터 기반 결정)
 
@@ -538,3 +589,451 @@ PHOENIX_PLAN.md를 읽어. Phase 2 자율 운영.
 
 ### Phase 3
 - [ ] Phase 2 후 결정
+
+---
+
+## 8. 2026-04-07 재검증 + 레이턴시 근본원인 (Phase 2 진입 전 필독)
+
+### 8.1 코드 직접 재검증 결과 (이전 분석의 false-positive 정정)
+
+**실제 코드 상태 (grep + Read 검증):**
+
+| 항목 | 이전 의심 | 실제 | 증거 |
+|---|---|---|---|
+| Bug 11 (REST orderbook 600ms 제거) | "증거 없음" | ✅ **실제 제거됨** | `executor.py:538` 주석 "Step 4: Re-read orderbooks REMOVED — adds ~600ms REST latency" |
+| Bug 14 InventoryRebalancer | "클래스 없음" | ✅ **존재** | `engine/src/core/inventory_rebalancer.py` |
+| Bug 15 HealthChecker | "클래스 없음" | ✅ **존재** | `engine/src/infra/exchange/health_checker.py` |
+| Bug 2 funding_rate 라우팅 | "wiring 불명" | ✅ **존재** | `modes/live.py`, `strategies/funding_rate.py`에서 시그널 흐름 확인 |
+| InfraBot /watchdog /closepositions | "코드에 없음" | ✅ **존재** | `infra/telegram_infra_bot.py`, `main.py` |
+| KillSwitch Tier 2/3 | 검증 | ✅ | `native_adapter.py:492-570`, `main.py` 배선 |
+| Dead Man's Switch (heartbeat+halt) | 검증 | ✅ | `main.py:3329-3366` |
+| Bitget tradeSide/posSide/tick/cancel-all | 검증 | ✅ | `native_bitget.py` |
+| ScheduledTuner DISABLED_PHASE2 보존 | 검증 | ✅ | `scheduled_tuner.py:397-403` |
+| **compliance.py mode 필터** | "추가됨" 주장 | ❌ **실제로 누락** | grep 0건 — Phase 0-1 잔여 작업 |
+
+**진짜 거짓클레임은 1건**: compliance.py mode 필터. 나머지 23개 버그 수정은 모두 실재.
+
+### 8.2 레이턴시 근본원인 확정 (Bug 13)
+
+**관측: paper 100-200ms (실제 <5ms, 측정 하네스 오버헤드 포함) vs live 1000+ms**
+
+이론적 하한선 (cross_exchange Binance+Bitget):
+
+```
+Leg1 Binance REST RTT     :  60-80ms  (구조)
+Leg2 Bitget REST RTT      : 120-180ms (구조)
+HMAC ×2                   :   4-6ms   (구조)
+TLS 핸드셰이크 ×2 (cold)  :  20-30ms  (수정가능: pre-warm)
+sync logger ×8-14         :   8-15ms  (수정가능: async 로깅)
+asyncio 스케줄링          :  20-30ms  (수정가능: uvloop)
+sequential lock acquire   :   2-5ms   (수정가능: gather)
+─────────────────────────────────────
+이론 최저 (성공)          : 234-346ms
+관측                      : 1000+ms
+설명불가 갭               : ~650ms  ← 진짜 버그
+```
+
+**650ms 갭의 의심 원인 (우선순위):**
+
+1. **rate_limiter 대기** — Bithumb burst=5 + Bitget burst=20 토큰 고갈 시 매 거래 200-500ms 대기 가능 (`rate_limiter.py:96-98`)
+2. **`_place_with_timeout`의 `timeout_ms` 설정** — `executor.py:161` `self._config.timeout_ms` 값 확인 필요. 만약 1000-2000ms로 설정되어 있고 첫 시도가 slow path라면 측정값 == timeout
+3. **Rollback 경로가 성공 측정에 섞임** — leg1 partial fill (≤80%) → unwind market order 추가 라운드트립 발생 (200ms+)
+4. **`_post_execution_reconcile`** — `create_task`로 분리되었지만 `_reconcile_done_callback`이 hot path를 block하지 않는지 확인 필요
+5. **funding_rate (1-leg) 도 1000ms이면 cross_exchange 가설 무효** → 그 경우 원인은 단일 거래소 REST 자체 이상 (네트워크 / DNS / IPv6 fallback)
+
+**확정 필요 조치 (Phase 2 진입 전 강제):**
+
+- [ ] Bug 13-A: 라이브 로그에서 funding_rate(1-leg) vs cross_exchange(2-leg) 레이턴시 분리 측정. 1-leg도 1000ms면 네트워크/REST 클라이언트 문제, 2-leg만 1000ms면 sequential 구조 문제
+- [ ] Bug 13-B: `executor.py:161` `timeout_ms` 실제 값 출력. 측정값이 timeout과 같다면 측정 자체가 timeout
+- [ ] Bug 13-C: `rate_limiter.py` 매 거래 직후 토큰 잔량 로깅 1시간
+- [ ] Bug 13-D: rollback/unwind 경로 발동 횟수 카운터 (live20-23 재분석)
+
+### 8.3 레이턴시 즉시 개선 패치 (Phase 2 진입 전, ~35-65ms 절감)
+
+| 패치 | 파일 | 절감 | 위험 |
+|---|---|---|---|
+| async 로깅 (logger.info → create_task wrapper) | `executor.py` hot path | 8-15ms | 낮음 |
+| uvloop 도입 | `main.py` 진입점 | 10-20ms | 낮음 |
+| HTTP 연결 pre-warmup (엔진 시작 시 더미 REST) | `modes/live.py` 시작 | 5-15ms | 낮음 |
+| Lock 병렬 acquire (`asyncio.gather`) | `executor.py:544-546` | 2-5ms | 중 (정렬로 데드락 방지) |
+| Bithumb rate limiter burst 5→10 | `rate_limiter.py:96-98` | 0-10ms (대기시) | 낮음 |
+| connect timeout 5s→1s | `native_adapter.py:92` | 0-2ms (실패시) | 낮음 |
+
+**핵심 인정**: 구조적 하한선 ~210ms는 cross_exchange에서 절대 못 깨짐. 글로벌 ↔ 한국 RTT가 인프라 한계. 엣지 서버(AWS ap-northeast-2) 배포는 Phase 3 작업.
+
+### 8.4 Phase 2 보수적 재설계 (자동운영 전 필수)
+
+이전 Phase 2 계획은 4전략 × 11조합 동시 + 72H + auto-tuner 활성화로 너무 공격적. Live20-23에서 19 Bitget 포지션 누적 + CB 74x OPEN을 보면 안정화가 우선.
+
+**재설계 (Option A — 단계별 확장):**
+
+| Step | 시간 | 활성 전략 | 자본 | PnL 임계 | KillSwitch 임계 |
+|---|---|---|---|---|---|
+| 2-1 (안정화) | **48H (was 24H)** | funding_rate **단독** (1-leg) | $200 (5%) | -$1 (was $0) | DD 5% |
+| 2-1.5 (신규) | 24H | + futures_futures (1소 내) | $400 (10%) | -$2 | DD 5% |
+| 2-2 | 24H | + spot_futures | $600 (15%) | -$3 | DD 7% |
+| 2-3~6 | 각 24H | cross_exchange 쌍 1개씩 | +$200/단계 | tier별 | DD 7% |
+| 2-7 (auto-tuner) | **Phase 3로 이동** | — | — | — | — |
+| 2-8 (72H 통합) | 72H | 검증된 조합 전체 | $4000 | -$10 | DD 10% |
+
+**손실 tier 변경**: 5%/7%/10% (이전 단일 임계값보다 단계별 보수적)
+
+**`Step 2-1.5 안정화 게이트` 신규 추가:**
+- 48시간 funding_rate 단독 운영
+- crash 0건, KillSwitch 미발동, CB OPEN < 5회 시에만 다음 Step 진입
+- 조건 미달 시 텔레그램 알림 + 자동 정지 (사장님 깨움 X, 다음날 검토)
+
+**Auto-tuner Phase 3 이동 근거 (확정):**
+1. Phase 2는 TCA 데이터 수집 구간 — 튜너가 파라미터 변경 시 교란변수
+2. 11조합 전부 안정 동작 검증되기 전 Optuna 돌리면 local optimum이 버그 회피 경로로 수렴
+3. `scheduled_tuner.py:397-403` DISABLED_PHASE2 보존 로직이 이미 그 전제 코드화
+4. Gemini가 지적한 설정 3중 분산 미해소 상태에서 튜너가 어느 파일을 쓰는지 자체가 모호
+
+### 8.5 워크플로우 통합 — 완전 자동 운영 (잘 때 돌릴 수 있게)
+
+기존 PHOENIX_PLAN.md는 사람-주도 Step 진행. 자동운영으로 가려면 워크플로우 4축 통합:
+
+**(1) Pre-flight (자동운영 시작 시 1회)**
+```bash
+# 1. 코드 정합성 9/9
+cd engine && python -m src.workflow.cli check_all
+# 2. 테스트 grade
+cd engine && python -m pytest tests/ -x --tb=short
+# 3. Bug 13-A~D 측정 패치 머지 + Tier1 레이턴시 패치 적용
+# 4. compliance.py mode 필터 추가 (8.1 잔여 1건)
+# 5. checkpoint save (롤백 포인트)
+```
+
+**(2) FSM 기반 Step 자동 진행**
+- 각 Step 종료 조건을 머신 판독 가능 형태로 정의 (시간 + 조건문)
+- `engine/src/workflow/cli.py transition` 호출로 다음 Step 진입
+- 예: Step 2-1 종료 조건 = `(elapsed >= 48h) AND (crash_count == 0) AND (kill_switch_fires == 0) AND (pnl > -1)`
+- 조건 충족 → 다음 Step 자동, 미충족 → 텔레그램 + 정지 + 대기
+
+**(3) 증거 자동 수집 (각 Step 종료 시)**
+- DB: trades/executions 카운트, PnL, MDD
+- Logs: crash grep, KillSwitch 발동, CB OPEN 횟수
+- Metrics: 평균 레이턴시, 거래소별 RTT
+- → JSON으로 `.omc/state/phase2/step-{N}-evidence.json` 저장
+- → 텔레그램 InfraBot으로 사장님 핸드폰 전송
+
+**(4) Watchdog 다층화**
+- Layer 1: Engine heartbeat (`leviathan:heartbeat` TTL 30s) — 미갱신 → InfraBot 알림
+- Layer 2: PnL 임계 (Step별 tier) — 초과 → KillSwitch Tier 1 자동 발동
+- Layer 3: CB 발동률 (5분 윈도우 > 50%) → Step 일시정지 + 텔레그램
+- Layer 4: 사장님 수동 `/halt` (텔레그램) — 즉시 Tier 3 청산
+
+**자동운영 호출자 (Claude Code 외부)**
+- 옵션 A: `omc team N:executor "PHOENIX Phase 2 자율 운영"` + `team ralph`
+- 옵션 B: `scheduled_tasks` MCP로 1시간마다 evidence 수집 + 조건 평가
+- **권장: 옵션 A** — Claude가 직접 모니터링 + 자가수정. 단, 카나리 실행 중 코드 수정 금지 규칙 준수
+
+### 8.6 Phase 2 진입 전 잔여 체크리스트 (사장님 잠들기 전 확인)
+
+- [ ] **8.1 잔여**: compliance.py `AND mode = $1` 추가
+- [ ] **8.2 측정**: Bug 13-A~D 4건 측정 패치 머지 (1-leg vs 2-leg 분리, timeout 값 출력, rate limiter 토큰, rollback 카운터)
+- [ ] **8.3 패치**: Tier1 레이턴시 6건 (async 로깅 / uvloop / pre-warm / lock gather / Bithumb burst / connect timeout)
+- [ ] **8.4 재설계**: PHOENIX §3 Phase 2 표를 위 새 표로 교체, Step 2-1.5 추가, Step 2-7(tuner) → Phase 3 이동
+- [ ] **8.5 워크플로우**: FSM Step 종료 조건 정의 + 증거 수집 스크립트 + Watchdog 4-layer 검증
+- [ ] **재테스트**: pytest 5454 PASS 유지, check_all 9/9
+- [ ] **dry-run**: Step 2-1만 1시간 시뮬레이션 (자본 $50, 자동 진입/정지 검증)
+- [ ] **git commit + push**: 위 전체 묶어서 1개 PR
+- [ ] **checkpoint save**: 자동 운영 시작 직전
+
+위 8개 모두 ✅ 후에만 자동운영 시작. 1개라도 미달이면 사장님 깨움.
+
+
+---
+
+
+---
+
+## 8.7 Phase 2 운영 대시보드 (사장님 직접 지시 반영)
+
+
+### 8.7.0 사장님 직접 지시 (절대 규칙)
+
+1. **라이트 테마 강제** — 검은색 배경 금지. 흰색 배경 + 그에 맞는 글자색. `<html className="dark">` 제거.
+2. **Binance 벤치마크 금지** — Binance는 친화적이지 않음. 토스증권 / 업비트 / 카카오뱅크 / 토스뱅크 패턴만 사용.
+3. **초보자도 쉽게** — 기술용어 노출 금지. 모든 약어/지표에 한글 풀이 + 툴팁.
+4. **기존 플랜 파일 존중** — `dashboard/DESIGN-kraken.md`가 이미 라이트 테마 + Kraken Purple 디자인 시스템을 명시. 이게 SSOT. 코드와 어긋난 부분은 코드를 고친다.
+5. **디자인 MCP/플러그인/스킬 활용** — Figma MCP, `design` 플러그인(design-system / design-critique / accessibility-review / ux-copy / design-handoff 스킬 포함) 적극 사용.
+
+### 8.7.1 발견된 결함 (5,000단어 전수조사 요약)
+
+페이지 16개 전부 등급 매김:
+- A급: Login (1)
+- B급: Portfolio, Assets, Backtest, Funding, Exchanges, System, Analytics (7)
+- C급: Overview, Strategies, Alerts, Risk, Settings, Attribution (6)
+- **D급: Trades** (1) — 영문 약자 + 스크롤 + 모달 토글 복잡
+- F급: 없음
+
+**Critical 결함 5종 (Phase 2 자동운영 차단)**
+1. `<html className="dark">` 강제 다크 — DESIGN-kraken.md(라이트) 명시와 직접 충돌
+2. 한영 혼용 — "Portfolio" / "자산 배분" / "Buy → Sell" / "포지션" 페이지마다 섞임
+3. Empty state 미처리 — 데이터 0이면 "데이터 없음" 텍스트만 (스켈레톤·일러스트·CTA 없음)
+4. Kill Switch UX 위험 — 3초 카운트다운 + 2곳에 중복 구현 (Risk, System)
+5. 에러 메시지 개발자용 — `Failed to fetch trades`, `Unauthorized` 그대로 노출
+
+**High 10건 / Medium 10건 / Low 10건**: 별도 트래커. 핵심만 §8.7.4에 매핑.
+
+### 8.7.2 디자인 시스템 강제 (DESIGN-kraken.md 코드 반영)
+
+기존 `dashboard/DESIGN-kraken.md` 그대로 SSOT. 다만 **퀀트/거래 컨텍스트에 맞춰 토큰 추가**:
+
+**컬러 토큰 (`globals.css` 또는 `tailwind.config.ts`)**
+
+| 토큰 | 값 | 용도 |
+|---|---|---|
+| `--bg-base` | `#FFFFFF` | 페이지 배경 |
+| `--bg-surface` | `#FAFAFB` | 카드 배경 (whisper gray) |
+| `--bg-elevated` | `#FFFFFF` | 모달/팝오버 |
+| `--border` | `#DEDEE5` | 1px divider |
+| `--border-subtle` | `rgba(104,107,130,0.12)` | hairline |
+| `--text-primary` | `#101114` | 본문 (Near Black) |
+| `--text-secondary` | `#686B82` | 보조 (Cool Gray) |
+| `--text-tertiary` | `#9497A9` | 캡션 (Silver Blue) |
+| `--brand` | `#7132F5` | Kraken Purple, CTA |
+| `--brand-hover` | `#5741D8` | hover/active |
+| `--brand-subtle` | `rgba(133,91,251,0.10)` | tag/badge bg |
+| `--success` | `#149E61` | 수익 (글로벌 표준) |
+| `--success-bg` | `rgba(20,158,97,0.12)` | 수익 badge bg |
+| `--danger` | `#E5484D` | 손실/긴급 |
+| `--danger-bg` | `rgba(229,72,77,0.10)` | 손실 badge bg |
+| `--warning` | `#F59E0B` | 경고 |
+| `--info` | `#3B82F6` | 안내 |
+| `--font-display` | system-ui (Pretendard 폴백) | 큰 헤드라인 |
+| `--font-body` | Pretendard, IBM Plex Sans, Helvetica | 본문 (한글 최우선) |
+
+> **수익=초록 / 손실=빨강** 글로벌 표준 유지(토스증권도 글로벌 표준 따름). 단 모든 색상 신호에 **아이콘+텍스트 동반** (색맹 접근성).
+
+**타이포 한글 우선**
+- `Pretendard Variable` (한글 가독성 1위) 우선, IBM Plex Sans 폴백
+- 본문 16px, 카드 헤더 14px, 캡션 12px (`text-xs` 12px 금지)
+- 숫자 `tabular-nums` + `font-feature-settings: "tnum"` (정렬 안정)
+
+**radius / spacing / elevation**: DESIGN-kraken.md 그대로 (12px 버튼 / 6/8/10/12/16px / `rgba(0,0,0,0.03) 0 4px 24px`)
+
+### 8.7.3 정보 아키텍처 재편 (16페이지 → 4개 주 탭 + 빠른메뉴)
+
+토스증권 / 업비트 / 카카오뱅크 패턴:
+
+```
+┌────────────────────────────────────────────┐
+│  LEVIATHAN  ●연결됨   [⚙]  [👤 JUNHYEON]   │  ← 헤더 (sticky, 흰색 배경)
+├────────────────────────────────────────────┤
+│  [🏠 홈] [💼 운용] [📊 분석] [🛡 안전]      │  ← 4탭 (모바일은 하단 탭바)
+├────────────────────────────────────────────┤
+│                                            │
+│  콘텐츠 (1 viewport 원칙)                   │
+│                                            │
+└────────────────────────────────────────────┘
+```
+
+**탭 1: 홈 (`/`)** — 토스 메인 화면 패턴
+- 큰 카드 1개: **총 자산** (₩ 표시 우선, USD 부기). 어제 대비 +/− 색상 + 화살표 아이콘. 큰 숫자(48px display)
+- 카드 2개: **오늘 손익** / **이번 달 손익** (수익률 % + 절대액)
+- 가로 스와이프 카드 7개: **거래소별 잔고** (로고 + 잔액 + ●연결상태)
+- 리스트: **활성 포지션 3개** (있을 때만, 없으면 일러스트 + "현재 활성 포지션 없음")
+- 리스트: **최근 체결 5건** (시간/심볼/손익) → "전체 보기" 텍스트 링크
+- 우측 상단 고정: 🛡 **안전 상태 뱃지** (정상/주의/위험 + 한글)
+
+**탭 2: 운용 (`/manage`)** — 업비트 자동매매 봇 패턴
+- 상단: **현재 모드** 큰 토글 (Paper / Live) — 라벨 한글 + 위험도 색상
+- 카드 그리드: **전략 7개** — 각 카드에 토글, 어제 손익, 7일 차트, 활성/비활성 뱃지
+- 카드 그리드: **거래소 7개** — 로고, 연결상태, 자본 슬라이더
+- 하단: **자본 설정** — 슬라이더 UI (최소 거래액 / 거래소당 자본 / 일일 손실 한도)
+- "왜 이 값?" 인포 아이콘 → 모달로 한글 설명
+
+**탭 3: 분석 (`/insights`)** — 토스 자산 분석 패턴
+- 상단: **기간 선택 칩** (오늘 / 7일 / 30일 / 전체)
+- 큰 카드: **에쿼티 커브** (단순 area chart, 그라데이션, KST 시간축)
+- 카드 그리드 4개: **승률 / Sharpe / 평균 수익 / 최대 낙폭** (각 카드에 ⓘ "이게 뭐예요?" 풀이)
+- 탭: **전략별 / 거래소별 / 심볼별 / 시간대별** 손익 비교 (Pie + Bar)
+- 하단: **거래 내역** (검색바 + 필터 칩 + 가상 스크롤 테이블, 행 클릭 시 모달)
+- "TCA 리포트 PDF 받기" 버튼 (docx skill로 생성)
+
+**탭 4: 안전 (`/safety`)** — 토스 보안 센터 패턴
+- 큰 카드: **🛡 안전 상태** (정상/주의/위험 + 색상 + 한글 설명)
+- 카드: **긴급정지** — 한 번 누르면 5초 카운트다운 + "정말 멈출까요?" 모달 + 모달 안에 비밀번호 재입력 (실수 방지). 단축키 안내
+- 라이브 게이지 4개: **일일 손실 한도 사용률** / **최대 낙폭** / **순익스포저** / **차단기 발동률**
+- 진행률 바: 카나리 단계 (Step 2-1 / 2-1.5 / ...)
+- 리스트: **최근 안전 이벤트** (KS 발동, CB OPEN, 롤백 등 한글 메시지)
+- 리스트: **활성 포지션** (좀비 정렬) + 각 포지션 "수동 청산" 버튼
+
+**빠른 메뉴 (헤더 우측 ⚙)**: 시스템 / 백테스트 / 알림 / 설정 / 로그아웃 → 모달 또는 별도 페이지
+
+**기존 16페이지 매핑 (마이그레이션)**
+
+| 기존 | 신규 위치 |
+|---|---|
+| Overview | 탭1 홈 |
+| Portfolio | 탭1 + 탭3 일부 |
+| Assets | 탭1 가로 스와이프 카드 |
+| Trades | 탭3 하단 거래 내역 |
+| Strategies | 탭2 전략 그리드 |
+| Analytics | 탭3 |
+| Attribution | 탭3 탭(전략별/거래소별/...) |
+| Funding | 탭3 + 탭2 카드 |
+| Exchanges | 탭2 거래소 그리드 |
+| Risk | 탭4 |
+| Settings | 탭2 자본 설정 + 빠른메뉴 |
+| System | 빠른메뉴 |
+| Backtest | 빠른메뉴 |
+| Alerts | 탭4 + 헤더 벨 아이콘 |
+
+**신규 페이지 (탭4 하위 또는 자동 진입 페이지)**
+- `/safety/positions` — 좀비 포지션 전수조사 + 수동 청산
+- `/safety/latency` — Bug 13 측정 결과 라이브 차트
+- `/safety/canary` — Phase 2 카나리 진행 페이지 (FSM 종료조건 체크리스트)
+- `/safety/heartbeat` — Dead Man's Switch 상태 + 수동 halt
+
+### 8.7.4 페이지/컴포넌트별 결함 → 패치 매핑
+
+| 결함 (Critical/High) | 해결 |
+|---|---|
+| 강제 다크 (`layout.tsx`) | `<html lang="ko">` (className 제거) + Tailwind `darkMode: 'class'` 비활성 |
+| 영문 혼용 | i18n JSON 1개 (`dashboard/src/i18n/ko.json`) — 모든 문자열 키 추출 + 한글화 |
+| Empty state 텍스트만 | `<EmptyState>` 컴포넌트 (lucide 아이콘 + 제목 + 설명 + CTA) — 12개 페이지 적용 |
+| 에러 메시지 개발자용 | `<FriendlyError>` 컴포넌트 + ERROR_MESSAGES 매핑 ("network" → "인터넷 연결을 확인해 주세요") |
+| KillSwitch 중복/위험 | `<EmergencyStop>` 단일 컴포넌트 + 5초 카운트다운 + 비밀번호 재입력 모달 + 단축키 |
+| 폴링 주기 불일치 | `useApi` 훅 1곳에서 표준화 (홈=3s, 운용=5s, 분석=10s, 안전=1s) |
+| 숫자 포맷 일관성 없음 | `formatKRW`, `formatUSD`, `formatPct`, `formatNum` 4개 유틸로 통일 |
+| 색맹 미대응 | 모든 손익에 ▲▼ 아이콘 + 색 동시 |
+| 모바일 nav 복잡 | 모바일 하단 탭바 4개 (토스 패턴), 데스크탑 좌측 사이드바 |
+| 한국 시간대 혼란 | 모든 시간 KST 명시, 상대시간("3분 전") 우선 + 절대시간 툴팁 |
+| 기술용어 노출 | 모든 약어 옆 ⓘ 툴팁 (Radix Tooltip) + 한글 풀이 |
+| 사이드바 아이콘 16px | 44px 터치 타겟 강제 (WCAG AA) |
+| 폰트 한글 최적화 X | Pretendard Variable 적용 |
+| 차트 무거움 | Recharts 유지하되 dynamic import + skeleton |
+
+### 8.7.5 디자인 MCP/플러그인/스킬 활용 계획
+
+| 도구 | 용도 | 단계 |
+|---|---|---|
+| **`design` 플러그인** (이미 search_plugins로 발견) | 8개 스킬 패키지 | 전 단계 |
+| `design:design-system` 스킬 | DESIGN-kraken.md 토큰 일관성 감사 + 누락 변수 추가 | 8.7.6 Step 1 |
+| `design:design-critique` 스킬 | 각 페이지 mockup에 구조 피드백 | Step 2 |
+| `design:ux-copy` 스킬 | 한글 마이크로카피 / 에러 메시지 / 빈 상태 카피 작성 | Step 3 |
+| `design:accessibility-review` 스킬 | WCAG 2.1 AA 감사 (대비/터치/키보드) | Step 5 |
+| `design:design-handoff` 스킬 | 토큰/컴포넌트/상호작용 스펙 문서 산출 | Step 4 |
+| **Figma MCP** (mcp registry, 미연결) | 토스/업비트 패턴 참고 + 코드 generate | 선택 (`suggest_connectors`로 사장님 승인 후 연결) |
+| **design 플러그인 설치** | `suggest_plugin_install`로 사장님 승인 받고 설치 | Step 0 |
+
+### 8.7.6 작업 단계 (12 Steps)
+
+**Step 0 — 도구 준비**
+- `design` 플러그인 설치 권장 안내 (사장님 승인)
+- Figma MCP 연결 권장 안내 (선택)
+- 기존 16페이지 스크린샷 (라이트 모드 강제 후) — 분석용
+
+**Step 1 — 디자인 토큰 + 라이트 테마 강제**
+- `dashboard/src/app/layout.tsx`: `<html className="dark">` → `<html lang="ko">`
+- `tailwind.config.ts`: `darkMode: 'class'` 비활성, 컬러 토큰 §8.7.2 추가
+- `globals.css`: CSS 변수 정의, Pretendard 폰트 import
+- 전체 페이지 시각 회귀 (모든 페이지가 라이트로 보이는지)
+
+**Step 2 — 공통 컴포넌트 8종 신규 작성**
+- `<EmptyState>`, `<FriendlyError>`, `<KPICard>`, `<EmergencyStop>`, `<StatusBadge>`, `<NumberDisplay>`, `<TimeDisplay>`, `<InfoTooltip>`
+- Storybook 또는 `/dev/components` 페이지에서 검증
+
+**Step 3 — i18n 한글화**
+- `dashboard/src/i18n/ko.json` 추출 + 모든 페이지에 적용
+- 전문용어 사전 (`min_edge_bps` → "최소 수익 기준 (bps, 1bp = 0.01%)")
+
+**Step 4 — 정보 아키텍처 재편 (탭 4개 + 라우팅)**
+- `dashboard/src/app/(tabs)/home/page.tsx`, `(tabs)/manage`, `(tabs)/insights`, `(tabs)/safety`
+- 기존 16페이지 → 신규 위치로 라우팅 + redirect alias (외부 링크 보존)
+- 모바일 하단 탭바 + 데스크탑 사이드바 동시 지원
+
+**Step 5 — 신규 안전 페이지 4개**
+- `/safety/positions`, `/safety/latency`, `/safety/canary`, `/safety/heartbeat`
+- 각 페이지 백엔드 API (§8.7.7 참조)
+
+**Step 6 — 백엔드 API 4 라우터 신규**
+- `engine/src/api/routes/positions.py`, `latency.py`, `canary.py`, `heartbeat.py`
+- `server.py`에 `include_router` 4건 추가
+
+**Step 7 — 기존 페이지 마이그레이션 (12개)**
+- 한 페이지씩 새 디자인 토큰 + 컴포넌트로 재작성
+- 우선순위: D급 Trades → C급 6개 → B급 7개 → A급 Login
+
+**Step 8 — `design:accessibility-review` 스킬 실행**
+- WCAG 2.1 AA: 4.5:1 대비 / 44px 터치 / 키보드 / 스크린리더
+- 모든 결함 수정
+
+**Step 9 — `design:ux-copy` 스킬 실행**
+- 모든 에러/빈 상태/CTA 카피 한글 친화 톤으로 통일
+
+**Step 10 — 빌드 + 실측**
+- `npm run build` 통과
+- Lighthouse: Performance ≥ 80 / Accessibility ≥ 95 / Best Practices ≥ 90
+- 페이지별 번들 < 200KB
+- 모바일 시뮬 + 실제 폰 (사장님 폰) 스크린샷 16장
+
+**Step 11 — Phase 2 카나리 dry-run 1시간**
+- `/safety/canary` 페이지가 실제로 진행률/종료조건/CB 카운터 라이브 표시되는지
+- `/safety/positions` 페이지가 실제 거래소 잔고로 채워지는지
+- `/safety/latency`가 Bug 13-A~D 측정 결과 표시하는지
+
+**Step 12 — git PR 1건 묶음**
+- title: `feat(dashboard): Phase 2 운영 대시보드 v2 — 라이트 테마 + 토스/업비트 패턴`
+- body: §8.7.1 결함 35건 매핑, before/after 스크린샷, Lighthouse 점수, 마이그레이션 가이드
+
+### 8.7.7 백엔드 API 4 라우터 (Step 6 상세)
+
+| 라우터 | 엔드포인트 | 응답 핵심 필드 | 데이터 소스 |
+|---|---|---|---|
+| `positions.py` | `GET /api/positions/open` | `[{exchange, symbol, side, qty, entry, mark, unrealized_pnl, liq_price, hold_seconds, strategy}]` | 어댑터 `_rest_get_positions()` 합산 + 30s 캐시 |
+| `positions.py` | `POST /api/positions/{id}/close` | `{ok, trade_id}` | KillSwitch Tier3 단일 호출 |
+| `latency.py` | `GET /api/latency/exchange` | `[{exchange, p50, p95, p99, avg, sample_count}]` | Bug 13-A 측정 패치 (Redis 집계) |
+| `latency.py` | `GET /api/latency/strategy` | `{1leg: {...}, 2leg: {...}}` | 동일 |
+| `canary.py` | `GET /api/canary/status` | `{step, started_at, deadline, conditions: [...], cb_open_count, kill_switch_fires, pnl}` | FSM state file |
+| `canary.py` | `GET /api/canary/history` | `[{step, started, ended, result, evidence_url}]` | `.omc/state/phase2/*.json` |
+| `heartbeat.py` | `GET /api/heartbeat/status` | `{ttl_seconds, halt_flag, watchdog_on, last_seen, infrabot_connected}` | Redis `leviathan:heartbeat` / `leviathan:halt` |
+| `heartbeat.py` | `POST /api/heartbeat/halt` | `{ok}` | `halt_local()` + Redis SET |
+
+### 8.7.8 §8.6 잔여 체크리스트 갱신 — 9번 항목 (v2 대체)
+
+§8.6의 9번 "운영 대시보드"를 다음으로 대체:
+
+- [ ] **8.7 v2 운영 대시보드 (12 Steps)**
+  - [ ] Step 0: 도구 준비 (design 플러그인 설치 + 스크린샷)
+  - [ ] Step 1: 라이트 테마 강제 + 디자인 토큰
+  - [ ] Step 2: 공통 컴포넌트 8종
+  - [ ] Step 3: i18n 한글화
+  - [ ] Step 4: 정보 아키텍처 4탭 재편
+  - [ ] Step 5: 신규 안전 페이지 4개
+  - [ ] Step 6: 백엔드 API 4 라우터
+  - [ ] Step 7: 기존 페이지 12개 마이그레이션
+  - [ ] Step 8: 접근성 감사 (WCAG AA)
+  - [ ] Step 9: UX 카피 한글화
+  - [ ] Step 10: 빌드 + Lighthouse + 스크린샷 16장
+  - [ ] Step 11: dry-run 1시간 안전 페이지 검증
+  - [ ] Step 12: git PR 1건
+
+**자동운영 진입 가드**: 12 Steps 모두 ✅ + Lighthouse Accessibility ≥ 95 + 사장님 폰 스크린샷 4탭 검수 후에만 Phase 2 자동운영 시작.
+
+### 8.7.9 작업 분량 / 시간 추정
+
+- 디자인 시스템 + 라이트 테마: 4-6시간
+- 공통 컴포넌트 8종: 4-6시간
+- i18n: 2-3시간
+- 4탭 IA 재편 + 12 페이지 마이그레이션: 16-24시간 (가장 큼)
+- 신규 안전 페이지 4 + 백엔드 4 라우터: 6-8시간
+- 접근성/카피/빌드/dry-run: 4-6시간
+- **총 36-53시간** — 즉 자율 작업 1회로는 부족, **2-3 사이클** 필요
+
+→ Phase 2 본 운영은 §8.7 v2 1차 사이클(라이트 테마 + 안전 페이지 4 + 홈 탭) 완료 후 시작 가능. 나머지 페이지 마이그레이션은 Phase 2 운영 중 병렬 진행 (코드 수정 금지 규칙은 엔진 코드만 적용, 대시보드는 예외).
+
+### 8.7.10 답변: 사장님이 이전에 요청했는데 반영 안 된 이유
+
+확인 결과 `dashboard/DESIGN-kraken.md`에 **이미 라이트 테마 + 흰색 배경 + Near Black 텍스트 + Kraken Purple 디자인 시스템이 명시**되어 있음. 그러나:
+
+1. `dashboard/src/app/layout.tsx`에 `<html className="dark">` 강제 다크 (명시 위반)
+2. `tailwind.config.ts`에 `darkMode: 'class'` 활성 (명시 위반)
+3. 컴포넌트 코드는 `bg-slate-900`, `text-slate-100` 류 다크 토큰 직접 사용 (DESIGN-kraken.md 토큰 무시)
+4. 즉 **디자인 문서는 있지만 코드 enforcement 없음** — 이전 작업자(에이전트)가 문서 안 읽고 다크 테마로 만들어버림
+
+→ §8.7 v2 Step 1에서 이 위반을 강제로 잡고, 이후 모든 PR에 "DESIGN-kraken.md 토큰만 사용" lint 추가 (eslint 또는 stylelint 규칙)
+

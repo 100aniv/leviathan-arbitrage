@@ -3535,4 +3535,10 @@ async def main() -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())
+    # PHOENIX §8.3 Tier1 patch 3-2: uvloop for ~10-20ms scheduling latency reduction
+    try:
+        import uvloop
+        uvloop.run(main())
+    except ImportError:
+        logger.info("uvloop not available, falling back to asyncio default loop")
+        asyncio.run(main())

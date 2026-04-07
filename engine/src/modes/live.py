@@ -428,6 +428,11 @@ class LiveMode(BaseMode):
         logger.info("live_mode.collectors_started exchanges=%s symbols=%s",
                      self._exchanges, self._symbols)
 
+        # PHOENIX §8.3 Tier1 patch 3-3: HTTP pre-warm
+        # Force TLS/TCP handshake on all adapters before first real order
+        # to remove ~5-15ms cold-start tax from initial trade.
+        await self._prewarm_connections()
+
         # Step 4: Start KRW rate updater
         self._krw_rate_task = asyncio.create_task(
             self._krw_rate_loop(), name="live_krw_rate"
@@ -460,6 +465,46 @@ class LiveMode(BaseMode):
             "live_mode.started execution_mode=%s executor=%s",
             self._execution_mode, type(self._executor).__name__,
         )
+
+    async def _prewarm_connections(self) -> None:
+        """PHOENIX §8.3 patch 3-3: Pre-warm HTTP connections to reduce first-order latency.
+
+        Sends a lightweight dummy request to each adapter so the TCP/TLS handshake
+        is paid up-front. Failures are silently ignored — the goal is just to
+        prime the connection pool, not to validate endpoints.
+
+        Defensive against mocked executors in tests: only iterates if the
+        adapter container is a real dict.
+        """
+        adapters_attr: Any = getattr(self, "_adapter_dict", None)
+        if not isinstance(adapters_attr, dict) or not adapters_attr:
+            # Some live modes use _executor._exchanges instead of _adapter_dict.
+            # Use object.__getattribute__-equivalent guard so AsyncMock auto-attrs
+            # (which return coroutines) don't break iteration.
+            executor = getattr(self, "_executor", None)
+            candidate = getattr(executor, "_exchanges", None) if executor else None
+            adapters_attr = candidate if isinstance(candidate, dict) else {}
+
+        if not adapters_attr:
+            logger.info("http_prewarm_skip — no adapters available")
+            return
+
+        async def _prewarm_one(ex_id: str, adapter: Any) -> None:
+            try:
+                http = getattr(adapter, "_http", None)
+                if http is None:
+                    return
+                await asyncio.wait_for(http.get("/"), timeout=2.0)
+            except Exception:
+                pass  # Expected to fail on most '/' endpoints — TCP/TLS still warmed
+
+        tasks = [
+            asyncio.create_task(_prewarm_one(ex_id, adapter))
+            for ex_id, adapter in adapters_attr.items()
+        ]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+            logger.info("http_prewarm_complete exchanges=%d", len(tasks))
 
     async def stop(self) -> None:
         """Stop live mode gracefully."""

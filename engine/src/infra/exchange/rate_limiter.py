@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -69,6 +72,11 @@ class ExchangeRateLimiter:
         bucket = self._buckets.get(endpoint) or self._buckets.get("default")
         if bucket:
             await bucket.acquire(tokens)
+            # Bug 13-C (PHOENIX §8.2): log token reservoir for live latency forensics
+            logger.debug(
+                "rate_limiter_tokens exchange=%s endpoint=%s remaining=%.2f capacity=%.2f",
+                self.exchange_id, endpoint, bucket._tokens, bucket.capacity,
+            )
 
 
 # Default rate limit configs per exchange (conservative, safe defaults)
@@ -95,7 +103,8 @@ DEFAULT_RATE_LIMITS: dict[str, dict[str, RateLimitConfig]] = {
     },
     "bithumb": {
         "default": RateLimitConfig(requests_per_second=5, burst=10),
-        "order": RateLimitConfig(requests_per_second=3, burst=5),
+        # PHOENIX §8.3 Tier1 patch 3-5: burst 5→10 to absorb live order bursts
+        "order": RateLimitConfig(requests_per_second=3, burst=10),
     },
     "coinone": {
         "default": RateLimitConfig(requests_per_second=3, burst=5),
