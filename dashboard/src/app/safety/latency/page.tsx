@@ -1,18 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import useSWR from "swr";
 import { Activity } from "lucide-react";
 import { SkeletonCard, FriendlyError } from "@/components/ui";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+
+const BarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
+const Bar = dynamic(() => import("recharts").then((m) => m.Bar), { ssr: false });
+const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
+const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
+const CartesianGrid = dynamic(() => import("recharts").then((m) => m.CartesianGrid), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
+const Legend = dynamic(() => import("recharts").then((m) => m.Legend), { ssr: false });
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
 
 interface LatencyEntry {
   exchange: string;
@@ -67,7 +67,7 @@ export default function LatencyPage() {
             <XAxis dataKey="exchange" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} unit="ms" />
             <Tooltip
-              formatter={(value: number | undefined) => [`${value ?? 0}ms`]}
+              formatter={(value: unknown) => [`${Number(value) || 0}ms`]}
               contentStyle={{ fontSize: 12 }}
             />
             <Legend />
