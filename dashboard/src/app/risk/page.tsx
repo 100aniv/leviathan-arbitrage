@@ -175,7 +175,7 @@ export default function RiskPage() {
           ) : (
             <div className="flex items-center justify-center py-12">
               <p className="text-xs font-mono text-terminal-subtle">
-                {error ? 'Connection error' : 'Loading…'}
+                {error ? '연결에 실패했어요' : '불러오는 중…'}
               </p>
             </div>
           )}

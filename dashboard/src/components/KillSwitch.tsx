@@ -75,10 +75,10 @@ export function KillSwitch({ isActive: initialActive = false, onKill }: KillSwit
 
       <ConfirmDialog
         isOpen={showConfirm}
-        title="⚠ EMERGENCY STOP"
-        message="This will immediately halt ALL trading operations. Open positions will remain. A manual restart is required to resume."
-        confirmLabel="HALT ALL TRADING"
-        cancelLabel="Cancel"
+        title="⚠ 긴급 정지"
+        message="모든 거래가 즉시 중단됩니다. 오픈 포지션은 유지되며, 재개하려면 수동 재시작이 필요합니다."
+        confirmLabel="거래 전체 중단"
+        cancelLabel="취소"
         danger="critical"
         onConfirm={handleConfirm}
         onCancel={() => setShowConfirm(false)}

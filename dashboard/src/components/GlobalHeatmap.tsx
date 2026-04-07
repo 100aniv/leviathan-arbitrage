@@ -211,14 +211,14 @@ export function GlobalHeatmap() {
                     aria-label="커스텀 심볼 적용"
                     className="px-2 py-0.5 text-[9px] font-mono bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
-                    Apply
+                    적용
                   </button>
                   <button
                     onClick={() => setShowCustomBox(false)}
                     aria-label="커스텀 심볼 취소"
                     className="px-2 py-0.5 text-[9px] font-mono text-terminal-subtle border border-terminal-border hover:text-terminal-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
-                    Cancel
+                    취소
                   </button>
                 </div>
               </div>

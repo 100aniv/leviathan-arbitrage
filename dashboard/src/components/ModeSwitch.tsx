@@ -45,13 +45,13 @@ export function ModeSwitch({ currentMode }: ModeSwitchProps) {
           const detail = data.detail ?? data.error ?? 'LiveGate 조건 미충족';
           setError(`LiveGate 실패: ${detail}`);
         } else {
-          setError(data.error ?? data.detail ?? 'Mode switch failed');
+          setError(data.error ?? data.detail ?? '모드 변경에 실패했어요');
         }
         return;
       }
       setMode(targetMode);
     } catch {
-      setError('Network error');
+      setError('인터넷 연결을 확인해 주세요');
     } finally {
       setLoading(false);
       setShowConfirm(false);

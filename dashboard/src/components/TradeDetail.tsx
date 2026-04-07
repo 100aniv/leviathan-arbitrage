@@ -26,7 +26,7 @@ export function TradeDetail({ trade, onClose }: TradeDetailProps) {
           <button
             onClick={onClose}
             className="text-terminal-subtle hover:text-terminal-text font-mono text-sm leading-none"
-            aria-label="Close"
+            aria-label="닫기"
           >
             ✕
           </button>

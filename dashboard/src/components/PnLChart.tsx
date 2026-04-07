@@ -95,13 +95,13 @@ export function PnLChart({ wsPnl }: PnLChartProps = {}) {
           PnL Curve
         </span>
         <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <p className="text-xs font-mono text-loss">Connection error</p>
+          <p className="text-xs font-mono text-loss">연결에 실패했어요</p>
           <button
             onClick={() => mutate()}
             aria-label="PnL 차트 다시 불러오기"
             className="text-[10px] font-mono border border-terminal-border px-3 py-1 text-terminal-subtle hover:text-terminal-text transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Retry
+            다시 시도
           </button>
         </div>
       </div>

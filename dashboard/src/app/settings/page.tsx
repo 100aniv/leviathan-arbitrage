@@ -79,7 +79,7 @@ export default function SettingsPage() {
         if (data.max_daily_loss_usd != null) setMaxDailyLoss(data.max_daily_loss_usd);
       })
       .catch(() => {
-        setFeedback({ type: "error", message: "Failed to load settings." });
+        setFeedback({ type: "error", message: "설정을 불러오지 못했어요." });
       });
   }, []);
 
@@ -134,9 +134,9 @@ export default function SettingsPage() {
     try {
       const updated = await updateSettings({ min_edge_bps: minEdge });
       setSettings((prev) => prev ? { ...prev, min_edge_bps: updated.min_edge_bps } : prev);
-      showFeedback("success", "Saved MIN_EDGE_BPS.");
+      showFeedback("success", "최소 엣지(MIN_EDGE_BPS)가 저장되었습니다.");
     } catch {
-      showFeedback("error", "Failed to save settings.");
+      showFeedback("error", "설정 저장에 실패했어요. 잠시 후 다시 시도해 주세요.");
     } finally {
       setSaving(false);
     }
@@ -155,9 +155,9 @@ export default function SettingsPage() {
             }
           : prev
       );
-      showFeedback("success", `Strategy ${result.enabled ? "enabled" : "disabled"}.`);
+      showFeedback("success", `전략이 ${result.enabled ? "활성화" : "비활성화"}되었습니다.`);
     } catch {
-      showFeedback("error", "Failed to toggle strategy.");
+      showFeedback("error", "전략 상태 변경에 실패했어요.");
     }
   }
 
@@ -170,9 +170,9 @@ export default function SettingsPage() {
     try {
       const updated = await updateSettings({ active_exchanges: next });
       setSettings((prev) => prev ? { ...prev, active_exchanges: updated.active_exchanges } : prev);
-      showFeedback("success", "Exchanges updated.");
+      showFeedback("success", "거래소 설정이 업데이트되었습니다.");
     } catch {
-      showFeedback("error", "Failed to update exchanges.");
+      showFeedback("error", "거래소 설정 변경에 실패했어요.");
     }
   }
 
@@ -181,9 +181,9 @@ export default function SettingsPage() {
     setDangerLoading(true);
     try {
       await killEngine("Dashboard emergency stop");
-      showFeedback("success", "Emergency stop activated. Engine halted.");
+      showFeedback("success", "긴급 정지가 활성화되었습니다. 엔진이 중단되었습니다.");
     } catch {
-      showFeedback("error", "Kill switch API error — check engine directly.");
+      showFeedback("error", "킬스위치 API 오류 — 엔진을 직접 확인해 주세요.");
     } finally {
       setDangerLoading(false);
     }
@@ -196,9 +196,9 @@ export default function SettingsPage() {
       const updated = await updateSettings({ min_edge_bps: 5, active_exchanges: ALL_EXCHANGES });
       setSettings((prev) => prev ? { ...prev, ...updated } : prev);
       setMinEdge(updated.min_edge_bps);
-      showFeedback("success", "Settings reset to defaults.");
+      showFeedback("success", "설정이 기본값으로 초기화되었습니다.");
     } catch {
-      showFeedback("error", "Failed to reset settings.");
+      showFeedback("error", "초기화에 실패했어요. 잠시 후 다시 시도해 주세요.");
     } finally {
       setDangerLoading(false);
     }

@@ -22,7 +22,7 @@ export default function LoginPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError((data as { detail?: string }).detail ?? "Login failed");
+        setError((data as { detail?: string }).detail ?? "아이디 또는 비밀번호를 확인해 주세요");
         return;
       }
       const data = await res.json() as { access_token: string };
@@ -33,7 +33,7 @@ export default function LoginPage() {
       // Full page reload to clear RSC cache (router.push uses stale pre-auth cache)
       window.location.href = "/";
     } catch {
-      setError("Network error — engine unreachable");
+      setError("엔진에 연결할 수 없어요. 잠시 후 다시 시도해 주세요");
     } finally {
       setLoading(false);
     }

@@ -86,8 +86,8 @@ describe('PnLChart', () => {
 
     render(<PnLChart />);
 
-    expect(screen.getByText('Connection error')).toBeInTheDocument();
-    expect(screen.getByText('Retry')).toBeInTheDocument();
+    expect(screen.getByText('연결에 실패했어요')).toBeInTheDocument();
+    expect(screen.getByText('다시 시도')).toBeInTheDocument();
   });
 
   it('calls mutate when retry is clicked', async () => {
