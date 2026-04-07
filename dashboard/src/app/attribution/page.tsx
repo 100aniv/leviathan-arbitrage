@@ -335,7 +335,8 @@ export default function AttributionPage() {
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
-                className={`px-4 py-2 text-xs font-mono transition-colors border-b-2 -mb-px ${
+                aria-current={activeTab === key ? "true" : undefined}
+                className={`px-4 py-2 text-xs font-mono transition-colors border-b-2 -mb-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
                   activeTab === key
                     ? "border-accent text-terminal-text"
                     : "border-transparent text-terminal-subtle hover:text-terminal-text"

@@ -80,17 +80,17 @@ export function ConfirmDialog({
           <div className="flex gap-3 justify-end">
             <button
               onClick={onCancel}
-              className="px-4 py-2 text-xs uppercase tracking-widest border border-terminal-border text-terminal-subtle hover:text-terminal-text hover:border-terminal-muted transition-colors"
+              className="px-4 py-2 text-xs uppercase tracking-widest border border-terminal-border text-terminal-subtle hover:text-terminal-text hover:border-terminal-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
             >
               {cancelLabel}
             </button>
             <button
               ref={confirmRef}
               onClick={onConfirm}
-              className={`px-4 py-2 text-xs uppercase tracking-widest border transition-colors ${
+              className={`px-4 py-2 text-xs uppercase tracking-widest border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                 isCritical
-                  ? 'border-loss/70 bg-loss/10 text-loss hover:bg-loss/20 hover:border-loss'
-                  : 'border-warn/70 bg-warn/10 text-warn hover:bg-warn/20 hover:border-warn'
+                  ? 'border-loss/70 bg-loss/10 text-loss hover:bg-loss/20 hover:border-loss focus-visible:ring-loss'
+                  : 'border-warn/70 bg-warn/10 text-warn hover:bg-warn/20 hover:border-warn focus-visible:ring-warn'
               }`}
             >
               {confirmLabel}

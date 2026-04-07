@@ -86,9 +86,14 @@ export function ModeSwitch({ currentMode }: ModeSwitchProps) {
       )}
 
       {showConfirm && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mode-confirm-title"
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+        >
           <div className="bg-terminal-surface border border-loss p-6 max-w-sm">
-            <h3 className="text-sm font-mono text-loss font-bold mb-2">⚠ 실거래 모드 전환</h3>
+            <h3 id="mode-confirm-title" className="text-sm font-mono text-loss font-bold mb-2">⚠ 실거래 모드 전환</h3>
             <p className="text-xs font-mono text-terminal-text mb-1">
               실제 자금으로 거래를 시작합니다.
             </p>
@@ -99,13 +104,15 @@ export function ModeSwitch({ currentMode }: ModeSwitchProps) {
               <button
                 onClick={() => switchMode(pendingMode!)}
                 disabled={loading}
-                className="px-3 py-1 text-xs font-mono bg-loss text-white hover:bg-loss/80 disabled:opacity-50"
+                aria-label="실거래 모드 전환 확인"
+                className="px-3 py-1 text-xs font-mono bg-loss text-white hover:bg-loss/80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-loss focus-visible:ring-offset-2"
               >
                 {loading ? '확인 중...' : '전환 확인'}
               </button>
               <button
                 onClick={() => { setShowConfirm(false); setPendingMode(null); }}
-                className="px-3 py-1 text-xs font-mono border border-terminal-border text-terminal-subtle hover:text-terminal-text"
+                aria-label="모드 전환 취소"
+                className="px-3 py-1 text-xs font-mono border border-terminal-border text-terminal-subtle hover:text-terminal-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
               >
                 취소
               </button>

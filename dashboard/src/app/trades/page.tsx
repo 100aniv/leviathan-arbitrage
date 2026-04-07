@@ -116,18 +116,21 @@ export default function TradesPage() {
       <div className="bg-terminal-surface border border-terminal-border p-3 flex flex-wrap items-center gap-2">
         <input
           type="date"
+          aria-label="시작 날짜"
           value={dateFrom}
           onChange={(e) => setDateFrom(e.target.value)}
           className="bg-terminal-bg border border-terminal-border text-terminal-text text-xs font-mono px-2 py-1 focus:outline-none focus:border-accent"
         />
-        <span className="text-terminal-subtle text-xs font-mono">—</span>
+        <span className="text-terminal-subtle text-xs font-mono" aria-hidden>—</span>
         <input
           type="date"
+          aria-label="종료 날짜"
           value={dateTo}
           onChange={(e) => setDateTo(e.target.value)}
           className="bg-terminal-bg border border-terminal-border text-terminal-text text-xs font-mono px-2 py-1 focus:outline-none focus:border-accent"
         />
         <select
+          aria-label="전략 필터"
           value={selectedStrategy}
           onChange={(e) => setSelectedStrategy(e.target.value)}
           className="bg-terminal-bg border border-terminal-border text-terminal-text text-xs font-mono px-2 py-1 focus:outline-none focus:border-accent"
@@ -138,6 +141,7 @@ export default function TradesPage() {
           ))}
         </select>
         <select
+          aria-label="거래소 필터"
           value={selectedExchange}
           onChange={(e) => setSelectedExchange(e.target.value)}
           className="bg-terminal-bg border border-terminal-border text-terminal-text text-xs font-mono px-2 py-1 focus:outline-none focus:border-accent"
@@ -149,6 +153,7 @@ export default function TradesPage() {
         </select>
         <input
           type="text"
+          aria-label="심볼 필터"
           value={filterSymbol}
           onChange={(e) => setFilterSymbol(e.target.value)}
           placeholder="Symbol…"
@@ -156,6 +161,7 @@ export default function TradesPage() {
         />
         <button
           onClick={handleExportCsv}
+          aria-label="CSV 내보내기"
           className="ml-auto px-3 py-1 text-xs font-mono border border-terminal-border text-terminal-subtle hover:text-terminal-text hover:border-accent transition-colors"
         >
           CSV 내보내기

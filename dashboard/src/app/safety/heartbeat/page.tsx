@@ -109,7 +109,8 @@ export default function HeartbeatPage() {
         <button
           onClick={() => setDialogOpen(true)}
           disabled={halting}
-          className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+          aria-label="긴급 Halt 실행"
+          className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2"
         >
           {halting ? "처리 중..." : "긴급 Halt"}
         </button>

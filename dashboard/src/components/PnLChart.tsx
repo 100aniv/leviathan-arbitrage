@@ -98,7 +98,8 @@ export function PnLChart({ wsPnl }: PnLChartProps = {}) {
           <p className="text-xs font-mono text-loss">Connection error</p>
           <button
             onClick={() => mutate()}
-            className="text-[10px] font-mono border border-terminal-border px-3 py-1 text-terminal-subtle hover:text-terminal-text transition-colors"
+            aria-label="PnL 차트 다시 불러오기"
+            className="text-[10px] font-mono border border-terminal-border px-3 py-1 text-terminal-subtle hover:text-terminal-text transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Retry
           </button>

@@ -37,7 +37,8 @@ export function EventFeed() {
           <p className="text-xs font-mono text-loss">Failed to load events</p>
           <button
             onClick={() => mutate()}
-            className="text-[10px] font-mono border border-terminal-border px-3 py-1 text-terminal-subtle hover:text-terminal-text transition-colors"
+            aria-label="이벤트 다시 불러오기"
+            className="text-[10px] font-mono border border-terminal-border px-3 py-1 text-terminal-subtle hover:text-terminal-text transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Retry
           </button>

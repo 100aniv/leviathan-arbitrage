@@ -166,6 +166,8 @@ export function GlobalHeatmap() {
               {(Object.keys(SYMBOL_SET_LABELS) as SymbolSet[]).map(key => (
                 <button
                   key={key}
+                  aria-label={`심볼 세트: ${SYMBOL_SET_LABELS[key]}`}
+                  aria-pressed={symbolSet === key}
                   onClick={() => {
                     if (key === 'custom') {
                       setShowCustomBox(v => !v);
@@ -174,7 +176,7 @@ export function GlobalHeatmap() {
                       setShowCustomBox(false);
                     }
                   }}
-                  className={`px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border transition-colors ${
+                  className={`px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                     symbolSet === key
                       ? 'text-accent border-accent/50 bg-accent/10'
                       : 'text-terminal-subtle border-terminal-border hover:border-terminal-text/30'
@@ -195,6 +197,7 @@ export function GlobalHeatmap() {
                 </p>
                 <input
                   type="text"
+                  aria-label="커스텀 심볼 목록 (쉼표 구분)"
                   value={customInput}
                   onChange={e => setCustomInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleCustomSave()}
@@ -205,13 +208,15 @@ export function GlobalHeatmap() {
                 <div className="flex gap-1 mt-1.5">
                   <button
                     onClick={handleCustomSave}
-                    className="px-2 py-0.5 text-[9px] font-mono bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30"
+                    aria-label="커스텀 심볼 적용"
+                    className="px-2 py-0.5 text-[9px] font-mono bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
                     Apply
                   </button>
                   <button
                     onClick={() => setShowCustomBox(false)}
-                    className="px-2 py-0.5 text-[9px] font-mono text-terminal-subtle border border-terminal-border hover:text-terminal-text"
+                    aria-label="커스텀 심볼 취소"
+                    className="px-2 py-0.5 text-[9px] font-mono text-terminal-subtle border border-terminal-border hover:text-terminal-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
                     Cancel
                   </button>

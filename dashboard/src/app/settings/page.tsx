@@ -271,10 +271,11 @@ export default function SettingsPage() {
         <h3 className="text-sm font-mono font-semibold text-terminal-text">자본 설정</h3>
         <div className="space-y-3">
           <div className="flex items-center gap-3">
-            <label className="text-xs font-mono text-terminal-subtle w-40 shrink-0">
+            <label htmlFor="capital-per-exchange" className="text-xs font-mono text-terminal-subtle w-40 shrink-0">
               거래소당 자본 ($)<InfoTip text="거래소당 할당 자본 (alpha 기본값 $70)" />
             </label>
             <input
+              id="capital-per-exchange"
               type="number"
               min={1}
               value={capitalPerExchange}
@@ -283,10 +284,11 @@ export default function SettingsPage() {
             />
           </div>
           <div className="flex items-center gap-3">
-            <label className="text-xs font-mono text-terminal-subtle w-40 shrink-0">
+            <label htmlFor="max-position-capital" className="text-xs font-mono text-terminal-subtle w-40 shrink-0">
               최대 포지션 ($)<InfoTip text="단일 포지션 최대 규모" />
             </label>
             <input
+              id="max-position-capital"
               type="number"
               min={1}
               value={maxPosition}
@@ -295,10 +297,11 @@ export default function SettingsPage() {
             />
           </div>
           <div className="flex items-center gap-3">
-            <label className="text-xs font-mono text-terminal-subtle w-40 shrink-0">
+            <label htmlFor="max-daily-loss" className="text-xs font-mono text-terminal-subtle w-40 shrink-0">
               최대 일일 손실 ($)<InfoTip text="일일 최대 허용 손실액 초과 시 Kill Switch 발동" />
             </label>
             <input
+              id="max-daily-loss"
               type="number"
               min={1}
               value={maxDailyLoss}
@@ -320,10 +323,11 @@ export default function SettingsPage() {
       <section className="bg-terminal-surface border border-terminal-border rounded-lg p-5 space-y-4">
         <h3 className="text-sm font-mono font-semibold text-terminal-text">거래 파라미터</h3>
         <div className="flex items-center gap-3">
-          <label className="text-xs font-mono text-terminal-subtle w-36 shrink-0">
+          <label htmlFor="min-edge-bps" className="text-xs font-mono text-terminal-subtle w-36 shrink-0">
             최소 수익 기준 (BPS)<InfoTip text="거래 실행을 위한 최소 스프레드 (basis points)" />
           </label>
           <input
+            id="min-edge-bps"
             type="number"
             min={1}
             max={1000}
@@ -333,10 +337,11 @@ export default function SettingsPage() {
           />
         </div>
         <div className="flex items-center gap-3">
-          <label className="text-xs font-mono text-terminal-subtle w-36 shrink-0">
+          <label htmlFor="max-position-usd" className="text-xs font-mono text-terminal-subtle w-36 shrink-0">
             최대 포지션 USD<InfoTip text="최대 단일 포지션 규모 (USD)" />
           </label>
           <input
+            id="max-position-usd"
             type="number"
             min={1}
             value={maxPosition}

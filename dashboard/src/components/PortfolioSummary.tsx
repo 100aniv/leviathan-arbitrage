@@ -44,7 +44,9 @@ function ExchangeBalanceBreakdown({ balances }: { balances: ExchangeBalance[] })
     <div className="mt-3">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 text-xs font-mono text-terminal-subtle hover:text-terminal-text transition-colors"
+        aria-expanded={expanded}
+        aria-label={`거래소 잔고 ${expanded ? '접기' : '펼치기'}`}
+        className="flex items-center gap-2 text-xs font-mono text-terminal-subtle hover:text-terminal-text transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1"
       >
         <span className="uppercase tracking-wider">Exchange Balances ({balances.length})</span>
         <span className="text-[10px]">{expanded ? '▲' : '▼'}</span>

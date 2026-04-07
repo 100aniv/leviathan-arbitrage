@@ -117,7 +117,7 @@ export function EmergencyStop({ onConfirm, disabled = false }: EmergencyStopProp
                 <button
                   onClick={handleCancel}
                   aria-label={ko.common.cancel}
-                  className="w-8 h-8 flex items-center justify-center rounded-full text-text-secondary hover:bg-bg-surface"
+                  className="min-w-[44px] min-h-[44px] w-8 h-8 flex items-center justify-center rounded-full text-text-secondary hover:bg-bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                 >
                   <X size={16} aria-hidden />
                 </button>

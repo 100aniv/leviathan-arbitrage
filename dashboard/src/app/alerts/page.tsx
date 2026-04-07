@@ -217,7 +217,8 @@ export default function AlertsPage() {
                             <button
                               onClick={() => handleAcknowledge(alert.id)}
                               disabled={isActioning}
-                              className="px-2 py-0.5 text-[10px] font-mono border border-warn/40 text-warn hover:bg-warn/10 disabled:opacity-40 transition-colors"
+                              aria-label="알림 확인"
+                              className="px-2 py-0.5 text-[10px] font-mono border border-warn/40 text-warn hover:bg-warn/10 disabled:opacity-40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn"
                             >
                               {isActioning ? "…" : "ACK"}
                             </button>
@@ -226,7 +227,8 @@ export default function AlertsPage() {
                             <button
                               onClick={() => handleResolve(alert.id)}
                               disabled={isActioning}
-                              className="px-2 py-0.5 text-[10px] font-mono border border-profit/30 text-profit hover:bg-profit/10 disabled:opacity-40 transition-colors"
+                              aria-label="알림 해결"
+                              className="px-2 py-0.5 text-[10px] font-mono border border-profit/30 text-profit hover:bg-profit/10 disabled:opacity-40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-profit"
                             >
                               {isActioning ? "…" : "RESOLVE"}
                             </button>
