@@ -173,6 +173,7 @@ class TestMainStatArbRegistration:
         engine._strategy_manager.register.side_effect = capture_register
 
         with patch.object(engine, "_load_strategy_params", return_value=disabled_params), \
+             patch.object(engine, "_load_activation_disabled_ids", return_value=set()), \
              patch.object(engine, "_build_dex_adapter", return_value=None):
             await engine._register_default_strategies()
 

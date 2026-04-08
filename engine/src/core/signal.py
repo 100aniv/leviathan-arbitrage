@@ -170,7 +170,7 @@ class SignalGenerator:
                 sigma = Decimal(str(math.sqrt(float(variance))))
                 sigma = min(sigma, Decimal("0.10"))  # US-248: CRISIS upper clamp — prevent full signal block
                 sigma = max(sigma, Decimal("0.0001"))  # US-388: floor BEFORE log so log == returned value
-                logger.info(
+                logger.debug(
                     "signal.dynamic_sigma_computed symbol=%s sigma=%s history_len=%d",
                     symbol, sigma, len(prices),
                 )

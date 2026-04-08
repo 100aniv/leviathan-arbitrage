@@ -426,6 +426,10 @@ InfraBot /watchdog on 활성화 시:
 
 #### Step 2-1: futures_futures 단독 24H
 
+> **v3 실행 중 — PID=81622, 2026-04-08 09:27 KST, log=`engine/logs/step2-1_canary_v3_20260408_092705.log`**
+> 종료 예정: 2026-04-09 09:27 KST (+24H)
+> threshold_bps=47.51 (v2: 142 bps → 정상화 확인)
+
 - [ ] 자본 $60 × 2 = $120, futures_futures 단독 (선물간 차익)
 - [ ] crash=0, KillSwitch=0, CB OPEN < 5회
 - [ ] PnL > -$6 (5% 손실 tier, 아니면 자동 정지 + 텔레그램 알림 → 다음날 검토)
@@ -1539,4 +1543,105 @@ Live→Paper는 즉시 전환 (안전 방향이므로 확인 불필요).
 ### Telegram 포맷 통일
 
 - live.py `send_alert_kr("live_trade_executed")` → `send_fill_enhanced()` 통일
-- 모드 레이블: 🔴 [LIVE] / 🟢 [PAPER] / 🟣 [SHADOW]
+- shadow.py(PaperMode) `"🟣 [SHADOW]"` → `"🟢 [PAPER]"` 2곳 수정 (L1573, L1972)
+- 통일 모드 레이블: 🔴 [LIVE] / 🟢 [PAPER] (live + paper 실행 모두)
+
+### AdaptiveThreshold 팽창 버그 (2026-04-08 발견)
+
+- **현상**: stale/fake 스프레드(Bithumb 이상 데이터 등)가 AdaptiveThreshold를 100-142 bps까지 팽창
+- **영향**: 99.97 bps 실제 기회도 rejected → 세션 초반 6건 이후 사실상 dormant
+- **증거**: `score_bps=99.71 threshold_bps=142.07` (BARD/USDT), 114,597건 거부
+- **근본 원인**: AdaptiveThreshold가 outlier 스프레드에 비례 adapt → 정상 기회도 차단
+- **다음 세션 수정**: outlier clip (상위 5% 제거) + 최대 adapt 비율 cap + 중앙값 기반 estimation
+
+---
+
+## § 2026-04-08 Step 2-1 v3 Pre-flight + 재시작
+
+### P0 (즉시 조치)
+
+- [x] **엔진 종료 확인** — PID 없음 (수동 청산 후 미실행)
+- [x] **Bitget 포지션 확인** — `python scripts/close_positions.py` (dry-run) → Bitget 포지션 없음, Binance BARD/USDT BUY 174 발견
+- [x] **Binance BARD/USDT 청산** — `python scripts/close_positions.py --execute` → CLOSED order_id=1093715033 fill=174@0.3308000
+- [x] **Redis exposure 키 초기화** — `KEYS "leviathan:exposure:*"` → 0건 (이미 깨끗)
+- [x] **Bug 25: live.py ROLLBACK_FAILED Telegram 알림 추가** — `exec_result.status == ExecutionStatus.ROLLBACK_FAILED` 시 `send_alert_kr("rollback_failed", {...})` 호출
+
+### P1 (코드 수정)
+
+- [x] **Bug 26: futures_futures.py adaptive_static_entry_bps 분리** — `FuturesFuturesConfig.adaptive_static_entry_bps: Decimal | None` 필드 추가. AdaptiveThreshold `static_entry` = adaptive_static_entry_bps(50) vs min_spread_bps(150) 분리
+- [x] **Bug 27: adaptive_threshold.py soft-clip 추가** — `thresholds` 프로퍼티에서 상위 5% 트림 후 95th percentile 계산. `_percentile(pct, data=None)` 시그니처 추가
+- [x] **trading.json `futures_adaptive_static_entry_bps: 50` 추가** — outlier filter max_allowed = 50×2 = 100 bps (기존 150×2=300 bps → 100 bps로 축소)
+
+### 효과 요약
+
+| 항목 | v2 (버그) | v3 (수정) |
+|------|----------|----------|
+| AdaptiveThreshold static_entry | 150 bps (min_spread_bps와 동일) | 50 bps (분리) |
+| outlier filter 상한 | 300 bps (fake spread 통과) | 100 bps (fake spread 차단) |
+| 95th percentile 추정 | stale 오염 → 142 bps | 현실적 스프레드만 → ~30-60 bps |
+| 99.71 bps 신호 처리 | rejected (142 > 99.71) | ✅ 통과 예상 |
+| ROLLBACK_FAILED 알림 | 로그만 | Telegram 즉시 알림 |
+
+### v3 시작 전 검증
+
+- [x] pytest 통과 — **5471 passed, 12 skipped, 2 flaky (격리 PASS)** (2026-04-08 09:27)
+- [x] Paper 5분: `threshold_bps=69-76 bps < 100` ✅ + `signal_evaluated=990건 ≥ 10건` ✅ (crash=0)
+- [x] Step 2-1 v3 Live 재시작 — **PID=81622**, futures_futures 단독 (strategies_started count=1, AtomicExecutor), log=`logs/step2-1_canary_v3_20260408_092705.log` (2026-04-08 09:27 KST)
+
+---
+
+## § 2026-04-08 Step 2-1 v3 실행 결과 + 발견 버그 + 수정 계획
+
+### v3 실행 요약 (2026-04-08 09:27~10:11 KST)
+
+- **실행**: PID=81622(원본) → 90888(r2) → 93858(r3) → 94899(r4, 중단)
+- **체결**: 22건 futures_futures_v1 단독
+- **실현 PnL**: 약 -$1.1 (BARD 청산 손실 포함)
+- **결론**: ROLLBACK_FAILED → 엔진 HALT. 포지션 수동 청산으로 마무리
+
+### 발견 버그 (Bug 28~32)
+
+**Bug 28 (치명 — silent failure)**: `base_position_pct=3%` → `$70 × 3% = $2.10` < `min_trade_notional=$10` → 거래 220건 전부 차단
+- 수정 ✅: `engine.json` `dynamic_risk.base_position_pct=15.0` + `execution.min_trade_notional_usd=5` → 포지션 $10.50
+
+**Bug 29 (성능)**: `signal.dynamic_sigma_computed` INFO 레벨 → 37%(155,830건/15분) 로그 스팸, CPU=93%
+- 수정 ✅: `signal.py:173` `logger.info` → `logger.debug`
+
+**Bug 30 (치명)**: Redis `trade_requests` 큐 잔존 → 엔진 재시작 시 이전 세션 오더 자동 처리 → BARD 포지션 누적 → ROLLBACK_FAILED → HALT
+- 임시 수정 ✅: 재시작 전 Redis 수동 flush 절차 확립
+- **미수정 (v4 필수)**: 엔진 시작 시 `leviathan:trade_requests` 큐 자동 flush 로직
+
+**Bug 31 (치명)**: BitFut Hedge 모드 포지션 청산 API 파라미터 불일치
+- `tradeSide=close + posSide=long` → 에러 `22002: No position to close`
+- `tradeSide 없음` → 에러 `40774: unilateral position type mismatch`
+- 원인: same_exchange 롤백 과정에서 hedge 포지션 쌓임, `close_positions.py` holdSide 처리 미구현
+- **미수정 (v4 필수)**: `native_bitget.py` Hedge/One-way 모드 자동 감지 + 올바른 청산 파라미터
+
+**Bug 32 (중간)**: `symbol_exclusions_per_exchange` config가 symbol discovery에만 적용됨 — 전략 on_signal에서 미필터
+- 수정 ✅: `FuturesFuturesConfig.excluded_symbols` 필드 + `on_signal` 심볼 필터 로직 추가
+- 수정 ✅: `trading.json` `futures_excluded_symbols: ["BARD", "0G"]`
+
+### 코드 수정 완료 목록 (2026-04-08)
+
+- [x] `engine/src/core/signal.py` — `dynamic_sigma_computed` INFO→DEBUG (Bug 29)
+- [x] `engine/src/strategies/futures_futures.py` — `excluded_symbols` 필드 + `on_signal` 필터 (Bug 32)
+- [x] `engine/src/main.py` — `_load_activation_disabled_ids()` 메서드 분리 (테스트 testability)
+- [x] `engine/config/engine.json` — `dynamic_risk.base_position_pct=15.0`, `execution.min_trade_notional_usd=5` (Bug 28)
+- [x] `engine/config/trading.json` — `futures_excluded_symbols: ["BARD", "0G"]` (Bug 32)
+- [x] `engine/tests/unit/strategies/test_stat_arb_disable.py` — `_load_activation_disabled_ids` mock 추가
+
+### v4 시작 전 필수 수정 (다음 세션)
+
+- [ ] **Bug 31 수정**: `native_bitget.py` + `close_positions.py` Hedge 모드 holdSide 처리 (포지션 API 청산 100% 보장)
+- [ ] **Bug 30 수정**: 엔진 시작 시 `leviathan:trade_requests` 큐 자동 flush (startup safety)
+- [ ] **same_exchange 방지**: futures_futures `on_signal`에서 buy_exchange == sell_exchange 차단
+- [ ] **v4 재시작 절차**: Redis 초기화 확인 (`dbsize=0`) → BARD/0G excluded 상태 → 재시작
+
+### v3 손실 내역
+
+| 항목 | 금액 |
+|------|------|
+| v3 체결 22건 누적 PnL | -$1.08 |
+| BinFut BARD SHORT 청산 (310, 64개) | PnL에 포함 |
+| BitFut BARD/0G 수동 청산 (사장님) | 별도 실현 |
+| 일일 손실 한도 ($15) 대비 | ~7% 소진 |

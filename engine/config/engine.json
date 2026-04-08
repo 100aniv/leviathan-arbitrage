@@ -33,7 +33,11 @@
     "inactive_reserved": ["bybit", "okx", "mexc", "gateio", "bybit_futures", "okx_futures"],
     "symbols": ["auto"],
     "symbol_min_exchanges": 2,
-    "symbol_exclusions_per_exchange": {"coinone": ["BTC"]}
+    "symbol_exclusions_per_exchange": {
+      "coinone": ["BTC"],
+      "binance_futures": ["BARD"],
+      "bitget_futures": ["BARD"]
+    }
   },
 
   "risk": {
@@ -46,6 +50,16 @@
     "min_price_usd": 0.10,
     "max_rollback_threshold": 0.02,
     "kill_switch_enabled": true
+  },
+
+  "dynamic_risk": {
+    "_comment": "PHOENIX v3: base_position_pct raised so startup fallback $70×15%=$10.50 clears min_notional=$5",
+    "base_position_pct": 15.0
+  },
+
+  "execution": {
+    "_comment": "PHOENIX v3: min_trade_notional lowered to $5 (futures exchange minimum)",
+    "min_trade_notional_usd": 5
   },
 
   "paper": {

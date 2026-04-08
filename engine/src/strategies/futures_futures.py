@@ -40,6 +40,11 @@ class FuturesFuturesConfig(BaseModel):
     excluded_exchanges: list[str] = Field(
         default_factory=lambda: sorted(KRW_EXCHANGES)
     )
+    # Bug 26: Separate baseline for AdaptiveThreshold outlier filter (independent of min_spread_bps)
+    # min_spread_bps=150 (latency-adjusted trade floor) vs adaptive_static_entry_bps=50 (realistic spread baseline)
+    adaptive_static_entry_bps: Decimal | None = Field(default=None)
+    # PHOENIX: Per-run symbol exclusion (e.g. stranded position symbols)
+    excluded_symbols: list[str] = Field(default_factory=list)
 
 
 class FuturesFuturesStrategy(BaseStrategy):
@@ -66,6 +71,7 @@ class FuturesFuturesStrategy(BaseStrategy):
         self._regime_detector = regime_detector
         if config is None:
             from src.core.config_loader import get_config
+            _at_bps_raw = get_config("strategy_filters.futures_adaptive_static_entry_bps", default=None)
             config = FuturesFuturesConfig(
                 min_spread_bps=Decimal(str(get_config("strategy_filters.futures_min_spread_bps", default=15))),
                 min_book_depth_usd=Decimal(str(get_config("strategy_filters.futures_min_book_depth_usd", default=500))),
@@ -74,18 +80,27 @@ class FuturesFuturesStrategy(BaseStrategy):
                 enable_funding_convergence=get_config("strategy_filters.enable_funding_convergence", default=True),
                 max_book_age_seconds=float(get_config("strategy_filters.futures_max_book_age_s", default=5.0)),
                 enable_stale_guard=get_config("strategy_filters.enable_stale_guard", default=False),
+                adaptive_static_entry_bps=Decimal(str(_at_bps_raw)) if _at_bps_raw is not None else None,
+                excluded_symbols=list(get_config("strategy_filters.futures_excluded_symbols", default=[])),
             )
         self.config = config
 
         # US-260: Adaptive threshold — rolling percentile + volatility weight
+        # Bug 26: Use adaptive_static_entry_bps (if set) as the outlier-filter baseline,
+        # independent of min_spread_bps (latency-adjusted trade floor).
         try:
             from src.core.adaptive_threshold import AdaptiveThreshold
+            _at_static = (
+                float(config.adaptive_static_entry_bps)
+                if config.adaptive_static_entry_bps is not None
+                else float(config.min_spread_bps)
+            )
             self._adaptive_threshold = AdaptiveThreshold(
                 window=1440,
                 entry_percentile=95.0,
                 exit_percentile=50.0,
-                static_entry=float(config.min_spread_bps),
-                static_exit=float(config.min_spread_bps) * 0.5,
+                static_entry=_at_static,
+                static_exit=_at_static * 0.5,
             )
         except ImportError:
             self._adaptive_threshold = None
@@ -107,6 +122,16 @@ class FuturesFuturesStrategy(BaseStrategy):
             book_age_ms = float(raw_book_age)
             if book_age_ms / 1000 > self.config.max_book_age_seconds:
                 self._metrics.signals_filtered += 1
+                return None
+
+        # PHOENIX: Exclude specific symbols (e.g. stranded position symbols)
+        if self.config.excluded_symbols and signal.symbol:
+            _base = signal.symbol.split("/")[0].upper()
+            if _base in {s.upper() for s in self.config.excluded_symbols}:
+                self._metrics.signals_filtered += 1
+                logger.debug(
+                    "strategy.rejected strategy=futures_futures reason=excluded_symbol symbol=%s", signal.symbol
+                )
                 return None
 
         # CB: Exclude KRW spot-only exchanges (no futures market)

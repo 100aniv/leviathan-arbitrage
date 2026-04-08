@@ -1014,6 +1014,22 @@ class Engine:
             logger.warning("Failed to load strategy params: %s", exc)
             return {}
 
+    def _load_activation_disabled_ids(self) -> set[str]:
+        """Load disabled strategy IDs from strategy_activation.json (extracted for testability)."""
+        import pathlib
+        _activation_path = pathlib.Path(__file__).parent.parent / "config" / "strategy_activation.json"
+        try:
+            if _activation_path.exists():
+                with open(_activation_path) as _f:
+                    _activation = json.load(_f)
+                _disabled = set(_activation.get("disabled_strategies", []))
+                if _disabled:
+                    logger.info("Skipping disabled strategies: %s", _disabled)
+                return _disabled
+        except Exception as _exc:
+            logger.warning("Failed to load strategy_activation.json: %s", _exc)
+        return set()
+
     async def _register_default_strategies(self) -> None:
         """Register all 8 available strategies with tuned parameters."""
         from src.core.latency_tracker import LatencyTracker
@@ -1105,18 +1121,7 @@ class Engine:
         ) if tri_p.get("status") in ("READY", "MONITOR") else None
 
         # Load disabled strategies from strategy_activation.json
-        import pathlib
-        _activation_path = pathlib.Path(__file__).parent.parent / "config" / "strategy_activation.json"
-        _disabled_ids: set[str] = set()
-        try:
-            if _activation_path.exists():
-                with open(_activation_path) as _f:
-                    _activation = json.load(_f)
-                _disabled_ids = set(_activation.get("disabled_strategies", []))
-                if _disabled_ids:
-                    logger.info("Skipping disabled strategies: %s", _disabled_ids)
-        except Exception as _exc:
-            logger.warning("Failed to load strategy_activation.json: %s", _exc)
+        _disabled_ids = self._load_activation_disabled_ids()
 
         strategies = [
             s for s in [

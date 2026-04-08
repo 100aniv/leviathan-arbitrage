@@ -14,7 +14,11 @@
     "bybit_futures",
     "bitget_futures"
   ],
-  "disabled_strategies": [],
+  "disabled_strategies": [
+    "funding_rate_v1",
+    "cross_exchange_v1",
+    "spot_futures_v1"
+  ],
   "risk": {
     "max_position_usd": 1000,
     "max_daily_loss_usd": 500,
@@ -86,7 +90,10 @@
     "stat_arb_cooldown_s": 120,
     "stat_arb_min_history": 60,
     "cross_exchange_min_book_depth_usd": 1,
-    "futures_min_book_depth_usd": 1
+    "futures_min_book_depth_usd": 1,
+    "futures_min_spread_bps": 150,
+    "futures_adaptive_static_entry_bps": 50,
+    "futures_excluded_symbols": ["BARD", "0G"]
   },
   "shadow": {
     "disabled_strategies": [
