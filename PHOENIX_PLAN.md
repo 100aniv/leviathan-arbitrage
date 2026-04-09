@@ -2126,3 +2126,58 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 **FF 전략 재개 조건**: Binance에 $30+ 추가 입금 → 양쪽 잔고 균형 확보.
 **재개 전 필수**: `.env EXECUTION_MODE` 와 `engine.json mode` 일치 확인 (현재 충돌 → RuntimeError 상태).
 - [ ] rollback 중복 미발생 확인
+
+---
+
+## §8.17 — v10~v17 완전 실행 이력 (2026-04-09)
+
+### 실행 이력 테이블
+
+| 버전 | 시작 시각 | Fills | PnL | 종료 사유 | 핵심 수정 |
+|------|---------|-------|-----|---------|---------|
+| v10 | 2026-04-09 13:52 | 0건 | — | 신규 기동 | BUG-A~G 일괄 반영, min_spread 150→25bps, 자본 공식 수정 |
+| v11 | 2026-04-09 15:04 | 2건 | — | BUG-H 발견 후 재기동 | AdaptiveThreshold update() 위치 수정 |
+| v12 | 2026-04-09 17:24 | 0건 | — | ALLO 심볼 excluded | BUG-I 임시: futures_excluded_symbols에 ALLO 추가 |
+| v13 | 2026-04-09 17:xx | 0건 | — | 반복 수정 | 0G excluded 추가 |
+| v14 | 2026-04-09 17:xx | 0건 | — | 반복 수정 | BARD excluded 추가 |
+| v15 | 2026-04-09 18:21 | 0건 | — | 반복 수정 | AdaptiveThreshold static_entry 조정 |
+| v16 | 2026-04-09 19:05 | 0건 | -$3.75 | Redis NoneType 크래시 (78% 에러율) | BUG-J/K/L 발견 |
+| v17 | 2026-04-09 20:28 | 0건 | — | 재기동 검증 (30초 내 확인) | BUG-J/K/L 수정 완료 |
+
+### 버그 상세 기록
+
+#### BUG-H: AdaptiveThreshold 역방향 학습 (v10→v11, ✅ 완료)
+- **파일**: `engine/src/strategies/futures_futures.py`
+- **원인**: `update(abs_spread_bps)` 호출이 `min_spread_bps` 필터 이전에 위치 → 거부된 저품질값 분포 누적 → p95 낮아짐 → 정상 신호 outlier 차단
+- **수정**: `update()` 호출을 `min_spread_bps` 필터 이후로 이동
+- **증거**: v9 `outlier_cap=23.88bps` (실측 25bps 신호 차단)
+
+#### BUG-I: ALLO rollback 중복 → SHORT 포지션 생성 (v11→임시조치 완료, v18 근본수정)
+- **파일**: `engine/src/execution/executor.py`
+- **원인**: `execute_cross_exchange` 내 3곳에서 `_rollback_order` 호출 가능. 중복 방지 없음. Bitget one_way에서 `reduceOnly=True` + 포지션 없을 때 → SHORT 신규 진입
+- **임시조치**: `futures_excluded_symbols: ["ALLO", "0G", "BARD"]` (v12~v15)
+- **근본수정**: v18 `_rollback_attempted` dict 추가로 idempotency 보장
+
+#### BUG-J: Redis NoneType 크래시 (v17, ✅ 완료)
+- **파일**: `engine/src/infra/redis/client.py`
+- **원인**: `disconnect()` 후 `self._redis = None` → 이후 `xadd()` AttributeError
+- **수정**: `_ensure_connected()` 메서드 + 20+ 메서드 null guard
+
+#### BUG-K: 모드 충돌 무음 처리 (v17, ✅ 완료)
+- **파일**: `engine/src/core/config.py`
+- **원인**: `engine.json mode=live` + `.env EXECUTION_MODE=paper` 동시 설정 시 경고 없이 live 실행
+- **수정**: `resolve_engine_mode()`에 충돌 시 `RuntimeError` 즉시 발생
+
+#### BUG-L: 로그 혼동 (v17, ✅ 완료)
+- **파일**: `engine/src/main.py`
+- **원인**: "Config loaded mode=paper" 로그가 `.env EXECUTION_MODE` 값 출력 → live인데 paper로 오판
+- **수정**: engine_mode(engine.json) + EXECUTION_MODE(.env) + resolved mode 명시 출력
+
+### v18 추가 개선 (2026-04-09)
+- **P0**: FF exit TradeRequest emit (경고→실제 청산 발행)
+- **P0**: Rollback idempotency (`_rollback_attempted` dict)
+- **P0**: IS/TCA 계산 → DB 저장 (`slippage_total` 계산 연결)
+- **P0**: Exchange fill reconciliation (`get_trades()` 구현 + TradeReconciler)
+- **P1**: Binance -4168 Multi-Assets mode 처리
+- **P1**: futures_min_spread_bps 25→20 (실시장 대응)
+- **P1**: spot_futures holding_timeout config key 추가

@@ -341,10 +341,19 @@ class NativeAdapter(abc.ABC):
                 body = resp.json()
             except Exception:
                 body = resp.text
-            logger.error(
-                "http_error exchange=%s status=%s body=%s",
-                self.exchange_id, resp.status_code, body,
-            )
+            _body_str = str(body)
+            # Binance benign codes: -4046/-4048 = already set, -4168 = Multi-Assets mode (no action needed)
+            _binance_benign = any(c in _body_str for c in ("-4046", "-4048", "-4168"))
+            if _binance_benign:
+                logger.debug(
+                    "http_error exchange=%s status=%s body=%s (benign — suppressed)",
+                    self.exchange_id, resp.status_code, body,
+                )
+            else:
+                logger.error(
+                    "http_error exchange=%s status=%s body=%s",
+                    self.exchange_id, resp.status_code, body,
+                )
         resp.raise_for_status()
         return resp.json()
 

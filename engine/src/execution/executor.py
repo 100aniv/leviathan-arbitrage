@@ -139,6 +139,10 @@ class AtomicExecutor:
         self._config = config or ExecutionConfig()
         # Per-exchange capital locks (asyncio.Lock prevents concurrent executions)
         self._locks: dict[str, asyncio.Lock] = {}
+        from src.execution.stranded import StrandedPositionTracker
+        self._stranded_tracker = StrandedPositionTracker()
+        # PHOENIX v18: Rollback dedup — order_id → "success"|"failed"
+        self._rollback_attempted: dict[str, str] = {}
 
     def _get_lock(self, exchange_id: str) -> asyncio.Lock:
         return self._locks.setdefault(exchange_id, asyncio.Lock())
@@ -180,7 +184,7 @@ class AtomicExecutor:
     async def _rollback_order(
         self, exchange_id: str, order: Order, order_id: str | None = None,
         filled: bool = False, filled_amount: Decimal | None = None,
-    ) -> bool:
+    ) -> tuple[bool, str]:
         """
         Attempt to cancel/close an order as part of rollback.
 
@@ -195,9 +199,16 @@ class AtomicExecutor:
             "rollback_triggered exchange=%s symbol=%s side=%s filled=%s amount=%s",
             exchange_id, order.symbol, order.side, filled, filled_amount,
         )
+        # PHOENIX v18: 중복 rollback 방지
+        if order.order_id and order.order_id in self._rollback_attempted:
+            logger.info(
+                "rollback_dedup_skipped order_id=%s prev=%s",
+                order.order_id, self._rollback_attempted[order.order_id],
+            )
+            return True, "dedup_skipped"
         adapter = self._exchanges.get(exchange_id)
         if adapter is None:
-            return False
+            return False, "no adapter"
 
         try:
             if filled:
@@ -212,6 +223,10 @@ class AtomicExecutor:
                     order_type=OrderType.MARKET,
                     price=None,
                     amount=unwind_qty,
+                    # Bug 25b: tell futures adapters (Bitget, Binance, etc.) this is a
+                    # position-close, not a new open.  Without reduceOnly, Bitget hedge
+                    # mode sends tradeSide="open" and gets error 40762 (balance exceeded).
+                    metadata={"reduceOnly": True},
                 )
                 logger.info(
                     "rollback_unwind exchange=%s side=%s amount=%s symbol=%s",
@@ -228,10 +243,14 @@ class AtomicExecutor:
                         # Fallback for adapters that don't accept symbol kwarg
                         await adapter.cancel_order(effective_id)
                 # else: order was never submitted — nothing to cancel
-            return True
+            if order.order_id:
+                self._rollback_attempted[order.order_id] = "success"
+            return True, ""
         except Exception as exc:
             logger.error("rollback_failed exchange=%s error=%s", exchange_id, exc)
-            return False
+            if order.order_id:
+                self._rollback_attempted[order.order_id] = "failed"
+            return False, str(exc)
 
     # -----------------------------------------------------------------------
     # SAME-EXCHANGE ATOMIC EXECUTION
@@ -324,11 +343,22 @@ class AtomicExecutor:
                 # Rollback: cancel unfilled, unwind filled
                 leg1_filled = leg1_trade is not None and leg1_result.filled_amount > 0
                 leg2_filled = leg2_trade is not None and leg2_result.filled_amount > 0
-                rb1 = await self._rollback_order(exchange_id, leg1_order, filled=leg1_filled, filled_amount=leg1_result.filled_amount) if leg1_trade else True
-                rb2 = await self._rollback_order(exchange_id, leg2_order, filled=leg2_filled, filled_amount=leg2_result.filled_amount) if leg2_trade else True
+                rb1, rb1_reason = (await self._rollback_order(exchange_id, leg1_order, filled=leg1_filled, filled_amount=leg1_result.filled_amount) if leg1_trade else (True, ""))
+                rb2, rb2_reason = (await self._rollback_order(exchange_id, leg2_order, filled=leg2_filled, filled_amount=leg2_result.filled_amount) if leg2_trade else (True, ""))
 
                 if not rb1 or not rb2:
-                    halt_local()
+                    failed_order = leg1_order if not rb1 else leg2_order
+                    reason = rb1_reason if not rb1 else rb2_reason
+                    should_halt = self._stranded_tracker.register(
+                        exchange_id=exchange_id,
+                        symbol=failed_order.symbol,
+                        side=str(failed_order.side),
+                        size=float(failed_order.amount),
+                        value_usd=float(failed_order.amount * (failed_order.price or Decimal("0"))),
+                        reason=reason,
+                    )
+                    if should_halt:
+                        halt_local()
                     logger.critical(
                         "same_exchange_rollback_failed exchange=%s strategy=%s",
                         exchange_id, strategy_id
@@ -336,7 +366,7 @@ class AtomicExecutor:
                     return ExecutionResult(
                         status=ExecutionStatus.ROLLBACK_FAILED,
                         legs=[leg1_result, leg2_result],
-                        error="Rollback failed — engine halted",
+                        error="Rollback failed — engine halted" if should_halt else "Rollback failed — stranded alert",
                         strategy_id=strategy_id,
                     )
 
@@ -361,6 +391,7 @@ class AtomicExecutor:
 
         finally:
             self._release_lock(exchange_id)
+            self._rollback_attempted.clear()
 
     # -----------------------------------------------------------------------
     # MULTI-LEG SAME-EXCHANGE EXECUTION (sequential, N legs)
@@ -428,15 +459,27 @@ class AtomicExecutor:
                 if error_msg is not None:
                     # Rollback completed[K-1..0] in reverse order
                     all_rb_ok = True
+                    last_rb_reason = ""
                     for prev_leg in reversed(completed):
-                        rb_ok = await self._rollback_order(
+                        rb_ok_val, rb_reason = await self._rollback_order(
                             exchange_id, prev_leg.order,
                             filled=True, filled_amount=prev_leg.filled_amount,
                         )
-                        if not rb_ok:
+                        if not rb_ok_val:
                             all_rb_ok = False
+                            last_rb_reason = rb_reason
                     if not all_rb_ok:
-                        halt_local()
+                        failed_leg = completed[-1] if completed else None
+                        should_halt = self._stranded_tracker.register(
+                            exchange_id=exchange_id,
+                            symbol=failed_leg.order.symbol if failed_leg else "unknown",
+                            side=str(failed_leg.order.side) if failed_leg else "unknown",
+                            size=float(failed_leg.order.amount) if failed_leg else 0.0,
+                            value_usd=float(failed_leg.order.amount * (failed_leg.order.price or Decimal("0"))) if failed_leg else 0.0,
+                            reason=last_rb_reason,
+                        )
+                        if should_halt:
+                            halt_local()
                         logger.critical(
                             "multi_leg_rollback_failed HALT_SET exchange=%s strategy=%s",
                             exchange_id, strategy_id,
@@ -444,7 +487,7 @@ class AtomicExecutor:
                         return ExecutionResult(
                             status=ExecutionStatus.ROLLBACK_FAILED,
                             legs=completed,
-                            error=f"Rollback failed — engine halted. Leg {i}: {error_msg}",
+                            error=f"Rollback failed — {'halted' if should_halt else 'stranded alert'}. Leg {i}: {error_msg}",
                             strategy_id=strategy_id,
                         )
                     return ExecutionResult(
@@ -468,15 +511,27 @@ class AtomicExecutor:
                         i, fill_ratio, strategy_id,
                     )
                     all_rb_ok = True
+                    last_rb_reason = ""
                     for prev_leg in reversed(completed):
-                        rb_ok = await self._rollback_order(
+                        rb_ok_val, rb_reason = await self._rollback_order(
                             exchange_id, prev_leg.order,
                             filled=True, filled_amount=prev_leg.filled_amount,
                         )
-                        if not rb_ok:
+                        if not rb_ok_val:
                             all_rb_ok = False
+                            last_rb_reason = rb_reason
                     if not all_rb_ok:
-                        halt_local()
+                        failed_leg = completed[-1] if completed else None
+                        should_halt = self._stranded_tracker.register(
+                            exchange_id=exchange_id,
+                            symbol=failed_leg.order.symbol if failed_leg else "unknown",
+                            side=str(failed_leg.order.side) if failed_leg else "unknown",
+                            size=float(failed_leg.order.amount) if failed_leg else 0.0,
+                            value_usd=float(failed_leg.order.amount * (failed_leg.order.price or Decimal("0"))) if failed_leg else 0.0,
+                            reason=last_rb_reason,
+                        )
+                        if should_halt:
+                            halt_local()
                         logger.critical(
                             "multi_leg_partial_rollback_failed HALT_SET exchange=%s strategy=%s",
                             exchange_id, strategy_id,
@@ -484,7 +539,7 @@ class AtomicExecutor:
                         return ExecutionResult(
                             status=ExecutionStatus.ROLLBACK_FAILED,
                             legs=completed,
-                            error=f"Rollback failed — engine halted. Leg {i} partial fill {fill_ratio:.2%}",
+                            error=f"Rollback failed — {'halted' if should_halt else 'stranded alert'}. Leg {i} partial fill {fill_ratio:.2%}",
                             strategy_id=strategy_id,
                         )
                     return ExecutionResult(
@@ -633,9 +688,18 @@ class AtomicExecutor:
                     leg1_ratio, strategy_id
                 )
                 leg1_filled = leg1_result.trade is not None and leg1_result.filled_amount > 0
-                rb_ok = await self._rollback_order(ex_a_id, leg1_order, filled=leg1_filled, filled_amount=leg1_result.filled_amount)
+                rb_ok, rb_reason = await self._rollback_order(ex_a_id, leg1_order, filled=leg1_filled, filled_amount=leg1_result.filled_amount)
                 if not rb_ok:
-                    halt_local()
+                    should_halt = self._stranded_tracker.register(
+                        exchange_id=ex_a_id,
+                        symbol=leg1_order.symbol,
+                        side=str(leg1_order.side),
+                        size=float(leg1_order.amount),
+                        value_usd=float(leg1_order.amount * (leg1_order.price or Decimal("0"))),
+                        reason=rb_reason,
+                    )
+                    if should_halt:
+                        halt_local()
                     logger.critical(
                         "leg1_partial_rollback_failed HALT_SET exchange=%s strategy=%s",
                         ex_a_id, strategy_id
@@ -643,7 +707,7 @@ class AtomicExecutor:
                     return ExecutionResult(
                         status=ExecutionStatus.ROLLBACK_FAILED,
                         legs=[leg1_result],
-                        error=f"Leg 1 partial rollback failed — engine halted",
+                        error=f"Leg 1 partial rollback failed — {'engine halted' if should_halt else 'stranded alert'}",
                         strategy_id=strategy_id,
                     )
                 return ExecutionResult(
@@ -727,6 +791,7 @@ class AtomicExecutor:
         finally:
             self._release_lock(ex_a_id)
             self._release_lock(ex_b_id)
+            self._rollback_attempted.clear()
 
     async def _do_rollback_cross(
         self,
@@ -738,24 +803,60 @@ class AtomicExecutor:
         reason: str,
     ) -> ExecutionResult:
         """
-        Amendment 4 Step 12: Rollback leg 1 on Exchange A.
+        Amendment 4 Step 12: Rollback both legs on cross-exchange failure.
 
+        - Leg 1 on Exchange A: cancel or unwind filled amount.
+        - Leg 2 on Exchange B: unwind if partially filled (F-5 fix).
         If rollback fails → HALT flag + stranded position alert.
         """
         logger.warning(
             "cross_exchange_rollback reason=%s strategy=%s",
             reason, strategy_id
         )
+
+        # F-5 fix: Unwind leg2 partial fill on Exchange B BEFORE unwinding leg1.
+        # Executing leg2 unwind first reduces directional exposure faster.
+        leg2_filled = leg2_result.trade is not None and leg2_result.filled_amount > 0
+        if leg2_filled:
+            ex_b_id = leg2_result.order.exchange_id
+            leg2_trade_order_id = leg2_result.trade.order_id if leg2_result.trade else None
+            rb2_ok, rb2_reason = await self._rollback_order(
+                ex_b_id, leg2_result.order, order_id=leg2_trade_order_id,
+                filled=True, filled_amount=leg2_result.filled_amount,
+            )
+            if not rb2_ok:
+                logger.error(
+                    "cross_exchange_leg2_rollback_failed exchange=%s strategy=%s reason=%s",
+                    ex_b_id, strategy_id, rb2_reason
+                )
+                self._stranded_tracker.register(
+                    exchange_id=ex_b_id,
+                    symbol=leg2_result.order.symbol,
+                    side=str(leg2_result.order.side),
+                    size=float(leg2_result.filled_amount),
+                    value_usd=float(leg2_result.filled_amount * (leg2_result.order.price or Decimal("0"))),
+                    reason=f"leg2_partial_fill_rollback_failed:{rb2_reason}",
+                )
+
         # If leg1 was filled, place opposing order to unwind; otherwise cancel
         leg1_filled = leg1_result.trade is not None and leg1_result.filled_amount > 0
         trade_order_id = leg1_result.trade.order_id if leg1_result.trade else None
-        rb_ok = await self._rollback_order(
+        rb_ok, rb_reason = await self._rollback_order(
             ex_a_id, leg1_order, order_id=trade_order_id, filled=leg1_filled,
             filled_amount=leg1_result.filled_amount
         )
 
         if not rb_ok:
-            halt_local()
+            should_halt = self._stranded_tracker.register(
+                exchange_id=ex_a_id,
+                symbol=leg1_order.symbol,
+                side=str(leg1_order.side),
+                size=float(leg1_order.amount),
+                value_usd=float(leg1_order.amount * (leg1_order.price or Decimal("0"))),
+                reason=rb_reason,
+            )
+            if should_halt:
+                halt_local()
             logger.critical(
                 "cross_exchange_rollback_failed HALT_SET exchange=%s strategy=%s",
                 ex_a_id, strategy_id
@@ -763,7 +864,7 @@ class AtomicExecutor:
             return ExecutionResult(
                 status=ExecutionStatus.ROLLBACK_FAILED,
                 legs=[leg1_result, leg2_result],
-                error=f"Rollback failed on {ex_a_id} — engine halted. Reason: {reason}",
+                error=f"Rollback failed on {ex_a_id} — {'engine halted' if should_halt else 'stranded alert'}. Reason: {reason}",
                 strategy_id=strategy_id,
             )
 

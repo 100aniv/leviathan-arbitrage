@@ -36,20 +36,18 @@
     },
     "futures_futures": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 3 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 20 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     }
   },
   "cross_exchange": {
     "min_spread_bps": 5.0,
-    "status": "DISABLED_PHASE2",
-    "wfe": 1.2,
+    "wfe": 1.5,
     "data_type": "synthetic_gbm",
-    "_phase2_note": "original: READY. Disabled for Phase 2 Step 2-1 (FR+FF only). Re-enable in Step 2-3."
+    "status": "DISABLED_PHASE2"
   },
   "spot_futures": {
     "min_spread_bps": 12.390907613382176,
-    "max_position_size": 50,
     "entry_threshold": 0.0013620427453799166,
     "exit_threshold": 0.0001866435336362988,
     "stop_loss_pct": 0.005070404564592744,
@@ -70,18 +68,17 @@
     "enable_ou_filter": false
   },
   "futures_futures": {
-    "min_spread_bps": 47.50987042361101,
-    "max_position_size": 50,
+    "min_spread_bps": 20.0,
     "entry_threshold": 0.00025557303057935484,
     "exit_threshold": 6.82596457666553e-05,
     "stop_loss_pct": 0.00501931310745825,
     "status": "READY",
     "wfe": 5.926861262589432,
-    "data_type": "synthetic_gbm"
+    "data_type": "real_calibrated",
+    "_note": "2026-04-09: synthetic_gbm 47.51\u219215 recalibrated from 5H live market (10-57bps observed)"
   },
   "triangular": {
     "min_spread_bps": 2.0,
-    "max_position_size": 50,
     "entry_threshold": 0.0005221298701815954,
     "exit_threshold": 9.601259624268907e-05,
     "stop_loss_pct": 0.0055080901917418075,
@@ -121,8 +118,8 @@
   "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 \ud1b5\uc77c, slippage_buffer 5bps \uc2e0\uaddc, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
   "_tuner_meta": {
     "best_values": {
-      "cross_exchange": 1.2
+      "futures_futures": 0
     },
-    "timestamp": "2026-04-07T10:43:21.510136+00:00"
+    "timestamp": "2026-04-09T11:34:17.828335+00:00"
   }
 }

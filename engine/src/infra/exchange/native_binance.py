@@ -239,6 +239,39 @@ class BinanceNativeAdapter(NativeAdapter):
         side = "BUY" if order.side == OrderSide.BUY else "SELL"
         order_type = "LIMIT" if order.order_type == OrderType.LIMIT else "MARKET"
 
+        # Set marginType=ISOLATED + leverage before ordering (futures only)
+        # Production pattern: marginType → leverage → order (per-symbol, idempotent)
+        if self._market_type == "futures":
+            from src.core.config_loader import get_config as _get_config
+            _default_lev = int(_get_config("execution.default_futures_leverage") or 5)
+            _leverage = int(order.metadata.get("leverage", _default_lev)) if order.metadata else _default_lev
+            _sym_bn = _symbol_to_binance(order.symbol)
+            # Step 1: Set ISOLATED margin type (-4046/-4048 = already set, treat as OK)
+            try:
+                await self._signed_request("POST", "/fapi/v1/marginType", params={
+                    "symbol": _sym_bn,
+                    "marginType": "ISOLATED",
+                })
+                logger.debug("margin_type_set symbol=%s type=ISOLATED", order.symbol)
+            except Exception as _mt_err:
+                _mt_str = str(_mt_err)
+                if "-4168" in _mt_str:
+                    logger.info(
+                        "binance_multi_assets_mode_detected symbol=%s — marginType 변경 불필요, 주문 계속",
+                        order.symbol,
+                    )
+                elif "-4046" not in _mt_str and "-4048" not in _mt_str:
+                    logger.warning("margin_type_set_failed symbol=%s error=%s", order.symbol, _mt_err)
+            # Step 2: Set leverage
+            try:
+                await self._signed_request("POST", "/fapi/v1/leverage", params={
+                    "symbol": _sym_bn,
+                    "leverage": str(_leverage),
+                })
+                logger.debug("leverage_set symbol=%s leverage=%d", order.symbol, _leverage)
+            except Exception as _lev_err:
+                logger.warning("leverage_set_failed symbol=%s error=%s", order.symbol, _lev_err)
+
         params: dict[str, Any] = {
             "symbol": _symbol_to_binance(order.symbol),
             "side": side,
@@ -277,6 +310,11 @@ class BinanceNativeAdapter(NativeAdapter):
                 params["quantity"] = str(qty)
         if order.client_order_id:
             params["newClientOrderId"] = order.client_order_id
+
+        # Bug 25c: Honor reduceOnly for futures position rollback/close orders.
+        # Without this, unwind orders open a new position instead of closing one.
+        if self._market_type == "futures" and order.metadata.get("reduceOnly"):
+            params["reduceOnly"] = "true"
 
         import asyncio as _asyncio
         path = "/fapi/v1/order" if self._market_type == "futures" else "/api/v3/order"
@@ -348,15 +386,31 @@ class BinanceNativeAdapter(NativeAdapter):
         return True
 
     async def _rest_cancel_all_orders(self, symbol: str | None) -> int:
-        if not symbol:
-            raise ValueError("Binance cancel_all_orders requires symbol")
-        path = "/fapi/v1/allOpenOrders" if self._market_type == "futures" else "/api/v3/openOrders"
-        raw = await self._signed_request(
-            "DELETE",
-            path,
-            params={"symbol": _symbol_to_binance(symbol)},
-        )
-        return len(raw) if isinstance(raw, list) else 0
+        if symbol:
+            path = "/fapi/v1/allOpenOrders" if self._market_type == "futures" else "/api/v3/openOrders"
+            raw = await self._signed_request(
+                "DELETE",
+                path,
+                params={"symbol": _symbol_to_binance(symbol)},
+            )
+            return len(raw) if isinstance(raw, list) else 0
+        # symbol=None: 전체 취소 — 열린 주문 조회 후 심볼별 DELETE
+        if self._market_type != "futures":
+            raise ValueError("Binance spot cancel_all_orders requires symbol")
+        all_orders = await self._signed_request("GET", "/fapi/v1/openOrders")
+        if not all_orders:
+            return 0
+        syms = {o["symbol"] for o in all_orders if isinstance(o, dict)}
+        total = 0
+        for sym in syms:
+            try:
+                raw = await self._signed_request(
+                    "DELETE", "/fapi/v1/allOpenOrders", params={"symbol": sym}
+                )
+                total += len(raw) if isinstance(raw, list) else 0
+            except Exception as exc:
+                logger.warning("cancel_all_orders_sym_failed symbol=%s error=%s", sym, exc)
+        return total
 
     async def _rest_get_balances(self) -> dict[str, Balance]:
         balances: dict[str, Balance] = {}
@@ -456,3 +510,41 @@ class BinanceNativeAdapter(NativeAdapter):
             symbol=symbol,
             exchange_id=self.exchange_id,
         )
+
+    async def get_trades(
+        self,
+        symbol: str = "",
+        start_time_ms: int | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Binance Futures 실체결 이력 조회 — GET /fapi/v1/userTrades.
+
+        symbol 없으면 최근 limit건 조회.
+        """
+        params: dict = {"limit": min(limit, 1000)}
+        if symbol:
+            params["symbol"] = _symbol_to_binance(symbol)
+        if start_time_ms:
+            params["startTime"] = start_time_ms
+        try:
+            data = await self._signed_request("GET", "/fapi/v1/userTrades", params=params)
+            if not isinstance(data, list):
+                return []
+            return [
+                {
+                    "exchange": "binance_futures",
+                    "symbol": d.get("symbol", ""),
+                    "order_id": str(d.get("orderId", "")),
+                    "trade_id": str(d.get("id", "")),
+                    "side": "buy" if d.get("buyer") else "sell",
+                    "qty": float(d.get("qty", 0)),
+                    "price": float(d.get("price", 0)),
+                    "realized_pnl": float(d.get("realizedPnl", 0)),
+                    "commission": float(d.get("commission", 0)),
+                    "ts_ms": int(d.get("time", 0)),
+                }
+                for d in data
+            ]
+        except Exception as exc:
+            logger.warning("binance.get_trades failed symbol=%s error=%s", symbol, exc)
+            return []

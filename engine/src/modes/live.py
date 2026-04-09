@@ -309,8 +309,15 @@ class LiveMode(BaseMode):
         self._funding_rate_task: asyncio.Task | None = None
 
         # Collision detection: (symbol, exchange_pair) -> last_trade_time
+        from src.execution.dedup import DeduplicationGate
+        self._dedup_gate = DeduplicationGate(window_s=10.0)
+        # Keep _recent_trades for backwards compat but _dedup_gate is the atomic version
         self._recent_trades: dict[str, float] = {}
         self._collision_window_s: float = 10.0
+
+        # MarginTracker: in-flight margin reservation (Bug 29)
+        from src.execution.margin_tracker import MarginTracker
+        self._margin_tracker = MarginTracker()
 
         # KRW/USDT normalization (ported from ShadowMode)
         _raw_krw_rate = get_settings().operational.krw_usdt_rate
@@ -346,6 +353,14 @@ class LiveMode(BaseMode):
         _op = get_settings().operational
         self._single_loss_disable_seconds: float = _op.live_single_loss_disable_seconds
         self._max_loss_per_trade_usd: Decimal = _op.live_max_loss_per_trade_usd
+
+        # Global concurrency semaphore (config: execution.max_concurrent_trades)
+        from src.core.config_loader import get_config as _get_cfg
+        _max_concurrent = int(_get_cfg("execution.max_concurrent_trades") or 2)
+        self._trade_semaphore = asyncio.Semaphore(_max_concurrent)
+        # Per-symbol cooldown (config: execution.symbol_cooldown_s)
+        self._symbol_last_trade: dict[str, float] = {}
+        self._symbol_cooldown_s: float = float(_get_cfg("execution.symbol_cooldown_s") or 30)
 
         logger.info(
             "live_mode.init execution_mode=%s symbols=%s exchanges=%s executor=%s",
@@ -433,6 +448,57 @@ class LiveMode(BaseMode):
         # to remove ~5-15ms cold-start tax from initial trade.
         await self._prewarm_connections()
 
+        # Preflight: 포지션 잔류 체크 (Bitget stale data 방지용 — BUG-28)
+        # 기존 포지션이 있으면 시작 거부. close_positions.py --execute 먼저 실행.
+        # Bitget raw API: adapter.get_positions()는 total=0 스테일 포지션을 필터링하므로
+        # 직접 REST 호출로 holdSide!='' 포지션을 추가 확인.
+        if self._execution_mode == "live":
+            adapter_dict = getattr(self._executor, "_exchanges", {})
+            if not isinstance(adapter_dict, dict):
+                adapter_dict = {}
+            futures_adapters = {k: v for k, v in adapter_dict.items() if "futures" in k}
+            stranded: list[str] = []
+            for eid, adapter in futures_adapters.items():
+                try:
+                    positions = await adapter.get_positions()
+                    open_pos = [p for p in positions if p.size != 0]
+                    for p in open_pos:
+                        stranded.append(f"{eid}:{p.symbol}:{p.size}")
+                except Exception as exc:
+                    logger.warning("preflight_position_check_failed exchange=%s error=%s", eid, exc)
+
+                # Bitget: raw API check to catch stale total=0 positions (Bug 28)
+                if "bitget" in eid and hasattr(adapter, "_request"):
+                    try:
+                        raw_resp = await adapter._request(
+                            "GET", "/api/v2/mix/position/all-position",
+                            params={"productType": "USDT-FUTURES"},
+                            signed=True,
+                        )
+                        for item in (raw_resp.get("data") or []):
+                            hold_side = item.get("holdSide", "")
+                            raw_sym = item.get("symbol", "")
+                            total = float(item.get("total", 0) or 0)
+                            available = float(item.get("available", 0) or 0)
+                            # holdSide!='' + any allocated size = real position (even if stale total=0)
+                            if hold_side and raw_sym and (total != 0 or available != 0):
+                                label = f"{eid}:{raw_sym}:stale(hold={hold_side},total={total})"
+                                already = any(raw_sym in s for s in stranded)
+                                if not already:
+                                    stranded.append(label)
+                                    logger.warning(
+                                        "preflight_bitget_stale_position detected symbol=%s holdSide=%s total=%s",
+                                        raw_sym, hold_side, total,
+                                    )
+                    except Exception as exc:
+                        logger.warning("preflight_bitget_raw_check_failed error=%s", exc)
+
+            if stranded:
+                msg = f"pre-existing positions detected: {stranded}. Run close_positions.py --execute first."
+                logger.critical("live_preflight_ABORT %s", msg)
+                raise LiveGateFailed(msg)
+            logger.info("live_preflight.positions_clean exchanges=%s", list(futures_adapters.keys()))
+
         # Step 4: Start KRW rate updater
         self._krw_rate_task = asyncio.create_task(
             self._krw_rate_loop(), name="live_krw_rate"
@@ -448,6 +514,16 @@ class LiveMode(BaseMode):
         self._daily_task = asyncio.create_task(
             self._daily_summary_loop(), name="live_daily_summary"
         )
+
+        # DeduplicationGate periodic cleanup
+        asyncio.create_task(self._dedup_cleanup_loop(), name="live_dedup_cleanup")
+
+        # Inject MarginTracker into futures_futures strategy
+        if self._strategy_manager is not None:
+            for sid in self._strategy_manager.list_strategies():
+                strategy = self._strategy_manager.get_strategy(sid)
+                if strategy is not None and hasattr(strategy, 'set_margin_tracker'):
+                    strategy.set_margin_tracker(self._margin_tracker)
 
         # Step 6: Telegram notification
         if self._telegram is not None:
@@ -800,22 +876,31 @@ class LiveMode(BaseMode):
             except Exception as exc:
                 logger.warning("live_mode.risk_check_error: %s", exc)
 
-        # --- Collision detection ---
-        collision_key = self._build_collision_key(trade_request)
-        now = time.monotonic()
-        if collision_key in self._recent_trades:
-            elapsed = now - self._recent_trades[collision_key]
-            if elapsed < self._collision_window_s:
-                logger.debug("live_mode.collision_detected key=%s elapsed=%.1f", collision_key, elapsed)
+        # --- Per-symbol cooldown (v7: prevent same-symbol burst) ---
+        _sym_key = trade_request.legs[0].symbol if trade_request.legs else ""
+        if _sym_key:
+            _last = self._symbol_last_trade.get(_sym_key, 0.0)
+            if time.monotonic() - _last < self._symbol_cooldown_s:
+                logger.debug(
+                    "live_mode.symbol_cooldown symbol=%s cooldown_s=%.0f",
+                    _sym_key, self._symbol_cooldown_s,
+                )
                 return
-        self._recent_trades[collision_key] = now
+            self._symbol_last_trade[_sym_key] = time.monotonic()
 
-        # --- Execute via DI executor ---
+        # --- Collision detection (DeduplicationGate: atomic check-and-register) ---
+        collision_key = self._build_collision_key(trade_request)
+        if not await self._dedup_gate.check_and_register(collision_key):
+            logger.debug("live_mode.dedup_blocked key=%s", collision_key)
+            return
+
+        # --- Execute via DI executor (v7: global semaphore — max 2 concurrent) ---
+        await self._trade_semaphore.acquire()
         try:
             # PHOENIX: Filter trades where any leg notional < min (config-driven)
             # Prevents imbalanced positions from per-adapter leg-level adjustments.
             from src.core.config_loader import get_config
-            _MIN_TRADE_NOTIONAL = Decimal(str(get_config("execution.min_trade_notional_usd", default=10)))
+            _MIN_TRADE_NOTIONAL = Decimal(str(get_config("execution.min_trade_notional_usd") or 5))
             _USD_QUOTES = {"USDT", "USDC", "USD", "BUSD", "DAI"}
             _small_legs = [
                 leg for leg in trade_request.legs
@@ -849,6 +934,16 @@ class LiveMode(BaseMode):
                         "live_mode.execution_not_success strategy=%s status=%s",
                         sid, exec_result.status,
                     )
+                    # Bug 25: ROLLBACK_FAILED = stranded position risk → urgent Telegram alert
+                    if exec_result.status == ExecutionStatus.ROLLBACK_FAILED and self._telegram is not None:
+                        try:
+                            await self._telegram.send_alert_kr("rollback_failed", {
+                                "strategy": sid,
+                                "status": str(exec_result.status),
+                                "mode": self._execution_mode,
+                            })
+                        except Exception:
+                            pass
                     strat_stats.rejections += 1
                     return
 
@@ -858,6 +953,39 @@ class LiveMode(BaseMode):
 
             # Compute PnL from ACTUAL fill prices (not estimates)
             pnl = self._compute_pnl_from_result(exec_result, trade_request)
+
+            # Extract actual fill prices + fees from exec_result for recording
+            _buy_fill_price: Decimal | None = None
+            _sell_fill_price: Decimal | None = None
+            _fee_total: Decimal = Decimal("0")
+            if exec_result is not None and hasattr(exec_result, 'legs'):
+                for _lr in exec_result.legs:
+                    _t = getattr(_lr, 'trade', None)
+                    if _t is None:
+                        continue
+                    _side_str = str(getattr(_lr, 'side', '') or '').upper()
+                    _fee_total += Decimal(str(getattr(_t, 'fee', 0) or 0))
+                    if "SELL" in _side_str:
+                        _sell_fill_price = Decimal(str(_t.price))
+                    else:
+                        _buy_fill_price = Decimal(str(_t.price))
+            # Fallback to request leg prices
+            if _buy_fill_price is None:
+                _bl = [l for l in (trade_request.legs or []) if l.side == OrderSide.BUY]
+                _buy_fill_price = _bl[0].price if _bl and _bl[0].price else None
+            if _sell_fill_price is None:
+                _sl = [l for l in (trade_request.legs or []) if l.side == OrderSide.SELL]
+                _sell_fill_price = _sl[0].price if _sl and _sl[0].price else None
+            # Gross spread bps from signal or fill prices
+            _signal = getattr(trade_request, 'signal', None)
+            _spread_bps_val: float = 0.0
+            if _signal is not None and hasattr(_signal, 'spread_pct') and _signal.spread_pct:
+                _spread_bps_val = float(_signal.spread_pct) * 10000
+            elif _buy_fill_price and _sell_fill_price and _buy_fill_price > 0:
+                _spread_bps_val = float((_sell_fill_price - _buy_fill_price) / _buy_fill_price * 10000)
+            _gross_spread_bps: Decimal | None = (
+                Decimal(str(round(_spread_bps_val, 4))) if _spread_bps_val else None
+            )
 
             # US-056: Record first live trade
             if not self._first_trade_recorded and self._execution_mode == "live":
@@ -879,14 +1007,24 @@ class LiveMode(BaseMode):
             }
             self._stats.trade_history.append(trade_record)
 
-            # Telegram alert for fills
-            if self._telegram is not None and self._execution_mode == "live":
+            # Telegram alert for fills (send_fill_enhanced — shadow/paper와 동일 포맷)
+            if self._telegram is not None:
                 try:
-                    await self._telegram.send_alert_kr("live_trade_executed", {
+                    _first_leg = trade_request.legs[0] if trade_request.legs else None
+                    _buy_ex_tg = next((l.exchange_id for l in trade_request.legs if l.side == OrderSide.BUY), "unknown")
+                    _sell_ex_tg = next((l.exchange_id for l in trade_request.legs if l.side == OrderSide.SELL), "unknown")
+                    _mode_label = "🔴 [LIVE]" if self._execution_mode == "live" else "🟢 [PAPER]"
+                    await self._telegram.send_fill_enhanced({
+                        "mode": _mode_label,
                         "strategy": sid,
-                        "pnl": f"${pnl:.4f}",
-                        "legs": str(len(trade_request.legs)),
-                        "total_pnl": f"${self._stats.total_pnl:.2f}",
+                        "symbol": _first_leg.symbol if _first_leg else "unknown",
+                        "buy_exchange": _buy_ex_tg,
+                        "sell_exchange": _sell_ex_tg,
+                        "pnl": float(pnl),
+                        "spread_bps": _spread_bps_val,
+                        "fee": float(_fee_total),
+                        "slippage_bps": 0.0,
+                        "latency_ms": int((time.monotonic() - t0) * 1000),
                     })
                 except Exception:
                     pass
@@ -900,15 +1038,31 @@ class LiveMode(BaseMode):
                     buy_legs = [l for l in trade_request.legs if l.side == OrderSide.BUY]
                     sell_legs = [l for l in trade_request.legs if l.side == OrderSide.SELL]
                     first_leg = trade_request.legs[0]
+                    # IS (Implementation Shortfall) 계산: fill price vs expected leg price
+                    _expected_buy = buy_legs[0].price if buy_legs and buy_legs[0].price else None
+                    _expected_sell = sell_legs[0].price if sell_legs and sell_legs[0].price else None
+                    _is_buy_bps: Decimal | None = None
+                    _is_sell_bps: Decimal | None = None
+                    if _buy_fill_price and _expected_buy and _expected_buy > 0:
+                        _is_buy_bps = abs(_buy_fill_price - _expected_buy) / _expected_buy * Decimal("10000")
+                    if _sell_fill_price and _expected_sell and _expected_sell > 0:
+                        _is_sell_bps = abs(_sell_fill_price - _expected_sell) / _expected_sell * Decimal("10000")
+                    _is_total_bps: Decimal | None = (
+                        (_is_buy_bps or Decimal("0")) + (_is_sell_bps or Decimal("0"))
+                        if (_is_buy_bps or _is_sell_bps) else None
+                    )
                     self._market_recorder.record_execution(
                         strategy_id=sid,
                         buy_exchange=buy_legs[0].exchange_id if buy_legs else "unknown",
                         sell_exchange=sell_legs[0].exchange_id if sell_legs else "unknown",
                         symbol=first_leg.symbol,
-                        buy_price=buy_legs[0].price if buy_legs and buy_legs[0].price else Decimal("0"),
-                        sell_price=sell_legs[0].price if sell_legs and sell_legs[0].price else Decimal("0"),
+                        buy_price=_buy_fill_price or (buy_legs[0].price if buy_legs and buy_legs[0].price else Decimal("0")),
+                        sell_price=_sell_fill_price or (sell_legs[0].price if sell_legs and sell_legs[0].price else Decimal("0")),
                         size=first_leg.size,
                         net_pnl=pnl,
+                        gross_spread_bps=_gross_spread_bps,
+                        fee_total=_fee_total if _fee_total > 0 else None,
+                        slippage_total=_is_total_bps,
                         mode=self._execution_mode,
                     )
                 except Exception as exc:
@@ -924,6 +1078,8 @@ class LiveMode(BaseMode):
             logger.error("live_mode.execution_failed strategy=%s error=%s", sid, exc, exc_info=True)
             if LIVE_TRADES_TOTAL is not None:
                 LIVE_TRADES_TOTAL.labels(strategy=sid, result="error").inc()
+        finally:
+            self._trade_semaphore.release()
 
     async def _execute_direct_signal(self, signal: Signal) -> None:
         """Fallback: execute a raw Signal directly (2-leg cross-exchange)."""
@@ -1348,6 +1504,22 @@ class LiveMode(BaseMode):
         ]
         for k in stale_keys:
             del self._recent_trades[k]
+
+    async def _dedup_cleanup_loop(self) -> None:
+        """Periodically clean up stale dedup gate entries + FF exit request polling."""
+        while self._running:
+            await asyncio.sleep(60.0)
+            await self._dedup_gate.cleanup_stale()
+            # PHOENIX v18: FF 포지션 모니터 exit TradeRequest 처리
+            if self._strategy_manager is not None:
+                for _sid in self._strategy_manager.list_strategies():
+                    _strat = self._strategy_manager.get_strategy(_sid)
+                    if _strat is not None and hasattr(_strat, "pop_exit_requests"):
+                        for _exit_req in _strat.pop_exit_requests():
+                            asyncio.create_task(
+                                self._execute_trade_request(_exit_req),
+                                name="ff_exit_trade",
+                            )
 
     # -----------------------------------------------------------------------
     # Properties (for dashboard/API integration)

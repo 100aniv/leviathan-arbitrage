@@ -14,8 +14,9 @@
       "spot_futures":    {"allocation_pct": 20},
       "cross_exchange":  {"allocation_pct": 25}
     },
-    "tier": "alpha",
+    "tier": "step2_1",
     "tiers": {
+      "step2_1": {"futures_usd": 60, "initial_usd": 120},
       "alpha": {"spot_usd": 20, "futures_usd": 30, "spot_krw": 28000, "initial_usd": 70},
       "beta": {"initial_usd": 750},
       "production": {"initial_usd": 5000}
@@ -40,6 +41,11 @@
     }
   },
 
+  "strategy_filters": {
+    "enable_holding_timeout": true,
+    "spot_futures_max_hold_seconds": 14400
+  },
+
   "risk": {
     "_comment": "퍼센티지 기반 동적 한도 (자본 대비 %)",
     "use_percentage": true,
@@ -53,8 +59,8 @@
   },
 
   "dynamic_risk": {
-    "_comment": "PHOENIX v3: base_position_pct raised so startup fallback $70×15%=$10.50 clears min_notional=$5",
-    "base_position_pct": 15.0
+    "_comment": "v7: lowered to 5% — $120×5%=$6/trade at 20x=margin $0.30. Prevents startup burst margin exhaustion.",
+    "base_position_pct": 5.0
   },
 
   "execution": {
@@ -69,18 +75,6 @@
     "disabled_strategies": [],
     "max_loss_per_trade_pct": 1.0,
     "progressive_enabled": false
-  },
-
-  "shadow": {
-    "_comment": "DEPRECATED as of Phase I — use 'live' with capital.tier='alpha' for small capital mode",
-    "capital_pct": 5.0,
-    "max_position_pct": 3.0,
-    "max_daily_loss_pct": 5.0,
-    "exchanges": ["binance", "binance_futures"],
-    "depth_fraction": 1.0,
-    "max_trade_size": 100,
-    "cross_exchange_min_book_depth_usd": 1,
-    "futures_min_book_depth_usd": 1
   },
 
   "live": {

@@ -89,6 +89,8 @@ class FuturesFuturesStrategy(BaseStrategy):
         self._margin_tracker: Any | None = None  # injected by live.py
         # Position tracking for time-based exit: symbol → {buy_ex, sell_ex, size, entry_time}
         self._open_positions: dict[str, dict] = {}
+        # PHOENIX v18: Pending exit TradeRequests from _open_positions_monitor
+        self._pending_exit_requests: list = []
 
         # US-260: Adaptive threshold — rolling percentile + volatility weight
         # Bug 26: Use adaptive_static_entry_bps (if set) as the outlier-filter baseline,
@@ -135,7 +137,7 @@ class FuturesFuturesStrategy(BaseStrategy):
             self._open_positions.pop(symbol, None)
 
     async def _open_positions_monitor(self) -> None:
-        """60초마다 _open_positions 점검 — max_hold_seconds 초과 시 경고."""
+        """60초마다 _open_positions 점검 — max_hold_seconds 초과 시 exit TradeRequest 생성."""
         import asyncio as _asyncio
         while self._is_active:
             await _asyncio.sleep(60)
@@ -145,9 +147,44 @@ class FuturesFuturesStrategy(BaseStrategy):
                 if age_s > self.config.max_hold_seconds:
                     logger.warning(
                         "ff.stale_position symbol=%s age_s=%.0f max_hold_s=%.0f "
-                        "— 다음 신호 도착 시 청산 예정",
+                        "— exit TradeRequest 생성",
                         sym, age_s, self.config.max_hold_seconds,
                     )
+                    exit_req = TradeRequest(
+                        strategy_id=self.strategy_id,
+                        legs=[
+                            TradeLeg(
+                                exchange_id=pos["buy_ex"],
+                                symbol=sym,
+                                side=OrderSide.SELL,
+                                size=pos["size"],
+                                order_type=OrderType.MARKET,
+                                price=None,
+                                metadata={"leg_type": "time_exit_close_long", "reduceOnly": True},
+                            ),
+                            TradeLeg(
+                                exchange_id=pos["sell_ex"],
+                                symbol=sym,
+                                side=OrderSide.BUY,
+                                size=pos["size"],
+                                order_type=OrderType.MARKET,
+                                price=None,
+                                metadata={"leg_type": "time_exit_close_short", "reduceOnly": True},
+                            ),
+                        ],
+                        expected_profit_usdt=Decimal("0"),
+                        confidence=0.0,
+                        metadata={"reason": "holding_timeout", "age_s": str(int(age_s))},
+                    )
+                    self._pending_exit_requests.append(exit_req)
+                    # 중복 emit 방지: 모니터에서 즉시 제거
+                    self._open_positions.pop(sym, None)
+
+    def pop_exit_requests(self) -> list:
+        """pending exit TradeRequests를 반환하고 목록 초기화."""
+        reqs = list(self._pending_exit_requests)
+        self._pending_exit_requests.clear()
+        return reqs
 
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1

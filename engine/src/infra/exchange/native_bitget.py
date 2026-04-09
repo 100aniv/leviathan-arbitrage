@@ -53,6 +53,47 @@ class NativeBitgetAdapter(NativeAdapter):
         self._qty_step_sizes: dict[str, Decimal] = {}  # symbol → step size (futures)
         self._spot_qty_decimals: dict[str, int] = {}  # symbol → base qty decimal places (spot)
         self._spot_price_decimals: dict[str, int] = {}  # symbol → price decimal places (spot)
+        # Bug 31: hedge vs one-way mode — detected at connect() for futures accounts.
+        # hedge_mode: BOTH open and close orders require posSide.
+        # one_way_mode: no posSide, reduceOnly=True is sufficient for closes.
+        self._pos_mode: str = "one_way"
+
+    # ------------------------------------------------------------------
+    # Connection lifecycle
+    # ------------------------------------------------------------------
+
+    async def connect(self) -> None:
+        await super().connect()
+        await self._fetch_pos_mode()
+
+    async def _fetch_pos_mode(self) -> None:
+        """Detect hedge vs one-way position mode for futures accounts (Bug 31).
+
+        Calls Bitget /api/v2/mix/account/accounts once at connect time.
+        Result cached in self._pos_mode ("hedge" | "one_way").
+        Binance Futures never needs this — it is always one-way.
+        """
+        if self._market_type != "futures":
+            return
+        try:
+            resp = await self._request(
+                "GET", "/api/v2/mix/account/accounts",
+                params={"productType": "USDT-FUTURES"},
+                signed=True,
+            )
+            data = resp.get("data", [])
+            if data:
+                raw_mode = data[0].get("posMode", "one_way_mode")
+                self._pos_mode = "hedge" if "hedge" in raw_mode.lower() else "one_way"
+                logger.info(
+                    "bitget_pos_mode_detected exchange=%s mode=%s (raw=%s)",
+                    self.exchange_id, self._pos_mode, raw_mode,
+                )
+        except Exception as exc:
+            logger.warning(
+                "bitget_fetch_pos_mode_failed exchange=%s err=%s — assuming one_way",
+                self.exchange_id, exc,
+            )
 
     # ------------------------------------------------------------------
     # Abstract implementations
@@ -194,6 +235,24 @@ class NativeBitgetAdapter(NativeAdapter):
         side = "buy" if order.side == OrderSide.BUY else "sell"
 
         if self._market_type == "futures":
+            # Set leverage before ordering — ensure margin calculation matches our intent
+            _default_lev = int(get_config("execution.default_futures_leverage") or 5)
+            _leverage = int(order.metadata.get("leverage", _default_lev)) if order.metadata else _default_lev
+            try:
+                await self._request(
+                    "POST", "/api/v2/mix/account/set-leverage",
+                    data={
+                        "symbol": _normalize_symbol(order.symbol),
+                        "productType": "USDT-FUTURES",
+                        "marginCoin": "USDT",
+                        "leverage": str(_leverage),
+                    },
+                    signed=True,
+                )
+                logger.debug("leverage_set symbol=%s leverage=%d", order.symbol, _leverage)
+            except Exception as _lev_err:
+                logger.warning("leverage_set_failed symbol=%s error=%s", order.symbol, _lev_err)
+
             qty = order.amount
             # PHOENIX: Enforce Bitget Futures MIN_NOTIONAL — load from config
             _ex_min = get_config("execution.exchange_min_notional.bitget_futures", default=6)
@@ -208,7 +267,7 @@ class NativeBitgetAdapter(NativeAdapter):
             body: dict[str, Any] = {
                 "symbol": sym,
                 "productType": "USDT-FUTURES",
-                "marginMode": "crossed",
+                "marginMode": "isolated",
                 "marginCoin": "USDT",
                 "size": str(qty),
                 "side": side,
@@ -216,10 +275,18 @@ class NativeBitgetAdapter(NativeAdapter):
                 "orderType": "limit" if order.price else "market",
                 "force": "gtc",
             }
-            # hedge_mode: posSide must match the position being closed
-            # BUY+close = closing SHORT posSide, SELL+close = closing LONG posSide
-            if body["tradeSide"] == "close":
-                body["posSide"] = "short" if side == "buy" else "long"
+            # Bug 31: hedge mode requires posSide for BOTH open and close orders.
+            # one-way mode: no posSide — reduceOnly (tradeSide=close) is sufficient.
+            # Also honor explicit posSide from order metadata (e.g. close_positions.py).
+            if order.metadata.get("posSide"):
+                body["posSide"] = order.metadata["posSide"]
+            elif self._pos_mode == "hedge":
+                if body["tradeSide"] == "open":
+                    # Opening a long=buy, short=sell
+                    body["posSide"] = "long" if side == "buy" else "short"
+                else:
+                    # Closing: BUY closes a SHORT position, SELL closes a LONG position
+                    body["posSide"] = "short" if side == "buy" else "long"
             if order.price:
                 # PHOENIX: Fetch contract specs on first order for this symbol
                 if order.symbol not in self._price_precisions:
@@ -230,29 +297,46 @@ class NativeBitgetAdapter(NativeAdapter):
             try:
                 resp = await self._request("POST", "/api/v2/mix/order/place-order", data=body, signed=True)
             except Exception as _exc:
-                # PHOENIX Phase 2: error 22047 = price exceeds exchange price protection band
-                # Retry as market order to avoid rollback cascade.
                 import httpx as _httpx
-                if (
-                    isinstance(_exc, _httpx.HTTPStatusError)
-                    and _exc.response.status_code == 400
-                ):
+                _err_code = ""
+                _exc_str = str(_exc)
+                if isinstance(_exc, _httpx.HTTPStatusError) and _exc.response.status_code == 400:
                     try:
                         _err_code = _exc.response.json().get("code", "")
                     except Exception:
                         _err_code = ""
-                    if _err_code == "22047":
+                # Bug 28: 22002 = "No position to close" — ghost position already cleared.
+                # Treat as success so rollback_order returns True and HALT is not triggered.
+                if _err_code == "22002" or "22002" in _exc_str:
+                    _is_close = body.get("tradeSide") == "close" or order.metadata.get("reduceOnly")
+                    if _is_close:
                         logger.warning(
-                            "bitget_futures_price_limit_exceeded symbol=%s — retrying as market",
+                            "bitget_futures_ghost_position_cleared symbol=%s 22002 — treating as success",
                             order.symbol,
                         )
-                        body["orderType"] = "market"
-                        body.pop("price", None)
-                        resp = await self._request(
-                            "POST", "/api/v2/mix/order/place-order", data=body, signed=True
+                        return self._build_trade(
+                            order,
+                            trade_id=f"ghost-cleared-{order.order_id}",
+                            price=order.price or Decimal("0"),
+                            amount=order.amount,
                         )
-                    else:
-                        raise
+                    raise
+                # PHOENIX Phase 2: error 22047 = price exceeds exchange price protection band
+                # Retry as market order to avoid rollback cascade.
+                if (
+                    isinstance(_exc, _httpx.HTTPStatusError)
+                    and _exc.response.status_code == 400
+                    and _err_code == "22047"
+                ):
+                    logger.warning(
+                        "bitget_futures_price_limit_exceeded symbol=%s — retrying as market",
+                        order.symbol,
+                    )
+                    body["orderType"] = "market"
+                    body.pop("price", None)
+                    resp = await self._request(
+                        "POST", "/api/v2/mix/order/place-order", data=body, signed=True
+                    )
                 else:
                     raise
         else:
@@ -384,7 +468,16 @@ class NativeBitgetAdapter(NativeAdapter):
                 if total == 0:
                     continue
                 size = total if hold_side == "long" else -total
-                entry_price = Decimal(str(item.get("averageOpenPrice", "0")))
+
+                # Bug 28: averageOpenPrice can be null/None for recently-opened positions (Bitget REST stale).
+                # Use mark_price as fallback. These are REAL positions — do NOT filter them out.
+                entry_raw = item.get("averageOpenPrice")
+                if entry_raw is None or entry_raw == "" or entry_raw == "0":
+                    # Stale REST data — position exists but entry not yet populated
+                    # Use mark_price as proxy; reconciler will update later
+                    entry_price = Decimal("0")
+                else:
+                    entry_price = Decimal(str(entry_raw))
                 unrealized_pnl = Decimal(str(item.get("unrealizedPL", "0")))
                 mark_price_str = item.get("markPrice", item.get("averageOpenPrice", "0"))
                 mark_price = Decimal(str(mark_price_str))
@@ -409,3 +502,44 @@ class NativeBitgetAdapter(NativeAdapter):
             symbol=symbol,
             exchange_id=self.exchange_id,
         )
+
+    async def get_trades(
+        self,
+        symbol: str = "",
+        start_time_ms: int | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Bitget Futures 실체결 이력 조회 — GET /api/v2/mix/order/fills."""
+        params: dict = {
+            "productType": "USDT-FUTURES",
+            "limit": str(min(limit, 100)),
+        }
+        if symbol:
+            params["symbol"] = symbol.replace("/", "").upper() + "USDT"
+        if start_time_ms:
+            params["startTime"] = str(start_time_ms)
+        try:
+            resp = await self._request("GET", "/api/v2/mix/order/fills", params=params, signed=True)
+            fill_list = []
+            if isinstance(resp, dict):
+                fill_list = resp.get("data", {}).get("fillList") or resp.get("data") or []
+            elif isinstance(resp, list):
+                fill_list = resp
+            return [
+                {
+                    "exchange": "bitget_futures",
+                    "symbol": d.get("symbol", ""),
+                    "order_id": str(d.get("orderId", "")),
+                    "trade_id": str(d.get("tradeId", "")),
+                    "side": str(d.get("side", "")).lower(),
+                    "qty": float(d.get("baseVolume", 0) or d.get("qty", 0)),
+                    "price": float(d.get("price", 0)),
+                    "realized_pnl": float(d.get("profit", 0) or d.get("realizedPnl", 0)),
+                    "commission": float(d.get("fee", 0)),
+                    "ts_ms": int(d.get("cTime", 0) or d.get("ts", 0)),
+                }
+                for d in fill_list
+            ]
+        except Exception as exc:
+            logger.warning("bitget.get_trades failed symbol=%s error=%s", symbol, exc)
+            return []
