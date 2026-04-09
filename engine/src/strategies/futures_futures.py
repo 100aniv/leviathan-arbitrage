@@ -47,7 +47,7 @@ class FuturesFuturesConfig(BaseModel):
     # PHOENIX: Per-run symbol exclusion (e.g. stranded position symbols)
     excluded_symbols: list[str] = Field(default_factory=list)
     # Exit: close positions older than max_hold_seconds (0 = disabled)
-    max_hold_seconds: float = Field(default=14400.0, ge=0)  # 4H default
+    max_hold_seconds: float = Field(default=1800.0, ge=0)  # 30min default (was 4H)
 
 
 class FuturesFuturesStrategy(BaseStrategy):
@@ -84,6 +84,7 @@ class FuturesFuturesStrategy(BaseStrategy):
                 enable_stale_guard=get_config("strategy_filters.enable_stale_guard", default=False),
                 adaptive_static_entry_bps=Decimal(str(_at_bps_raw)) if _at_bps_raw is not None else None,
                 excluded_symbols=list(get_config("strategy_filters.futures_excluded_symbols", default=[])),
+                max_hold_seconds=float(get_config("strategy_filters.futures_max_hold_seconds", default=1800)),
             )
         self.config = config
         self._margin_tracker: Any | None = None  # injected by live.py
@@ -137,13 +138,52 @@ class FuturesFuturesStrategy(BaseStrategy):
             self._open_positions.pop(symbol, None)
 
     async def _open_positions_monitor(self) -> None:
-        """60초마다 _open_positions 점검 — max_hold_seconds 초과 시 exit TradeRequest 생성."""
+        """60초마다 _open_positions 점검 — max_hold_seconds 초과 또는 spread 수렴 시 exit TradeRequest 생성."""
         import asyncio as _asyncio
         while self._is_active:
             await _asyncio.sleep(60)
             now = time.time()
             for sym, pos in list(self._open_positions.items()):
                 age_s = now - pos["entry_time"]
+
+                # Spread-reversion exit from monitor (uses last stored spread from on_signal)
+                _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.5
+                last_spread = pos.get("last_spread_bps")
+                if last_spread is not None and last_spread <= _exit_threshold_bps:
+                    logger.info(
+                        "ff.spread_exit_monitor symbol=%s last_spread_bps=%.2f exit_threshold_bps=%.2f age_s=%.0f — 스프레드 수렴 청산",
+                        sym, last_spread, _exit_threshold_bps, age_s,
+                    )
+                    exit_req = TradeRequest(
+                        strategy_id=self.strategy_id,
+                        legs=[
+                            TradeLeg(
+                                exchange_id=pos["buy_ex"],
+                                symbol=sym,
+                                side=OrderSide.SELL,
+                                size=pos["size"],
+                                order_type=OrderType.MARKET,
+                                price=None,
+                                metadata={"leg_type": "spread_exit_close_long", "reduceOnly": True},
+                            ),
+                            TradeLeg(
+                                exchange_id=pos["sell_ex"],
+                                symbol=sym,
+                                side=OrderSide.BUY,
+                                size=pos["size"],
+                                order_type=OrderType.MARKET,
+                                price=None,
+                                metadata={"leg_type": "spread_exit_close_short", "reduceOnly": True},
+                            ),
+                        ],
+                        expected_profit_usdt=Decimal("0"),
+                        confidence=1.0,
+                        metadata={"reason": "spread_reversion_monitor", "spread_bps": str(round(last_spread, 2)), "age_s": str(int(age_s))},
+                    )
+                    self._pending_exit_requests.append(exit_req)
+                    self._open_positions.pop(sym, None)
+                    continue
+
                 if age_s > self.config.max_hold_seconds:
                     logger.warning(
                         "ff.stale_position symbol=%s age_s=%.0f max_hold_s=%.0f "
@@ -325,6 +365,9 @@ class FuturesFuturesStrategy(BaseStrategy):
                 )
             else:
                 # Position still active, spread not yet converged → block new entry (BUG-I)
+                # Store last seen spread for monitor-based exit check
+                if _current_spread_bps is not None:
+                    self._open_positions[_sym]["last_spread_bps"] = _current_spread_bps
                 self._metrics.signals_filtered += 1
                 logger.debug(
                     "ff.rejected reason=position_open symbol=%s age_s=%.0f spread_bps=%s exit_thr=%.2f",

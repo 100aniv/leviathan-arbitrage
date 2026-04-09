@@ -455,8 +455,8 @@ class NativeBitgetAdapter(NativeAdapter):
             return []
         try:
             resp = await self._request(
-                "GET", "/api/v2/mix/position/all-position",  # PHOENIX: allPosition→all-position (correct v2 endpoint)
-                params={"productType": "USDT-FUTURES"},
+                "GET", "/api/v2/mix/position/all-position",
+                params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
                 signed=True,
             )
             positions = []
