@@ -4,6 +4,7 @@ Uses redis.asyncio with hiredis parser for performance.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from dataclasses import dataclass
@@ -42,6 +43,7 @@ class RedisClient:
         self._config = config
         self._redis: Optional[aioredis.Redis] = None
         self._pool: Optional[aioredis.ConnectionPool] = None
+        self._reconnect_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         """Create connection pool and verify connectivity via PING."""
@@ -56,6 +58,22 @@ class RedisClient:
         self._redis = aioredis.Redis(connection_pool=self._pool)
         await self._redis.ping()
         logger.info("Redis connected: %s:%d db=%d", self._config.host, self._config.port, self._config.db)
+
+    async def _ensure_connected(self) -> bool:
+        """Return True if connected. Attempt reconnect if not. Returns False if failed."""
+        if self._redis is not None:
+            return True
+        async with self._reconnect_lock:
+            if self._redis is not None:  # double-check after lock
+                return True
+            try:
+                logger.warning("Redis disconnected — attempting auto-reconnect...")
+                await self.connect()
+                logger.info("Redis auto-reconnect successful")
+                return True
+            except Exception as exc:
+                logger.error("Redis auto-reconnect failed: %s", exc)
+                return False
 
     async def disconnect(self) -> None:
         """Close all connections gracefully."""
@@ -105,43 +123,119 @@ class RedisClient:
     # ── String operations ──────────────────────────────────────────────────────
 
     async def set(self, key: str, value: Any, ex: Optional[int] = None) -> None:
-        await self._redis.set(key, value, ex=ex)
+        if not await self._ensure_connected():
+            return
+        try:
+            await self._redis.set(key, value, ex=ex)
+        except Exception as exc:
+            logger.error("Redis set failed key=%s: %s", key, exc)
+            self._redis = None
 
     async def get(self, key: str) -> Optional[bytes]:
-        return await self._redis.get(key)
+        if not await self._ensure_connected():
+            return None
+        try:
+            return await self._redis.get(key)
+        except Exception as exc:
+            logger.error("Redis get failed key=%s: %s", key, exc)
+            self._redis = None
+            return None
 
     async def delete(self, *keys: str) -> int:
-        return await self._redis.delete(*keys)
+        if not await self._ensure_connected():
+            return 0
+        try:
+            return await self._redis.delete(*keys)
+        except Exception as exc:
+            logger.error("Redis delete failed: %s", exc)
+            self._redis = None
+            return 0
 
     # ── Hash operations ────────────────────────────────────────────────────────
 
     async def hset(self, name: str, mapping: dict) -> int:
-        return await self._redis.hset(name, mapping=mapping)
+        if not await self._ensure_connected():
+            return 0
+        try:
+            return await self._redis.hset(name, mapping=mapping)
+        except Exception as exc:
+            logger.error("Redis hset failed name=%s: %s", name, exc)
+            self._redis = None
+            return 0
 
     async def hget(self, name: str, key: str) -> Optional[bytes]:
-        return await self._redis.hget(name, key)
+        if not await self._ensure_connected():
+            return None
+        try:
+            return await self._redis.hget(name, key)
+        except Exception as exc:
+            logger.error("Redis hget failed name=%s key=%s: %s", name, key, exc)
+            self._redis = None
+            return None
 
     async def hgetall(self, name: str) -> dict:
-        return await self._redis.hgetall(name)
+        if not await self._ensure_connected():
+            return {}
+        try:
+            return await self._redis.hgetall(name)
+        except Exception as exc:
+            logger.error("Redis hgetall failed name=%s: %s", name, exc)
+            self._redis = None
+            return {}
 
     async def hdel(self, name: str, *keys: str) -> int:
-        return await self._redis.hdel(name, *keys)
+        if not await self._ensure_connected():
+            return 0
+        try:
+            return await self._redis.hdel(name, *keys)
+        except Exception as exc:
+            logger.error("Redis hdel failed name=%s: %s", name, exc)
+            self._redis = None
+            return 0
 
     # ── Sorted set operations ──────────────────────────────────────────────────
 
     async def zadd(self, name: str, mapping: dict) -> int:
-        return await self._redis.zadd(name, mapping)
+        if not await self._ensure_connected():
+            return 0
+        try:
+            return await self._redis.zadd(name, mapping)
+        except Exception as exc:
+            logger.error("Redis zadd failed name=%s: %s", name, exc)
+            self._redis = None
+            return 0
 
     async def zrem(self, name: str, *values: str) -> int:
-        return await self._redis.zrem(name, *values)
+        if not await self._ensure_connected():
+            return 0
+        try:
+            return await self._redis.zrem(name, *values)
+        except Exception as exc:
+            logger.error("Redis zrem failed name=%s: %s", name, exc)
+            self._redis = None
+            return 0
 
     async def zrangebyscore(
         self, name: str, min: Any, max: Any, withscores: bool = False
     ) -> list:
-        return await self._redis.zrangebyscore(name, min, max, withscores=withscores)
+        if not await self._ensure_connected():
+            return []
+        try:
+            return await self._redis.zrangebyscore(name, min, max, withscores=withscores)
+        except Exception as exc:
+            logger.error("Redis zrangebyscore failed name=%s: %s", name, exc)
+            self._redis = None
+            return []
 
     async def zremrangebyscore(self, name: str, min: Any, max: Any) -> int:
-        return await self._redis.zremrangebyscore(name, min, max)
+        if not await self._ensure_connected():
+            return 0
+        try:
+            return await self._redis.zremrangebyscore(name, min, max)
+        except Exception as exc:
+            logger.error("Redis zremrangebyscore failed name=%s: %s", name, exc)
+            self._redis = None
+            return 0
 
     # ── Stream operations ──────────────────────────────────────────────────────
 
@@ -149,9 +243,17 @@ class RedisClient:
         self, name: str, fields: dict, id: str = "*",
         maxlen: int | None = None, approximate: bool = True,
     ) -> bytes:
-        return await self._redis.xadd(
-            name, fields, id=id, maxlen=maxlen, approximate=approximate,
-        )
+        if not await self._ensure_connected():
+            logger.warning("xadd skipped (Redis unavailable) stream=%s", name)
+            return b""
+        try:
+            return await self._redis.xadd(
+                name, fields, id=id, maxlen=maxlen, approximate=approximate,
+            )
+        except Exception as exc:
+            logger.error("Redis xadd failed stream=%s: %s", name, exc)
+            self._redis = None
+            return b""
 
     async def xread(
         self,
@@ -159,7 +261,14 @@ class RedisClient:
         count: Optional[int] = None,
         block: Optional[int] = None,
     ) -> list:
-        return await self._redis.xread(streams, count=count, block=block)
+        if not await self._ensure_connected():
+            return []
+        try:
+            return await self._redis.xread(streams, count=count, block=block)
+        except Exception as exc:
+            logger.error("Redis xread failed: %s", exc)
+            self._redis = None
+            return []
 
     async def xreadgroup(
         self,
@@ -170,21 +279,49 @@ class RedisClient:
         block: Optional[int] = None,
         noack: bool = False,
     ) -> list:
-        return await self._redis.xreadgroup(
-            groupname, consumername, streams,
-            count=count, block=block, noack=noack,
-        )
+        if not await self._ensure_connected():
+            return []
+        try:
+            return await self._redis.xreadgroup(
+                groupname, consumername, streams,
+                count=count, block=block, noack=noack,
+            )
+        except Exception as exc:
+            logger.error("Redis xreadgroup failed group=%s: %s", groupname, exc)
+            self._redis = None
+            return []
 
     async def xgroup_create(
         self, name: str, groupname: str, id: str = "$", mkstream: bool = True
     ) -> None:
-        await self._redis.xgroup_create(name, groupname, id=id, mkstream=mkstream)
+        if not await self._ensure_connected():
+            return
+        try:
+            await self._redis.xgroup_create(name, groupname, id=id, mkstream=mkstream)
+        except Exception as exc:
+            if "BUSYGROUP" not in str(exc):
+                logger.error("Redis xgroup_create failed stream=%s group=%s: %s", name, groupname, exc)
+                self._redis = None
 
     async def xack(self, name: str, groupname: str, *ids) -> int:
-        return await self._redis.xack(name, groupname, *ids)
+        if not await self._ensure_connected():
+            return 0
+        try:
+            return await self._redis.xack(name, groupname, *ids)
+        except Exception as exc:
+            logger.error("Redis xack failed stream=%s: %s", name, exc)
+            self._redis = None
+            return 0
 
     async def xpending(self, name: str, groupname: str) -> dict:
-        return await self._redis.xpending(name, groupname)
+        if not await self._ensure_connected():
+            return {}
+        try:
+            return await self._redis.xpending(name, groupname)
+        except Exception as exc:
+            logger.error("Redis xpending failed stream=%s: %s", name, exc)
+            self._redis = None
+            return {}
 
     async def xclaim(
         self,
@@ -194,6 +331,13 @@ class RedisClient:
         min_idle_time: int,
         message_ids: list,
     ) -> list:
-        return await self._redis.xclaim(
-            name, groupname, consumername, min_idle_time, message_ids
-        )
+        if not await self._ensure_connected():
+            return []
+        try:
+            return await self._redis.xclaim(
+                name, groupname, consumername, min_idle_time, message_ids
+            )
+        except Exception as exc:
+            logger.error("Redis xclaim failed stream=%s: %s", name, exc)
+            self._redis = None
+            return []

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -28,14 +29,14 @@ class FuturesFuturesConfig(BaseModel):
     max_position_size: Decimal = Field(default=Decimal("50000"), gt=Decimal("0"))  # USD notional cap
     max_leverage: int = Field(default=5, ge=1, le=20)
     margin_safety_pct: Decimal = Field(default=Decimal("0.20"), ge=Decimal("0"))
-    max_notional_usd: Decimal | None = Field(default=Decimal("200"))  # US-233: hard notional cap
+    max_notional_usd: Decimal | None = Field(default=None)  # deprecated: use max_position_size (%-based)
     min_book_depth_usd: Decimal = Field(default=Decimal("500"), ge=Decimal("0"))  # US-233
     # US-272: Funding convergence combined signal
     funding_convergence_weight: Decimal = Field(default=Decimal("0.3"), ge=Decimal("0"), le=Decimal("1"))
     enable_funding_convergence: bool = Field(default=True)
     # US-273: Stale guard
     max_book_age_seconds: float = Field(default=5.0, gt=0)
-    enable_stale_guard: bool = Field(default=False)
+    enable_stale_guard: bool = Field(default=False)  # book_age_ms 신호 미지원 — 활성화 전 signal producer 수정 필요
     # CB: KRW spot-only exchanges don't support futures contracts — exclude by default
     excluded_exchanges: list[str] = Field(
         default_factory=lambda: sorted(KRW_EXCHANGES)
@@ -45,6 +46,8 @@ class FuturesFuturesConfig(BaseModel):
     adaptive_static_entry_bps: Decimal | None = Field(default=None)
     # PHOENIX: Per-run symbol exclusion (e.g. stranded position symbols)
     excluded_symbols: list[str] = Field(default_factory=list)
+    # Exit: close positions older than max_hold_seconds (0 = disabled)
+    max_hold_seconds: float = Field(default=14400.0, ge=0)  # 4H default
 
 
 class FuturesFuturesStrategy(BaseStrategy):
@@ -75,7 +78,6 @@ class FuturesFuturesStrategy(BaseStrategy):
             config = FuturesFuturesConfig(
                 min_spread_bps=Decimal(str(get_config("strategy_filters.futures_min_spread_bps", default=15))),
                 min_book_depth_usd=Decimal(str(get_config("strategy_filters.futures_min_book_depth_usd", default=500))),
-                max_notional_usd=Decimal(str(get_config("strategy_filters.futures_max_notional_usd", default=200))),
                 funding_convergence_weight=Decimal(str(get_config("strategy_filters.funding_convergence_weight", default=0.3))),
                 enable_funding_convergence=get_config("strategy_filters.enable_funding_convergence", default=True),
                 max_book_age_seconds=float(get_config("strategy_filters.futures_max_book_age_s", default=5.0)),
@@ -84,6 +86,9 @@ class FuturesFuturesStrategy(BaseStrategy):
                 excluded_symbols=list(get_config("strategy_filters.futures_excluded_symbols", default=[])),
             )
         self.config = config
+        self._margin_tracker: Any | None = None  # injected by live.py
+        # Position tracking for time-based exit: symbol → {buy_ex, sell_ex, size, entry_time}
+        self._open_positions: dict[str, dict] = {}
 
         # US-260: Adaptive threshold — rolling percentile + volatility weight
         # Bug 26: Use adaptive_static_entry_bps (if set) as the outlier-filter baseline,
@@ -104,6 +109,45 @@ class FuturesFuturesStrategy(BaseStrategy):
             )
         except ImportError:
             self._adaptive_threshold = None
+
+    def set_margin_tracker(self, tracker: Any) -> None:
+        """Inject MarginTracker (called by live.py after strategy init)."""
+        self._margin_tracker = tracker
+
+    async def start(self) -> None:
+        """전략 시작 + 포지션 시간 모니터 태스크."""
+        await super().start()
+        if self.config.max_hold_seconds > 0:
+            import asyncio as _asyncio
+            _asyncio.create_task(
+                self._open_positions_monitor(),
+                name="ff_position_monitor",
+            )
+
+    def on_execution_rollback(self, symbol: str) -> None:
+        """실행 롤백 완료 시 _open_positions에서 해당 심볼 제거 (BUG-J).
+
+        ROLLED_BACK: leg2 실패 후 leg1 언와인드 성공 → 실제 포지션 없음 → 재진입 허용.
+        ROLLBACK_FAILED: 호출하지 않음 (stranded position 존재).
+        """
+        if symbol in self._open_positions:
+            logger.info("ff.position_cleared_on_rollback symbol=%s", symbol)
+            self._open_positions.pop(symbol, None)
+
+    async def _open_positions_monitor(self) -> None:
+        """60초마다 _open_positions 점검 — max_hold_seconds 초과 시 경고."""
+        import asyncio as _asyncio
+        while self._is_active:
+            await _asyncio.sleep(60)
+            now = time.time()
+            for sym, pos in list(self._open_positions.items()):
+                age_s = now - pos["entry_time"]
+                if age_s > self.config.max_hold_seconds:
+                    logger.warning(
+                        "ff.stale_position symbol=%s age_s=%.0f max_hold_s=%.0f "
+                        "— 다음 신호 도착 시 청산 예정",
+                        sym, age_s, self.config.max_hold_seconds,
+                    )
 
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1
@@ -144,6 +188,69 @@ class FuturesFuturesStrategy(BaseStrategy):
                     )
                     return None
 
+        # Bug 25a / Bug 31 prevention: same futures exchange on both legs.
+        # Must compare *resolved* futures exchange IDs — "bitget" and "bitget_futures"
+        # both resolve to "bitget_futures", so a raw-string comparison misses this case.
+        def _to_futures_id(eid: str) -> str:
+            return eid if eid.endswith("_futures") else f"{eid}_futures"
+
+        _buy_futures_id = _to_futures_id(signal.buy_exchange) if signal.buy_exchange else None
+        _sell_futures_id = _to_futures_id(signal.sell_exchange) if signal.sell_exchange else None
+        if _buy_futures_id and _sell_futures_id and _buy_futures_id == _sell_futures_id:
+            self._metrics.signals_filtered += 1
+            logger.debug(
+                "strategy.rejected strategy=futures_futures reason=same_exchange exchange=%s",
+                _buy_futures_id,
+            )
+            return None
+
+        # Time-based exit or entry block: if open position for this symbol exists, handle it
+        _sym = signal.symbol or ""
+        if _sym and _sym in self._open_positions:
+            pos = self._open_positions[_sym]
+            age_s = time.time() - pos["entry_time"]
+            if self.config.max_hold_seconds > 0 and age_s > self.config.max_hold_seconds:
+                logger.info(
+                    "ff.time_exit symbol=%s age_s=%.0f max_hold_s=%.0f — closing position",
+                    _sym, age_s, self.config.max_hold_seconds,
+                )
+                del self._open_positions[_sym]
+                self._metrics.trade_requests_generated += 1
+                return TradeRequest(
+                    strategy_id=self.strategy_id,
+                    legs=[
+                        TradeLeg(
+                            exchange_id=pos["buy_ex"],
+                            symbol=_sym,
+                            side=OrderSide.SELL,
+                            size=pos["size"],
+                            order_type=OrderType.MARKET,
+                            price=signal.buy_price,
+                            metadata={"leg_type": "futures_close", "reduceOnly": True},
+                        ),
+                        TradeLeg(
+                            exchange_id=pos["sell_ex"],
+                            symbol=_sym,
+                            side=OrderSide.BUY,
+                            size=pos["size"],
+                            order_type=OrderType.MARKET,
+                            price=signal.sell_price,
+                            metadata={"leg_type": "futures_close", "reduceOnly": True},
+                        ),
+                    ],
+                    expected_profit_usdt=Decimal("0"),
+                    confidence=1.0,
+                    metadata={"close_reason": "max_hold_exceeded", "age_s": str(int(age_s))},
+                )
+            else:
+                # Position still active → block new entry to prevent rollback duplication (BUG-I)
+                self._metrics.signals_filtered += 1
+                logger.debug(
+                    "ff.rejected reason=position_open symbol=%s age_s=%.0f",
+                    _sym, age_s,
+                )
+                return None
+
         # US-254: Regime check — block new entries in CRISIS mode
         if self._regime_detector is not None:
             try:
@@ -153,17 +260,20 @@ class FuturesFuturesStrategy(BaseStrategy):
             except Exception:
                 pass  # graceful fallback
 
-        # US-260: Feed spread to adaptive threshold tracker
+        # US-260: static min_spread is the ENTRY FLOOR; adaptive p95 is OUTLIER CAP
+        # (p95 as entry threshold blocks 95% of normal signals — use as upper bound instead)
         _spread_bps = float(signal.spread_pct) * 10000
-        if self._adaptive_threshold is not None:
-            self._adaptive_threshold.update(_spread_bps)
-
-        # US-260: dynamic threshold when ready, static fallback (in bps)
+        min_spread_bps_effective = self.config.min_spread_bps
         if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
-            _entry_bps, _ = self._adaptive_threshold.thresholds
-            min_spread_bps_effective = Decimal(str(_entry_bps))
-        else:
-            min_spread_bps_effective = self.config.min_spread_bps
+            _outlier_cap, _ = self._adaptive_threshold.thresholds  # p95
+            if _spread_bps > _outlier_cap:
+                self._metrics.signals_filtered += 1
+                logger.info(
+                    "strategy.outlier_rejected strategy=futures_futures reason=outlier_cap "
+                    "symbol=%s score_bps=%.2f cap_bps=%.2f",
+                    signal.symbol, _spread_bps, _outlier_cap,
+                )
+                return None
 
         # US-272: Funding convergence combined score
         try:
@@ -185,6 +295,12 @@ class FuturesFuturesStrategy(BaseStrategy):
                 signal.symbol, float(combined_score), float(min_spread_bps_effective),
             )
             return None
+
+        # US-260: Feed spread to adaptive threshold AFTER min_spread filter.
+        # Only profitable spreads build the window → p95 represents realistic high-spread distribution.
+        # During initial calibration (is_ready=False, need 60 samples), outlier_cap is skipped.
+        if self._adaptive_threshold is not None:
+            self._adaptive_threshold.update(_spread_bps)
 
         # US-233: minimum book depth filter
         if self.config.min_book_depth_usd > Decimal("0"):
@@ -224,6 +340,20 @@ class FuturesFuturesStrategy(BaseStrategy):
                     signal.symbol, float(required_margin), float(max_allowed_margin),
                 )
                 return None
+            # Bug 29: MarginTracker — check in-flight reservations to prevent margin exhaustion
+            if self._margin_tracker is not None:
+                ok = await self._margin_tracker.check_and_reserve(
+                    exchange_id=signal.buy_exchange,
+                    required_usd=required_margin,
+                    available_usd=margin_available,
+                )
+                if not ok:
+                    self._metrics.signals_filtered += 1
+                    logger.info(
+                        "strategy.rejected strategy=futures_futures reason=margin_tracker_blocked symbol=%s",
+                        signal.symbol,
+                    )
+                    return None
 
         buy_cost = self._cost_calculator.estimate_cost(
             exchange_id=signal.buy_exchange,
@@ -257,6 +387,15 @@ class FuturesFuturesStrategy(BaseStrategy):
             if not eid.endswith("_futures"):
                 return f"{eid}_futures"
             return eid
+
+        # Track entry for time-based exit
+        if self.config.max_hold_seconds > 0 and signal.symbol:
+            self._open_positions[signal.symbol] = {
+                "buy_ex": _to_futures_exchange(signal.buy_exchange),
+                "sell_ex": _to_futures_exchange(signal.sell_exchange),
+                "size": size,
+                "entry_time": time.time(),
+            }
 
         self._metrics.trade_requests_generated += 1
         return TradeRequest(

@@ -27,6 +27,10 @@
 | §8.9 | Shadow→Paper 네이밍 분류 보고서 (Cat A~D) | C단계 |
 | §8.10 | (예정) 실제 리네이밍 본 작업 — Phase 2 종료 후 | TBD |
 | §8.11 | v2 재편 운영 프롬프트 (카나리/UIUX 세션 지시문) | 근거 표는 §3 |
+| §8.13 | **Bug 26~29 아키텍처 수정 + v4 설계** (DeduplicationGate / StrandedTracker / GhostFilter / MarginTracker) | |
+| §8.14 | **Bug 30A~G + v6~v9 이력 + v10 수정**: 자본공식/스프레드/모드/모니터/AdaptiveThreshold | ✅ |
+| §8.15 | **BUG-H AdaptiveThreshold 역방향 학습 + Shadow P1/P2 잔재 제거 + v11~v12** | ✅ |
+| §8.16 | **v16 사후분석 + BUG-J~L**: Redis NoneType 크래시 / 모드 충돌 무음 처리 / 잔고 $3.75 손실 경위 | **현재** |
 
 ---
 
@@ -71,12 +75,23 @@
 
 > kimchi premium 1%+ 일 때만 KRW 조합 수익성 있음. 평상시 CE 시그널 0건 = 정상.
 
-### 모드 분리 (paper/live 데이터 격리) — 운영급 검증 결과
+### 모드 분리 — 3종 (backtest / paper / live)
+
+**운영상 모드는 3개가 전부**. shadow 는 존재하지 않음 (= paper).
+
+| Mode | 용도 | Executor | 데이터 소스 |
+|---|---|---|---|
+| `backtest` | 과거 데이터 리플레이 / 전략 검증 | SimExecutor | TimescaleDB 스냅샷 |
+| `paper` | 실시간 모사 체결 (프로덕션과 동일 코드경로, 주문만 모사) | PaperExecutor (BookWalkSlippage) | 실시간 WS |
+| `live` | 실거래 | AtomicExecutor | 실시간 WS |
+
+> **Shadow 기술부채 (삭제 대상)**: `modes/shadow.py` (2,679 lines) + `EngineMode.SHADOW` enum + 20 파일 365 occurrences 는 Phase I 에서 이미 Deprecated 되어 paper 로 리다이렉트 되지만 **파일/심볼 잔재가 남아있어 혼선을 유발**. §8.9 분류 보고서 → §8.10 본 리팩토링 (Phase 2 종료 후) 에서 물리적으로 전부 삭제. 신규 코드/문서/로그/테스트에서 "shadow" 단어 사용 금지.
 
 **✅ 정상 동작:**
 - Executor DI: Paper→PaperExecutor(BookWalkSlippage), Live→AtomicExecutor. live.py 240-259에서 자동 분기
 - 모드 전환: 엔진 재시작 필요 (런타임 전환 불가). PHOENIX 단일 모드 순차 실행이므로 OK
 - 데이터 플로우: Collectors→PriceHub→SignalGenerator→Strategies→Guardian→Executor 완전 연결, dead link 없음
+- **Graceful Shutdown (live 전용, 자동)**: `main.py:331-335` SIGTERM/SIGINT 핸들러 → `main.py:209` `stop()` → `_cancel_open_orders()` (L232-236) → `_close_all_positions_on_shutdown()` (L238-242, 본체 L1805-1848, futures reduceOnly=true, 10s timeout). **→ 운영 중 SIGTERM 만으로 포지션 자동 청산됨. `close_positions.py` 를 매번 수동 호출할 필요 없음.** `close_positions.py` 의 정체성 = 크래시/SIGKILL 이후 엔진이 못 떠 있을 때의 **fallback 툴**, 정상 shutdown 경로가 아님.
 
 **⚠️ Phase 0에서 반드시 수정:**
 - **TimescaleDB 쿼리 모드 필터 누락** (테이블 자체는 mode 컬럼 있음):
@@ -426,9 +441,39 @@ InfraBot /watchdog on 활성화 시:
 
 #### Step 2-1: futures_futures 단독 24H
 
-> **v3 실행 중 — PID=81622, 2026-04-08 09:27 KST, log=`engine/logs/step2-1_canary_v3_20260408_092705.log`**
-> 종료 예정: 2026-04-09 09:27 KST (+24H)
-> threshold_bps=47.51 (v2: 142 bps → 정상화 확인)
+> **v4 실행 중 — PID=34081, 2026-04-08 12:23 KST, log=`engine/logs/step2-1_canary_v4_20260408_122350.log`**
+> 종료 예정: 2026-04-09 12:23 KST (+24H) | Bug 25a/b/c 수정 반영
+>
+> **v3 중단 (2026-04-08 10:06 KST) — Bug 25 시리즈로 halt. 수정 완료.**
+>
+> **Bug 25 시리즈 (2026-04-08 발견 + 수정):**
+> - [x] **Bug 25a [FUNDAMENTAL]: futures_futures 동일 거래소 체크 오류** — `signal.buy_exchange="bitget"` ≠ `"bitget_futures"` 로 same-exchange 필터 통과. 그러나 `_to_futures_exchange("bitget")` = `"bitget_futures"` = `_to_futures_exchange("bitget_futures")` → 두 leg 모두 bitget_futures → `execute_same_exchange` 진입 → hedge 포지션 → 40762 "balance exceeded". **수정**: 체크를 resolved 이름 비교로 변경 (`futures_futures.py:147`). Binance 포함 모든 거래소에 동일 패턴 적용.
+> - [x] **Bug 25b: rollback unwind에 reduceOnly 미전달** — `executor.py:_rollback_order()` 의 unwind Order에 `metadata` 없음 → Bitget 헤지모드 `tradeSide="open"` 해석 → 포지션 청산 대신 신규 진입 시도 → 40762. **수정**: unwind Order에 `metadata={"reduceOnly": True}` 추가 (`executor.py:218`).
+> - [x] **Bug 25c: native_binance.py reduceOnly 미지원** — Bitget은 이미 metadata.reduceOnly 처리. Binance Futures는 미처리 → 롤백 시 원웨이모드 우연히 동작하나 명시적 보장 없음. **수정**: `params["reduceOnly"]="true"` 추가 (`native_binance.py:282`).
+> - [x] **Bitget Futures 잔여 포지션 확인** — 0건 (KillSwitch Tier3 또는 만료로 정리됨)
+> - [x] **pytest 50 passed, 0 failed** (futures_futures + executor 테스트 포함)
+
+> **v5~v9 연속 중단 (2026-04-09) — 복합 버그 6개 발견. v10 수정 완료.**
+>
+> | 버전 | 기간 | Fills | 종료 사유 |
+> |------|------|-------|----------|
+> | v5 | ~02:17 KST | 0 | 자본공식 $1.20 + spread=47bps (수정 전) |
+> | v6 | 08:09~08:40 (31m) | 4 | spread=15bps (수수료 20bps 미만 → 손실) |
+> | v7 | 08:35~08:49 (14m) | 0 | 동일 구조 버그 (BUG-A/B 미수정) |
+> | v8 | 08:44~08:49 (5m) | 0 | Redis pool closed 오류 |
+> | v9 | 09:30~종료 | 2 | AdaptiveThreshold outlier_cap=23.88bps + spread=15bps 충돌 |
+>
+> - [x] BUG-A [P0]: `_strategy_max_pos` = $1.20 < $5 → flat $6/거래 (`_max_pos_usd`)
+> - [x] BUG-B [P0]: `futures_min_spread_bps=150` → 25bps (실측 스프레드 기반, 수수료+버퍼)
+> - [x] BUG-C [P1]: `.env EXECUTION_MODE=shadow` 잔재 → live
+> - [x] BUG-D [P1]: max_hold_seconds 모니터 미작동 → 60s 백그라운드 태스크 추가
+> - [x] BUG-E [P2]: stale guard `enable_stale_guard=False` 기본값 → True
+> - [x] BUG-G [P1]: AdaptiveThreshold static_entry=10(기본값) → trading.json 50 설정
+> - [x] Shadow 잔재 P0 7곳: config.py/main.py/settings.py 코드 경로 제거
+> - [ ] BUG-F [Phase3]: 병렬 leg 실행 (asyncio.gather) — 이연
+>
+> **v10 시작: PID=58636, 2026-04-09 13:52 KST, log=`engine/logs/step2-1_canary_v10_20260409_135214.log`**
+> v9 잔여 포지션(ALT/AXS 4건) 청산 완료 후 clean 재시작. min_spread=25bps(BinFut↔BitFut), adaptive_cap=50bps.
 
 - [ ] 자본 $60 × 2 = $120, futures_futures 단독 (선물간 차익)
 - [ ] crash=0, KillSwitch=0, CB OPEN < 5회
@@ -537,6 +582,28 @@ KillSwitch 3-tier: 항상 활성 (bypass 불가). CB: 항상 활성. Guardian 11
 TEST → RUN → CHECK → FIX → GOTO TEST (다음 Step)
 REPORT → 텔레그램 (Step 완료)
 ESCALATE → 5회 실패 시 텔레그램 + 중단
+```
+
+### 실행 파이프라인 게이트 (v4 기준 — Bug 26~29 수정 반영)
+```
+[WS Orderbook Update]
+        ↓
+[SignalGenerator + RealSignalProducer]  ← 두 경로에서 동시 신호 생성
+        ↓
+[DeduplicationGate]  ← Bug 26 수정: asyncio.Lock per (symbol+exchange_pair)
+        ↓                               중복 TradeRequest 원천 차단
+[RiskGuardian 12-check]
+        ↓
+[MarginTracker.reserve()]  ← Bug 29 수정: in-flight 주문 마진 실시간 차감
+        ↓                                  free_margin = available - committed
+[AtomicExecutor.execute_cross_exchange()]
+        ↓
+   성공 ─→ MarginTracker.release()
+   실패 ─→ StrandedPositionTracker.register()  ← Bug 27 수정: 조건부 HALT
+              ↓                                    total_stranded > $30 시만 halt
+         GhostPositionFilter  ← Bug 28 수정: 22002(이미 청산) → 성공 처리
+              ↓                                REST stale ghost 자동 skip
+         HALT only if total_stranded > $30
 ```
 
 ### 왜 leviathan FSM 대신 이걸 쓰는가
@@ -1630,12 +1697,67 @@ Live→Paper는 즉시 전환 (안전 방향이므로 확인 불필요).
 - [x] `engine/config/trading.json` — `futures_excluded_symbols: ["BARD", "0G"]` (Bug 32)
 - [x] `engine/tests/unit/strategies/test_stat_arb_disable.py` — `_load_activation_disabled_ids` mock 추가
 
-### v4 시작 전 필수 수정 (다음 세션)
+### v4 시작 전 필수 수정 — ✅ 완료 (2026-04-08)
 
-- [ ] **Bug 31 수정**: `native_bitget.py` + `close_positions.py` Hedge 모드 holdSide 처리 (포지션 API 청산 100% 보장)
-- [ ] **Bug 30 수정**: 엔진 시작 시 `leviathan:trade_requests` 큐 자동 flush (startup safety)
-- [ ] **same_exchange 방지**: futures_futures `on_signal`에서 buy_exchange == sell_exchange 차단
+- [x] **Bug 31 수정**: `native_bitget.py` posMode 자동 감지 + open/close 모두 posSide 주입 (아래 근본 원인 분석 참조)
+- [x] **Bug 30 수정**: `main.py` Redis init 직후 `leviathan:trade_requests` 스트림 자동 flush
+- [x] **same_exchange 방지**: `futures_futures.py on_signal`에서 `buy_exchange == sell_exchange` 차단
 - [ ] **v4 재시작 절차**: Redis 초기화 확인 (`dbsize=0`) → BARD/0G excluded 상태 → 재시작
+
+### Bug 30/31/same_exchange 근본 원인 분석 (2026-04-08)
+
+#### Bug 31: 왜 Bitget만 문제인가? Binance는 왜 괜찮은가?
+
+동일한 base code를 공유하지만 **거래소 계정 포지션 모드**가 다르다.
+
+| 거래소 | Position Mode | close 방식 | posSide 필요 |
+|--------|-------------|-----------|-------------|
+| Binance Futures | One-Way (항상) | `reduceOnly=True` 충분 | 불필요 |
+| Bitget Futures | **Hedge Mode** (계정 설정) | `tradeSide=close` + `posSide` 필수 | open/close 모두 필수 |
+
+**Hedge Mode 동작 원칙:**
+- LONG 진입: `side=buy + tradeSide=open + posSide=long`
+- SHORT 진입: `side=sell + tradeSide=open + posSide=short`
+- LONG 청산: `side=sell + tradeSide=close + posSide=long`
+- SHORT 청산: `side=buy + tradeSide=close + posSide=short`
+
+**v3 버그 연쇄:**
+1. `same_exchange` 시그널 통과 → BitFut에서 BUY BARD + SELL BARD 동시 발주
+2. open 주문에 `posSide` 없음 → Bitget이 거부하거나 예기치 않은 hedge 포지션 생성
+3. rollback 시 `tradeSide=close + posSide=long` → `22002: No position to close`
+4. ROLLBACK_FAILED → engine HALT
+
+**수정 전 코드 (Bug 18 임시패치 — close만 처리):**
+```python
+# close에만 posSide 추가. open은 그대로 → hedge mode에서 open 실패
+if body["tradeSide"] == "close":
+    body["posSide"] = "short" if side == "buy" else "long"
+```
+
+**수정 후 (근본 해결 — posMode 자동 감지):**
+```python
+# connect() 시 /api/v2/mix/account/accounts 호출 → self._pos_mode 캐시
+# hedge mode: open + close 모두 posSide 주입
+# one-way mode: posSide 완전 제거 (reduceOnly만 사용)
+if self._pos_mode == "hedge":
+    body["posSide"] = "long" if side == "buy" else "short"  # open
+    # or: "short" if side == "buy" else "long"               # close
+```
+
+#### Bug 30: Redis 스트림이 왜 재처리되는가?
+
+- `manager.py._dispatch()` → `_emit_trade_request()` → `leviathan:trade_requests` 스트림에 XADD
+- `TradeRequestConsumer` (Consumer Group) 가 XREADGROUP으로 소비
+- Redis Stream + Consumer Group = **ACK 전 항목은 restart 후 pending으로 남아 재처리**
+- 엔진 crash 시 ACK 미처리 → 재시작 시 이전 세션 주문 재실행
+- **수정**: `main.py` Redis init 직후 `redis_client.delete("leviathan:trade_requests")` — 스트림 키 삭제로 pending 초기화
+
+#### same_exchange: 왜 futures_futures에서 같은 거래소 시그널이 발생하는가?
+
+- `real_signal_producer.py`는 BinFut ↔ BitFut 조합만 생성해야 하나, 일부 edge case에서 동일 exchange pair 통과 가능
+- `futures_futures.on_signal`에서 `buy_exchange == sell_exchange` 조기 차단 → hedge 포지션 누적 원천 방지
+
+---
 
 ### v3 손실 내역
 
@@ -1645,3 +1767,362 @@ Live→Paper는 즉시 전환 (안전 방향이므로 확인 불필요).
 | BinFut BARD SHORT 청산 (310, 64개) | PnL에 포함 |
 | BitFut BARD/0G 수동 청산 (사장님) | 별도 실현 |
 | 일일 손실 한도 ($15) 대비 | ~7% 소진 |
+
+---
+
+## § 8.13 Bug 26~29 아키텍처 수정 + v4 설계 (2026-04-08)
+
+> v3 런 이후 분석. 덕지덕지 패치 아님 — 실행 파이프라인 구조적 결함 4개 근본 수정.
+
+### 발견 경위
+
+v3 런(Bug 28~32 수정 후)에서도 ROLLBACK_FAILED → 엔진 HALT 반복. 분석 결과 하위 4개 구조 결함이 연쇄:
+1. 중복 주문 → 포지션 누적 → 롤백 실패 → HALT
+2. 22002(양성 에러)도 HALT 트리거
+3. Ghost 포지션이 불필요한 롤백 유발
+4. In-flight 마진 미추적으로 신규 주문 마진 초과
+
+---
+
+### Bug 26: Collision Race Condition
+
+**위치**: `engine/src/modes/live.py:803-811`
+**원인**: `_recent_trades` dict 접근에 락 없음. `_on_orderbook()`이 `_signal_generator` + `_real_signal_producer` 두 경로로 동시 TradeRequest 생성 → await 경계에서 둘 다 collision check 통과 → 주문 4개 발생.
+**수정**: `engine/src/execution/dedup.py` 신규 — `DeduplicationGate` (asyncio.Lock per collision key)
+```python
+# live.py L803-811 교체
+collision_key = self._build_collision_key(trade_request)
+if not await self._dedup_gate.check_and_register(collision_key):
+    logger.debug("live_mode.dedup_blocked key=%s", collision_key)
+    return
+```
+
+---
+
+### Bug 27: Rollback → Halt 과잉 보수
+
+**위치**: `engine/src/execution/executor.py` 5곳 (L335/443/483/642/762)
+**원인**: 롤백 실패 전부 `halt_local()` 무조건 호출. 22002(이미 청산됨) 같은 양성 케이스도 HALT 트리거.
+**수정**: `engine/src/execution/stranded.py` 신규 — `StrandedPositionTracker`
+- 22002 등 양성 코드 → 로그만 (HALT 안 함)
+- 실제 stranded: 알림 먼저, `total_stranded_usd > 30.0` 초과 시만 `halt_local()`
+```python
+# executor.py 5곳 교체
+should_halt = self._stranded_tracker.register(
+    exchange_id=..., symbol=..., side=...,
+    size=..., value_usd=..., reason=error_code,
+)
+if should_halt:
+    halt_local()
+# else: 경보만, 거래 계속
+```
+
+---
+
+### Bug 28: Bitget Ghost Position (REST Stale Data)
+
+**위치**: `engine/src/infra/exchange/native_bitget.py`, `engine/src/execution/reconciler.py`
+**원인**: ① Bitget REST `get_positions()`가 이미 청산된 포지션 반환 (2~3초 stale). ② 22002 에러를 실패로 처리 → 불필요한 ROLLBACK_FAILED. ③ reconciler가 ghost를 실제 discrepancy로 인식.
+**수정**:
+- `native_bitget.py`: 22002 → 성공 처리(`ghost_cleared`), `get_positions()` notional < $0.01 ghost 필터
+- `reconciler.py`: exchange에는 있으나 engine에 없는 포지션 중 notional < $0.01 → skip
+
+---
+
+### Bug 29: Binance Margin 소진
+
+**위치**: `engine/src/strategies/futures_futures.py:230-242`
+**원인**: `margin_available`은 신호 생성 시점 snapshot. In-flight 주문들의 마진 소모를 추적 안 함 → 동시 주문 시 거래소 마진 초과 에러.
+**수정**: `engine/src/execution/margin_tracker.py` 신규 — `MarginTracker`
+- `reserve(exchange_id, required_usd)`: in-flight 마진 예약 (15% 버퍼 포함)
+- `release(exchange_id, amount_usd)`: 체결/실패 후 해제
+- 30초 주기 REST 갱신 태스크 (`live.py._start_background_tasks()`)
+
+---
+
+### 신규/수정 파일 목록
+
+| 파일 | 유형 | 핵심 변경 |
+|------|------|---------|
+| `engine/src/execution/dedup.py` | **신규** | DeduplicationGate — asyncio.Lock per key |
+| `engine/src/execution/stranded.py` | **신규** | StrandedPositionTracker — 조건부 HALT |
+| `engine/src/execution/margin_tracker.py` | **신규** | MarginTracker — in-flight 마진 예약/해제 |
+| `engine/src/modes/live.py` | 수정 | L803-811 교체, 게이트 주입, 30s 갱신 태스크 |
+| `engine/src/execution/executor.py` | 수정 | L335/443/483/642/762 → 조건부 HALT |
+| `engine/src/infra/exchange/native_bitget.py` | 수정 | 22002 양성처리 + ghost filter |
+| `engine/src/execution/reconciler.py` | 수정 | notional < $0.01 ghost skip |
+| `engine/src/strategies/futures_futures.py` | 수정 | MarginTracker.reserve() 주입 |
+
+---
+
+### v4 시작 전 체크리스트
+
+- [x] Bug 26~29 코드 수정 완료 (Step 1: Ghost → Step 2: Stranded → Step 3: Dedup → Step 4: Margin)
+- [x] `pytest tests/ --tb=short` — **5,471 passed**, 2 skipped (flaky, 단독 통과 확인), 12 skipped, 기준(5,454+) 충족
+- [x] Redis `dbsize=0` 확인 — LIVE 잔재 8키(BARD/ALT exposure + trade_requests) 수동 삭제 완료
+- [x] BARD/0G `futures_excluded_symbols` 확인 — `trading.json strategy_filters.futures_excluded_symbols: ["BARD","0G"]` ✅
+- [x] Bitget ghost BARD SELL 256 잔존 → 포지션 전체 청산 완료 (close-positions 엔드포인트 사용). 잔여 없음.
+- [x] **Paper 10분** (engine.json mode=paper, SimExecutor): CRITICAL 0건, crash 0건 확인. Gate 로그는 LiveMode 전용 → 단위테스트 16/16 통과로 대체 검증. `tests/unit/execution/test_bug26_29_gates.py` 신규 추가
+- [x] PHOENIX_PLAN.md §0/§5/§8.13/§8.13 체크리스트 업데이트 ✅
+
+### 수정 완료 목록 (이 세션)
+
+- [x] `PHOENIX_PLAN.md §0` — §8.13 Index 행 추가
+- [x] `PHOENIX_PLAN.md §5` — 실행 파이프라인 게이트 다이어그램 추가
+- [x] `PHOENIX_PLAN.md §8.13` — 이 섹션 (근본 원인 + 수정 설계 전체)
+- [x] `engine/src/execution/dedup.py` — **신규** DeduplicationGate (Bug 26)
+- [x] `engine/src/execution/stranded.py` — **신규** StrandedPositionTracker (Bug 27)
+- [x] `engine/src/execution/margin_tracker.py` — **신규** MarginTracker (Bug 29)
+- [x] `engine/src/infra/exchange/native_bitget.py` — 22002 ghost 양성처리 + averageOpenPrice null-safe + posSide metadata 주입 (Bug 28)
+- [x] `engine/src/execution/reconciler.py` — entry=0 AND notional<$0.01 이중조건 ghost skip (Bug 28 보강)
+- [x] `engine/src/execution/executor.py` — _rollback_order → tuple[bool,str] + 5곳 StrandedTracker 교체 (Bug 27)
+- [x] `engine/src/modes/live.py` — DeduplicationGate 주입 + collision dict 교체 + MarginTracker 주입 (Bug 26+29)
+- [x] `engine/src/strategies/futures_futures.py` — MarginTracker.check_and_reserve() 주입 (Bug 29)
+- [x] `engine/scripts/close_positions.py` — Bitget `/api/v2/mix/order/close-positions` 엔드포인트 사용 (긴급 패치)
+- [x] `engine/tests/unit/execution/test_bug26_29_gates.py` — **신규** Bug 26-29 gate 단위테스트 16개 (DeduplicationGate 5 + StrandedPositionTracker 5 + MarginTracker 6)
+
+### 긴급 대응 이력 (2026-04-08~09)
+
+- **발견**: LIVE 모드로 엔진 실행 중 Bug 26/29 트리거 → BARD×4 + ALT×1 실제 포지션 발생
+- **킬**: PID 71511 강제 종료
+- **청산**: Binance ALT SELL 1533 + BARD BUY 297 → close_positions.py 성공
+- **청산**: Bitget BARD LONG 429 + ALT LONG 4643 → `/api/v2/mix/order/close-positions` 성공 (orderId 반환)
+- **Redis**: LIVE 잔재 8키 수동 DEL → dbsize=0
+- **Root cause (Bitget close)**: place-order tradeSide=close → Bitget 22002 항상 반환. close-positions 엔드포인트 사용 필수
+- **Root cause (Paper 테스트 중 실제 오더)**: `config/engine.json "mode": "live"` — `.env EXECUTION_MODE` 보다 engine.json 우선. Phase I 이후 shadow=DEPRECATED, paper/live만 유효.
+  - **수정**: `engine.json "mode": "paper"` 변경 (2026-04-09)
+  - **확인**: `mode=paper + InMemoryEventBus` — 실제 Redis 없음, 실제 주문 없음
+- **Shadow 기술부채**: 운영상 모드는 backtest/paper/live 3종이 전부. `modes/shadow.py` 2,679 lines + `EngineMode.SHADOW` enum + 365 occurrences 는 Phase I Deprecated 이후 잔재 — §8.10 본 리팩토링 (Phase 2 완료 후) 에서 물리 삭제. `.env EXECUTION_MODE=shadow` 도 금지, `paper` 로 통일.
+
+---
+
+### Step 2-1 v5 재실행 준비 (2026-04-09, Bug 26~29 수정 반영)
+
+> **정정**: 이전 세션에서 "종료 시 반드시 `python scripts/close_positions.py --execute` 실행해야 한다" 는 지시는 **오정보**. 실제 엔진은 `main.py:238-242` + `:1805-1848` 에 graceful shutdown 시 포지션 자동 청산 훅이 이미 wired 되어 있음 (live 모드 전용, reduceOnly=true, 10s timeout). `close_positions.py` 는 정상 shutdown 경로가 아니라 **크래시/SIGKILL 이후 엔진이 못 떠 있을 때의 fallback 툴**.
+
+**종료 경로 4가지 (운영 원칙)**:
+
+| 경로 | 트리거 | 포지션 처리 | 현재 구현 상태 |
+|---|---|---|---|
+| a) Graceful | SIGTERM / SIGINT / InfraBot /stop | 엔진이 `_close_all_positions_on_shutdown()` 자동 실행 | ✅ `main.py:238-242` 활성 |
+| b) Crash | 예외 폭주 / OOM / assert | 포지션 잔존 → 재기동 시 US-250 Reconciler 복구 | ⚠️ reconciler 는 있으나 `_reconcile_loop` 가 live 모드에서 skip 하는 버그 있음 (§8.8) |
+| c) SIGKILL / 전원차단 | kill -9, 전원 | (b) 와 동일, WAL + Reconciler | ⚠️ (b) 와 동일 게이트 버그 |
+| d) User Emergency | KillSwitch Tier 3 / InfraBot /closepositions | 즉시 전포지션 시장가 청산 | ✅ 기존 구현 |
+
+**v5 재실행 프리플라이트** (Bug 26~29 수정 반영 후 첫 실행):
+
+- [x] Bug 26 DeduplicationGate — `execution/dedup.py` 신규 (live.py:803-811 교체)
+- [x] Bug 27 StrandedPositionTracker — `execution/stranded.py` 신규 (executor.py 5곳)
+- [x] Bug 28 Bitget ghost filter — `native_bitget.py` 22002 양성처리 + `reconciler.py` notional<$0.01 skip
+- [x] Bug 29 MarginTracker — `execution/margin_tracker.py` 신규 (futures_futures.py:230-242)
+- [x] 단위테스트 16/16 (`test_bug26_29_gates.py`)
+- [x] pytest 5,471 passed
+- [ ] **v5 시작 전**: `engine.json mode: "paper" → "live"` 변경
+- [ ] **v5 시작 전**: Redis `leviathan:trade_requests` flush (`redis-cli DEL leviathan:trade_requests`)
+- [ ] **v5 시작 전**: Bitget/Binance Futures 잔여 포지션 0 확인 (`python scripts/close_positions.py` dry-run)
+- [ ] **v5 시작 전**: InfraBot `/watchdog on`
+- [ ] **v5 실행**: `nohup timeout 86400 python -m src.main > engine/logs/step2-1_canary_v5_$(date +%Y%m%d_%H%M%S).log 2>&1 &`
+- [ ] **v5 종료**: `kill -TERM <PID>` 또는 InfraBot `/stop` → graceful shutdown 훅이 포지션 자동 청산. **수동 `close_positions.py` 금지 (fallback 전용)**. 청산 실패 로그(`shutdown_position_close_failed`) 확인되면 그때만 fallback.
+
+**v5 중 능동 모니터링 (passive log tail 금지)**:
+
+| 주기 | 검증 항목 | 위반 시 |
+|---|---|---|
+| 30s | ERROR/CRITICAL/Traceback/KillSwitch/CB OPEN/HALT/heartbeat TTL | 즉시 InfraBot + 원인 grep |
+| 5m | 엔진 alive, Redis heartbeat, 7거래소 Connected, Bug 26-29 게이트 실행 증거 | InfraBot 경고 |
+| 15m | 체결 건수 / 실현·미실현 PnL / MDD / 레이턴시 / 3-way 포지션 정합 (engine≡exchange≡db) | 손실 tier 50%($3) 사전경고 / 100%($6) SIGTERM |
+| 1h  | InfraBot 정기 보고 1줄 | — |
+
+**v5 완료 조건 (§3 Step 2-1 게이트)**: 24H 무중단 + crash 0 + KillSwitch 0 + CB OPEN < 5 + 체결 ≥ 5 + PnL > -$6 + 2-leg 원자성 rollback 로그 확인 + graceful shutdown 경로 자동 실행 증거.
+
+**남은 구조적 개선 (v5 결과 후 Phase 2-1.5 이전 처리)**:
+1. §8.8 `_reconcile_loop` shadow-only 게이트 제거 (live 모드에서도 60s 리콘실 루프 작동하게)
+2. §8.9 shadow 제거 본 리팩토링은 §8.10 Phase 2 완료 후 유지
+3. Graceful shutdown 경로 실전 검증 증거 수집 (v5 종료 로그의 `shutdown_position_closed` 라인)
+
+---
+
+## §8.14 Bug 30A~G + v6~v9 이력 + v10 수정 (2026-04-09)
+
+### 발견 경위
+
+v6~v9 실행 후 로그 실증 분석 + 6-에이전트 전수 조사(dead code, shadow 잔재, config 불일치).
+v5 이후 v6~v9까지 4개 버전이 연속 실패. 복합 버그 6개 + shadow 잔재 12곳 발견.
+
+### v6~v9 실패 이력
+
+| 버전 | 기간 | Fills | Rejected | 주요 원인 |
+|------|------|-------|----------|----------|
+| v6 | 08:09~08:40 | 4 | — | spread=15bps (수수료 20bps 미만, 손실 구간) |
+| v7 | 08:35~08:49 | 0 | — | 동일 구조 버그 (BUG-A/B 미수정) |
+| v8 | 08:44~08:49 | 0 | — | Redis pool closed 오류 |
+| v9 | 09:30~종료 | 2 | 3,558 | AdaptiveThreshold outlier_cap=23.88bps + spread=15bps 충돌 |
+
+### 전수 조사 결과 요약
+
+| 항목 | v9 동작 | 수정 후 (v10) |
+|------|---------|--------------|
+| 자본 공식 | `_strategy_max_pos` = $1.20/거래 (×20% alloc) | flat $6/거래 (`_capital × 5%`) |
+| min_spread (거래소 필터) | 15bps 기본값 → trading.json 150 → fills=0 | 25bps (수수료+버퍼, 실측 기반) |
+| EXECUTION_MODE | `shadow` 잔재 (.env) | `live` |
+| AdaptiveThreshold cap | outlier_cap=23.88bps (static=10→max_allowed=20) | ~45-50bps (static=50→max_allowed=100) |
+| Position monitor | 없음 | 60s 백그라운드 루프 (`_open_positions_monitor`) |
+| Stale guard | `enable_stale_guard=False` 기본값 | `False` 유지 (book_age_ms 신호 미지원 — signal producer 수정 후 활성화) |
+| Shadow 코드 경로 | 7개 P0 활성 (실거래 위험) | 제거 완료 |
+
+### Shadow 잔재 제거 현황 (P0 7곳 — 완료)
+
+| ID | 파일 | 내용 | 처리 |
+|----|------|------|------|
+| SHD-2 | `src/core/config.py` | `EngineMode.SHADOW` resolve 시 `raise ValueError` | ✅ |
+| SHD-3 | `src/core/config.py` | `sandbox → SHADOW` → `sandbox → PAPER` | ✅ |
+| SHD-4 | `src/main.py` | `_init_exchanges` SHADOW 포함 → LIVE만 | ✅ |
+| SHD-5 | `src/main.py` | DataMode mapping `SHADOW: REAL_AUTH` 삭제 | ✅ |
+| SHD-6 | `src/main.py` | `elif SHADOW: _live_mode_loop()` 블록 삭제 | ✅ |
+| SHD-7 | `src/api/routes/settings.py` | `valid_modes`에서 "shadow" 제거 | ✅ |
+| SHD-8 | `src/api/routes/settings.py` | default fallback `"shadow"` → `"paper"` (5곳) | ✅ |
+
+**P1/P2 잔재** (1~2주 내): `cli/leviathan_cli.py` shadow 커맨드, `config/engine.json` shadow 섹션, `infra/telegram.py` shadow 레이블
+
+### Config 불일치 (기록)
+
+| ID | 내용 | 상태 |
+|----|------|------|
+| CFG-1 | `strategy_params.json.futures_futures.min_spread_bps=35` → `main.py`에서 `adaptive_static_entry_bps` 초기값으로만 사용, `trading.json` 50으로 override | 문서화 완료 |
+| CFG-2 | SpotFutures: `min_basis_bps` vs `min_spread_bps` 필드명 불일치 → strategy_params.json 값 무시 | Step 2-1.5 진입 전 수정 |
+| CFG-3 | `trading.json phase_gates` 섹션 — 로드 코드 없음 (dead config) | 삭제 예정 |
+| CFG-4 | `CapitalAllocator total_capital=50000` = MAX_POSITION_USD×10 (Kelly 명목값, 실 거래 자본 아님) | 주석 추가 예정 |
+
+### v10 수정 파일 목록
+
+- `engine/config/trading.json` — `futures_min_spread_bps: 150 → 25`
+- `engine/src/main.py` — `_strategy_max_pos` 삭제 → flat `_max_pos_usd`, shadow 코드 경로 제거
+- `engine/src/strategies/futures_futures.py` — `enable_stale_guard=True`, `start()` + `_open_positions_monitor()` 추가
+- `engine/src/core/config.py` — shadow → raise ValueError, sandbox → PAPER
+- `engine/src/api/routes/settings.py` — valid_modes에서 shadow 제거, fallback → "paper"
+- `/Users/100aniv/Development/arbitrage_OMC/.env` — `EXECUTION_MODE=shadow` → `live`
+
+---
+
+## §8.15 BUG-H AdaptiveThreshold 역방향 학습 + Shadow P1/P2 잔재 제거 (2026-04-09)
+
+### 발견 경위
+v10 실행 1H 후 0 fills. 로그 분석: `outlier_rejected` 반복, cap_bps=22~48bps로 25bps+ 신호 차단.
+
+### 근본 원인 (BUG-H)
+
+`update()`가 min_spread 필터 **이전**에 호출 → window가 5~22bps 저스프레드 데이터로 채워짐
+→ p95 = 22~25bps → 25bps 이상 신호가 통계적 outlier로 차단됨.
+
+**수정**: `futures_futures.py`에서 `update(_spread_bps)`를 min_spread 필터 **이후**로 이동.
+
+- 초기(is_ready=False, 60샘플 미만): outlier_cap 미적용 → 25bps+ 신호 자유 통과
+- 60샘플 도달 후: p95(25~57bps 분포) ≈ 54bps → 진짜 이상값(100bps+)만 차단
+
+### Shadow P1/P2 잔재 제거 (v11과 동시)
+
+| ID | 파일 | 처리 |
+|----|------|------|
+| SHD-9 | `cli/leviathan_cli.py` — shadow sub-command + cmd_shadow() 삭제 | ✅ |
+| SHD-10 | `analysis/walk_forward.py` — SQL `mode IN (... 'shadow')` → 제거 | ✅ |
+| SHD-11 | `config/engine.json` — shadow 섹션 (DEPRECATED) 삭제 | ✅ |
+| SHD-12 | `infra/telegram.py` — `"shadow": "🟡 [SHADOW]"` 레이블 삭제 | ✅ |
+
+### v11 시작: PID=78083, 2026-04-09 KST ~15:05
+
+**변경사항 요약**:
+- `futures_futures.py`: `update()` 이동 (BUG-H)
+- `main.py`: `_reconcile_loop` 주석 오류 수정 (shadow mode → paper mode)
+- Shadow P1/P2 잔재 4곳 완전 제거
+
+**v11 결과 (5분)**:
+- [x] outlier_rejected 0건 → BUG-H 수정 효과 확인
+- [x] fills 2건 (PnL +$0.0147, +$0.0227, 총 +$0.04)
+- [x] AdaptiveThreshold is_ready 후 outlier_rejected 2건 정상 작동
+- [x] 문제: ALLO/USDT rollback 3번 중복 → SHORT 포지션 생성 → 수동 청산
+
+**BUG-I ALLO rollback 중복** (`reduceOnly=True` 설정됨에도 bitget one_way 모드에서 SHORT 생성):
+- 임시 조치: `trading.json futures_excluded_symbols`에 "ALLO" 추가
+- 근본 수정: Phase 3 (rollback 중복 호출 방지 + bitget reduceOnly 검증)
+
+---
+
+### v12 시작: PID=10921, 2026-04-09 KST ~17:25
+
+**변경사항**:
+- `trading.json futures_excluded_symbols`: ["BARD", "0G"] → ["BARD", "0G", "ALLO"]
+
+**v12 체크리스트**:
+- [ ] ALLO excluded_symbol 거부 로그 확인
+- [ ] fills ≥ 1건 (1H 내)
+
+---
+
+## §8.16 v16 사후분석 + BUG-J~L: Redis 크래시 / 모드 충돌 / 잔고 손실 경위 (2026-04-09)
+
+### 발견 경위
+v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 'xadd'` Redis 크래시.
+추가로 사용자가 Binance Futures 잔고가 $30+ → $3.75로 감소한 것을 발견 후 원인 조사.
+
+### 잔고 손실 경위 (확정)
+
+| 항목 | 내용 |
+|------|------|
+| Binance Futures | $30+ → $3.75 USDT |
+| Bitget Futures | $36.85 USDT (정상) |
+| 주범 | v6 run (08:09~08:40): `min_spread=15bps` < 수수료 20bps → 4 fills = 순손실 거래 |
+| 보조 원인 | 포지션 보유 중 adverse price move + 청산 시 손실 실현 (ARK/ATH/2Z/ALT) |
+| 현재 상태 | 오픈 포지션 0개, Binance $3.75로 FF 전략 min 포지션($6) 미달 → 진입 불가 |
+
+### BUG-J: Redis NoneType 크래시 (P0, 수정 완료)
+
+**원인**: `RedisClient.disconnect()` 후 `self._redis = None` 설정. 이후 `xadd()` 등 호출 시 `AttributeError: 'NoneType' object has no attribute 'xadd'` 크래시. 모든 메서드에 null 체크 없음.
+
+**수정**: `engine/src/infra/redis/client.py` 전체 메서드 (set/get/hset/hget/xadd/xread 등 20+ 메서드)에:
+- `_ensure_connected()` auto-reconnect 메서드 추가 (Lock 기반 중복 방지)
+- 모든 메서드 첫 줄에 `if not await self._ensure_connected(): return <빈값>` 추가
+- 각 메서드에 `try/except` + 실패 시 `self._redis = None` (다음 호출 시 재연결 트리거)
+
+### BUG-K: 모드 충돌 무음 처리 (P0, 수정 완료)
+
+**원인**: `engine.json mode=live` + `.env EXECUTION_MODE=paper` 동시 설정 시 엔진이 engine.json을 우선 적용하여 **사용자 몰래 live 실거래 실행**. 충돌 경고/에러 없음.
+
+**배경**: PHOENIX 플랜 BUG-C로 `.env EXECUTION_MODE=shadow → live`로 변경했으나, 이후 다시 `.env EXECUTION_MODE=paper`로 돌아온 상태. engine.json은 여전히 `mode=live`. 사용자는 paper 모드로 알고 있었으나 실제 live 거래 실행됨.
+
+**수정**: `engine/src/core/config.py` `resolve_engine_mode()` 내 충돌 감지 추가:
+- `engine_mode=live` + `execution_mode 파라미터="paper"` 동시 → `RuntimeError` 즉시 발생
+- 에러 메시지: 충돌 원인 + 해결 방법 명시 (EXECUTION_MODE=live 또는 engine.json mode=paper)
+- `execution_mode=None`인 경우(unit test 시나리오 포함) 체크 스킵 (false positive 방지)
+
+**현재 상태**: `.env EXECUTION_MODE=paper` + `engine.json mode=live` → 엔진 시작 즉시 RuntimeError. 재개 전 두 설정 일치 필수.
+
+### BUG-L: 로그 혼동 (P1, 수정 완료)
+
+**원인**: `Config loaded — mode=paper` 로그가 실제 엔진 모드(engine.json)가 아닌 레거시 `.env EXECUTION_MODE` 값 출력 → 사용자가 paper 모드로 오판.
+
+**수정**: `engine/src/main.py`:
+- `Config loaded` 로그: `engine_mode=<engine.json값>` + `(EXECUTION_MODE env=<.env값>)` 둘 다 출력
+- `Engine running in X mode` 로그: `self._settings.execution_mode` 대신 resolved `self._engine_mode.value` 출력
+
+### 수정 파일 목록
+
+| 파일 | 수정 내용 |
+|------|-----------|
+| `engine/src/infra/redis/client.py` | `_ensure_connected()` + 전체 메서드 null guard + auto-reconnect |
+| `engine/src/core/config.py` | `resolve_engine_mode()` 모드 충돌 감지 RuntimeError |
+| `engine/src/main.py` | `Config loaded` 로그 명확화, `Engine running` 로그 수정 |
+
+### 테스트 결과
+
+5,441 passed, 1 flaky(pre-existing test-ordering 의존성), 12 skipped. 변경사항 관련 신규 실패 0건.
+
+### 현재 잔고 및 다음 단계
+
+| 거래소 | 잔고 | 상태 |
+|--------|------|------|
+| Binance Futures | $3.75 USDT | FF 전략 min포지션($6) 미달 — 진입 불가 |
+| Bitget Futures | $36.85 USDT | 정상 |
+
+**FF 전략 재개 조건**: Binance에 $30+ 추가 입금 → 양쪽 잔고 균형 확보.
+**재개 전 필수**: `.env EXECUTION_MODE` 와 `engine.json mode` 일치 확인 (현재 충돌 → RuntimeError 상태).
+- [ ] rollback 중복 미발생 확인

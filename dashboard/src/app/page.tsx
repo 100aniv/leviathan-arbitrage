@@ -8,8 +8,9 @@ import { ModeSwitch }  from '@/components/ModeSwitch';
 import { useEngineWs } from '@/hooks/useEngineWs';
 import { useApi }      from '@/hooks/useApi';
 import {
-  getPortfolioSummary, getRiskMetrics, getStrategies, getTrades, getExchangeStatus,
+  getPortfolioSummary, getRiskMetrics, getStrategies, getTrades, getExchangeStatus, getLivePositions,
 } from '@/lib/api';
+import type { LivePositionsResponse } from '@/lib/api';
 import type {
   PortfolioSummaryResponse,
   RiskMetrics,
@@ -595,11 +596,18 @@ export default function OverviewPage() {
   const { data: exchangeStatus } = useApi<Record<string, ExchangeStatus>>(
     '/exchanges', getExchangeStatus, { refreshInterval: 10_000 },
   );
+  const { data: livePositions } = useApi<LivePositionsResponse>(
+    '/positions-live', getLivePositions, { refreshInterval: 10_000 },
+  );
 
   // ── KPI values ───────────────────────────────────────────────────────────
-  const totalAssets = portfolio?.total_balance_usdt ?? 0;
-  const shadow      = data?.shadow_stats ?? null;
-  const activePos   = data?.position_count ?? 0;
+  // Live exchange balance takes priority over in-memory portfolio summary
+  const liveBalance  = livePositions?.total_balance_usdt ?? 0;
+  const totalAssets  = liveBalance > 0 ? liveBalance : (portfolio?.total_balance_usdt ?? 0);
+  const shadow       = data?.shadow_stats ?? null;
+  // Live positions count: WS engine data OR direct exchange query
+  const livePosList  = livePositions?.exchanges.flatMap(e => e.positions) ?? [];
+  const activePos    = livePosList.length > 0 ? livePosList.length : (data?.position_count ?? 0);
   const winRate     = shadow?.win_rate ?? 0;
   const totalTrades = shadow?.trades_executed ?? 0;
 
@@ -752,7 +760,51 @@ export default function OverviewPage() {
         <div className="xl:col-span-2">
           <RecentFillsPanel trades={recentTrades ?? []} loading={tradesLoading && !recentTrades} />
         </div>
-        <ActivePositionsPanel positions={positions} />
+        {/* Live exchange positions > WebSocket engine positions */}
+        {livePosList.length > 0 ? (
+          <div className="card">
+            <div className="card-header">실시간 포지션 ({livePosList.length})</div>
+            <div className="space-y-1 mt-1">
+              {livePositions!.hedge_pairs.map((pair) => (
+                <div key={pair.symbol} className="px-2 py-2 rounded hover:bg-terminal-muted/20 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-bold text-terminal-text">{pair.symbol}</span>
+                    {pair.is_hedged && (
+                      <span className="text-[8px] font-mono bg-profit/20 text-profit px-1 py-0.5">헤지</span>
+                    )}
+                    <span className={clsx('text-[10px] font-mono font-semibold tabular-nums ml-auto',
+                      pair.net_pnl > 0 ? 'text-profit' : pair.net_pnl < 0 ? 'text-loss' : 'text-terminal-subtle',
+                    )}>
+                      {pair.net_pnl >= 0 ? '+' : ''}${pair.net_pnl.toFixed(4)}
+                    </span>
+                  </div>
+                  <div className="flex gap-3 mt-0.5">
+                    {pair.binance_futures && (
+                      <span className={clsx('text-[9px] font-mono', pair.binance_futures.side === 'long' ? 'text-profit' : 'text-loss')}>
+                        BNF {pair.binance_futures.side.toUpperCase()} {Math.abs(pair.binance_futures.size).toFixed(4)}
+                      </span>
+                    )}
+                    {pair.bitget_futures && (
+                      <span className={clsx('text-[9px] font-mono', pair.bitget_futures.side === 'long' ? 'text-profit' : 'text-loss')}>
+                        BGF {pair.bitget_futures.side.toUpperCase()} {Math.abs(pair.bitget_futures.size).toFixed(4)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 pt-2 border-t border-terminal-border/30 flex items-center justify-between">
+              <span className="text-[9px] font-mono text-terminal-subtle">합산 미실현</span>
+              <span className={clsx('text-[10px] font-mono font-semibold tabular-nums',
+                (livePositions?.total_unrealized_pnl ?? 0) >= 0 ? 'text-profit' : 'text-loss',
+              )}>
+                {(livePositions?.total_unrealized_pnl ?? 0) >= 0 ? '+' : ''}${(livePositions?.total_unrealized_pnl ?? 0).toFixed(4)}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <ActivePositionsPanel positions={positions} />
+        )}
       </div>
 
       {/* ── Row 5: Exchange Connection Status ───────────────────────────── */}

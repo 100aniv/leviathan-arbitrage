@@ -92,6 +92,38 @@ export const toggleStrategy = (id: string) =>
 export const getPositions = () =>
   request<Position[]>("/api/v1/positions");
 
+export interface LiveExchangePosition {
+  symbol: string;
+  size: number;
+  side: "long" | "short";
+  entry_price: number;
+  mark_price: number;
+  unrealized_pnl: number;
+}
+
+export interface LiveHedgePair {
+  symbol: string;
+  is_hedged: boolean;
+  net_pnl: number;
+  binance_futures: LiveExchangePosition | null;
+  bitget_futures: LiveExchangePosition | null;
+}
+
+export interface LivePositionsResponse {
+  total_balance_usdt: number;
+  total_unrealized_pnl: number;
+  exchanges: Array<{
+    exchange_id: string;
+    balance_usdt: number;
+    positions: LiveExchangePosition[];
+    error: string | null;
+  }>;
+  hedge_pairs: LiveHedgePair[];
+}
+
+export const getLivePositions = () =>
+  request<LivePositionsResponse>("/api/v1/positions/live");
+
 export const getPnl = () =>
   request<PnlResponse>("/api/v1/pnl");
 

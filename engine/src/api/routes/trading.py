@@ -1,6 +1,7 @@
 """Trading state routes — positions and PnL."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -84,6 +85,150 @@ async def list_positions(request: Request) -> JSONResponse:
     """Return all open positions."""
     ctx = request.app.state.engine_context
     return JSONResponse(_get_positions(ctx))
+
+
+@router.get("/positions/live", dependencies=[Depends(require_auth)])
+async def get_live_positions(request: Request) -> JSONResponse:
+    """
+    Query live positions directly from Binance Futures + Bitget Futures.
+    Uses engine's existing adapters if running; otherwise creates fresh ones from env.
+    Returns per-exchange balances, open positions, and matched cross-exchange hedge pairs.
+    """
+    ctx = request.app.state.engine_context
+
+    # Try to reuse engine's already-connected adapters
+    _TARGETS = ("binance_futures", "bitget_futures")
+    adapters: dict[str, Any] = {}
+    _owns_adapters = False
+
+    if ctx.engine is not None and hasattr(ctx.engine, "_exchanges"):
+        for eid in _TARGETS:
+            if eid in ctx.engine._exchanges:
+                adapters[eid] = ctx.engine._exchanges[eid]
+
+    # Fallback: create fresh adapters from environment variables
+    if not adapters:
+        _owns_adapters = True
+        from src.infra.exchange import create_native_adapter
+        _CREDS: dict[str, dict[str, str]] = {
+            "binance_futures": {
+                "api_key": os.getenv("BINANCE_API_KEY", ""),
+                "api_secret": os.getenv("BINANCE_API_SECRET", ""),
+                "passphrase": "",
+            },
+            "bitget_futures": {
+                "api_key": os.getenv("BITGET_API_KEY", ""),
+                "api_secret": os.getenv("BITGET_API_SECRET", ""),
+                "passphrase": os.getenv("BITGET_PASSPHRASE", ""),
+            },
+        }
+        for eid, cred in _CREDS.items():
+            if not cred["api_key"]:
+                continue
+            try:
+                adapter = create_native_adapter(
+                    exchange_id=eid,
+                    api_key=cred["api_key"],
+                    api_secret=cred["api_secret"],
+                    passphrase=cred["passphrase"],
+                )
+                await adapter.connect()
+                adapters[eid] = adapter
+            except Exception as exc:
+                logger.warning("Live positions: failed to connect %s: %s", eid, exc)
+
+    async def _fetch_one(eid: str, adapter: Any) -> dict[str, Any]:
+        result: dict[str, Any] = {"exchange_id": eid, "balance_usdt": 0.0, "positions": [], "error": None}
+        try:
+            positions_raw, balances_raw = await asyncio.gather(
+                adapter.get_positions(),
+                adapter.get_balances(),
+                return_exceptions=True,
+            )
+            if isinstance(balances_raw, Exception):
+                logger.warning("get_balances failed %s: %s", eid, balances_raw)
+            else:
+                usdt = balances_raw.get("USDT") or balances_raw.get("usdt")
+                if usdt is not None:
+                    result["balance_usdt"] = float(usdt.total)
+
+            if isinstance(positions_raw, Exception):
+                logger.warning("get_positions failed %s: %s", eid, positions_raw)
+            else:
+                result["positions"] = [
+                    {
+                        "symbol": p.symbol,
+                        "size": float(p.size),
+                        "side": "long" if p.size > 0 else "short",
+                        "entry_price": float(p.entry_price),
+                        "mark_price": float(p.mark_price) if p.mark_price else float(p.entry_price),
+                        "unrealized_pnl": float(p.unrealized_pnl),
+                    }
+                    for p in positions_raw
+                    if p.size != 0
+                ]
+        except Exception as exc:
+            result["error"] = str(exc)
+            logger.error("Live positions fetch error %s: %s", eid, exc)
+        return result
+
+    fetch_tasks = [_fetch_one(eid, adapter) for eid, adapter in adapters.items()]
+    results: list[dict[str, Any]] = await asyncio.gather(*fetch_tasks) if fetch_tasks else []
+
+    # Disconnect fresh adapters (not engine's persistent ones)
+    if _owns_adapters:
+        for adapter in adapters.values():
+            try:
+                await adapter.disconnect()
+            except Exception:
+                pass
+
+    # Build exchange map
+    by_exchange: dict[str, dict] = {r["exchange_id"]: r for r in results}
+
+    # Match cross-exchange hedge pairs
+    all_symbols: set[str] = set()
+    for r in results:
+        for p in r["positions"]:
+            all_symbols.add(p["symbol"])
+
+    hedge_pairs = []
+    for sym in sorted(all_symbols):
+        binance_pos = next((p for p in by_exchange.get("binance_futures", {}).get("positions", []) if p["symbol"] == sym), None)
+        bitget_pos = next((p for p in by_exchange.get("bitget_futures", {}).get("positions", []) if p["symbol"] == sym), None)
+
+        net_pnl = (binance_pos["unrealized_pnl"] if binance_pos else 0.0) + (bitget_pos["unrealized_pnl"] if bitget_pos else 0.0)
+        is_hedged = bool(
+            binance_pos and bitget_pos and (
+                (binance_pos["size"] > 0 and bitget_pos["size"] < 0) or
+                (binance_pos["size"] < 0 and bitget_pos["size"] > 0)
+            )
+        )
+        hedge_pairs.append({
+            "symbol": sym,
+            "is_hedged": is_hedged,
+            "net_pnl": round(net_pnl, 4),
+            "binance_futures": binance_pos,
+            "bitget_futures": bitget_pos,
+        })
+
+    total_balance = sum(r.get("balance_usdt", 0.0) for r in results)
+    total_unrealized = sum(p["unrealized_pnl"] for r in results for p in r["positions"])
+
+    return JSONResponse({
+        "total_balance_usdt": round(total_balance, 2),
+        "total_unrealized_pnl": round(total_unrealized, 4),
+        "exchanges": [
+            {
+                "exchange_id": r["exchange_id"],
+                "balance_usdt": round(r["balance_usdt"], 2),
+                "positions": r["positions"],
+                "error": r.get("error"),
+            }
+            for r in results
+        ],
+        "hedge_pairs": hedge_pairs,
+    })
 
 
 @router.get("/pnl", dependencies=[Depends(require_auth)])
@@ -235,6 +380,18 @@ def _get_shadow_by_strategy(ctx: Any) -> dict[str, dict]:
     return result
 
 
+def _safe_jsonify(obj: Any) -> Any:
+    """Recursively convert Decimal → float for JSON serialization."""
+    from decimal import Decimal as _Dec
+    if isinstance(obj, _Dec):
+        return float(obj)
+    if isinstance(obj, dict):
+        return {k: _safe_jsonify(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_safe_jsonify(v) for v in obj]
+    return obj
+
+
 @router.get("/strategy-metrics", dependencies=[Depends(require_auth)])
 async def get_strategy_metrics(request: Request) -> JSONResponse:
     """Return per-strategy metrics summary."""
@@ -243,7 +400,7 @@ async def get_strategy_metrics(request: Request) -> JSONResponse:
 
     if ctx.strategy_manager is not None:
         try:
-            raw = ctx.strategy_manager.get_all_metrics_summary()
+            raw = _safe_jsonify(ctx.strategy_manager.get_all_metrics_summary())
             # raw may be {"total_*": ..., "strategies": {...}} or flat {sid: {...}}
             strat_dict = raw.get("strategies", raw) if isinstance(raw, dict) else raw
             # Merge shadow trades/pnl into strategy metrics

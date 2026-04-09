@@ -122,14 +122,18 @@ def resolve_engine_mode(
 ) -> EngineMode:
     """Resolve EngineMode from legacy or new config (backward compatible).
 
-    Priority: ENGINE_MODE > (EXECUTION_MODE + DATA_MODE mapping)
+    Priority: ENGINE_MODE env > engine.json "mode" > EXECUTION_MODE+DATA_MODE
+
+    SAFETY RULE: If engine.json/ENGINE_MODE says "live" but EXECUTION_MODE env
+    says "paper", this is a conflict — raise RuntimeError to prevent accidental
+    live trading when the user believes they are in simulation mode.
 
     Legacy mapping:
       paper + synthetic      → BACKTEST
       paper + shadow         → PAPER
       paper + real_public    → PAPER
       live + real_authenticated → LIVE
-      sandbox + *            → SHADOW
+      sandbox + *            → PAPER
     """
     import os
 
@@ -139,12 +143,25 @@ def resolve_engine_mode(
         try:
             resolved = EngineMode(em.lower())
             if resolved == EngineMode.SHADOW:
-                warnings.warn(
-                    "EngineMode.SHADOW is deprecated as of Phase I. "
-                    "Use EngineMode.LIVE with LIVE_GATE_BYPASS=true for canary testing.",
-                    DeprecationWarning,
-                    stacklevel=2,
+                raise RuntimeError(
+                    "EngineMode.SHADOW is removed. "
+                    "Use EXECUTION_MODE=paper (simulation) or EXECUTION_MODE=live (real trading)."
                 )
+            # SAFETY: Conflict detection — engine.json says "live" but caller explicitly
+            # passed execution_mode="paper" (i.e., from settings that read .env EXECUTION_MODE).
+            # Only fires when execution_mode is explicitly provided, not when it's None
+            # (e.g., _init_infrastructure passes engine_mode only, no execution_mode).
+            if resolved == EngineMode.LIVE and execution_mode is not None:
+                exec_val = execution_mode.lower() if isinstance(execution_mode, str) else str(execution_mode).lower()
+                if exec_val == "paper":
+                    raise RuntimeError(
+                        "MODE CONFLICT DETECTED — engine.json mode=live but EXECUTION_MODE=paper in .env.\n"
+                        "This means you believe you are in paper/simulation mode, but the engine "
+                        "would execute REAL live trades.\n"
+                        "To fix: set EXECUTION_MODE=live in .env (to confirm live trading intent), "
+                        "OR set mode=paper in engine.json (to run simulation).\n"
+                        "Refusing to start to prevent unintended live trading."
+                    )
             return resolved
         except ValueError:
             pass
@@ -156,13 +173,7 @@ def resolve_engine_mode(
     if exec_m == "live":
         return EngineMode.LIVE
     if exec_m == "sandbox":
-        warnings.warn(
-            "EngineMode.SHADOW is deprecated as of Phase I (resolved from EXECUTION_MODE=sandbox). "
-            "Use EXECUTION_MODE=live with LIVE_GATE_BYPASS=true for canary testing.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return EngineMode.SHADOW
+        return EngineMode.PAPER
     # exec_m == "paper"
     if data_m == "shadow":
         return EngineMode.PAPER

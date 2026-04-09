@@ -6,7 +6,8 @@ import {
   AreaChart, Area, PieChart, Pie, Cell,
 } from 'recharts';
 import { EquityCurve } from '@/components/EquityCurve';
-import { getPortfolioMetrics, getPortfolioSummary, getEquityCurve, getPositions, getDailyReturns, getShadowStats } from '@/lib/api';
+import { getPortfolioMetrics, getPortfolioSummary, getEquityCurve, getPositions, getDailyReturns, getShadowStats, getLivePositions } from '@/lib/api';
+import type { LivePositionsResponse } from '@/lib/api';
 import type { Position } from '@/types';
 
 interface PortfolioMetrics {
@@ -188,6 +189,98 @@ function ExposureHeatmap({ positions }: ExposureHeatmapProps) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// ─── Cross-Exchange Live Positions Panel ──────────────────────────────────────
+
+function LivePositionsPanel({ data }: { data: LivePositionsResponse | null }) {
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center h-20 text-xs font-mono text-terminal-subtle">
+        거래소 연결 중... (엔진 실행 필요)
+      </div>
+    );
+  }
+
+  const pnlColor = (v: number) => v > 0 ? 'text-profit' : v < 0 ? 'text-loss' : 'text-terminal-subtle';
+  const fmt = (v: number) => `${v >= 0 ? '+' : ''}$${v.toFixed(4)}`;
+
+  return (
+    <div className="space-y-3">
+      {/* 요약 */}
+      <div className="grid grid-cols-2 gap-3">
+        {data.exchanges.map((ex) => (
+          <div key={ex.exchange_id} className="bg-terminal-muted/10 border border-terminal-border/40 p-2.5">
+            <div className="text-[9px] font-mono text-terminal-subtle uppercase tracking-wider">{ex.exchange_id.replace('_', ' ')}</div>
+            <div className="text-base font-mono text-terminal-text tabular-nums mt-0.5">
+              ${ex.balance_usdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            {ex.error && <div className="text-[9px] text-loss font-mono mt-1 truncate">{ex.error}</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* 합산 미실현 손익 */}
+      <div className="flex items-center justify-between px-1">
+        <span className="text-[10px] font-mono text-terminal-subtle">합산 미실현 손익</span>
+        <span className={`text-sm font-mono tabular-nums ${pnlColor(data.total_unrealized_pnl)}`}>
+          {fmt(data.total_unrealized_pnl)}
+        </span>
+      </div>
+
+      {/* 헤지 페어 테이블 */}
+      {data.hedge_pairs.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[10px] font-mono">
+            <thead>
+              <tr className="border-b border-terminal-border">
+                <th className="text-left py-1.5 text-terminal-subtle font-normal">심볼</th>
+                <th className="text-center py-1.5 text-terminal-subtle font-normal">Binance</th>
+                <th className="text-center py-1.5 text-terminal-subtle font-normal">Bitget</th>
+                <th className="text-right py-1.5 text-terminal-subtle font-normal">합산 PnL</th>
+                <th className="text-right py-1.5 text-terminal-subtle font-normal">헤지</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.hedge_pairs.map((pair) => (
+                <tr key={pair.symbol} className="border-b border-terminal-border/30 hover:bg-terminal-muted/10">
+                  <td className="py-1.5 text-terminal-text font-semibold">{pair.symbol}</td>
+                  <td className="py-1.5 text-center">
+                    {pair.binance_futures ? (
+                      <span className={pair.binance_futures.side === 'long' ? 'text-profit' : 'text-loss'}>
+                        {pair.binance_futures.side.toUpperCase()} {Math.abs(pair.binance_futures.size).toFixed(4)}
+                      </span>
+                    ) : <span className="text-terminal-subtle">—</span>}
+                  </td>
+                  <td className="py-1.5 text-center">
+                    {pair.bitget_futures ? (
+                      <span className={pair.bitget_futures.side === 'long' ? 'text-profit' : 'text-loss'}>
+                        {pair.bitget_futures.side.toUpperCase()} {Math.abs(pair.bitget_futures.size).toFixed(4)}
+                      </span>
+                    ) : <span className="text-terminal-subtle">—</span>}
+                  </td>
+                  <td className={`py-1.5 text-right tabular-nums ${pnlColor(pair.net_pnl)}`}>
+                    {fmt(pair.net_pnl)}
+                  </td>
+                  <td className="py-1.5 text-right">
+                    <span className={`px-1 py-0.5 text-[8px] ${pair.is_hedged ? 'bg-profit/20 text-profit' : 'bg-loss/10 text-loss'}`}>
+                      {pair.is_hedged ? '헤지' : '단방향'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center h-12 text-xs font-mono text-terminal-subtle">
+          활성 포지션 없음
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function PortfolioPage() {
   const [metrics,   setMetrics]   = useState<PortfolioMetrics | null>(null);
   const [summary,   setSummary]   = useState<PortfolioSummary | null>(null);
@@ -196,21 +289,24 @@ export default function PortfolioPage() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [dailyReturns, setDailyReturns] = useState<{date: string; pnl: number}[]>([]);
   const [shadowByStrategy, setShadowByStrategy] = useState<{strategy_id: string; trades: number; pnl: number}[]>([]);
+  const [liveData, setLiveData] = useState<LivePositionsResponse | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
-        const [metricsData, summaryData, curveData, positionsData, dailyData, shadowData] = await Promise.all([
+        const [metricsData, summaryData, curveData, positionsData, dailyData, shadowData, livePositions] = await Promise.all([
           getPortfolioMetrics().catch(() => null),
           getPortfolioSummary().catch(() => null),
           getEquityCurve().catch(() => null),
           getPositions().catch(() => null),
           getDailyReturns().catch(() => null),
           getShadowStats().catch(() => null),
+          getLivePositions().catch(() => null),
         ]);
         if (metricsData) setMetrics(metricsData as PortfolioMetrics);
         if (summaryData) setSummary(summaryData);
         if (positionsData) setPositions(positionsData);
+        if (livePositions) setLiveData(livePositions);
         if (dailyData) {
           const returns = Array.isArray(dailyData) ? dailyData : ((dailyData as Record<string, unknown>)?.returns as { date: string; pnl: number }[]) ?? [];
           setDailyReturns(returns);
@@ -242,6 +338,19 @@ export default function PortfolioPage() {
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-mono font-semibold text-terminal-text">Portfolio</h2>
+
+      {/* 거래소 간 실시간 포지션 (Binance Futures + Bitget Futures) */}
+      <div className="bg-terminal-surface border border-terminal-border p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">실시간 포지션</span>
+          {liveData && (
+            <span className="text-[10px] font-mono text-terminal-subtle tabular-nums">
+              총 잔고 <span className="text-terminal-text">${liveData.total_balance_usdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </span>
+          )}
+        </div>
+        <LivePositionsPanel data={liveData} />
+      </div>
 
       {/* 에쿼티 커브 */}
       <EquityCurve data={curve} metrics={metrics ?? undefined} />

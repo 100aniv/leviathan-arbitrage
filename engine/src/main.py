@@ -198,7 +198,9 @@ class Engine:
             self.state.running = True
             self.context.running = True
             logger.info("Engine running in %s mode — waiting for shutdown signal",
-                        self._settings.execution_mode if self._settings else "unknown")
+                        self._engine_mode.value if hasattr(self, '_engine_mode') else (
+                            self._settings.execution_mode if self._settings else "unknown"
+                        ))
             await self._shutdown_event.wait()
         except Exception as exc:
             logger.critical("Engine startup failed: %s", exc, exc_info=True)
@@ -404,10 +406,15 @@ class Engine:
             self._settings = get_settings()
             self.context.environment = self._settings.engine_env
             self.context.execution_mode = self._settings.execution_mode
-            logger.info("Config loaded — env=%s mode=%s capital_tier=%s",
-                        self._settings.engine_env,
-                        self._settings.execution_mode,
-                        self._settings.capital.tier)
+            from src.core.config import load_engine_config as _lec
+            _actual_mode = _lec().get("mode", "paper")
+            logger.info(
+                "Config loaded — env=%s engine_mode=%s (EXECUTION_MODE env=%s) capital_tier=%s",
+                self._settings.engine_env,
+                _actual_mode,           # authoritative: engine.json
+                self._settings.execution_mode,  # legacy .env (for reference only)
+                self._settings.capital.tier,
+            )
         except Exception as exc:
             logger.warning("Config load failed (using defaults): %s", exc)
             self._settings = Settings()
@@ -508,6 +515,14 @@ class Engine:
                 self._redis_client = redis_client
                 self._event_bus = EventBus(redis_client)
                 logger.info("Redis EventBus initialized (live mode)")
+                # Bug 30: flush stale trade_requests from previous session.
+                # Redis Streams persist across restarts — old entries would be
+                # re-consumed by TradeRequestConsumer, replaying prior-session orders.
+                try:
+                    await redis_client.delete("leviathan:trade_requests")
+                    logger.info("startup_flush: leviathan:trade_requests deleted")
+                except Exception as _flush_exc:
+                    logger.warning("startup_flush_failed: %s", _flush_exc)
             except Exception as exc:
                 logger.warning("Redis init failed, falling back to InMemoryEventBus: %s", exc)
                 from src.infra.redis.memory_bus import InMemoryEventBus
@@ -694,7 +709,7 @@ class Engine:
             )
         if _engine_mode in (EngineMode.BACKTEST, EngineMode.PAPER):
             await self._init_paper_exchanges(capital)
-        elif _engine_mode in (EngineMode.SHADOW, EngineMode.LIVE):
+        elif _engine_mode == EngineMode.LIVE:
             await self._init_live_exchanges()
 
         logger.info("Initialized %d exchange adapters: %s",
@@ -1078,40 +1093,45 @@ class Engine:
             _capital_usd = _tier_initial_usd
         _risk_cfg = _ecfg.get("dynamic_risk", {})
         _base_pos_pct = Decimal(str(_risk_cfg.get("base_position_pct", 3.0))) / Decimal("100")
-        _max_pos_usd = _capital_usd * _base_pos_pct  # e.g., $34 × 3% = $1.02
+        _strategy_allocs = _cap_cfg.get("strategies", {})
         _book_depth_usd = max(Decimal("1"), _capital_usd * Decimal("0.01"))  # 1% of capital, min $1
 
+        _max_pos_usd = _capital_usd * _base_pos_pct  # capital × base_position_pct (config 기반)
         logger.info(
-            "Strategy sizing: capital=$%.0f tier=%s max_position=$%.2f book_depth=$%.2f",
-            _capital_usd, _tier, _max_pos_usd, _book_depth_usd,
+            "Strategy sizing: capital=$%.0f tier=%s per_trade_pct=%.1f%% max_pos_usd=$%.2f",
+            _capital_usd, _tier, float(_base_pos_pct * 100), float(_max_pos_usd),
         )
 
         # Build strategy configs from tuned params + dynamic capital sizing
         sf_p = tuned.get("spot_futures", {})
         sf_config = SpotFuturesConfig(
             min_basis_bps=Decimal(str(sf_p.get("min_basis_bps", 15))),
-            max_position_size=_max_pos_usd,  # PHOENIX: USD notional cap (strategies divide by price)
+            max_position_size=_max_pos_usd,
         ) if sf_p.get("status") in ("READY", "MONITOR") else None
 
         fr_p = tuned.get("funding_rate", {})
         fr_config = FundingRateConfig(
             min_funding_diff_bps=Decimal(str(fr_p.get("min_funding_diff_bps", 5))),
-            max_position_size=_max_pos_usd,  # PHOENIX: USD notional cap (strategies divide by price)
-            enable_ou_filter=fr_p.get("enable_ou_filter", True),  # PHOENIX Bug4: pass from strategy_params.json
+            max_position_size=_max_pos_usd,
+            enable_ou_filter=fr_p.get("enable_ou_filter", True),
         ) if fr_p.get("status") in ("READY", "MONITOR") else None
 
         ce_p = tuned.get("cross_exchange", {})
         ce_config = CrossExchangeConfig(
             min_spread_bps=Decimal(str(ce_p.get("min_spread_bps", 10))),
-            max_position_size=_max_pos_usd,  # PHOENIX: USD notional cap (strategies divide by price)
+            max_position_size=_max_pos_usd,
             min_book_depth_usd=_book_depth_usd,
         ) if ce_p.get("status") in ("READY", "MONITOR") else None
 
         ff_p = tuned.get("futures_futures", {})
+        from src.core.config_loader import get_config as _get_config
+        _ff_excluded = _get_config("strategy_filters.futures_excluded_symbols", default=[])
         ff_config = FuturesFuturesConfig(
             min_spread_bps=Decimal(str(ff_p.get("min_spread_bps", 8))),
-            max_position_size=_max_pos_usd,  # PHOENIX: USD notional cap (strategies divide by price)
+            max_position_size=_max_pos_usd,
             min_book_depth_usd=_book_depth_usd,
+            excluded_symbols=list(_ff_excluded),
+            adaptive_static_entry_bps=Decimal(str(_get_config("strategy_filters.futures_adaptive_static_entry_bps", default=ff_p.get("min_spread_bps", 50)))),
         ) if ff_p.get("status") in ("READY", "MONITOR") else None
 
         tri_p = tuned.get("triangular", {})
@@ -1463,13 +1483,54 @@ class Engine:
         try:
             from src.execution.reconciler import PositionReconciler
 
+            async def _auto_close_orphan(exchange_id: str, pos) -> None:
+                """Auto-close a position the engine has no record of."""
+                adapter = self._exchanges.get(exchange_id)
+                if adapter is None:
+                    return
+                try:
+                    from src.core.models import Order, OrderSide, OrderType
+                    import uuid as _uuid
+                    # close_side: if exchange has LONG (size>0) → SELL to close; SHORT → BUY
+                    close_side = OrderSide.SELL if pos.size > Decimal("0") else OrderSide.BUY
+                    close_order = Order(
+                        order_id=str(_uuid.uuid4()),
+                        symbol=pos.symbol,
+                        exchange_id=exchange_id,
+                        side=close_side,
+                        order_type=OrderType.MARKET,
+                        amount=abs(pos.size),
+                        metadata={"reduceOnly": True, "leg_type": "reconciler_auto_close"},
+                    )
+                    await adapter.place_order(close_order)
+                    logger.critical(
+                        "reconciler_auto_closed exchange=%s symbol=%s size=%s side=%s",
+                        exchange_id, pos.symbol, pos.size, close_side,
+                    )
+                except Exception as _exc:
+                    logger.error("reconciler_auto_close_failed exchange=%s symbol=%s error=%s",
+                                 exchange_id, pos.symbol, _exc)
+
             def _on_reconcile_discrepancy(result) -> None:
+                # Telegram alert
                 if self._telegram:
                     summary = result.discrepancies[:3]
                     asyncio.ensure_future(self._telegram.send_alert_kr(
                         "position_discrepancy",
                         {"count": len(result.discrepancies), "summary": str(summary)},
                     ))
+                # Auto-close orphan positions (exchange has, engine doesn't know about)
+                orphans = {
+                    k: v for k, v in result.exchange_positions.items()
+                    if k not in result.engine_positions and abs(v.size) > Decimal("0.0001")
+                }
+                for key, pos in orphans.items():
+                    ex_id = key.split(":")[0]
+                    logger.critical(
+                        "reconciler_orphan_detected key=%s size=%s — scheduling auto_close",
+                        key, pos.size,
+                    )
+                    asyncio.ensure_future(_auto_close_orphan(ex_id, pos))
 
             self._position_reconciler = PositionReconciler(
                 exchanges=list(self._exchanges.values()),
@@ -1714,6 +1775,18 @@ class Engine:
             except Exception:
                 pass  # Non-critical: CB feedback failure
 
+        # BUG-J: ROLLED_BACK 완료 시 strategy._open_positions 해제 → 4H 심볼 차단 방지
+        # ROLLBACK_FAILED는 stranded position 존재 → 해제 안 함
+        if getattr(execution_result.status, "value", str(execution_result.status)) == "rolled_back":
+            try:
+                strategy = self._strategy_manager.get_strategy(trade_request.strategy_id)
+                if strategy is not None and hasattr(strategy, "on_execution_rollback"):
+                    symbol = trade_request.legs[0].symbol if trade_request.legs else None
+                    if symbol:
+                        strategy.on_execution_rollback(symbol)
+            except Exception:
+                pass  # Non-critical: position clear failure
+
         # US-DW8: Send Korean fill notification via Telegram
         if self._trade_bot is not None and getattr(execution_result.status, "value", str(execution_result.status)) == "success":
             try:
@@ -1905,7 +1978,6 @@ class Engine:
         _mode_to_data = {
             EngineMode.BACKTEST: DataMode.SYNTHETIC,
             EngineMode.PAPER: DataMode.SHADOW,
-            EngineMode.SHADOW: DataMode.REAL_AUTHENTICATED,
             EngineMode.LIVE: DataMode.REAL_AUTHENTICATED,
         }
         self._data_mode = _mode_to_data.get(self._engine_mode, DataMode.SYNTHETIC)
@@ -1951,13 +2023,6 @@ class Engine:
                     asyncio.create_task(self._paper_mode_loop(), name="paper_mode")
                 )
                 logger.info("EngineMode: PAPER — live WS data + SimExecutor")
-
-        elif self._engine_mode == EngineMode.SHADOW:
-            # Shadow: live WS data + AtomicExecutor small capital (canary)
-            tasks.append(
-                asyncio.create_task(self._live_mode_loop(), name="shadow_canary")
-            )
-            logger.info("EngineMode: SHADOW — live WS data + AtomicExecutor (canary)")
 
         elif self._engine_mode == EngineMode.LIVE:
             # Live: live WS data + AtomicExecutor full capital
@@ -3176,7 +3241,7 @@ class Engine:
             try:
                 await asyncio.sleep(interval)
 
-                # Only reconcile when shadow mode is active and Redis is available
+                # Only reconcile when paper_mode balance tracker and Redis are available
                 if self._paper_mode is None or self._redis_client is None:
                     continue
 

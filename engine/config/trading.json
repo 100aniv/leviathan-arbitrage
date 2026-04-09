@@ -42,7 +42,11 @@
     "leg_timeout_ms": 1000,
     "rollback_timeout_ms": 2000,
     "reconciliation_interval_s": 60,
-    "recovery_reconciliation_interval_s": 60
+    "recovery_reconciliation_interval_s": 60,
+    "min_trade_notional_usd": 5,
+    "max_concurrent_trades": 2,
+    "symbol_cooldown_s": 30,
+    "default_futures_leverage": 5
   },
   "phase_gates": {
     "phase": "alpha",
@@ -91,9 +95,9 @@
     "stat_arb_min_history": 60,
     "cross_exchange_min_book_depth_usd": 1,
     "futures_min_book_depth_usd": 1,
-    "futures_min_spread_bps": 150,
+    "futures_min_spread_bps": 25,
     "futures_adaptive_static_entry_bps": 50,
-    "futures_excluded_symbols": ["BARD", "0G"]
+    "futures_excluded_symbols": ["BARD", "0G", "ALLO"]
   },
   "shadow": {
     "disabled_strategies": [
