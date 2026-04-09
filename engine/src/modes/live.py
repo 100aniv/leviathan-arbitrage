@@ -1064,6 +1064,7 @@ class LiveMode(BaseMode):
                         fee_total=_fee_total if _fee_total > 0 else None,
                         slippage_total=_is_total_bps,
                         mode=self._execution_mode,
+                        status="filled",
                     )
                 except Exception as exc:
                     logger.debug("live_mode.record_execution_failed error=%s", exc)

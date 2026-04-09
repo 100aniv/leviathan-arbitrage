@@ -398,7 +398,7 @@ class ScheduledTuner:
             current_status = existing.get(strategy, {}).get("status", "")
             if current_status in ("DISABLED", "DISABLED_PHASE2"):
                 entry["status"] = current_status
-                logger.info("tuner_preserve_disabled_status", strategy=strategy, status=current_status)
+                logger.info("tuner_preserve_disabled_status strategy=%s status=%s", strategy, current_status)
             else:
                 entry["status"] = "READY"
             existing[strategy] = entry

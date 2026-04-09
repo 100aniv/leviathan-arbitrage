@@ -246,6 +246,50 @@ class FuturesFuturesStrategy(BaseStrategy):
         if _sym and _sym in self._open_positions:
             pos = self._open_positions[_sym]
             age_s = time.time() - pos["entry_time"]
+            _current_spread_bps = float(signal.spread_pct) * 10000 if signal.spread_pct else None
+
+            # --- Spread-reversion exit (PRIMARY exit) ---
+            # Exit when spread closes back below exit threshold (profit locked in)
+            _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.5
+            if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
+                _, _at_exit = self._adaptive_threshold.thresholds  # (p95_entry, p50_exit)
+                if _at_exit and _at_exit > 0:
+                    _exit_threshold_bps = float(_at_exit)
+            if _current_spread_bps is not None and _current_spread_bps <= _exit_threshold_bps:
+                logger.info(
+                    "ff.spread_exit symbol=%s spread_bps=%.2f exit_threshold_bps=%.2f age_s=%.0f — 스프레드 수렴 청산",
+                    _sym, _current_spread_bps, _exit_threshold_bps, age_s,
+                )
+                del self._open_positions[_sym]
+                self._metrics.trade_requests_generated += 1
+                return TradeRequest(
+                    strategy_id=self.strategy_id,
+                    legs=[
+                        TradeLeg(
+                            exchange_id=pos["buy_ex"],
+                            symbol=_sym,
+                            side=OrderSide.SELL,
+                            size=pos["size"],
+                            order_type=OrderType.MARKET,
+                            price=signal.buy_price,
+                            metadata={"leg_type": "futures_close", "reduceOnly": True},
+                        ),
+                        TradeLeg(
+                            exchange_id=pos["sell_ex"],
+                            symbol=_sym,
+                            side=OrderSide.BUY,
+                            size=pos["size"],
+                            order_type=OrderType.MARKET,
+                            price=signal.sell_price,
+                            metadata={"leg_type": "futures_close", "reduceOnly": True},
+                        ),
+                    ],
+                    expected_profit_usdt=Decimal("0"),
+                    confidence=1.0,
+                    metadata={"close_reason": "spread_reversion", "spread_bps": str(round(_current_spread_bps, 2)), "age_s": str(int(age_s))},
+                )
+
+            # --- Time-based exit (SAFETY fallback) ---
             if self.config.max_hold_seconds > 0 and age_s > self.config.max_hold_seconds:
                 logger.info(
                     "ff.time_exit symbol=%s age_s=%.0f max_hold_s=%.0f — closing position",
@@ -280,11 +324,13 @@ class FuturesFuturesStrategy(BaseStrategy):
                     metadata={"close_reason": "max_hold_exceeded", "age_s": str(int(age_s))},
                 )
             else:
-                # Position still active → block new entry to prevent rollback duplication (BUG-I)
+                # Position still active, spread not yet converged → block new entry (BUG-I)
                 self._metrics.signals_filtered += 1
                 logger.debug(
-                    "ff.rejected reason=position_open symbol=%s age_s=%.0f",
+                    "ff.rejected reason=position_open symbol=%s age_s=%.0f spread_bps=%s exit_thr=%.2f",
                     _sym, age_s,
+                    f"{_current_spread_bps:.2f}" if _current_spread_bps is not None else "N/A",
+                    _exit_threshold_bps,
                 )
                 return None
 
