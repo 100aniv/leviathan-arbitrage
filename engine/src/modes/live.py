@@ -319,6 +319,10 @@ class LiveMode(BaseMode):
         from src.execution.margin_tracker import MarginTracker
         self._margin_tracker = MarginTracker()
 
+        # TradeReconciler: exchange fill reconciliation (PHOENIX v18 P0)
+        from src.execution.trade_reconciler import TradeReconciler
+        self._trade_reconciler = TradeReconciler(db_pool=db_pool, telegram=telegram)
+
         # KRW/USDT normalization (ported from ShadowMode)
         _raw_krw_rate = get_settings().operational.krw_usdt_rate
         if _raw_krw_rate <= 0:
@@ -514,6 +518,9 @@ class LiveMode(BaseMode):
 
         # DeduplicationGate periodic cleanup
         asyncio.create_task(self._dedup_cleanup_loop(), name="live_dedup_cleanup")
+
+        # TradeReconciler 10-min periodic loop (PHOENIX v18 P0)
+        asyncio.create_task(self._trade_reconciler_loop(), name="live_trade_recon")
 
         # Inject MarginTracker into futures_futures strategy
         if self._strategy_manager is not None:
@@ -1518,6 +1525,27 @@ class LiveMode(BaseMode):
                                 self._execute_trade_request(_exit_req),
                                 name="ff_exit_trade",
                             )
+
+    async def _trade_reconciler_loop(self) -> None:
+        """Every 10 minutes: reconcile internal execution_log vs exchange fill history (PHOENIX v18 P0)."""
+        import time
+        while self._running:
+            await asyncio.sleep(600.0)
+            if not self._running:
+                break
+            executor = self._executor
+            exchanges_dict: dict = getattr(executor, "_exchanges", None) or {}
+            futures_adapters = {k: v for k, v in exchanges_dict.items() if "futures" in k}
+            since_ms = int((time.time() - 600) * 1000)
+            for eid, adapter in futures_adapters.items():
+                try:
+                    await self._trade_reconciler.reconcile_period(
+                        exchange_adapter=adapter,
+                        exchange_id=eid,
+                        since_ms=since_ms,
+                    )
+                except Exception as exc:
+                    logger.warning("trade_recon_loop_error exchange=%s error=%s", eid, exc)
 
     # -----------------------------------------------------------------------
     # Properties (for dashboard/API integration)
