@@ -137,36 +137,21 @@ def resolve_engine_mode(
     """
     import os
 
-    # New config takes priority
+    # engine.json "mode" 필드가 단일 소스 — .env에 EXECUTION_MODE 없음
+    # Priority: engine_mode (engine.json) > ENGINE_MODE env var > legacy fallback
     em = engine_mode or os.getenv("ENGINE_MODE", "")
     if em:
         try:
             resolved = EngineMode(em.lower())
             if resolved == EngineMode.SHADOW:
                 raise RuntimeError(
-                    "EngineMode.SHADOW is removed. "
-                    "Use EXECUTION_MODE=paper (simulation) or EXECUTION_MODE=live (real trading)."
+                    "EngineMode.SHADOW is removed. Use mode=paper or mode=live in engine.json."
                 )
-            # SAFETY: Conflict detection — engine.json says "live" but caller explicitly
-            # passed execution_mode="paper" (i.e., from settings that read .env EXECUTION_MODE).
-            # Only fires when execution_mode is explicitly provided, not when it's None
-            # (e.g., _init_infrastructure passes engine_mode only, no execution_mode).
-            if resolved == EngineMode.LIVE and execution_mode is not None:
-                exec_val = execution_mode.lower() if isinstance(execution_mode, str) else str(execution_mode).lower()
-                if exec_val == "paper":
-                    raise RuntimeError(
-                        "MODE CONFLICT DETECTED — engine.json mode=live but EXECUTION_MODE=paper in .env.\n"
-                        "This means you believe you are in paper/simulation mode, but the engine "
-                        "would execute REAL live trades.\n"
-                        "To fix: set EXECUTION_MODE=live in .env (to confirm live trading intent), "
-                        "OR set mode=paper in engine.json (to run simulation).\n"
-                        "Refusing to start to prevent unintended live trading."
-                    )
             return resolved
         except ValueError:
             pass
 
-    # Legacy fallback
+    # Legacy fallback (EXECUTION_MODE/DATA_MODE — deprecated, use engine.json instead)
     exec_m = (execution_mode or os.getenv("EXECUTION_MODE", "paper")).lower()
     data_m = (data_mode or os.getenv("DATA_MODE", "synthetic")).lower()
 
