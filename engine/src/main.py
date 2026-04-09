@@ -2490,9 +2490,14 @@ class Engine:
             # Keep alive until cancelled
             while self.state.running:
                 await asyncio.sleep(5.0)
-        except LiveGateFailed:
-            logger.warning("LiveGate failed — falling back to Paper mode")
-            await self._paper_mode_loop()
+        except LiveGateFailed as _lgf:
+            logger.critical(
+                "live_mode_aborted — pre-existing positions detected. "
+                "Run close_positions.py --execute first, then restart engine. err=%s", _lgf
+            )
+            if hasattr(self, "state"):
+                self.state.running = False
+            return  # stop cleanly — do NOT fall back to paper with live tasks running
         except asyncio.CancelledError:
             pass
         except Exception as exc:

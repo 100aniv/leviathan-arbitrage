@@ -411,6 +411,54 @@ class LiveMode(BaseMode):
         except Exception as exc:  # noqa: BLE001
             raise LiveGateFailed(f"approval_gate_error: {exc}") from exc
 
+        # Step 1.9: Preflight position check — MUST run before starting strategies/collectors
+        # (moved here from post-collector position to prevent race condition: tasks were
+        #  executing live trades before the check could fire LiveGateFailed)
+        if self._execution_mode == "live":
+            _preflight_adapters = getattr(self._executor, "_exchanges", {})
+            if not isinstance(_preflight_adapters, dict):
+                _preflight_adapters = {}
+            _futures_adapters = {k: v for k, v in _preflight_adapters.items() if "futures" in k}
+            _stranded: list[str] = []
+            for _eid, _adapter in _futures_adapters.items():
+                try:
+                    _positions = await _adapter.get_positions()
+                    _open_pos = [p for p in _positions if p.size != 0]
+                    for p in _open_pos:
+                        _stranded.append(f"{_eid}:{p.symbol}:{p.size}")
+                except Exception as _exc:
+                    logger.warning("preflight_position_check_failed exchange=%s error=%s", _eid, _exc)
+
+                # Bitget: raw API check to catch stale total=0 positions (Bug 28)
+                if "bitget" in _eid and hasattr(_adapter, "_request"):
+                    try:
+                        _raw_resp = await _adapter._request(
+                            "GET", "/api/v2/mix/position/all-position",
+                            params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
+                            signed=True,
+                        )
+                        for _item in (_raw_resp.get("data") or []):
+                            _hold_side = _item.get("holdSide", "")
+                            _raw_sym = _item.get("symbol", "")
+                            _total = float(_item.get("total", 0) or 0)
+                            _available = float(_item.get("available", 0) or 0)
+                            if _hold_side and _raw_sym and (_total != 0 or _available != 0):
+                                _label = f"{_eid}:{_raw_sym}:stale(hold={_hold_side},total={_total})"
+                                if not any(_raw_sym in s for s in _stranded):
+                                    _stranded.append(_label)
+                                    logger.warning(
+                                        "preflight_bitget_stale_position detected symbol=%s holdSide=%s total=%s",
+                                        _raw_sym, _hold_side, _total,
+                                    )
+                    except Exception as _exc:
+                        logger.warning("preflight_bitget_raw_check_failed error=%s", _exc)
+
+            if _stranded:
+                _msg = f"pre-existing positions detected: {_stranded}. Run close_positions.py --execute first."
+                logger.critical("live_preflight_ABORT %s", _msg)
+                raise LiveGateFailed(_msg)
+            logger.info("live_preflight.positions_clean exchanges=%s", list(_futures_adapters.keys()))
+
         self._running = True
         self._stats = LiveModeStats(start_time=time.monotonic())
 
@@ -447,57 +495,6 @@ class LiveMode(BaseMode):
         # Force TLS/TCP handshake on all adapters before first real order
         # to remove ~5-15ms cold-start tax from initial trade.
         await self._prewarm_connections()
-
-        # Preflight: 포지션 잔류 체크 (Bitget stale data 방지용 — BUG-28)
-        # 기존 포지션이 있으면 시작 거부. close_positions.py --execute 먼저 실행.
-        # Bitget raw API: adapter.get_positions()는 total=0 스테일 포지션을 필터링하므로
-        # 직접 REST 호출로 holdSide!='' 포지션을 추가 확인.
-        if self._execution_mode == "live":
-            adapter_dict = getattr(self._executor, "_exchanges", {})
-            if not isinstance(adapter_dict, dict):
-                adapter_dict = {}
-            futures_adapters = {k: v for k, v in adapter_dict.items() if "futures" in k}
-            stranded: list[str] = []
-            for eid, adapter in futures_adapters.items():
-                try:
-                    positions = await adapter.get_positions()
-                    open_pos = [p for p in positions if p.size != 0]
-                    for p in open_pos:
-                        stranded.append(f"{eid}:{p.symbol}:{p.size}")
-                except Exception as exc:
-                    logger.warning("preflight_position_check_failed exchange=%s error=%s", eid, exc)
-
-                # Bitget: raw API check to catch stale total=0 positions (Bug 28)
-                if "bitget" in eid and hasattr(adapter, "_request"):
-                    try:
-                        raw_resp = await adapter._request(
-                            "GET", "/api/v2/mix/position/all-position",
-                            params={"productType": "USDT-FUTURES"},
-                            signed=True,
-                        )
-                        for item in (raw_resp.get("data") or []):
-                            hold_side = item.get("holdSide", "")
-                            raw_sym = item.get("symbol", "")
-                            total = float(item.get("total", 0) or 0)
-                            available = float(item.get("available", 0) or 0)
-                            # holdSide!='' + any allocated size = real position (even if stale total=0)
-                            if hold_side and raw_sym and (total != 0 or available != 0):
-                                label = f"{eid}:{raw_sym}:stale(hold={hold_side},total={total})"
-                                already = any(raw_sym in s for s in stranded)
-                                if not already:
-                                    stranded.append(label)
-                                    logger.warning(
-                                        "preflight_bitget_stale_position detected symbol=%s holdSide=%s total=%s",
-                                        raw_sym, hold_side, total,
-                                    )
-                    except Exception as exc:
-                        logger.warning("preflight_bitget_raw_check_failed error=%s", exc)
-
-            if stranded:
-                msg = f"pre-existing positions detected: {stranded}. Run close_positions.py --execute first."
-                logger.critical("live_preflight_ABORT %s", msg)
-                raise LiveGateFailed(msg)
-            logger.info("live_preflight.positions_clean exchanges=%s", list(futures_adapters.keys()))
 
         # Step 4: Start KRW rate updater
         self._krw_rate_task = asyncio.create_task(
