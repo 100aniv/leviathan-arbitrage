@@ -509,13 +509,18 @@ class NativeBitgetAdapter(NativeAdapter):
         start_time_ms: int | None = None,
         limit: int = 100,
     ) -> list[dict]:
-        """Bitget Futures 실체결 이력 조회 — GET /api/v2/mix/order/fills."""
+        """Bitget Futures 실체결 이력 조회 — GET /api/v2/mix/order/fills.
+
+        Bitget API requires 'symbol' param — returns [] if symbol is empty.
+        """
+        if not symbol:
+            # Bitget fills API does not support all-symbol queries
+            return []
         params: dict = {
             "productType": "USDT-FUTURES",
             "limit": str(min(limit, 100)),
+            "symbol": symbol.replace("/", "").upper() + "USDT",
         }
-        if symbol:
-            params["symbol"] = symbol.replace("/", "").upper() + "USDT"
         if start_time_ms:
             params["startTime"] = str(start_time_ms)
         try:
