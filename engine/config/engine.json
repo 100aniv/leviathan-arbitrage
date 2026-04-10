@@ -78,7 +78,7 @@
     "_comment": "PHOENIX v3: min_trade_notional lowered to $5 (futures exchange minimum)",
     "min_trade_notional_usd": 5,
     "default_futures_leverage": 5,
-    "leg_timeout_ms": 1000,
+    "leg_timeout_ms": 5000,
     "max_concurrent_trades": 2,
     "symbol_cooldown_s": 30
   },

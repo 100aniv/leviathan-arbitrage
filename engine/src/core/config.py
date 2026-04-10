@@ -370,9 +370,9 @@ class ExecutionSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", populate_by_name=True)
 
     leg_timeout_ms: int = Field(
-        default=1000,
+        default=5000,
         alias="LEG_TIMEOUT_MS",
-        description="Timeout for each leg fill confirmation (ms)",
+        description="Timeout for each leg fill confirmation (ms). Must exceed Binance futures polling (3×200ms + REST = ~1500ms)",
     )
     rollback_timeout_ms: int = Field(
         default=2000,
