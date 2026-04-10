@@ -325,6 +325,12 @@ class NativeAdapter(abc.ABC):
         if not self._http:
             raise RuntimeError(f"{self.exchange_id}: not connected — call connect() first")
 
+        # Sort params alphabetically when signed — exchange signature validates
+        # against the actual URL query string, so URL param order must match
+        # the order used in the signature computation.
+        if signed and params:
+            params = dict(sorted(params.items()))
+
         req_headers = dict(headers or {})
         if signed:
             req_headers.update(self._auth_headers(method, path, params, data))

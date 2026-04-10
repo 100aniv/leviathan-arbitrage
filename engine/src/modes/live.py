@@ -948,6 +948,20 @@ class LiveMode(BaseMode):
                             })
                         except Exception:
                             pass
+                    # BUG-2 fix: notify strategy on successful rollback so it clears
+                    # _open_positions and allows re-entry (prevents 30min lockout)
+                    if exec_result.status == ExecutionStatus.ROLLED_BACK:
+                        symbol = trade_request.legs[0].symbol if trade_request.legs else None
+                        if symbol and self._strategy_manager is not None:
+                            _strat = self._strategy_manager.get_strategy(sid)
+                            if _strat is not None and hasattr(_strat, "on_execution_rollback"):
+                                try:
+                                    _strat.on_execution_rollback(symbol)
+                                except Exception as _rb_err:
+                                    logger.warning(
+                                        "live_mode.rollback_notify_failed strategy=%s symbol=%s err=%s",
+                                        sid, symbol, _rb_err,
+                                    )
                     strat_stats.rejections += 1
                     return
 
@@ -1141,6 +1155,7 @@ class LiveMode(BaseMode):
                 order_type=leg.order_type,
                 price=price,
                 amount=leg.size,
+                metadata=leg.metadata or {},
             ))
         return orders
 

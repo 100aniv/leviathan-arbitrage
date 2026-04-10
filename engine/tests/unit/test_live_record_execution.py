@@ -208,3 +208,53 @@ class TestRecordExecutionFailurePath:
 
         # Must not raise even when the recorder itself fails
         await mode._execute_trade_request(_make_trade_request())
+
+
+# ---------------------------------------------------------------------------
+# BUG-1 fix: _legs_to_orders must propagate leg.metadata (reduceOnly, leverage)
+# ---------------------------------------------------------------------------
+
+
+class TestLegsToOrdersMetadataPropagation:
+    def test_metadata_propagated_to_order(self):
+        """reduceOnly and leverage in TradeLeg.metadata must appear in Order.metadata."""
+        mode = _make_live_mode()
+        req = TradeRequest(
+            strategy_id="futures_futures",
+            legs=[
+                TradeLeg(
+                    exchange_id="bitget_futures",
+                    symbol="BTC/USDT",
+                    side=OrderSide.SELL,
+                    size=Decimal("0.001"),
+                    price=Decimal("80000"),
+                    order_type=OrderType.MARKET,
+                    metadata={"reduceOnly": True, "leverage": 10},
+                ),
+            ],
+            expected_profit_usdt=Decimal("0"),
+        )
+        orders = mode._legs_to_orders(req)
+        assert len(orders) == 1
+        assert orders[0].metadata.get("reduceOnly") is True, "reduceOnly must be propagated"
+        assert orders[0].metadata.get("leverage") == 10, "leverage must be propagated"
+
+    def test_empty_metadata_does_not_crash(self):
+        """Legs without metadata should produce Order with empty dict, not None."""
+        mode = _make_live_mode()
+        req = TradeRequest(
+            strategy_id="futures_futures",
+            legs=[
+                TradeLeg(
+                    exchange_id="binance_futures",
+                    symbol="ETH/USDT",
+                    side=OrderSide.BUY,
+                    size=Decimal("0.01"),
+                    price=Decimal("3000"),
+                    order_type=OrderType.MARKET,
+                ),
+            ],
+            expected_profit_usdt=Decimal("0"),
+        )
+        orders = mode._legs_to_orders(req)
+        assert orders[0].metadata == {} or orders[0].metadata is not None

@@ -2173,7 +2173,7 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 - **원인**: "Config loaded mode=paper" 로그가 `.env EXECUTION_MODE` 값 출력 → live인데 paper로 오판
 - **수정**: engine_mode(engine.json) + EXECUTION_MODE(.env) + resolved mode 명시 출력
 
-### v18 추가 개선 (2026-04-09)
+### v18 추가 개선 (계획 → v24+ 실행)
 - **P0**: FF exit TradeRequest emit (경고→실제 청산 발행)
 - **P0**: Rollback idempotency (`_rollback_attempted` dict)
 - **P0**: IS/TCA 계산 → DB 저장 (`slippage_total` 계산 연결)
@@ -2181,3 +2181,74 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 - **P1**: Binance -4168 Multi-Assets mode 처리
 - **P1**: futures_min_spread_bps 25→20 (실시장 대응)
 - **P1**: spot_futures holding_timeout config key 추가
+
+---
+
+## §8.18 — v18~v24 전체 배관 감사 + BUG-1~4 수정 (2026-04-10)
+
+> 방법론: "범위 밖도 전부 수정" — 개별 버그가 아닌 전체 파이프라인 end-to-end 감사
+> 기준: v23 로그 3,374 ERROR 분석 + 코드베이스 전수 감사
+
+### 실행 이력 테이블
+
+| 버전 | 시각 | Fills | PnL | 종료 사유 | 핵심 수정 |
+|------|------|-------|-----|---------|---------|
+| v18 | 2026-04-10 00:20 | 0건 | — | 신규 기동 | v17 수정 반영 |
+| v19 | 2026-04-10 00:25 | 0건 | — | 반복 수정 | — |
+| v20 | 2026-04-10 00:21 | 0건 | — | 반복 수정 | — |
+| v21 | 2026-04-10 08:05 | 0건 | — | 반복 수정 | — |
+| v22 | 2026-04-10 08:12 | 0건 | — | Bitget 40009 발견 | — |
+| v23 | 2026-04-10 08:54 | 0건 | — | BUG-1/2/3 발견 후 종료 | 3,374 ERROR (40009), 3,281 positions_failed |
+| v24 | 2026-04-10 14:42 | **3건** | -$0.00 | 정상 가동 중 | BUG-1/2/3 수정 완료 |
+
+### 버그 상세 기록
+
+#### BUG-1 [CRITICAL]: `_legs_to_orders()` metadata 누락 → Bitget exit = 신규 진입 (v24, ✅ 완료)
+- **파일**: `engine/src/modes/live.py` 라인 1155
+- **원인**: `Order` 생성 시 `metadata=` 파라미터 누락. `TradeLeg.metadata`에 `{"reduceOnly": True}`가 설정돼도 Order에 미전달 → Bitget에서 `tradeSide="open"` → 청산 대신 신규 SHORT 진입
+- **영향**: `futures_futures.py` 내 `reduceOnly=True` leg 8개 (라인 167, 176, 203, 212, 315, 324, 350, 359) 전부 무효화
+- **수정**: `metadata=leg.metadata or {}` 추가
+- **참조**: `trade_consumer.py:81`의 동일 패턴
+- **테스트**: `TestLegsToOrdersMetadataPropagation` 2개 신규 추가 + pass
+
+#### BUG-2 [WARNING]: `on_execution_rollback` live.py 미연결 → 30분 포지션 잠금 (v24, ✅ 완료)
+- **파일**: `engine/src/modes/live.py` 라인 953-961
+- **원인**: `main.py:1778-1788`에는 있으나 `live.py._execute_trade_request()` ROLLED_BACK 핸들러에 없음 → 롤백 성공 후 `_open_positions`에 symbol 잔류 → 30분 re-entry 금지
+- **수정**: ROLLED_BACK 분기에 `_strat.on_execution_rollback(symbol)` 호출 추가
+- **BUG-2b**: `except Exception: pass` → `logger.warning(...)` 변경 (진단 가능성 확보)
+
+#### BUG-3 [CRITICAL]: Bitget GET params 순서 불일치 → 40009 서명 검증 실패 (v24, ✅ 완료)
+- **파일**: `engine/src/infra/exchange/native_adapter.py` 라인 331-332
+- **원인**: `_auth_headers()`는 params를 알파벳 정렬 후 서명 생성. HTTP 요청은 삽입 순서 그대로 전송 → URL 파라미터 순서 ≠ 서명 순서 → Bitget 40009 서명 검증 실패
+- **v23 증거**: 3,374건 ERROR, 3,281건 `bitget_get_positions_failed`, 9건 `reconcile_mismatch`
+- **수정**: `if signed and params: params = dict(sorted(params.items()))` — 서명 전 정렬
+- **Binance 안전**: `_signed_request()` → `_request(signed=False)` 경로, 미영향 확인
+- **전 어댑터 검증**: Bybit/OKX/Upbit/Bithumb 모두 정렬 후 양쪽(서명+URL) 일치 → 안전
+- **v24 증거**: 40009=0, positions_failed=0, reconcile_mismatch=0
+
+### v24 검증 지표
+
+| 항목 | v23 | v24 | 상태 |
+|------|-----|-----|------|
+| Bitget 40009 에러 | 3,374건 | **0건** | ✅ |
+| bitget_get_positions_failed | 3,281건 | **0건** | ✅ |
+| reconcile_mismatch | 9건 | **0건** | ✅ |
+| live 체결 건수 | 0건 | **3건** | ✅ |
+| CRITICAL 로그 | 다수 | **0건** | ✅ |
+| CircuitBreaker OPEN | — | **0건** | ✅ |
+| KillSwitch 트리거 | — | **0건** | ✅ |
+
+### 전체 배관 감사 체크리스트 (v25+ 작업 대상)
+
+- [ ] **P0** Rollback idempotency: `executor.py`에 `_rollback_attempted` dict 추가 (BUG-I 근본수정)
+- [ ] **P0** Dead wiring: DeduplicationGate / MarginTracker / StrandedPositionTracker 연결
+- [ ] **P0** FF exit 청산: `_open_positions_monitor()` → TradeRequest emit (`pop_exit_requests()`)
+- [ ] **P1** WS ping_timeout: `base_collector.py` `ping_timeout=10` → 30초로 증가 (reconnect storm 방지)
+- [ ] **P1** Binance -4168: `native_binance.py` Multi-Assets Mode 에러 처리 추가
+- [ ] **P1** Bitget Futures 수수료: `fee_model.py` taker 0.10% → 0.06%
+- [ ] **P1** futures_min_spread_bps: 25 → 20 (수수료 합계 16bps 대비 4bps 여유)
+- [ ] **P1** spot_futures holding_timeout: config key `strategy_filters.enable_holding_timeout` 추가
+- [ ] **P2** TCA 파이프라인: `slippage_total=None` → 실 IS 계산 연결
+- [ ] **P2** get_trades() 구현: NativeBinance / NativeBitget 체결 이력 조회
+- [ ] **P2** TradeReconciler: 내부 DB vs 거래소 실체결 대조
+- [ ] **P2** market_data_1m 테이블 생성 (ML 훈련 활성화)
