@@ -145,6 +145,16 @@ class AdaptiveThreshold:
             )
             dynamic_entry = max_entry
 
+        # Floor: prevent tight market clustering from dropping outlier cap below
+        # the static_entry baseline (which represents the minimum legitimate spread).
+        # Without this, calibrated p95 (~26bps) blocks legitimate 27-50bps spreads.
+        if dynamic_entry < self.static_entry:
+            logger.debug(
+                "adaptive_threshold.floor_applied dynamic=%.2f floor=%.2f",
+                dynamic_entry, self.static_entry,
+            )
+            dynamic_entry = self.static_entry
+
         # Ensure entry >= exit (sanity)
         if dynamic_entry < dynamic_exit:
             dynamic_entry = dynamic_exit * 1.5
