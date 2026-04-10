@@ -428,6 +428,7 @@ class MultiStrategySignalProducer:
         sell_exchange: str,
         buy_price: Decimal,
         sell_price: Decimal,
+        book_age_ms: float = 0.0,
     ) -> Optional[Signal]:
         """Generate futures-futures spread signal across exchanges."""
         if buy_price <= 0 or sell_price <= 0:
@@ -465,6 +466,7 @@ class MultiStrategySignalProducer:
                 "buy_futures_exchange": buy_exchange,
                 "sell_futures_exchange": sell_exchange,
                 "funding_diff_bps": str(funding_diff_bps),
+                "book_age_ms": str(book_age_ms),  # BUG-23: stale_guard requires this
             },
         )
         await self._publish(signal)

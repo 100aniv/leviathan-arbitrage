@@ -2658,3 +2658,28 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 | live.max_position_pct | 3.0% | **6.0%** |
 | guardian.check_trade_request() | 없음 (bypass) | **구현 완료** |
 | RiskGuardian Check #0 live 경로 | 미실행 | **실행** |
+
+#### BUG-23 [CRITICAL]: FF 신호 `book_age_ms` 누락 → 모든 FF 신호 stale_guard 필터 (✅ v40 수정)
+
+**근본 원인**: `multi_signal.produce_futures_futures_signal()`이 metadata에 `book_age_ms`를 포함하지 않음. `futures_futures.on_signal()`의 stale_guard 체크:
+```python
+raw_book_age = signal.metadata.get("book_age_ms")
+if raw_book_age is None:
+    return None  # 모든 FF 신호 차단!
+```
+
+**충격**: v36~v39 전 기간 동안 FF 신호가 min_spread 이후 두 번째 필터에서 전량 차단됨.
+
+**수정 내용**:
+1. `multi_signal.py`: `produce_futures_futures_signal(book_age_ms=0.0)` 파라미터 추가 + metadata 포함
+2. `real_signal_producer.py` (2곳): `book_age_ms = max(0, (now - min(book_a.ts, book_b.ts))*1000)` 계산 후 전달
+
+**검증**: FF 신호 로그에서 `strategy.rejected reason=stale_guard` 사라짐 확인
+
+### v40 변경사항 (BUG-23)
+
+| 항목 | v39 이전 | v40 |
+|------|---------|-----|
+| FF 신호 book_age_ms | 없음 (None) | **계산 포함** |
+| stale_guard FF 차단 | 전량 차단 | **통과** |
+| FF on_signal 진행 | 불가 | **evaluate() 진입** |
