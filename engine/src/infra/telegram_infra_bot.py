@@ -80,11 +80,11 @@ class InfraTelegramBot(TelegramBotBase):
 
         # Standalone mode: HTTP direct checks
         if not results:
-            import os
             import httpx
+            from src.core.config_loader import get_config as _gc
 
             # Engine check
-            engine_url = os.getenv("ENGINE_URL", "http://localhost:8000")
+            engine_url = _gc("monitoring.engine_url", default="http://localhost:8000")
             try:
                 async with httpx.AsyncClient(timeout=5.0) as c:
                     resp = await c.get(f"{engine_url}/health")
@@ -200,9 +200,9 @@ class InfraTelegramBot(TelegramBotBase):
     async def _cmd_metrics(self, text: str, chat_id: int, message: dict) -> str:
         """Prometheus 핵심 메트릭 스냅샷."""
         try:
-            import os
             import httpx
-            engine_url = os.getenv("ENGINE_URL", "http://localhost:8000")
+            from src.core.config_loader import get_config as _gc
+            engine_url = _gc("monitoring.engine_url", default="http://localhost:8000")
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{engine_url}/metrics")
                 resp.raise_for_status()

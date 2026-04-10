@@ -375,14 +375,6 @@ class TradeTelegramBot(TelegramBotBase):
                     else:
                         enabled_strategies.discard(strategy_name)
 
-            # Also set via disabled strategies env
-            disabled = set(os.getenv("PAPER_DISABLED_STRATEGIES", "").split(","))
-            disabled = {s.strip() for s in disabled if s.strip()}
-            if action == "off":
-                disabled.add(strategy_name)
-            else:
-                disabled.discard(strategy_name)
-
         icon = "🟢" if action == "on" else "🔴"
         return f"{icon} {strategy_name}: {'활성화' if action == 'on' else '비활성화'}"
 
