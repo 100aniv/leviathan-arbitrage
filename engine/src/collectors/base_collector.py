@@ -37,7 +37,7 @@ class BaseCollector(abc.ABC):
         symbols: list[str],
         on_orderbook: Callable[[str, str, list, list], Awaitable[None]] | None = None,
         ping_interval: int = 20,
-        ping_timeout: int = 10,
+        ping_timeout: int = 30,
     ) -> None:
         """
         Args:
@@ -46,7 +46,7 @@ class BaseCollector(abc.ABC):
             on_orderbook: Async callback(exchange_id, symbol, bids, asks)
                          bids/asks are list of [price_str, qty_str]
             ping_interval: WebSocket ping interval in seconds (default 20)
-            ping_timeout: WebSocket ping timeout in seconds (default 10)
+            ping_timeout: WebSocket ping timeout in seconds (default 30)
         """
         self.exchange_id = exchange_id
         self.symbols = symbols

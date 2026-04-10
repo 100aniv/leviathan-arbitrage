@@ -129,7 +129,7 @@ class NativeAdapter(abc.ABC):
                 try:
                     url = self._ws_orderbook_url(symbol)
                     async with websockets.connect(
-                        url, ping_interval=20, ping_timeout=10
+                        url, ping_interval=20, ping_timeout=30
                     ) as ws:
                         self._health.record_ws_connect()
                         sub_msg = self._ws_subscribe_message(symbol)
@@ -165,7 +165,7 @@ class NativeAdapter(abc.ABC):
                 try:
                     url = self._ws_ticker_url(symbol)
                     async with websockets.connect(
-                        url, ping_interval=20, ping_timeout=10
+                        url, ping_interval=20, ping_timeout=30
                     ) as ws:
                         sub_msg = self._ws_ticker_subscribe_message(symbol)
                         if sub_msg:

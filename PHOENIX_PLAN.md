@@ -2238,17 +2238,27 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 | CircuitBreaker OPEN | — | **0건** | ✅ |
 | KillSwitch 트리거 | — | **0건** | ✅ |
 
-### 전체 배관 감사 체크리스트 (v25+ 작업 대상)
+### 전체 배관 감사 체크리스트
 
-- [ ] **P0** Rollback idempotency: `executor.py`에 `_rollback_attempted` dict 추가 (BUG-I 근본수정)
-- [ ] **P0** Dead wiring: DeduplicationGate / MarginTracker / StrandedPositionTracker 연결
-- [ ] **P0** FF exit 청산: `_open_positions_monitor()` → TradeRequest emit (`pop_exit_requests()`)
-- [ ] **P1** WS ping_timeout: `base_collector.py` `ping_timeout=10` → 30초로 증가 (reconnect storm 방지)
-- [ ] **P1** Binance -4168: `native_binance.py` Multi-Assets Mode 에러 처리 추가
-- [ ] **P1** Bitget Futures 수수료: `fee_model.py` taker 0.10% → 0.06%
-- [ ] **P1** futures_min_spread_bps: 25 → 20 (수수료 합계 16bps 대비 4bps 여유)
-- [ ] **P1** spot_futures holding_timeout: config key `strategy_filters.enable_holding_timeout` 추가
-- [ ] **P2** TCA 파이프라인: `slippage_total=None` → 실 IS 계산 연결
-- [ ] **P2** get_trades() 구현: NativeBinance / NativeBitget 체결 이력 조회
-- [ ] **P2** TradeReconciler: 내부 DB vs 거래소 실체결 대조
-- [ ] **P2** market_data_1m 테이블 생성 (ML 훈련 활성화)
+- [x] **P0** Rollback idempotency: `executor.py:145` `_rollback_attempted` dict — 이미 구현됨 ✅
+- [x] **P0** Dead wiring DeduplicationGate: `live.py:312-314` 연결 확인 ✅
+- [x] **P0** Dead wiring MarginTracker: `live.py:318-320` + FF strategy 주입 확인 ✅
+- [x] **P0** Dead wiring StrandedPositionTracker: `executor.py:142-143` 확인 ✅
+- [x] **P0** FF exit 청산: `futures_futures.py:140-222` monitor + TradeRequest emit 확인 ✅
+- [x] **P0** pop_exit_requests 호출: `live.py:1537-1538` 확인 ✅
+- [x] **P1** WS ping_timeout: `native_adapter.py:132,168` 10→30, `base_collector.py:40` 10→30 ✅ (v25 적용)
+- [x] **P1** Binance -4168: `native_binance.py:258` Multi-Assets Mode 처리 — 이미 구현됨 ✅
+- [x] **P1** Bitget Futures 수수료: `fee_model.py:82` taker 0.0006 (0.06%) — 이미 정확 ✅
+- [x] **P1** futures_min_spread_bps: `engine.json strategy_filters` 20bps 추가 ✅ (v25 적용)
+- [x] **P1** spot_futures holding_timeout: `engine.json strategy_filters.enable_holding_timeout=true` ✅
+- [x] **P2** TCA 파이프라인: `live.py:1062-1083` IS 계산 + `slippage_total` DB 저장 — 이미 구현됨 ✅
+- [x] **P2** get_trades(): `native_binance.py:514` + `native_bitget.py:506` — 이미 구현됨 ✅
+- [ ] **P2** market_data_1m 테이블 생성 (ML 훈련 활성화) — DB migration 필요
+
+### BUG-4 (v25 수정): WS ping_timeout 10→30 + futures_min_spread_bps 15→20
+
+| 항목 | 파일 | 수정 내용 |
+|------|------|---------|
+| WS ping_timeout | `native_adapter.py:132,168` | 10→30 (reconnect storm 방지) |
+| WS ping_timeout 기본값 | `base_collector.py:40` | 10→30 |
+| FF min_spread | `engine.json:strategy_filters` | `futures_min_spread_bps=20` 추가 (수수료 16bps + 4bps 여유) |

@@ -44,7 +44,8 @@
   "strategy_filters": {
     "enable_holding_timeout": true,
     "spot_futures_max_hold_seconds": 1800,
-    "futures_max_hold_seconds": 1800
+    "futures_max_hold_seconds": 1800,
+    "futures_min_spread_bps": 20
   },
 
   "risk": {
