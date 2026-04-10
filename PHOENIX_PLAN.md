@@ -2577,7 +2577,7 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 
 ### 다음 감사 항목
 - [x] BUG-18 수정: margin_refresh_loop + _route_signal_to_strategies margin 주입 (v37 완료)
-- [ ] CFG/USDT `futures_excluded_symbols`에 추가 (coinone 10.35% 편차)
+- [x] CFG/USDT `futures_excluded_symbols`에 추가 (coinone 10.35% 편차) — v37
 - [ ] WAL 보존 주기 설정 (`postgresql.conf archive_cleanup_command`)
 - [ ] v37 기동 후 `live_mode.margin_cache_updated` 로그 확인 → margin check 활성화 검증
 - [ ] v37 체결 누적 모니터링 (BUG-18 수정 후 -2019 오류 소멸 확인)
