@@ -516,10 +516,11 @@ class RealDataSignalProducer:
                         _ff_median = statistics.median(_ff_history)
                         if _ff_median > 0 and spread_bps > self._spread_filter_multiplier * _ff_median:
                             continue
-                    # BUG-23: compute book_age_ms for stale_guard (oldest of two books)
-                    _ff_now1 = time.time()
+                    # BUG-23: compute book_age_ms for stale_guard (oldest of two books).
+                    # last_update_time is monotonic time (consistent with age_a/age_b checks above).
+                    _ff_now1 = time.monotonic()
                     _ff_age_ms1 = 0.0
-                    if book_a.last_update_time > 1e9 and book_b.last_update_time > 1e9:
+                    if book_a.last_update_time > 0 and book_b.last_update_time > 0:
                         _ff_age_ms1 = max(0.0, (_ff_now1 - min(book_a.last_update_time, book_b.last_update_time)) * 1000)
                     signal = await self._producer.produce_futures_futures_signal(
                         symbol=symbol,
@@ -571,10 +572,11 @@ class RealDataSignalProducer:
                         _ff_median = statistics.median(_ff_history)
                         if _ff_median > 0 and spread_bps > self._spread_filter_multiplier * _ff_median:
                             continue
-                    # BUG-23: compute book_age_ms for stale_guard (oldest of two books)
-                    _ff_now2 = time.time()
+                    # BUG-23: compute book_age_ms for stale_guard (oldest of two books).
+                    # last_update_time is monotonic time (consistent with age_a/age_b checks above).
+                    _ff_now2 = time.monotonic()
                     _ff_age_ms2 = 0.0
-                    if book_a.last_update_time > 1e9 and book_b.last_update_time > 1e9:
+                    if book_a.last_update_time > 0 and book_b.last_update_time > 0:
                         _ff_age_ms2 = max(0.0, (_ff_now2 - min(book_a.last_update_time, book_b.last_update_time)) * 1000)
                     signal = await self._producer.produce_futures_futures_signal(
                         symbol=symbol,
