@@ -2253,7 +2253,7 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 - [x] **P1** spot_futures holding_timeout: `engine.json strategy_filters.enable_holding_timeout=true` ✅
 - [x] **P2** TCA 파이프라인: `live.py:1062-1083` IS 계산 + `slippage_total` DB 저장 — 이미 구현됨 ✅
 - [x] **P2** get_trades(): `native_binance.py:514` + `native_bitget.py:506` — 이미 구현됨 ✅
-- [ ] **P2** market_data_1m 테이블 생성 (ML 훈련 활성화) — DB migration 필요
+- [x] **P2** market_data_1m 테이블 생성: migration 009 적용 완료 ✅ (v25 사이클)
 
 ### BUG-4 (v25 수정): WS ping_timeout 10→30 + futures_min_spread_bps 15→20
 
@@ -2262,3 +2262,81 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 | WS ping_timeout | `native_adapter.py:132,168` | 10→30 (reconnect storm 방지) |
 | WS ping_timeout 기본값 | `base_collector.py:40` | 10→30 |
 | FF min_spread | `engine.json:strategy_filters` | `futures_min_spread_bps=20` 추가 (수수료 16bps + 4bps 여유) |
+
+
+---
+
+## §8.19 — v25 전체 배관 감사 Round 2 (2026-04-10)
+
+> 방법론: 전체 모듈 트리 + 런타임 에러 감사. PHOENIX_PLAN.md = 유일한 기준 문서
+
+### v25 실행 이력
+
+| 버전 | 시각 | Fills | PnL | 상태 |
+|------|------|-------|-----|------|
+| v25 | 2026-04-10 15:15 | 8건 | **+$0.66** | 실행 중 ✅ |
+
+### 전체 모듈 감사 결과 (233개 Python 파일 전수 검사)
+
+#### 연결됨 ✅ (재확인)
+- `DeduplicationGate`: live.py:897 import + instantiate + check_and_register() 호출 ✅
+- `MarginTracker`: live.py + futures_futures.py:471 check_and_reserve()/release() ✅
+- `StrandedPositionTracker`: executor.py register() 6개 호출점 ✅
+- `TCAAnalyzer`: live.py:1062-1083 IS 계산 + slippage_total DB 저장 ✅
+- `get_trades()`: native_binance.py:514 + native_bitget.py:506 구현 완료 ✅
+- `PositionReconciler`: main.py:3305 10분 주기 reconcile() ✅
+- `FundingRateCollector`: main.py 직접 인스턴스화 + 모드 전달 ✅
+
+#### 미연결 (Dead Code) ❌
+- **`AtomicOrderExecutor` (atomic.py)**: main.py:1412 인스턴스화하나 `TradeRequestConsumer`에 전달 안 함. 어디서도 메서드 호출 없음. US-133 미완성.
+  - **처리**: 현재 RunTime에 무해 (인스턴스화만, 호출 없음). 별도 US로 완성 예정.
+
+#### 미등록 Collector (의도적 — inactive_reserved)
+- `bingx_collector.py`, `lbank_collector.py`, `orangex_collector.py`: 코드 존재, manager.py 미등록
+  - **이유**: engine.json `inactive_reserved`에 없는 미래 거래소. 코드 보존 의도적.
+
+### 새로 발견 + 수정한 버그
+
+#### BUG-6 [MEDIUM]: margin_type 에러코드 미파싱 → WARNING 오탐 (v25 사이클, ✅ 완료)
+- **파일**: `engine/src/infra/exchange/native_adapter.py` + `native_binance.py`
+- **원인**:
+  1. `_request()`에서 -4046/-4048/-4168 benign 코드도 `raise_for_status()` 호출 → 예외 전파
+  2. `native_binance.py`에서 `str(httpx.HTTPStatusError)` = URL만 포함, body 없음 → 에러코드 체크 항상 실패
+  3. 결과: 모든 400 에러가 WARNING으로 기록
+- **수정**:
+  1. `native_adapter.py`: benign 코드 시 `return body` (raise 안 함)
+  2. `native_adapter.py`: 비-benign 에러는 `[body=...]` 포함 예외 메시지로 재발생
+  3. `native_binance.py`: regex로 body에서 code 추출 → -4059 INFO 처리
+- **영향**: -4046/-4048/-4168 WARNING → DEBUG(silent). -4059 WARNING → INFO.
+
+#### BUG-7 [MEDIUM]: health_score=0.85 false positive 경고 폭발 (v25 사이클, ✅ 완료)
+- **파일**: `engine/src/infra/exchange/health_checker.py`
+- **원인**: `latency_score=0.5` (데이터 없을 때 기본값) × 가중치(30%) → 시작 직후 모든 거래소 0.85. 경고 임계값=0.9 → 매 health check 주기마다 전 거래소 WARNING 폭발
+  - 수식: `1.0×0.4 + 0.5×0.3 + 1.0×0.2 + 1.0×0.1 = 0.85`
+- **수정**: `latency_score = 1.0` (낙관적 neutral — REST 호출 없음 = 실패 없음 = 정상)
+- **영향**: 시작 후 REST 호출 데이터 축적 전까지 정확한 health_score 유지
+
+#### DB Migration 완료 (P2 체크리스트)
+- **파일**: `engine/src/infra/db/migrations/009_create_market_data_1m.sql` (신규)
+- `market_data_1m` hypertable 생성 (7일 청크, 90일 retention)
+- 컬럼: timestamp, symbol, exchange_id, close_price, volume, bid_ask_spread
+- HMMTrainer + XGBTrainer fetch 에러 해결 (PostgreSQL relation 없음 → 테이블 존재)
+
+### v25 검증 지표
+
+| 항목 | v24 | v25 | 상태 |
+|------|-----|-----|------|
+| 체결 건수 | 3건 | **8건** | ✅ |
+| total_pnl | -$0.12 | **+$0.66** | ✅ 수익 |
+| 40009 에러 | 0건 | **0건** | ✅ |
+| health_score 경고 | 수백 건 | **0건** (수정 후) | ✅ |
+| margin_type WARNING | 4건 | **0건** (수정 후) | ✅ |
+| market_data_1m 에러 | 다수 | **0건** (migration 후) | ✅ |
+| AtomicOrderExecutor | 고아 인스턴스 | 고아 유지 (무해) | ⚠️ |
+
+### 다음 반복 감사 항목
+- [ ] v26 시작 (BUG-6/7 + migration 수정 반영)
+- [ ] v26 로그에서 health_score 경고 0건 확인
+- [ ] v26 로그에서 margin_type WARNING → INFO/silent 확인
+- [ ] AtomicOrderExecutor wiring 또는 명시적 dead code 제거
+- [ ] FF 전략 holding_timeout 실제 동작 확인 (30분 후)

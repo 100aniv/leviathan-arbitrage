@@ -81,7 +81,7 @@ class HealthChecker:
             avg_latency = statistics.mean(self._metrics.api_latencies)
             latency_score = max(0.0, 1.0 - avg_latency / self.max_latency_ms)
         else:
-            latency_score = 0.5  # neutral — no data yet
+            latency_score = 1.0  # optimistic neutral — no data yet (no REST calls = no failures)
 
         # --- WebSocket stability score (20%) ---
         now = time.monotonic()

@@ -246,7 +246,8 @@ class BinanceNativeAdapter(NativeAdapter):
             _default_lev = int(_get_config("execution.default_futures_leverage") or 5)
             _leverage = int(order.metadata.get("leverage", _default_lev)) if order.metadata else _default_lev
             _sym_bn = _symbol_to_binance(order.symbol)
-            # Step 1: Set ISOLATED margin type (-4046/-4048 = already set, treat as OK)
+            # Step 1: Set ISOLATED margin type
+            # Note: -4046/-4048/-4168 benign codes are handled silently in _request() (returns {})
             try:
                 await self._signed_request("POST", "/fapi/v1/marginType", params={
                     "symbol": _sym_bn,
@@ -254,14 +255,24 @@ class BinanceNativeAdapter(NativeAdapter):
                 })
                 logger.debug("margin_type_set symbol=%s type=ISOLATED", order.symbol)
             except Exception as _mt_err:
+                # Extract Binance error code from embedded body (set by native_adapter._request)
                 _mt_str = str(_mt_err)
-                if "-4168" in _mt_str:
+                _mt_code = ""
+                if "[body=" in _mt_str:
+                    import re as _re
+                    _code_m = _re.search(r"'code':\s*(-?\d+)", _mt_str)
+                    _mt_code = _code_m.group(1) if _code_m else ""
+                # -4059: MARGIN_TYPE_IS_NOT_SUPPORTED (symbol only supports CROSS) — non-fatal
+                if _mt_code in ("-4059",):
                     logger.info(
-                        "binance_multi_assets_mode_detected symbol=%s — marginType 변경 불필요, 주문 계속",
-                        order.symbol,
+                        "margin_type_not_supported symbol=%s code=%s — CROSS margin 유지, 주문 계속",
+                        order.symbol, _mt_code,
                     )
-                elif "-4046" not in _mt_str and "-4048" not in _mt_str:
-                    logger.warning("margin_type_set_failed symbol=%s error=%s", order.symbol, _mt_err)
+                else:
+                    logger.warning(
+                        "margin_type_set_failed symbol=%s code=%s error=%s",
+                        order.symbol, _mt_code or "unknown", _mt_err,
+                    )
             # Step 2: Set leverage
             try:
                 await self._signed_request("POST", "/fapi/v1/leverage", params={

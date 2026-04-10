@@ -355,12 +355,22 @@ class NativeAdapter(abc.ABC):
                     "http_error exchange=%s status=%s body=%s (benign — suppressed)",
                     self.exchange_id, resp.status_code, body,
                 )
-            else:
-                logger.error(
-                    "http_error exchange=%s status=%s body=%s",
-                    self.exchange_id, resp.status_code, body,
-                )
-        resp.raise_for_status()
+                # Return empty dict for benign errors — no need to raise, caller can continue
+                return body if isinstance(body, dict) else {}
+            logger.error(
+                "http_error exchange=%s status=%s body=%s",
+                self.exchange_id, resp.status_code, body,
+            )
+            # Embed body in exception message so upstream handlers can inspect error code
+            import httpx as _httpx
+            try:
+                resp.raise_for_status()
+            except _httpx.HTTPStatusError as _exc:
+                raise _httpx.HTTPStatusError(
+                    f"{_exc} [body={_body_str}]",
+                    request=_exc.request,
+                    response=_exc.response,
+                ) from None
         return resp.json()
 
     # ------------------------------------------------------------------
