@@ -49,7 +49,7 @@ def _make_producer(return_signal: Signal | None = None) -> tuple[Any, RealDataSi
     producer = RealDataSignalProducer(
         multi_signal_producer=mock_multi,
         triangular_scanner=scanner,
-        futures_exchanges={"binance_futures"},
+        futures_exchanges={"binance_futures", "bybit_futures"},
     )
     return mock_multi, producer
 

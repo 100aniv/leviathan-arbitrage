@@ -54,7 +54,7 @@
     "cross_exchange_min_book_depth_usd": 1,
     "funding_zscore_threshold": -1,
     "funding_min_diff_bps": 2.0,
-    "enable_stale_guard": true
+    "enable_stale_guard": false
   },
 
   "risk": {

@@ -65,7 +65,7 @@ def _make_full_producer() -> tuple[MagicMock, RealDataSignalProducer]:
     producer = RealDataSignalProducer(
         multi_signal_producer=mock_multi,
         triangular_scanner=scanner,
-        futures_exchanges={"binance_futures"},
+        futures_exchanges={"binance_futures", "bybit_futures"},
     )
     return mock_multi, producer
 

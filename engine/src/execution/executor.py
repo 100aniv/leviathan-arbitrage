@@ -143,6 +143,9 @@ class AtomicExecutor:
         self._stranded_tracker = StrandedPositionTracker()
         # PHOENIX v18: Rollback dedup — order_id → "success"|"failed"
         self._rollback_attempted: dict[str, str] = {}
+        # PHOENIX v32: DeduplicationGate — Bug 26 fix (race-condition duplicate orders)
+        from src.execution.dedup import DeduplicationGate
+        self._dedup_gate = DeduplicationGate(window_s=10.0)
 
     def _get_lock(self, exchange_id: str) -> asyncio.Lock:
         return self._locks.setdefault(exchange_id, asyncio.Lock())
@@ -281,6 +284,20 @@ class AtomicExecutor:
                 status=ExecutionStatus.REJECTED,
                 legs=[],
                 error="Engine halted",
+                strategy_id=strategy_id,
+            )
+
+        # RC-SAME-1b: DeduplicationGate — Bug 26 fix
+        # BUG-32: differentiate entry vs exit so close orders aren't blocked by recent entry
+        _is_close = any(
+            o.metadata.get("reduceOnly") for o in [leg1_order, leg2_order]
+        )
+        _dedup_key = f"{strategy_id}:{leg1_order.symbol}:{'close' if _is_close else 'open'}"
+        if not await self._dedup_gate.check_and_register(_dedup_key):
+            return ExecutionResult(
+                status=ExecutionStatus.REJECTED,
+                legs=[],
+                error="dedup_gate_blocked",
                 strategy_id=strategy_id,
             )
 
@@ -609,6 +626,20 @@ class AtomicExecutor:
                 status=ExecutionStatus.REJECTED,
                 legs=[],
                 error="Engine halted",
+                strategy_id=strategy_id,
+            )
+
+        # Step 0b: DeduplicationGate — Bug 26 fix (race-condition duplicate orders)
+        # BUG-32: differentiate entry vs exit so close orders aren't blocked by recent entry
+        _is_close = any(
+            o.metadata.get("reduceOnly") for o in [leg1_order, leg2_order]
+        )
+        _dedup_key = f"{strategy_id}:{leg1_order.symbol}:{'close' if _is_close else 'open'}"
+        if not await self._dedup_gate.check_and_register(_dedup_key):
+            return ExecutionResult(
+                status=ExecutionStatus.REJECTED,
+                legs=[],
+                error="dedup_gate_blocked",
                 strategy_id=strategy_id,
             )
 

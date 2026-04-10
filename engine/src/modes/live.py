@@ -908,8 +908,10 @@ class LiveMode(BaseMode):
                 logger.warning("live_mode.risk_check_error: %s", exc)
 
         # --- Per-symbol cooldown (v7: prevent same-symbol burst) ---
+        # BUG-36: skip cooldown for close/exit orders so rapid exits aren't blocked
+        _is_close_req = any(leg.metadata.get("reduceOnly") for leg in trade_request.legs)
         _sym_key = trade_request.legs[0].symbol if trade_request.legs else ""
-        if _sym_key:
+        if _sym_key and not _is_close_req:
             _last = self._symbol_last_trade.get(_sym_key, 0.0)
             if time.monotonic() - _last < self._symbol_cooldown_s:
                 logger.debug(
@@ -977,7 +979,8 @@ class LiveMode(BaseMode):
                             pass
                     # BUG-2 fix: notify strategy on successful rollback so it clears
                     # _open_positions and allows re-entry (prevents 30min lockout)
-                    if exec_result.status == ExecutionStatus.ROLLED_BACK:
+                    # BUG-31: also clear on REJECTED (no orders placed, pre-validation failed)
+                    if exec_result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.REJECTED):
                         symbol = trade_request.legs[0].symbol if trade_request.legs else None
                         if symbol and self._strategy_manager is not None:
                             _strat = self._strategy_manager.get_strategy(sid)
@@ -1242,10 +1245,16 @@ class LiveMode(BaseMode):
             return results
 
     def _build_collision_key(self, trade_request: TradeRequest) -> str:
-        """Build collision detection key from trade request."""
+        """Build collision detection key from trade request.
+
+        BUG-35: differentiate entry vs exit so close orders aren't blocked
+        by the 10-second dedup window of the preceding entry.
+        """
         symbols = sorted({leg.symbol for leg in trade_request.legs})
         exchanges = sorted({leg.exchange_id for leg in trade_request.legs})
-        return f"{','.join(symbols)}|{','.join(exchanges)}"
+        _is_close = any(leg.metadata.get("reduceOnly") for leg in trade_request.legs)
+        suffix = ":close" if _is_close else ":open"
+        return f"{','.join(symbols)}|{','.join(exchanges)}{suffix}"
 
     def _record_first_trade(self, trade_request: TradeRequest, pnl: float) -> None:
         """Save first live trade to .omc/state/live-first-trade.json — US-056."""
