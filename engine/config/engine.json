@@ -57,9 +57,9 @@
   },
 
   "risk": {
-    "_comment": "퍼센티지 기반 동적 한도 (자본 대비 %)",
+    "_comment": "퍼센티지 기반 동적 한도 (자본 대비 %). BUG-22 2026-04-11: 3.0→6.0 (base_position_pct=5%와 정렬. $120×3%=$3.60<$5 min_notional → trades 불가, 6%로 $7.20 여유)",
     "use_percentage": true,
-    "max_position_pct": 3.0,
+    "max_position_pct": 6.0,
     "max_daily_loss_pct": 50.0,
     "max_net_exposure_pct": 10.0,
     "min_edge_bps": 0,
@@ -94,7 +94,7 @@
   "live": {
     "_comment": "Live mode (Phase I+): small capital = capital.tiers.alpha, full = production. Replaces shadow mode.",
     "capital_pct": 5.0,
-    "max_position_pct": 3.0,
+    "max_position_pct": 6.0,
     "max_daily_loss_pct": 5.0,
     "exchanges": ["binance", "bitget", "upbit", "coinone", "bithumb", "binance_futures", "bitget_futures"]
   },

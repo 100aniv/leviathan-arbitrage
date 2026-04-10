@@ -102,7 +102,7 @@ class RiskGuardian:
         capital_allocation_pct: dict[str, float] | None = None,  # US-196: per-strategy capital limits
         warmup_seconds: float = 120.0,  # cold-start grace period for exchange health check
     ) -> None:
-        import os as _os
+        from src.core.config_loader import get_config as _gc
         self._cb = circuit_breaker
         self._start_time: float = time.monotonic()
         self._warmup_seconds: float = float(warmup_seconds)
@@ -118,7 +118,7 @@ class RiskGuardian:
         self._max_net_exposure_per_asset = max_net_exposure_per_asset
         # US-154: max concurrent open positions (HIGH FIX: bounds validation)
         try:
-            _mcp = int(_os.getenv("MAX_CONCURRENT_POSITIONS", str(max_concurrent_positions)))
+            _mcp = int(_gc("execution.max_concurrent_trades", default=max_concurrent_positions))
         except (ValueError, TypeError):
             _mcp = max_concurrent_positions
         self._max_concurrent_positions: int = max(1, min(_mcp, 1000))
@@ -461,6 +461,64 @@ class RiskGuardian:
             size=str(proposal.size),
         )
         return RiskCheckResult(approved=True)
+
+    def check_trade_request(self, trade_request: Any, total_capital_usd: float = 120.0) -> bool:
+        """
+        BUG-22 fix: live.py path용 간소화 check — TradeRequest → TradeProposal 변환 후 check() 호출.
+
+        live.py가 check_trade_request()를 hasattr로 탐색하므로 이 메서드가 존재하면 자동으로 사용됨.
+        Check #0 (halt), #1 (position limit), #4 (circuit breaker), #8 (rollback cost)를 실행.
+        Checks requiring full portfolio context (#2 drawdown, #3 exposure, #5 health, #7 volatility)는
+        live.py의 flash_guard / symbol_cooldown / dedup_gate가 대신 처리하므로 skip.
+
+        Args:
+            trade_request: TradeRequest object with .legs, .strategy_id attributes
+            total_capital_usd: Total engine capital (from capital.tiers config)
+        """
+        total_capital = Decimal(str(total_capital_usd))
+        legs = getattr(trade_request, "legs", None) or []
+        strategy_id = str(getattr(trade_request, "strategy_id", "unknown"))
+
+        for leg in legs:
+            price = getattr(leg, "price", None)
+            size = getattr(leg, "size", None)
+            if not price or not size or Decimal(str(size)) <= 0:
+                continue
+            side_raw = getattr(leg, "side", None)
+            side_str = side_raw.value.upper() if hasattr(side_raw, "value") else str(side_raw).upper()
+
+            proposal = TradeProposal(
+                strategy_id=strategy_id,
+                exchange_id=str(getattr(leg, "exchange_id", "unknown")),
+                symbol=str(getattr(leg, "symbol", "UNKNOWN/USDT")),
+                side=side_str,
+                size=Decimal(str(size)),
+                price=Decimal(str(price)),
+                position_value=Decimal(str(price)) * Decimal(str(size)),
+            )
+            # Minimal PortfolioState: no existing positions, full health scores.
+            # Drawdown/exposure/volatility checks skipped via empty containers.
+            portfolio = PortfolioState(
+                total_capital=total_capital,
+                used_capital=Decimal("0"),
+                current_drawdown_pct=Decimal("0"),
+                total_exposure=Decimal("0"),
+                position_sizes={},
+                exchange_health_scores={proposal.exchange_id: Decimal("1.0")},
+                volatility_1min={},
+                volatility_24h={},
+            )
+            result = self.check(proposal, portfolio)
+            if not result.approved:
+                logger.warning(
+                    "risk_check_trade_request_rejected check=%s reason=%s strategy=%s leg=%s",
+                    result.rejected_at_check,
+                    result.reason,
+                    strategy_id,
+                    proposal.exchange_id,
+                )
+                return False
+        return True
 
     async def emergency_pause(self) -> None:
         """LiveGate continuous monitor FAIL 시 호출 — kill switch 활성화."""

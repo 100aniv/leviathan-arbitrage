@@ -2619,11 +2619,29 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 **원인**: 네트워크 일시 중단 또는 거래소 서버 측 keepalive 타임아웃. 장기 실행 세션(6H+)에서 정상 패턴.
 **조치**: 자동 재연결 후 복구 확인 필요. ping_timeout이 반복(>5회/시간)되면 타임아웃 설정 검토.
 
+#### BUG-22 [HIGH]: RiskGuardian live.py 경로 미연결 + max_position_pct 충돌 (✅ v39 수정)
+
+**근본 원인**: live.py가 `hasattr(guardian, 'check_trade_request')`로 탐색하지만 해당 메서드가 없어 `approved=True` 기본값으로 bypass. 또한 `risk.max_position_pct=3.0%`가 `base_position_pct=5.0%`와 충돌 → 제대로 연결 시 $6.00 > $120×3%=$3.60 → 모든 FF 거래 거부.
+
+**발견 경위**: guardian.check() 시그니처 감사 중 발견. `check_trade_request`/`approve` 메서드 0건 (grep 확인).
+
+**수정 내용**:
+1. `risk.max_position_pct: 3.0 → 6.0` (`$120×6%=$7.20 ≥ $6 trade`) — engine.json
+2. `live.max_position_pct: 3.0 → 6.0` — engine.json  
+3. `RiskGuardian.check_trade_request()` 신규 메서드 추가 — guardian.py (Check #0/#1/#4/#6/#8 실행)
+4. live.py: `check_trade_request(trade_request, self._total_capital_usd)` 호출로 연결
+
+**검증**:
+- `risk_check_trade_request_rejected` 로그 없음 = 정상 통과
+- Check #0 (halt): KillSwitch 활성 시 FF 즉시 차단 확인
+- `$6.00 ≤ $7.20 max_position_value` → Check #1 통과
+
 ### v38 변경사항 (BUG-20)
 
 | 커밋 | 내용 |
 |------|------|
-| *(이 커밋)* | BUG-20: `strategy_params.json futures_futures.min_spread_bps 20→15` (수수료 재계산) |
+| e55d8fe | BUG-20: `strategy_params.json futures_futures.min_spread_bps 20→15` (수수료 재계산) |
+| 359f9a6 | engine.json: `futures_min_spread_bps 30→15` (sync) |
 
 | 항목 | v37 | v38 |
 |------|-----|-----|
@@ -2631,3 +2649,12 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 | 예상 수수료 기준 | 20bps (0.10%+0.10%) | 11bps (Binance5+Bitget6) |
 | 버퍼 | 0bps (이론상 손익분기) | **4bps** (원설계 의도) |
 | 시장 포착 | 0건/6H (10-16bps 전량 거부) | 15-16bps 구간 거래 가능 |
+
+### v39 변경사항 (BUG-22)
+
+| 항목 | v38 | v39 |
+|------|-----|-----|
+| risk.max_position_pct | 3.0% ($3.60) | **6.0%** ($7.20) |
+| live.max_position_pct | 3.0% | **6.0%** |
+| guardian.check_trade_request() | 없음 (bypass) | **구현 완료** |
+| RiskGuardian Check #0 live 경로 | 미실행 | **실행** |

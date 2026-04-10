@@ -229,6 +229,16 @@ class LiveMode(BaseMode):
         self._stats = LiveModeStats(start_time=time.monotonic())
         self._fee_model = FeeModel()
 
+        # BUG-22: total capital for RiskGuardian.check_trade_request() — read from config tier
+        try:
+            from src.core.config_loader import get_config as _gc
+            _tier = _gc("capital.tier", default="step2_1")
+            self._total_capital_usd: float = float(
+                _gc(f"capital.tiers.{_tier}.initial_usd", default=120.0)
+            )
+        except Exception:
+            self._total_capital_usd = 120.0
+
         # Orderbook store: symbol -> exchange_id -> OrderBook
         self._books: dict[str, dict[str, Any]] = {}
         self._orderbook_cls = get_orderbook_class()
@@ -884,7 +894,9 @@ class LiveMode(BaseMode):
             try:
                 approved = True
                 if hasattr(self._risk_guardian, 'check_trade_request'):
-                    approved = self._risk_guardian.check_trade_request(trade_request)
+                    approved = self._risk_guardian.check_trade_request(
+                        trade_request, self._total_capital_usd
+                    )
                 elif hasattr(self._risk_guardian, 'approve'):
                     approved = self._risk_guardian.approve(trade_request)
                 if not approved:
