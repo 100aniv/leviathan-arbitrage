@@ -759,8 +759,8 @@ class ComplianceChecker:
                 conn = await self._db_pool.acquire()
                 try:
                     # Verify DB is reachable and execution_log table exists (core WAL target)
-                    import os as _os
-                    _mode = _os.getenv("EXECUTION_MODE", "live")
+                    from src.core.config_loader import get_config as _get_config
+                    _mode = _get_config("mode", default="live")
                     result = await conn.fetchval(
                         "SELECT COUNT(*) FROM execution_log WHERE mode = $1",
                         _mode,
@@ -831,7 +831,8 @@ class ComplianceChecker:
         if ok and cls is not None:
             gamma = getattr(cls, "GAMMA", None)
             gamma_calibrated = getattr(cls, "GAMMA_CALIBRATED", False)
-            gamma_from_env = os.getenv("SLIPPAGE_GAMMA") is not None
+            from src.core.config_loader import get_config as _gc
+            gamma_from_env = os.getenv("SLIPPAGE_GAMMA") is not None or _gc("slippage.gamma") is not None
             if gamma is not None and (gamma_calibrated or gamma_from_env):
                 items.append(ComplianceItem(
                     category="slippage",
@@ -1016,8 +1017,11 @@ class ComplianceChecker:
                 detail="src.risk.kill_switch not importable",
             ))
 
-        # 5d. Atomic executor leg timeout (LEG_TIMEOUT_MS env var)
-        leg_timeout = os.getenv("LEG_TIMEOUT_MS")
+        # 5d. Atomic executor leg timeout (engine.json or LEG_TIMEOUT_MS env var)
+        from src.core.config_loader import get_config as _gc
+        leg_timeout = os.getenv("LEG_TIMEOUT_MS") or (
+            str(_gc("execution.leg_timeout_ms")) if _gc("execution.leg_timeout_ms") else None
+        )
         if leg_timeout is not None:
             items.append(ComplianceItem(
                 category="race_condition",

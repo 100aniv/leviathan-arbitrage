@@ -481,13 +481,14 @@ class TradeTelegramBot(TelegramBotBase):
 
     async def _cmd_params(self, text: str, chat_id: int, message: dict) -> str | None:
         """핵심 파라미터 조회."""
+        from src.core.config_loader import get_config as _gc
         params: dict[str, str] = {
-            "MIN_EDGE_BPS": os.getenv("MIN_EDGE_BPS", "5"),
-            "MDD_LIMIT": os.getenv("MDD_LIMIT", "0.05"),
-            "MAX_POSITION_SIZE": os.getenv("MAX_POSITION_SIZE", "1000"),
-            "SLIPPAGE_GAMMA": os.getenv("SLIPPAGE_GAMMA", "0.5"),
+            "MIN_EDGE_BPS": str(_gc("risk.min_edge_bps", default=_gc("strategy_filters.min_edge_bps", default=5))),
+            "MDD_LIMIT": str(_gc("dynamic_risk.max_drawdown_pct", default=0.05)),
+            "MAX_POSITION_SIZE": str(_gc("risk.max_position_usd", default=1000)),
+            "SLIPPAGE_GAMMA": str(_gc("slippage.gamma", default=0.5)),
             "ENGINE_ENV": os.getenv("ENGINE_ENV", "dev"),
-            "EXECUTION_MODE": os.getenv("EXECUTION_MODE", "paper"),
+            "EXECUTION_MODE": str(_gc("mode", default="paper")),
         }
 
         # Engine context params
@@ -696,7 +697,8 @@ class TradeTelegramBot(TelegramBotBase):
             "paper": "🟢 [PAPER]",
             "live": "🔴 [LIVE]",
         }
-        _raw_mode = os.getenv("EXECUTION_MODE", "paper").lower()
+        from src.core.config_loader import get_config as _gc
+        _raw_mode = str(_gc("mode", default=os.getenv("EXECUTION_MODE", "paper"))).lower()
         _default_prefix = _mode_prefixes.get(_raw_mode, f"[{_raw_mode.upper()}]")
         mode = data.get("mode") or _default_prefix
         mode_prefix = f"{mode} "
