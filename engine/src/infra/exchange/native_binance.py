@@ -263,10 +263,18 @@ class BinanceNativeAdapter(NativeAdapter):
                     _code_m = _re.search(r"'code':\s*(-?\d+)", _mt_str)
                     _mt_code = _code_m.group(1) if _code_m else ""
                 # -4059: MARGIN_TYPE_IS_NOT_SUPPORTED (symbol only supports CROSS) — non-fatal
-                if _mt_code in ("-4059",):
+                # -4046: already set to ISOLATED — non-fatal
+                # -4048: already set to CROSS — non-fatal
+                # -4168: Multi-Assets Mode active — marginType change not allowed, order proceeds
+                if _mt_code in ("-4059", "-4046", "-4048"):
                     logger.info(
                         "margin_type_not_supported symbol=%s code=%s — CROSS margin 유지, 주문 계속",
                         order.symbol, _mt_code,
+                    )
+                elif _mt_code == "-4168":
+                    logger.info(
+                        "binance_multi_assets_mode symbol=%s — marginType 변경 불필요, 주문 계속",
+                        order.symbol,
                     )
                 else:
                     logger.warning(
@@ -329,7 +337,29 @@ class BinanceNativeAdapter(NativeAdapter):
 
         import asyncio as _asyncio
         path = "/fapi/v1/order" if self._market_type == "futures" else "/api/v3/order"
-        raw = await self._signed_request("POST", path, params=params)
+        try:
+            raw = await self._signed_request("POST", path, params=params)
+        except Exception as _place_exc:
+            # BUG-43: -2022 "ReduceOnly Order is rejected" — no position to close.
+            # This happens when we try to unwind an exit fill that already closed the position.
+            # Treat as benign no-op: the position is already resolved.
+            if "-2022" in str(_place_exc) and order.metadata.get("reduceOnly"):
+                # -2022 "ReduceOnly Order is rejected" = no position to close.
+                # The desired outcome (position = 0) is already achieved.
+                # Return full amount so the executor treats this as a successful close,
+                # consistent with Bitget 22002 handling (ghost-cleared).
+                logger.info(
+                    "binance_reduce_only_rejected_no_position symbol=%s side=%s — "
+                    "position already closed, treating as ghost-cleared success",
+                    order.symbol, order.side,
+                )
+                return self._build_trade(
+                    order=order,
+                    trade_id=f"ghost-cleared-{order.order_id}",
+                    price=order.price or Decimal("0"),
+                    amount=order.amount,
+                )
+            raise
 
         trade_id = str(raw.get("orderId", ""))
 
