@@ -2560,6 +2560,17 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 | crash | 0 |
 | 주요 로그 스팸 | coinone CFG/USDT stale data (10.35% > 10% threshold) — 비기능적 |
 
+### v37 변경사항 (BUG-18 + CFG 제외)
+
+| 커밋 | 내용 |
+|------|------|
+| `7582f56` | BUG-18: `_margin_refresh_loop` + `_route_signal_to_strategies` margin 주입 |
+| `a2884e3` | CFG `futures_excluded_symbols` 추가 — coinone stale 스팸 제거 |
+
+- **기대 효과**: `futures_futures.evaluate()` margin check 활성화 → Binance -2019 사전 방지
+- **검증 로그**: `live_mode.margin_cache_updated ex=binance_futures margin=XXX.XX` (60초 내)
+- **테스트**: 5,493 passed, 0 failed (이전 13 실패 → 0)
+
 ### 발견된 구조적 문제 (v33~v36 분석)
 
 | 문제 | 상태 | 우선순위 |
