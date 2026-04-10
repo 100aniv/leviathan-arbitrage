@@ -481,21 +481,34 @@ class FuturesFuturesStrategy(BaseStrategy):
                     )
                     return None
 
-        buy_cost = self._cost_calculator.estimate_cost(
-            exchange_id=signal.buy_exchange,
-            symbol=signal.symbol,
-            side=OrderSide.BUY,
-            size=size,
-            price=signal.buy_price,
-        )
-        sell_cost = self._cost_calculator.estimate_cost(
-            exchange_id=signal.sell_exchange,
-            symbol=signal.symbol,
-            side=OrderSide.SELL,
-            size=size,
-            price=signal.sell_price,
-        )
-        total_cost = buy_cost + sell_cost
+        buy_notional = signal.buy_price * size
+        sell_notional = signal.sell_price * size
+        # BUG-14 fix: use estimate_futures_cost — single rollback, no network cost
+        # (futures P&L settled in USDT; prior 2×estimate_cost doubled rollback $0.25×2=$0.50)
+        if hasattr(self._cost_calculator, "estimate_futures_cost"):
+            total_cost = self._cost_calculator.estimate_futures_cost(
+                buy_exchange=signal.buy_exchange,
+                sell_exchange=signal.sell_exchange,
+                buy_notional=buy_notional,
+                sell_notional=sell_notional,
+            )
+        else:
+            # Fallback for stub: fees only via estimate_cost (no network, no rollback)
+            buy_cost = self._cost_calculator.estimate_cost(
+                exchange_id=signal.buy_exchange,
+                symbol=signal.symbol,
+                side=OrderSide.BUY,
+                size=size,
+                price=signal.buy_price,
+            )
+            sell_cost = self._cost_calculator.estimate_cost(
+                exchange_id=signal.sell_exchange,
+                symbol=signal.symbol,
+                side=OrderSide.SELL,
+                size=size,
+                price=signal.sell_price,
+            )
+            total_cost = buy_cost + sell_cost
         gross_profit = (signal.sell_price - signal.buy_price) * size
         net_profit = gross_profit - total_cost
 

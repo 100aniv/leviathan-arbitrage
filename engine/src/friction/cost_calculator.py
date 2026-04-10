@@ -140,6 +140,29 @@ class CostCalculator:
         rollback_cost = self.expected_rollback_cost(Decimal("5"))
         return fee + network_cost + rollback_cost
 
+    def estimate_futures_cost(
+        self,
+        buy_exchange: str,
+        sell_exchange: str,
+        buy_notional: Decimal,
+        sell_notional: Decimal,
+    ) -> Decimal:
+        """Two-leg futures cost: taker fees + rollback ONCE (no network transfer).
+
+        Futures P&L is settled in USDT on-exchange — no ETH withdrawal needed.
+        Rollback cost is computed from actual notional (not hardcoded $5) to avoid
+        over-penalising small trades where $5 >> actual close cost.
+        """
+        buy_ex = buy_exchange.removeprefix("paper_").removeprefix("sandbox_")
+        sell_ex = sell_exchange.removeprefix("paper_").removeprefix("sandbox_")
+        fee_buy = self._fee_model.taker_fee(buy_ex, buy_notional)
+        fee_sell = self._fee_model.taker_fee(sell_ex, sell_notional)
+        # Rollback: cost to market-close one leg ≈ buy-side taker fee on avg notional
+        avg_notional = (buy_notional + sell_notional) / 2
+        avg_rollback_usd = self._fee_model.taker_fee(buy_ex, avg_notional)
+        rollback_cost = self.expected_rollback_cost(avg_rollback_usd)
+        return fee_buy + fee_sell + rollback_cost
+
     def calculate(
         self,
         buy_exchange: str,
