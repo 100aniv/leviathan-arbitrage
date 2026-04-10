@@ -68,14 +68,14 @@
     "enable_ou_filter": false
   },
   "futures_futures": {
-    "min_spread_bps": 20.0,
+    "min_spread_bps": 15.0,
     "entry_threshold": 0.00025557303057935484,
     "exit_threshold": 6.82596457666553e-05,
     "stop_loss_pct": 0.00501931310745825,
     "status": "READY",
     "wfe": 5.926861262589432,
     "data_type": "real_calibrated",
-    "_note": "2026-04-09: synthetic_gbm 47.51\u219215 recalibrated from 5H live market (10-57bps observed)"
+    "_note": "2026-04-09: synthetic_gbm 47.51\u219215 recalibrated from 5H live market (10-57bps observed). BUG-20 2026-04-11: 20\u219215bps (Bitget fee corrected 0.10\u21920.06%, actual fee=11bps Binance5+Bitget6, 4bps buffer preserved)"
   },
   "triangular": {
     "min_spread_bps": 2.0,
@@ -120,6 +120,6 @@
     "best_values": {
       "cross_exchange": 1.2
     },
-    "timestamp": "2026-04-10T06:09:43.696502+00:00"
+    "timestamp": "2026-04-10T15:40:19.208316+00:00"
   }
 }

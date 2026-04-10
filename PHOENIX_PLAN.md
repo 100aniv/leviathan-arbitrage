@@ -2589,7 +2589,45 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 ### 다음 감사 항목
 - [x] BUG-18 수정: margin_refresh_loop + _route_signal_to_strategies margin 주입 (v37 완료)
 - [x] CFG/USDT `futures_excluded_symbols`에 추가 (coinone 10.35% 편차) — v37
+- [x] BUG-20 수정: `min_spread_bps` 20→15bps (v38 — 수수료 재계산 기반)
 - [ ] WAL 보존 주기 설정 (`postgresql.conf archive_cleanup_command`)
-- [ ] v37 기동 후 `live_mode.margin_cache_updated` 로그 확인 → margin check 활성화 검증
-- [ ] v37 체결 누적 모니터링 (BUG-18 수정 후 -2019 오류 소멸 확인)
+- [ ] v38 기동 후 `live_mode.margin_cache_updated` 로그 확인 → margin check 활성화 검증
+- [ ] v38 체결 누적 모니터링 (BUG-18 수정 + 15bps 임계값으로 첫 FF 체결 확인)
 - [ ] US-430: shadow 모드 파일 → paper 리네임
+
+---
+
+#### BUG-20 [MEDIUM]: `min_spread_bps=20` 수수료 재계산 후 과보수적 — 모든 FF 시그널 거부 (✅ v38 수정)
+
+**발견**: v36 6H 운영 로그 분석. FF 시그널 수백건이 `reason=min_spread` (10-16bps) 거부.
+**원인**: `strategy_params.json futures_futures.min_spread_bps=20` 설정이 가정한 수수료(0.10%+0.10%=20bps)에서 산출됨. 그러나 BUG-20 이전에 Bitget Futures 수수료가 0.10%→0.06%로 수정되어 실제 수수료 총합 = Binance 5bps + Bitget 6bps = **11bps**.
+**결과**: 20bps 임계값 = 9bps 버퍼 (원설계의 4bps보다 훨씬 높음). 실시장 스프레드 10-16bps가 전량 거부.
+**수정**: `strategy_params.json futures_futures.min_spread_bps: 20.0 → 15.0`
+- 15 - 11 = 4bps 버퍼 (원설계 의도와 동일)
+- 실시장 10-16bps 스프레드 중 15-16bps 구간 거래 가능
+- net_profit_negative 백스톱이 추가 보호 제공 (estimate_futures_cost 기반)
+**파일**: `engine/config/strategy_params.json`
+
+**BUG-20 관련 확인사항**:
+- `futures_min_spread_bps=30` in `engine.json strategy_filters` → `config is None` 시에만 사용 (main.py는 항상 config 제공 → **dead config**). 혼란 방지를 위해 일치 필요.
+- `adaptive_static_entry_bps=60` in `engine.json` → outlier cap용, entry floor 아님 — 정상.
+
+#### BUG-21 [INFO]: WebSocket keepalive ping timeout 반복 (자동 재연결로 복구)
+
+**발견**: v36 로그 00:31-00:34 구간 — 전 거래소 `collector_error: keepalive ping timeout` 동시 발생.
+**영향**: BTC/USDT stale_detector.blacklist_already_active → WS 재연결 기간 동안 BTC 신호 차단.
+**원인**: 네트워크 일시 중단 또는 거래소 서버 측 keepalive 타임아웃. 장기 실행 세션(6H+)에서 정상 패턴.
+**조치**: 자동 재연결 후 복구 확인 필요. ping_timeout이 반복(>5회/시간)되면 타임아웃 설정 검토.
+
+### v38 변경사항 (BUG-20)
+
+| 커밋 | 내용 |
+|------|------|
+| *(이 커밋)* | BUG-20: `strategy_params.json futures_futures.min_spread_bps 20→15` (수수료 재계산) |
+
+| 항목 | v37 | v38 |
+|------|-----|-----|
+| FF min_spread_bps | 20bps | **15bps** |
+| 예상 수수료 기준 | 20bps (0.10%+0.10%) | 11bps (Binance5+Bitget6) |
+| 버퍼 | 0bps (이론상 손익분기) | **4bps** (원설계 의도) |
+| 시장 포착 | 0건/6H (10-16bps 전량 거부) | 15-16bps 구간 거래 가능 |
