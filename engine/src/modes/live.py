@@ -319,6 +319,10 @@ class LiveMode(BaseMode):
         from src.execution.margin_tracker import MarginTracker
         self._margin_tracker = MarginTracker()
 
+        # BUG-18 fix: cached margin_available per futures exchange (refreshed every 60s)
+        # produce_futures_futures_signal() has no adapter access, so we inject here.
+        self._cached_margin: dict[str, Decimal] = {}
+
         # TradeReconciler: exchange fill reconciliation (PHOENIX v18 P0)
         from src.execution.trade_reconciler import TradeReconciler
         self._trade_reconciler = TradeReconciler(db_pool=db_pool, telegram=telegram)
@@ -521,6 +525,9 @@ class LiveMode(BaseMode):
 
         # TradeReconciler 10-min periodic loop (PHOENIX v18 P0)
         asyncio.create_task(self._trade_reconciler_loop(), name="live_trade_recon")
+
+        # BUG-18 fix: margin cache refresh loop (every 60s)
+        asyncio.create_task(self._margin_refresh_loop(), name="live_margin_refresh")
 
         # Inject MarginTracker into futures_futures strategy
         if self._strategy_manager is not None:
@@ -769,6 +776,14 @@ class LiveMode(BaseMode):
         """
         if self._strategy_manager is None:
             return
+
+        # BUG-18 fix: inject cached margin_available into futures signal metadata.
+        # produce_futures_futures_signal() has no adapter access at signal time,
+        # so margin_available would always be "0" → margin check silently skipped.
+        if signal.strategy_id == "futures_futures_spread" and signal.buy_exchange:
+            cached = self._cached_margin.get(signal.buy_exchange)
+            if cached and cached > Decimal("0"):
+                signal.metadata["margin_available"] = str(cached)
 
         try:
             trade_requests = await self._strategy_manager.route_signal(signal)
@@ -1540,6 +1555,33 @@ class LiveMode(BaseMode):
                                 self._execute_trade_request(_exit_req),
                                 name="ff_exit_trade",
                             )
+
+    async def _margin_refresh_loop(self) -> None:
+        """BUG-18 fix: every 60s, refresh cached margin_available per futures exchange.
+
+        produce_futures_futures_signal() has no adapter access, so margin_available is
+        injected into signal metadata in _route_signal_to_strategies() from this cache.
+        """
+        while self._running:
+            try:
+                executor = self._executor
+                exchanges_dict: dict = getattr(executor, "_exchanges", None) or {}
+                futures_adapters = {k: v for k, v in exchanges_dict.items() if "futures" in k}
+                for ex_id, adapter in futures_adapters.items():
+                    try:
+                        balances = await adapter.get_balances()
+                        usdt = balances.get("USDT")
+                        if usdt is not None:
+                            self._cached_margin[ex_id] = usdt.free
+                            logger.debug(
+                                "live_mode.margin_cache_updated ex=%s margin=%.2f",
+                                ex_id, float(usdt.free),
+                            )
+                    except Exception as exc:
+                        logger.debug("live_mode.margin_refresh_failed ex=%s error=%s", ex_id, exc)
+            except Exception as exc:
+                logger.debug("live_mode.margin_refresh_loop_error error=%s", exc)
+            await asyncio.sleep(60.0)
 
     async def _trade_reconciler_loop(self) -> None:
         """Every 10 minutes: reconcile internal execution_log vs exchange fill history (PHOENIX v18 P0)."""

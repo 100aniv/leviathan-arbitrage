@@ -2524,12 +2524,18 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 - **원인**: 다수 포지션 연속 청산 시 Bitget 2req/s 제한 초과 → 429 오류
 - **수정**: Bitget 거래소 청산 전 `await asyncio.sleep(0.5)` 추가
 
-#### BUG-18 [HIGH]: Binance -2019 Margin insufficient 미처리 (⚠️ 미완료)
+#### BUG-18 [HIGH]: Binance -2019 Margin insufficient 미처리 (✅ v37 수정 완료)
 - **증상**: v33/v34에서 `Margin is insufficient` → 새 포지션 진입 실패 + 롤백 시 Bitget 22002 ghost
-- **원인**: max_concurrent_trades=2 이내라도 기존 포지션 unrealized_loss가 누적되면 마진 고갈 가능
-  RiskGuardian이 거래소 실마진 잔고를 확인하지 않음 (used_capital은 내부 추적값)
-- **임시 대응**: v36에서 새 세션 시작으로 clean state 확보
-- **근본 수정 필요**: `_check_margin_before_order()` 거래소 실잔고 조회 후 포지션 진입 결정
+- **원인 1**: `produce_futures_futures_signal()` 가 signal.metadata에 `margin_available` 키를 포함하지 않음
+  → `futures_futures.evaluate()` 의 마진 체크 (`if margin_available > 0`) 가 항상 스킵됨
+  → MarginTracker.check_and_reserve() 도 절대 호출되지 않음
+- **원인 2**: `produce_futures_futures_signal()`는 adapter 접근 불가 → 잔고 조회 불가능
+- **수정** (`engine/src/modes/live.py`):
+  - `_cached_margin: dict[str, Decimal] = {}` 추가 (`__init__`)
+  - `_margin_refresh_loop()` 추가: 60초마다 `adapter.get_balances()` 로 USDT free 잔고 캐시
+  - `_route_signal_to_strategies()` 에서 futures 신호 라우팅 전 `signal.metadata["margin_available"]` 주입
+  - `asyncio.create_task(self._margin_refresh_loop(), name="live_margin_refresh")` 시작
+- **검증**: `live_mode.margin_cache_updated ex=binance_futures margin=XXX.XX` 로그 확인 후 margin check 활성화
 
 ### 테스트 전면 수정 (17건 실패 → 0건)
 
@@ -2558,7 +2564,7 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 
 | 문제 | 상태 | 우선순위 |
 |------|------|---------|
-| Binance -2019 실마진 미확인 (BUG-18) | ⚠️ 미완료 | P0 |
+| Binance -2019 실마진 미확인 (BUG-18) | ✅ margin_refresh_loop + 신호 메타데이터 주입 | P0 |
 | CFG/USDT coinone stale 스팸 (10.35% 편차) | ⚠️ CFG excluded 추가 필요 | P1 |
 | WAL 보존 주기 자동화 미설정 | ⚠️ 미완료 | P1 |
 | shadow 모드 파일 잔존 (shadow.py, progressive_shadow.py) | ⚠️ US-430 예정 | P2 |
@@ -2570,8 +2576,9 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 **테스트 격리 수정**: `test_main_engine.py::TestEngineInitConfig`의 두 테스트가 `_apply_trading_json_defaults()`를 통해 `os.environ["PAPER_DISABLED_STRATEGIES"]`를 영구 설정 → shadow_arb_v1 비활성화 → 13개 shadow 테스트 실패. 수정: `patch.dict(os.environ, {}, clear=False)` 추가.
 
 ### 다음 감사 항목
-- [ ] BUG-18 수정: RiskGuardian에 거래소 실마진 잔고 조회 추가
+- [x] BUG-18 수정: margin_refresh_loop + _route_signal_to_strategies margin 주입 (v37 완료)
 - [ ] CFG/USDT `futures_excluded_symbols`에 추가 (coinone 10.35% 편차)
 - [ ] WAL 보존 주기 설정 (`postgresql.conf archive_cleanup_command`)
-- [ ] v36 체결 누적 모니터링 (PnL 양전환 확인)
+- [ ] v37 기동 후 `live_mode.margin_cache_updated` 로그 확인 → margin check 활성화 검증
+- [ ] v37 체결 누적 모니터링 (BUG-18 수정 후 -2019 오류 소멸 확인)
 - [ ] US-430: shadow 모드 파일 → paper 리네임
