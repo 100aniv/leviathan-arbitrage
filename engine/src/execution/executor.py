@@ -903,8 +903,35 @@ class AtomicExecutor:
                     reason=f"leg2_partial_fill_rollback_failed:{rb2_reason}",
                 )
 
-        # If leg1 was filled, place opposing order to unwind; otherwise cancel
+        # BUG-42: exit leg1 filled + leg2 failed → do NOT unwind leg1 (already closed).
+        # The stranded position is the UNCLOSED side on ex_b (leg2), not ex_a.
+        _leg1_is_exit = bool(leg1_order.metadata.get("reduceOnly"))
         leg1_filled = leg1_result.trade is not None and leg1_result.filled_amount > 0
+        if _leg1_is_exit and leg1_filled:
+            ex_b_id_strd = leg2_result.order.exchange_id if leg2_result.order else ex_b_id
+            should_halt = self._stranded_tracker.register(
+                exchange_id=ex_b_id_strd,
+                symbol=leg1_order.symbol,
+                side=str(leg2_result.order.side) if leg2_result.order else "unknown",
+                size=float(leg1_result.filled_amount),
+                value_usd=float(leg1_result.filled_amount * (leg1_order.price or Decimal("0"))),
+                reason=f"exit_leg1_filled_leg2_failed_short_stranded:{reason}",
+            )
+            if should_halt:
+                halt_local()
+            logger.critical(
+                "do_rollback_cross: exit_leg1_filled_leg2_failed "
+                "short_stranded exchange=%s symbol=%s HALT_SET=%s reason=%s",
+                ex_b_id_strd, leg1_order.symbol, should_halt, reason,
+            )
+            return ExecutionResult(
+                status=ExecutionStatus.ROLLBACK_FAILED,
+                legs=[leg1_result, leg2_result],
+                error=f"Exit leg1 filled, leg2 failed — unclosed short stranded on {ex_b_id_strd}: {reason}",
+                strategy_id=strategy_id,
+            )
+
+        # If leg1 was filled, place opposing order to unwind; otherwise cancel
         trade_order_id = leg1_result.trade.order_id if leg1_result.trade else None
         rb_ok, rb_reason = await self._rollback_order(
             ex_a_id, leg1_order, order_id=trade_order_id, filled=leg1_filled,

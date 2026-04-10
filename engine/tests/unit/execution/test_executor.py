@@ -466,7 +466,7 @@ async def test_rollback_order_falls_back_when_symbol_kwarg_raises_type_error(
     exchange_a.cancel_order = AsyncMock(side_effect=cancel_raise_on_symbol)
     order = make_order("binance", OrderSide.BUY)
     order.order_id = "ord_xyz"
-    result = await executor._rollback_order("binance", order)
+    result, _ = await executor._rollback_order("binance", order)
     assert result is True
 
 
@@ -478,7 +478,7 @@ async def test_rollback_order_returns_false_when_cancel_raises_runtime_error(
     exchange_a.cancel_order = AsyncMock(side_effect=RuntimeError("exchange error"))
     order = make_order("binance", OrderSide.BUY)
     order.order_id = "ord_fail"
-    result = await executor._rollback_order("binance", order)
+    result, _ = await executor._rollback_order("binance", order)
     assert result is False
 
 
@@ -489,7 +489,7 @@ async def test_rollback_order_returns_true_when_order_id_is_none(
     """_rollback_order returns True without calling cancel_order when order_id is None."""
     order = make_order("binance", OrderSide.BUY)
     order.order_id = ""  # Empty string — no cancel needed
-    result = await executor._rollback_order("binance", order)
+    result, _ = await executor._rollback_order("binance", order)
     assert result is True
     exchange_a.cancel_order.assert_not_called()
 
@@ -514,7 +514,7 @@ async def test_rollback_order_returns_false_for_unknown_exchange(
     """_rollback_order returns False immediately when exchange is not found."""
     order = make_order("unknown_exchange", OrderSide.BUY)
     order.order_id = "ord_001"
-    result = await executor._rollback_order("unknown_exchange", order)
+    result, _ = await executor._rollback_order("unknown_exchange", order)
     assert result is False
 
 
@@ -572,7 +572,8 @@ async def test_rollback_order_filled_places_market_unwind(
         "binance", order, filled=True, filled_amount=Decimal("1.8")
     )
 
-    assert result is True
+    ok, _ = result
+    assert ok is True
     exchange_a.place_order.assert_called_once()
     placed = exchange_a.place_order.call_args[0][0]
     assert placed.side == OrderSide.SELL  # opposite of BUY
@@ -893,3 +894,132 @@ def test_backward_compat_empty_legs() -> None:
     result = ExecutionResult(status=ExecutionStatus.REJECTED, legs=[])
     assert result.leg1 is None
     assert result.leg2 is None
+
+
+# ---------------------------------------------------------------------------
+# DeduplicationGate tests (PHOENIX v32 — Bug 26 fix)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dedup_gate_blocks_duplicate_cross_exchange(
+    executor: AtomicExecutor,
+    exchange_a: MagicMock,
+    exchange_b: MagicMock,
+) -> None:
+    """Second execute_cross_exchange call for same strategy+symbol within window is rejected."""
+    order_a = make_order("binance", OrderSide.BUY)
+    order_b = make_order("okx", OrderSide.SELL)
+    # First call should succeed (dedup allows it)
+    result1 = await executor.execute_cross_exchange(
+        leg1_order=order_a,
+        leg2_order=order_b,
+        strategy_id="test_strategy",
+        min_edge=Decimal("0.0001"),
+    )
+    # Second call with same strategy+symbol should be blocked by dedup gate
+    result2 = await executor.execute_cross_exchange(
+        leg1_order=order_a,
+        leg2_order=order_b,
+        strategy_id="test_strategy",
+        min_edge=Decimal("0.0001"),
+    )
+    assert result2.status == ExecutionStatus.REJECTED
+    assert result2.error == "dedup_gate_blocked"
+
+
+@pytest.mark.asyncio
+async def test_dedup_gate_allows_different_symbols(
+    executor: AtomicExecutor,
+) -> None:
+    """Different symbols for same strategy are NOT blocked by dedup gate."""
+    order_a = make_order("binance", OrderSide.BUY)
+    order_b = make_order("okx", OrderSide.SELL)
+    eth_order_a = Order(
+        exchange_id="binance", symbol="ETH/USDT",
+        side=OrderSide.BUY, order_type=OrderType.LIMIT,
+        price=Decimal("3000"), amount=Decimal("1.0"),
+    )
+    eth_order_b = Order(
+        exchange_id="okx", symbol="ETH/USDT",
+        side=OrderSide.SELL, order_type=OrderType.LIMIT,
+        price=Decimal("3001"), amount=Decimal("1.0"),
+    )
+    # Register BTC trade
+    await executor.execute_cross_exchange(
+        leg1_order=order_a, leg2_order=order_b,
+        strategy_id="test_strategy", min_edge=Decimal("0.0001"),
+    )
+    # ETH trade should NOT be blocked
+    result = await executor.execute_cross_exchange(
+        leg1_order=eth_order_a, leg2_order=eth_order_b,
+        strategy_id="test_strategy", min_edge=Decimal("0.0001"),
+    )
+    assert result.error != "dedup_gate_blocked"
+
+
+# ---------------------------------------------------------------------------
+# BUG-42: exit leg1 filled + leg2 failed — no incorrect unwind, correct stranded tracking
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_do_rollback_cross_exit_leg1_filled_leg2_failed_no_unwind(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """BUG-42: When exit leg1 (reduceOnly) fills and leg2 fails,
+    _do_rollback_cross must NOT place an unwind on ex_a (position already closed).
+    It must register stranded on ex_b and return ROLLBACK_FAILED.
+    place_order on exchange_a must NOT be called (no unwind attempt)."""
+    from src.risk.kill_switch import is_halted
+
+    # exit leg1 = SELL reduceOnly (closes long on binance_futures)
+    leg1_order = make_order("binance", OrderSide.SELL)
+    leg1_order.order_id = "exit_ord_001"
+    leg1_order.metadata = {"reduceOnly": True, "leg_type": "futures_close"}
+
+    leg1_trade = make_trade("binance", side=OrderSide.SELL, amount=Decimal("1.0"))
+    leg1_result = LegResult(order=leg1_order, trade=leg1_trade)
+
+    # leg2 failed (BUY reduceOnly on okx — closes short, timed out)
+    leg2_order = make_order("okx", OrderSide.BUY)
+    leg2_order.metadata = {"reduceOnly": True, "leg_type": "futures_close"}
+    leg2_result = LegResult(order=leg2_order, error="timeout")
+
+    result = await executor._do_rollback_cross(
+        "binance", leg1_order, leg1_result, leg2_result, "ff_strat", "Leg 2 timeout"
+    )
+
+    # Must NOT try to unwind on ex_a (long already closed by exit SELL)
+    exchange_a.place_order.assert_not_called()
+    # Must return ROLLBACK_FAILED (stranded short on okx is unresolved)
+    assert result.status == ExecutionStatus.ROLLBACK_FAILED
+    assert "stranded" in result.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_do_rollback_cross_entry_leg1_filled_leg2_failed_does_unwind(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """BUG-42 regression: non-exit (entry) leg1 filled + leg2 failed MUST still unwind on ex_a."""
+    unwind_trade = make_trade("binance", side=OrderSide.SELL)
+    exchange_a.place_order = AsyncMock(return_value=unwind_trade)
+
+    # entry leg1 = BUY (no reduceOnly) — normal entry
+    leg1_order = make_order("binance", OrderSide.BUY)
+    leg1_order.order_id = "entry_ord_001"
+    leg1_order.metadata = {"leg_type": "futures"}  # no reduceOnly
+
+    leg1_trade = make_trade("binance", side=OrderSide.BUY, amount=Decimal("1.0"))
+    leg1_result = LegResult(order=leg1_order, trade=leg1_trade)
+
+    leg2_result = LegResult(order=make_order("okx", OrderSide.SELL), error="timeout")
+
+    await executor._do_rollback_cross(
+        "binance", leg1_order, leg1_result, leg2_result, "ff_strat", "Leg 2 timeout"
+    )
+
+    # Entry leg1 filled → unwind (opposing MARKET order) MUST be attempted on ex_a
+    exchange_a.place_order.assert_called_once()
+    placed = exchange_a.place_order.call_args[0][0]
+    assert placed.side == OrderSide.SELL  # opposite of BUY entry
