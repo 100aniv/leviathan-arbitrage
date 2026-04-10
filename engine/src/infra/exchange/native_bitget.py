@@ -11,7 +11,7 @@ from decimal import Decimal
 from typing import Any
 
 from src.core.config_loader import get_config
-from src.core.models import Balance, FeeRate, Order, OrderBook, OrderSide, Position, Trade
+from src.core.models import Balance, FeeRate, Order, OrderBook, OrderSide, OrderType, Position, Trade
 from src.infra.exchange.native_adapter import NativeAdapter
 from src.infra.exchange.rate_limiter import RateLimitConfig
 
@@ -264,6 +264,9 @@ class NativeBitgetAdapter(NativeAdapter):
                         "bitget_futures_min_notional_adjusted symbol=%s qty=%s notional=%.2f",
                         order.symbol, qty, float(qty * order.price),
                     )
+            # BUG-26: respect order.order_type — do NOT default to LIMIT just because price is set.
+            # MARKET orders need "market"/"ioc" even when price is provided (used for margin checks).
+            _is_market = order.order_type == OrderType.MARKET
             body: dict[str, Any] = {
                 "symbol": sym,
                 "productType": "USDT-FUTURES",
@@ -272,8 +275,8 @@ class NativeBitgetAdapter(NativeAdapter):
                 "size": str(qty),
                 "side": side,
                 "tradeSide": "close" if order.metadata.get("reduceOnly") or order.metadata.get("tradeSide") == "close" else "open",
-                "orderType": "limit" if order.price else "market",
-                "force": "gtc",
+                "orderType": "market" if _is_market else "limit",
+                "force": "ioc" if _is_market else "gtc",
             }
             # Bug 31: hedge mode requires posSide for BOTH open and close orders.
             # one-way mode: no posSide — reduceOnly (tradeSide=close) is sufficient.
@@ -287,8 +290,8 @@ class NativeBitgetAdapter(NativeAdapter):
                 else:
                     # Closing: BUY closes a SHORT position, SELL closes a LONG position
                     body["posSide"] = "short" if side == "buy" else "long"
-            if order.price:
-                # PHOENIX: Fetch contract specs on first order for this symbol
+            if not _is_market and order.price:
+                # LIMIT orders require price — fetch contract specs for precision
                 if order.symbol not in self._price_precisions:
                     await self._fetch_contract_specs(order.symbol)
                 body["price"] = self._quantize_price(order.symbol, order.price)
@@ -343,14 +346,15 @@ class NativeBitgetAdapter(NativeAdapter):
             # PHOENIX Phase 2: fetch spot symbol precision on first order to avoid checkBDScale errors
             if order.symbol not in self._spot_qty_decimals:
                 await self._fetch_spot_specs(order.symbol)
+            _spot_is_market = order.order_type == OrderType.MARKET
             body = {
                 "symbol": sym,
                 "side": side,
-                "orderType": "limit" if order.price else "market",
+                "orderType": "market" if _spot_is_market else "limit",
                 "size": self._quantize_spot_size(order.symbol, order.amount),
-                "force": "gtc",
+                "force": "ioc" if _spot_is_market else "gtc",
             }
-            if order.price:
+            if not _spot_is_market and order.price:
                 body["price"] = self._quantize_spot_price(order.symbol, order.price)
             if order.client_order_id:
                 body["clientOid"] = order.client_order_id
