@@ -435,7 +435,14 @@ class RealDataSignalProducer:
         """
         signals: list[Signal] = []
 
-        fut_books = futures_books.get(symbol, {})
+        # BUG-30: filter to futures-only exchanges — spot exchanges must not be paired
+        # as futures-futures (e.g. "binance" vs "binance_futures" is a basis trade, not FF arb)
+        _all_for_symbol = futures_books.get(symbol, {})
+        fut_books = {
+            ex_id: book
+            for ex_id, book in _all_for_symbol.items()
+            if ex_id in self._futures_exchanges
+        }
         if len(fut_books) < 2:
             return signals
 
