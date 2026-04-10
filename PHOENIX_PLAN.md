@@ -2421,3 +2421,157 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 - [ ] `telegram_trade_bot.py` os.getenv() 7개 → get_config() 변환 (설정 파편화 P1)
 - [ ] `engine/config/trading.json` 완전 deprecation (engine.json 완전 이전 후)
 - [ ] CI/CD `trading-ci.yml` 첫 PR 실행 검증
+
+## §8.21 — v28~v32 전체 배관 감사 Round 4 + BUG-11~14 수정 (2026-04-10)
+
+> 방법론: v27 이후 체결 0건 분석 → 비용 모델 근본 버그 발견 + 수정. 체결 재개 확인.
+
+### 실행 이력
+
+| 버전 | 시각 | Fills | PnL | 상태 | 핵심 수정 |
+|------|------|-------|-----|------|---------|
+| v28 | 2026-04-10 15:5x | 0건 | — | 중간 감사 버전 | BUG-11 발견 (AWE stale) |
+| v29 | 2026-04-10 16:4x | 0건 | — | 비용 모델 감사 중 | BUG-12/13 수정 |
+| v30 | 2026-04-10 17:0x | 8건 | -$0.086 | 포지션 14개 잔류 후 종료 | BUG-14 임시 미반영 |
+| v31 | 2026-04-10 17:18 | ABORT | — | preflight ABORT (오픈 포지션) | 포지션 청산 필요 |
+| v32 | 2026-04-10 17:18 | 8건 | +$0.68 | 실행 중 ✅ | BUG-14 완전 수정 |
+
+### 새로 발견 + 수정한 버그
+
+#### BUG-11 [HIGH]: AWE/USDT 허위 스프레드 → stale 데이터 (✅ 완료)
+- **파일**: `engine/config/engine.json`
+- **원인**: AWE/USDT가 coinone에서 10.67~10.81% 편차 → stale_detector 블랙리스트 대상
+  binance_futures/bitget_futures에서도 85-99bps 이상 스프레드 발생 → 허위 신호
+- **수정**: `futures_excluded_symbols: ["BARD", "0G", "ALLO", "AWE"]` AWE 추가
+- **영향**: AdaptiveThreshold 오염 방지 (AWE 88-99bps 신호가 p95=87bps 기준선 왜곡)
+
+#### BUG-12 [MEDIUM]: ENGINE_URL os.getenv → get_config 불일치 (✅ 완료)
+- **파일**: `engine/src/infra/telegram_infra_bot.py:87, :205`
+- **원인**: `os.getenv("ENGINE_URL")` → engine.json `monitoring.engine_url` 미참조
+- **수정**: 두 위치 모두 `_gc("monitoring.engine_url", default="http://localhost:8000")`로 교체
+
+#### BUG-13 [MEDIUM]: PAPER_DISABLED_STRATEGIES 죽은 코드 (✅ 완료)
+- **파일**: `engine/src/infra/telegram_trade_bot.py:378-384`
+- **원인**: `disabled` set을 생성→수정→폐기. 어디에도 저장 안 됨 (silent no-op)
+  전략 비활성화 텔레그램 명령이 실제로 아무 효과 없음
+- **수정**: 해당 블록 전체 삭제
+
+#### BUG-14 [CRITICAL]: estimate_cost() 이중 호출 → 롤백 비용 2배 → 모든 거래 거부 (✅ 완료)
+- **파일**: `engine/src/friction/cost_calculator.py`, `engine/src/strategies/futures_futures.py`
+- **원인**: futures_futures 전략이 per-leg `estimate_cost()` 2회 호출
+  각 호출에 `rollback_cost = P(rollback) × $5 = 0.05 × $5 = $0.25` 포함
+  → 2 × $0.25 = $0.50 롤백 비용이 $7 거래에서 발생
+  실제 ARK/USDT: gross=$0.014, total_cost=$0.511 → net=-$0.497 → **모든 거래 거부**
+- **수정**: `estimate_futures_cost()` 신규 메서드 추가 (단일 롤백, 네트워크 비용 0)
+  futures P&L은 USDT 내부 정산 → 네트워크 전송 불필요
+  롤백 비용은 실제 평균 notional 기반 (~$0.000357 vs 기존 $0.50)
+- **영향**: v32에서 즉시 체결 재개, $0.68 총 PnL (8건)
+
+### v28~v30 파라미터 조정
+
+| 파라미터 | v27 이전 | v28~v32 | 이유 |
+|---------|---------|---------|------|
+| futures_min_spread_bps | 20 | 30 | 800ms 실행 레이턴시 버퍼 (4bps→14bps 마진) |
+| futures_adaptive_static_entry_bps | 50 | 60 | min_spread 조정 반영 |
+| futures_excluded_symbols | [BARD, 0G, ALLO] | [BARD, 0G, ALLO, AWE] | BUG-11 |
+
+### v32 새 배선 추가
+
+| 컴포넌트 | 위치 | 상태 |
+|---------|------|------|
+| DeduplicationGate (executor level) | executor.py:146-149, :615-622, :287-296 | ✅ 실행 레이어 2차 dedup |
+
+- live.py 레벨 (symbol\|exchange 키) + executor 레벨 (strategy:symbol 키) = 2중 방어
+- v32 실행 중 crash=0, KillSwitch=0, 8건 체결, total_pnl=+$0.68 ✅
+
+### 다음 감사 항목
+- [x] v32 지속 모니터링 → v33~v36 진행 (§8.22 참조)
+- [ ] `telegram_trade_bot.py` os.getenv() → get_config() 변환 (P1)
+- [ ] `engine/config/trading.json` 완전 deprecation
+- [ ] CI/CD `trading-ci.yml` 구축
+
+---
+
+## §8.22 — v33~v36 인프라 복구 + 테스트 전면 수정 + BUG-15~17 (2026-04-10)
+
+> 방법론: WAL 디스크 풀 → TimescaleDB 크래시 → 포지션 잔류 → v35 ABORT 사이클 분석 + 근본 수정.
+> v36 현재 실거래 실행 중 (mode=live, futures_futures_v1).
+
+### 실행 이력
+
+| 버전 | 시각 | Fills | PnL | 상태 | 핵심 원인 |
+|------|------|-------|-----|------|---------|
+| v33 | 2026-04-10 17:52 | 8건 | +$0.15 | 사용자 종료 | Binance -2019 마진 부족 발생, Bitget 22002 롤백 ghost |
+| v34 | 2026-04-10 18:00 | 11건 | -$0.28 | 사용자 종료 | 마진 부족 심화 → 포지션 14개 잔류 |
+| v35 | 2026-04-10 18:15 | ABORT | — | preflight ABORT | stale 포지션 11개 (BREV/CFG/ARK/ALT/BLUR/ERA/CELO/CKB/AVNT 등) |
+| v36 | 2026-04-10 18:32 | 13건+ | +$0.04 | **실행 중 ✅** | close_positions.py 수정 후 포지션 전량 청산 완료 |
+
+### 새로 발견 + 수정한 버그
+
+#### BUG-15 [CRITICAL]: Docker WAL archive 39.8GB → 디스크 풀 → TimescaleDB 크래시 루프 (✅ 완료)
+- **증상**: `No space left on device` → TimescaleDB checkpoint 실패 → 재시작 루프
+- **원인**: `leviathan_wal_archive` Docker 볼륨에 7,438개 WAL 파일 무한 누적 (archive_cleanup_command 미설정)
+- **수정**: `leviathan_wal_archive` 볼륨 내 WAL 파일 전량 삭제 → 가용 공간 119GB 복원
+- **예방**: WAL 보존 주기 설정 필요 (P1 — 미완료)
+
+#### BUG-16 [HIGH]: close_positions.py asyncio UnboundLocalError (✅ 완료)
+- **파일**: `engine/scripts/close_positions.py`
+- **원인**: `import asyncio as _asyncio` 가 retry 루프 내부에만 존재, 포지션이 있을 때 도달 불가 → `_asyncio.sleep` UnboundLocalError
+- **수정**: 로컬 임포트 제거, 최상단 `import asyncio` 사용으로 통일
+
+#### BUG-17 [MEDIUM]: Bitget 429 rate limit in close_positions.py (✅ 완료)
+- **파일**: `engine/scripts/close_positions.py`
+- **원인**: 다수 포지션 연속 청산 시 Bitget 2req/s 제한 초과 → 429 오류
+- **수정**: Bitget 거래소 청산 전 `await asyncio.sleep(0.5)` 추가
+
+#### BUG-18 [HIGH]: Binance -2019 Margin insufficient 미처리 (⚠️ 미완료)
+- **증상**: v33/v34에서 `Margin is insufficient` → 새 포지션 진입 실패 + 롤백 시 Bitget 22002 ghost
+- **원인**: max_concurrent_trades=2 이내라도 기존 포지션 unrealized_loss가 누적되면 마진 고갈 가능
+  RiskGuardian이 거래소 실마진 잔고를 확인하지 않음 (used_capital은 내부 추적값)
+- **임시 대응**: v36에서 새 세션 시작으로 clean state 확보
+- **근본 수정 필요**: `_check_margin_before_order()` 거래소 실잔고 조회 후 포지션 진입 결정
+
+### 테스트 전면 수정 (17건 실패 → 0건)
+
+| 테스트 | 수정 내용 | 원인 |
+|--------|---------|------|
+| `test_disconnected_score_is_low` | 1 disconnect → 3 disconnects | 1 disconnect = 0.56 > 0.50 threshold |
+| `test_guardian_check5_dqm_unhealthy_rejects` | 3 disconnects + last_heartbeat stale | 동일 |
+| `test_check_api_port_available` | `os.environ` → `_gc` patch | `_check_api_port()` 가 `_gc("api.port")` 사용 |
+| `test_min_exchanges_default` | 기대값 2 → 3 | PHOENIX config min_exchanges=3 필수 |
+| `test_gamma_partial_when_not_calibrated_and_no_env` | `get_config` mock 추가 | engine.json slippage.gamma=0.5 → PASS로 오판 |
+| `test_under_max_concurrent_positions_approves` | 19 positions → 1 position | engine.json max_concurrent_trades=2 |
+| `spot_futures.py` | `_pending_timeout_requests` queue 패턴 | 다중 만료 포지션 drain 누락 |
+
+### v36 현재 상태 (실행 중)
+
+| 항목 | 값 |
+|------|-----|
+| mode | live |
+| 전략 | futures_futures_v1 (Binance Futures ↔ Bitget Futures) |
+| Fills | 13건+ |
+| total_pnl | +$0.04 |
+| crash | 0 |
+| 주요 로그 스팸 | coinone CFG/USDT stale data (10.35% > 10% threshold) — 비기능적 |
+
+### 발견된 구조적 문제 (v33~v36 분석)
+
+| 문제 | 상태 | 우선순위 |
+|------|------|---------|
+| Binance -2019 실마진 미확인 (BUG-18) | ⚠️ 미완료 | P0 |
+| CFG/USDT coinone stale 스팸 (10.35% 편차) | ⚠️ CFG excluded 추가 필요 | P1 |
+| WAL 보존 주기 자동화 미설정 | ⚠️ 미완료 | P1 |
+| shadow 모드 파일 잔존 (shadow.py, progressive_shadow.py) | ⚠️ US-430 예정 | P2 |
+| BUG-19: MarginTracker release() 미호출 → 마진 무한 누적 | ✅ TTL 60s 자동만료로 수정 | P0 |
+| 테스트 격리 실패: test_main_engine.py PAPER_DISABLED_STRATEGIES 오염 | ✅ patch.dict(os.environ) 추가 | P0 |
+
+**BUG-19 상세**: `futures_futures.py`에서 `check_and_reserve()` 호출 후 `release()` 미호출 → MarginTracker 마진 예약 무한 누적 → 장기 실행 시 신규 거래 차단. 수정: TTL 60s 기반 자동 만료 (`_entries: list[tuple[str, Decimal, float]]`).
+
+**테스트 격리 수정**: `test_main_engine.py::TestEngineInitConfig`의 두 테스트가 `_apply_trading_json_defaults()`를 통해 `os.environ["PAPER_DISABLED_STRATEGIES"]`를 영구 설정 → shadow_arb_v1 비활성화 → 13개 shadow 테스트 실패. 수정: `patch.dict(os.environ, {}, clear=False)` 추가.
+
+### 다음 감사 항목
+- [ ] BUG-18 수정: RiskGuardian에 거래소 실마진 잔고 조회 추가
+- [ ] CFG/USDT `futures_excluded_symbols`에 추가 (coinone 10.35% 편차)
+- [ ] WAL 보존 주기 설정 (`postgresql.conf archive_cleanup_command`)
+- [ ] v36 체결 누적 모니터링 (PnL 양전환 확인)
+- [ ] US-430: shadow 모드 파일 → paper 리네임

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import pytest
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch, call
@@ -120,7 +121,8 @@ class TestEngineInitConfig:
         mock_settings.execution_mode.value = "paper"
         mock_settings.capital.tier = "alpha"
 
-        with patch("src.main.get_settings", return_value=mock_settings):
+        with patch("src.main.get_settings", return_value=mock_settings), \
+             patch.dict(os.environ, {}, clear=False):
             await engine._init_config()
 
         assert engine._settings is mock_settings
@@ -129,7 +131,8 @@ class TestEngineInitConfig:
     @pytest.mark.asyncio
     async def test_init_config_fallback_on_exception(self):
         engine = Engine()
-        with patch("src.main.get_settings", side_effect=Exception("config error")):
+        with patch("src.main.get_settings", side_effect=Exception("config error")), \
+             patch.dict(os.environ, {}, clear=False):
             await engine._init_config()
 
         assert engine._settings is not None
