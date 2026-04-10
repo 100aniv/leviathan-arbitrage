@@ -203,10 +203,11 @@ class AtomicExecutor:
             exchange_id, order.symbol, order.side, filled, filled_amount,
         )
         # PHOENIX v18: 중복 rollback 방지
-        if order.order_id and order.order_id in self._rollback_attempted:
+        # BUG-38: only dedup on success — failed attempts must allow filled=True retry
+        if order.order_id and self._rollback_attempted.get(order.order_id) == "success":
             logger.info(
-                "rollback_dedup_skipped order_id=%s prev=%s",
-                order.order_id, self._rollback_attempted[order.order_id],
+                "rollback_dedup_skipped order_id=%s prev=success",
+                order.order_id,
             )
             return True, "dedup_skipped"
         adapter = self._exchanges.get(exchange_id)
@@ -693,7 +694,40 @@ class AtomicExecutor:
                 )
             except asyncio.TimeoutError:
                 logger.error("leg1_timeout exchange=%s strategy=%s", ex_a_id, strategy_id)
-                await self._rollback_order(ex_a_id, leg1_order)
+                # BUG-37: try cancel first; check return value and alert if it fails.
+                # BUG-39: for exit (reduceOnly) orders, cancel failure means the close
+                # WAS filled — do NOT place opposite-direction unwind (that re-opens).
+                _is_exit_leg = bool(leg1_order.metadata.get("reduceOnly"))
+                rb_ok, rb_reason = await self._rollback_order(ex_a_id, leg1_order)
+                if not rb_ok:
+                    if _is_exit_leg:
+                        # Cancel failed → exit order likely already filled → position closed.
+                        logger.info(
+                            "leg1_timeout_exit_cancel_failed_assuming_filled exchange=%s symbol=%s "
+                            "— exit likely succeeded, no unwind",
+                            ex_a_id, leg1_order.symbol,
+                        )
+                    else:
+                        # Entry order: cancel failed → order may have filled before timeout.
+                        # BUG-38 fix allows this retry with filled=True.
+                        rb_ok2, rb_reason2 = await self._rollback_order(
+                            ex_a_id, leg1_order, filled=True
+                        )
+                        if not rb_ok2:
+                            should_halt = self._stranded_tracker.register(
+                                exchange_id=ex_a_id,
+                                symbol=leg1_order.symbol,
+                                side=str(leg1_order.side),
+                                size=float(leg1_order.amount),
+                                value_usd=float(leg1_order.amount * (leg1_order.price or Decimal("0"))),
+                                reason=f"leg1_timeout_rollback_failed:{rb_reason2}",
+                            )
+                            if should_halt:
+                                halt_local()
+                            logger.critical(
+                                "leg1_timeout_rollback_failed HALT_SET=%s exchange=%s strategy=%s",
+                                should_halt, ex_a_id, strategy_id,
+                            )
                 return ExecutionResult(
                     status=ExecutionStatus.ROLLED_BACK,
                     legs=[LegResult(order=leg1_order, error="timeout")],
