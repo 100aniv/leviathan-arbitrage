@@ -195,6 +195,19 @@ class NativeBitgetAdapter(NativeAdapter):
         quantizer = Decimal(10) ** (-decimals)
         return str(price.quantize(quantizer))
 
+    def _quantize_futures_qty(self, symbol: str, qty: Decimal) -> Decimal:
+        """Floor qty to nearest sizeMultiplier step — BUG-28 fix.
+
+        Bitget USDT-FUTURES size field is in base currency (BTC for BTCUSDT).
+        sizeMultiplier (e.g. 0.001 for BTCUSDT) is the minimum size step.
+        Without this, non-multiple sizes may be rejected by the exchange.
+        """
+        from decimal import ROUND_DOWN
+        step = self._qty_step_sizes.get(symbol, Decimal("0.001"))
+        if step <= Decimal("0"):
+            return qty
+        return (qty / step).to_integral_value(rounding=ROUND_DOWN) * step
+
     async def _fetch_spot_specs(self, symbol: str) -> None:
         """Fetch and cache base qty / price decimal places for a spot symbol."""
         if symbol in self._spot_qty_decimals:
@@ -254,12 +267,23 @@ class NativeBitgetAdapter(NativeAdapter):
                 logger.warning("leverage_set_failed symbol=%s error=%s", order.symbol, _lev_err)
 
             qty = order.amount
+            # BUG-28: fetch contract specs for ALL futures orders (not just LIMIT) so
+            # _qty_step_sizes is populated for step-size quantization.
+            if order.symbol not in self._price_precisions:
+                await self._fetch_contract_specs(order.symbol)
+            # BUG-28: quantize qty to sizeMultiplier step (e.g. 0.001 BTC for BTCUSDT).
+            # Without this, non-multiple sizes may be rejected by Bitget exchange.
+            qty = self._quantize_futures_qty(order.symbol, qty)
             # PHOENIX: Enforce Bitget Futures MIN_NOTIONAL — load from config
             _ex_min = get_config("execution.exchange_min_notional.bitget_futures", default=6)
             _MIN_NOTIONAL = Decimal(str(_ex_min))
             if order.price and order.price > 0:
                 if qty * order.price < _MIN_NOTIONAL:
-                    qty = (_MIN_NOTIONAL / order.price).quantize(Decimal("0.000001"))
+                    # Bump to nearest step >= MIN_NOTIONAL
+                    _step = self._qty_step_sizes.get(order.symbol, Decimal("0.001"))
+                    import math as _math
+                    _lots = _math.ceil(float(_MIN_NOTIONAL / order.price) / float(_step))
+                    qty = Decimal(str(_lots)) * _step
                     logger.debug(
                         "bitget_futures_min_notional_adjusted symbol=%s qty=%s notional=%.2f",
                         order.symbol, qty, float(qty * order.price),
@@ -291,9 +315,7 @@ class NativeBitgetAdapter(NativeAdapter):
                     # Closing: BUY closes a SHORT position, SELL closes a LONG position
                     body["posSide"] = "short" if side == "buy" else "long"
             if not _is_market and order.price:
-                # LIMIT orders require price — fetch contract specs for precision
-                if order.symbol not in self._price_precisions:
-                    await self._fetch_contract_specs(order.symbol)
+                # LIMIT orders: also add price field (specs already fetched above)
                 body["price"] = self._quantize_price(order.symbol, order.price)
             if order.client_order_id:
                 body["clientOid"] = order.client_order_id
