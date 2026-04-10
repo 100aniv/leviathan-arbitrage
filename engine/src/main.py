@@ -1127,9 +1127,13 @@ class Engine:
         ff_p = tuned.get("futures_futures", {})
         from src.core.config_loader import get_config as _get_config
         _ff_excluded = _get_config("strategy_filters.futures_excluded_symbols", default=[])
+        # BUG-27: FF max_position_size must NOT use percentage-based _max_pos_usd.
+        # _max_pos_usd = $120 × 5% = $6 → BTCUSDT at $80k → size=0.000075 BTC < Binance min 0.001 BTC.
+        # Use a fixed notional matching default_notional_usd ($100) so exchange minimums are met.
+        _ff_max_pos = Decimal(str(_get_config("strategy_filters.futures_futures_max_position_usd", default=100)))
         ff_config = FuturesFuturesConfig(
             min_spread_bps=Decimal(str(ff_p.get("min_spread_bps", 8))),
-            max_position_size=_max_pos_usd,
+            max_position_size=_ff_max_pos,
             min_book_depth_usd=_book_depth_usd,
             excluded_symbols=list(_ff_excluded),
             adaptive_static_entry_bps=Decimal(str(_get_config("strategy_filters.futures_adaptive_static_entry_bps", default=ff_p.get("min_spread_bps", 50)))),
@@ -3514,11 +3518,17 @@ class Engine:
                 if shadow_stats:
                     feed_win_rate = float(shadow_stats.get("win_rate", 0.0))
 
-                # Apply paper_mode override (same as REST /status endpoint)
-                _ws_mode = self.context.execution_mode
-                _pm_obj = getattr(self.context, "paper_mode", None) or getattr(self.context, "shadow_mode", None)
-                if _pm_obj is not None and hasattr(_pm_obj, "_stats"):
-                    _ws_mode = "paper"
+                # WS mode: prefer engine_mode (authoritative) over context.execution_mode
+                # Never downgrade live→paper just because paper_mode object exists
+                _ws_mode = (
+                    self._engine_mode.value
+                    if hasattr(self, "_engine_mode")
+                    else self.context.execution_mode
+                )
+                if _ws_mode != "live":
+                    _pm_obj = getattr(self.context, "paper_mode", None) or getattr(self.context, "shadow_mode", None)
+                    if _pm_obj is not None and hasattr(_pm_obj, "_stats"):
+                        _ws_mode = "paper"
 
                 await ws.broadcast({
                     "type": "state_update",

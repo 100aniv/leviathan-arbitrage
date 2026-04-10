@@ -47,6 +47,7 @@
     "futures_max_hold_seconds": 1800,
     "futures_min_spread_bps": 15,
     "futures_adaptive_static_entry_bps": 60,
+    "futures_futures_max_position_usd": 100,
     "futures_excluded_symbols": ["BARD", "0G", "ALLO", "AWE", "CFG"],
     "futures_min_book_depth_usd": 1,
     "futures_max_book_age_s": 30,
