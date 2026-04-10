@@ -70,8 +70,10 @@ class MultiSignalConfig:
     latency_record_interval: float = 1.0  # how often to record latency samples
 
     # Trade sizing: fixed USD notional for all multi-strategy signals
-    # volume = notional / price (e.g., $500 / $90,000 BTC = 0.0056 BTC)
-    default_notional_usd: Decimal = Decimal("500")
+    # volume = notional / price (e.g., $100 / $90,000 BTC = 0.0011 BTC)
+    # BUG-25: 500 → 100 to fit step2_1 capital ($60 futures / 2 exchanges = ~$30/exchange)
+    # margin_check: required=$20 (100/5x leverage) < max_allowed=$24 (30×0.80) ✓
+    default_notional_usd: Decimal = Decimal("100")
 
     # US-269: Multi-exchange funding scanner
     enable_multi_funding_scanner: bool = field(
