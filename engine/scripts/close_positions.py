@@ -70,14 +70,56 @@ async def close_all(dry_run: bool = True):
                 print(f"    -> (dry-run, skipped)")
 
             # ── Step 2: Close all open positions ──────────────────────
+            # Bug 28 workaround: Bitget REST stale data — total=0 right after creation.
+            # Retry up to 5 times with 5s wait for Bitget to settle. Collect ALL symbols
+            # seen across all retries for paranoid close pass (even size=0 stale positions).
             print(f"\n  [2/2] Fetching open positions...")
-            positions = await adapter.get_positions()
+            retries = 5 if eid == "bitget_futures" else 1
+            positions = []
+            all_bitget_symbols_seen: set[str] = set()
+            bitget_raw_symbols_paranoid: set[str] = set()  # raw Bitget fmt (BTCUSDT) incl. total=0 stale
+
+            # Bitget: direct raw call to capture ALL positions including stale total=0
+            # (adapter.get_positions() filters total=0, so stale hidden positions are invisible there)
+            if eid == "bitget_futures" and hasattr(adapter, '_request'):
+                try:
+                    raw_resp = await adapter._request(
+                        "GET", "/api/v2/mix/position/all-position",
+                        params={"productType": "USDT-FUTURES"},
+                        signed=True,
+                    )
+                    for item in (raw_resp.get("data") or []):
+                        raw_sym = item.get("symbol", "")
+                        if raw_sym:
+                            bitget_raw_symbols_paranoid.add(raw_sym)
+                    if bitget_raw_symbols_paranoid:
+                        print(f"    -> Bitget raw positions (incl. stale size=0): {sorted(bitget_raw_symbols_paranoid)}")
+                    else:
+                        print(f"    -> Bitget raw: no positions in API response")
+                except Exception as _exc:
+                    print(f"    -> Bitget raw position fetch warning: {_exc}")
+
+            for attempt in range(retries):
+                batch = await adapter.get_positions()
+                all_bitget_symbols_seen.update(p.symbol for p in batch)
+                positions = batch
+                open_positions_check = [p for p in positions if p.size != 0]
+                if open_positions_check or attempt == retries - 1:
+                    break
+                import asyncio as _asyncio
+                print(f"    -> Bitget: no positions yet, waiting 5s (attempt {attempt+1}/{retries})...")
+                await _asyncio.sleep(5)
             open_positions = [p for p in positions if p.size != 0]
 
             if not open_positions:
-                print(f"    -> No open positions")
-                await adapter.disconnect()
-                continue
+                print(f"    -> No open positions (REST visible)")
+                # Bitget: still run paranoid close — raw API may have stale total=0 positions
+                _has_paranoid = eid == "bitget_futures" and not dry_run and (
+                    all_bitget_symbols_seen or bitget_raw_symbols_paranoid
+                )
+                if not _has_paranoid:
+                    await adapter.disconnect()
+                    continue
 
             for pos in open_positions:
                 side = OrderSide.SELL if pos.size > 0 else OrderSide.BUY
@@ -87,19 +129,82 @@ async def close_all(dry_run: bool = True):
                 print(f"    {'WOULD CLOSE' if dry_run else 'CLOSING'}: {pos.symbol} {side_str} {size} (entry={pos.entry_price}, {pnl_str})")
 
                 if not dry_run:
-                    close_order = Order(
-                        exchange_id=eid,
-                        symbol=pos.symbol,
-                        side=side,
-                        order_type=OrderType.MARKET,
-                        amount=size,
-                        metadata={"reduceOnly": True, "tradeSide": "close"},
-                    )
-                    try:
-                        result = await adapter.place_order(close_order)
-                        print(f"      -> CLOSED: order_id={result.trade_id} fill={result.amount}@{result.price}")
-                    except Exception as e:
-                        print(f"      -> ERROR closing {pos.symbol}: {e}")
+                    hold_side = "long" if pos.size > 0 else "short"
+                    # Bitget: use close-positions endpoint (place-order tradeSide=close returns 22002)
+                    # Other exchanges: use place-order with reduceOnly
+                    if eid == "bitget_futures" and hasattr(adapter, '_request'):
+                        sym_normalized = pos.symbol.replace("/", "")
+                        body = {
+                            "symbol": sym_normalized,
+                            "productType": "USDT-FUTURES",
+                            "holdSide": hold_side,
+                        }
+                        try:
+                            resp = await adapter._request(
+                                "POST", "/api/v2/mix/order/close-positions", data=body, signed=True
+                            )
+                            success_list = resp.get("data", {}).get("successList", [])
+                            if success_list:
+                                print(f"      -> CLOSED (flash): orderId={success_list[0].get('orderId')}")
+                            else:
+                                failure_list = resp.get("data", {}).get("failureList", [])
+                                print(f"      -> WARN: {failure_list}")
+                        except Exception as e:
+                            err_str = str(e)
+                            if "22002" in err_str or "No position to close" in err_str:
+                                print(f"      -> SKIPPED (ghost/already closed): {pos.symbol}")
+                            else:
+                                print(f"      -> ERROR closing {pos.symbol}: {e}")
+                    else:
+                        pos_side = "long" if pos.size > 0 else "short"
+                        close_order = Order(
+                            exchange_id=eid,
+                            symbol=pos.symbol,
+                            side=side,
+                            order_type=OrderType.MARKET,
+                            amount=size,
+                            metadata={"reduceOnly": True, "tradeSide": "close", "posSide": pos_side},
+                        )
+                        try:
+                            result = await adapter.place_order(close_order)
+                            print(f"      -> CLOSED: order_id={result.trade_id} fill={result.amount}@{result.price}")
+                        except Exception as e:
+                            err_str = str(e)
+                            if "22002" in err_str or "No position to close" in err_str:
+                                print(f"      -> SKIPPED (ghost/already closed): {pos.symbol}")
+                            else:
+                                print(f"      -> ERROR closing {pos.symbol}: {e}")
+
+            # ── Paranoid close (Bitget stale-data guard) ──────────────
+            # Force-close both sides for ALL symbols ever seen in this run,
+            # even if REST reported size=0 (Bitget hides fresh positions for minutes).
+            # 22002 = "No position to close" is expected/silent for already-flat symbols.
+            # Combine: adapter-visible symbols (normalized) + raw API symbols (incl. total=0 stale)
+            _paranoid_raw: set[str] = bitget_raw_symbols_paranoid | {s.replace("/", "") for s in all_bitget_symbols_seen}
+            if eid == "bitget_futures" and not dry_run and _paranoid_raw and hasattr(adapter, '_request'):
+                print(f"\n  [PARANOID CLOSE] Bitget stale-data guard — {len(_paranoid_raw)} symbol(s) (incl. stale)...")
+                paranoid_closed = 0
+                for sym_normalized in sorted(_paranoid_raw):
+                    for hold_side in ("long", "short"):
+                        try:
+                            resp = await adapter._request(
+                                "POST", "/api/v2/mix/order/close-positions",
+                                data={"symbol": sym_normalized, "productType": "USDT-FUTURES", "holdSide": hold_side},
+                                signed=True,
+                            )
+                            success_list = resp.get("data", {}).get("successList", [])
+                            failure_list = resp.get("data", {}).get("failureList", [])
+                            if success_list:
+                                paranoid_closed += 1
+                                print(f"    -> PARANOID CLOSED: {sym_normalized} {hold_side} orderId={success_list[0].get('orderId')}")
+                            elif failure_list:
+                                err_code = str(failure_list[0].get("errorCode", ""))
+                                if err_code != "22002":
+                                    print(f"    -> PARANOID WARN: {sym_normalized} {hold_side}: {failure_list[0]}")
+                        except Exception as e:
+                            if "22002" not in str(e) and "No position to close" not in str(e):
+                                print(f"    -> PARANOID ERROR: {sym_normalized} {hold_side}: {e}")
+                print(f"  [PARANOID CLOSE] done — {paranoid_closed} additional position(s) closed")
 
             await adapter.disconnect()
 

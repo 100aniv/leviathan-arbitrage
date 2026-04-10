@@ -29,7 +29,7 @@ class SettingsUpdate(BaseModel):
 
 
 class ModeUpdate(BaseModel):
-    mode: str  # "shadow", "paper", "live"
+    mode: str  # "backtest", "paper", "live"
 
 
 @router.get("/settings", dependencies=[Depends(require_auth)])
@@ -52,7 +52,7 @@ async def get_settings(request: Request) -> JSONResponse:
         "min_edge_bps": ctx.runtime_settings.get("min_edge_bps", 5),
         "active_strategies": active_strategies,
         "active_exchanges": ctx.runtime_settings.get("active_exchanges", []),
-        "execution_mode": getattr(ctx, "execution_mode", "shadow"),
+        "execution_mode": getattr(ctx, "execution_mode", "paper"),
         "capital_per_exchange_usd": ctx.runtime_settings.get("capital_per_exchange_usd", 70),
         "max_position_usd": ctx.runtime_settings.get("max_position_usd", 5000),
         "max_daily_loss_usd": ctx.runtime_settings.get("max_daily_loss_usd", 500),
@@ -77,7 +77,7 @@ async def update_settings(request: Request, body: SettingsUpdate) -> JSONRespons
     return JSONResponse({
         "min_edge_bps": ctx.runtime_settings.get("min_edge_bps", 5),
         "active_exchanges": ctx.runtime_settings.get("active_exchanges", []),
-        "execution_mode": getattr(ctx, "execution_mode", "shadow"),
+        "execution_mode": getattr(ctx, "execution_mode", "paper"),
         "capital_per_exchange_usd": ctx.runtime_settings.get("capital_per_exchange_usd", 70),
         "max_position_usd": ctx.runtime_settings.get("max_position_usd", 5000),
         "max_daily_loss_usd": ctx.runtime_settings.get("max_daily_loss_usd", 500),
@@ -108,7 +108,7 @@ def _update_env_file(key: str, value: str) -> bool:
 async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
     """Switch execution mode. Live mode requires LiveGate check."""
     ctx = request.app.state.engine_context
-    valid_modes = {"backtest", "paper", "shadow", "live"}
+    valid_modes = {"backtest", "paper", "live"}
     if body.mode not in valid_modes:
         raise HTTPException(status_code=400, detail=f"Invalid mode. Must be one of: {valid_modes}")
 
@@ -120,14 +120,14 @@ async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
                 return JSONResponse(status_code=403, content={
                     "error": "포지션 청산 후 전환하세요",
                     "open_positions": len(open_positions),
-                    "current_mode": getattr(ctx, "execution_mode", "shadow"),
+                    "current_mode": getattr(ctx, "execution_mode", "paper"),
                 })
         except Exception as exc:
             # Codex CRITICAL: fail-closed — 포지션 조회 실패 시 전환 차단
             logger.warning("Position check failed (blocking mode switch): %s", exc)
             return JSONResponse(status_code=503, content={
                 "error": "포지션 조회 실패 — 안전을 위해 모드 전환 차단",
-                "current_mode": getattr(ctx, "execution_mode", "shadow"),
+                "current_mode": getattr(ctx, "execution_mode", "paper"),
             })
 
     livegate_result = None
@@ -161,7 +161,7 @@ async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
                 "current_mode": ctx.execution_mode,
             })
 
-    prev_mode = getattr(ctx, "execution_mode", "shadow")
+    prev_mode = getattr(ctx, "execution_mode", "paper")
     ctx.execution_mode = body.mode
 
     # US-F02: Persist EXECUTION_MODE to .env

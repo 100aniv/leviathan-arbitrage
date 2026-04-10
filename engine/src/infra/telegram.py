@@ -554,7 +554,6 @@ class TelegramAlerter:
             _mode_labels = {
                 "backtest": "⚪ [BACKTEST]",
                 "paper": "🟢 [PAPER]",
-                "shadow": "🟡 [SHADOW]",
                 "live": "🔴 [LIVE]",
             }
             _mode_tag = _mode_labels.get(_exec_mode, f"[{_exec_mode.upper()}]") if _exec_mode else "🚀"

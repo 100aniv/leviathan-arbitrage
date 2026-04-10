@@ -64,9 +64,10 @@ class AdaptiveThreshold:
             return  # skip negative spreads (data error)
         self._observations.append(value_bps)
 
-    def _percentile(self, pct: float) -> float:
+    def _percentile(self, pct: float, data: list | None = None) -> float:
         """Compute percentile from observations using linear interpolation."""
-        data = sorted(self._observations)
+        if data is None:
+            data = sorted(self._observations)
         n = len(data)
         if n == 0:
             return 0.0
@@ -111,12 +112,19 @@ class AdaptiveThreshold:
 
         Uses dynamic percentile-based values when ready, static fallback otherwise.
         Applies volatility multiplier to widen thresholds during high-vol periods.
+        Bug 27: Soft-clip — trim top 5% outliers before computing entry percentile
+        to prevent stale/fake spreads from inflating the adaptive threshold.
         """
         if not self.is_ready:
             return (self.static_entry, self.static_exit)
 
         vol_mult = self._volatility_multiplier()
-        dynamic_entry = self._percentile(self.entry_percentile) * vol_mult
+
+        # Soft-clip: sort observations, trim top 5%, compute entry from trimmed data
+        _sorted = sorted(self._observations)
+        _trim_n = max(1, int(len(_sorted) * 0.95))
+        _trimmed = _sorted[:_trim_n]
+        dynamic_entry = self._percentile(self.entry_percentile, data=_trimmed) * vol_mult
         dynamic_exit = self._percentile(self.exit_percentile)
 
         # A/B comparison logging for shadow analysis

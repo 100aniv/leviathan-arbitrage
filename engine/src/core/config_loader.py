@@ -1,13 +1,9 @@
-"""Unified config loader — config/trading.json 우선, .env fallback.
+"""Unified config loader — engine.json primary, trading.json legacy fallback.
 
-Usage:
-    from src.core.config_loader import get_config
-    val = get_config("strategy_filters.funding_zscore_threshold", default=-1)
-    val = get_config("engine.log_level", default="INFO")
+.env에는 시크릿(API키/토큰/DB URL/비밀번호)만 보관.
+모든 비시크릿 설정은 engine.json에서 get_config()로 접근.
 
-설정 우선순위: trading.json > 환경변수 > default
-- 대시보드/텔레그램/오토튜너에서 trading.json 직접 수정 가능
-- .env는 시크릿(API키/토큰/DB URL)만 보관
+설정 우선순위: engine.json > trading.json > 환경변수 > default
 """
 from __future__ import annotations
 
@@ -20,24 +16,50 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-_CONFIG_PATH = Path(os.environ.get(
+_ENGINE_ROOT = Path(__file__).resolve().parent.parent.parent  # engine/
+_ENGINE_JSON = _ENGINE_ROOT / "config" / "engine.json"
+_TRADING_JSON = Path(os.environ.get(
     "TRADING_CONFIG_PATH",
-    str(Path(__file__).parent.parent.parent / "config" / "trading.json"),
+    str(_ENGINE_ROOT / "config" / "trading.json"),
 ))
 
 _cache: dict[str, Any] | None = None
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Deep merge: override wins for scalar values, recurse for dicts."""
+    result = dict(base)
+    for key, val in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
+            result[key] = _deep_merge(result[key], val)
+        else:
+            result[key] = val
+    return result
 
 
 def _load() -> dict[str, Any]:
     global _cache
     if _cache is not None:
         return _cache
+
+    merged: dict[str, Any] = {}
+
+    # Secondary: trading.json (legacy)
     try:
-        _cache = json.loads(_CONFIG_PATH.read_text())
-        logger.debug("config_loader.loaded", path=str(_CONFIG_PATH))
+        merged = json.loads(_TRADING_JSON.read_text())
+        logger.debug("config_loader.loaded_trading", path=str(_TRADING_JSON))
     except Exception as exc:
-        logger.warning("config_loader.load_failed", path=str(_CONFIG_PATH), error=str(exc))
-        _cache = {}
+        logger.debug("config_loader.trading_missing", error=str(exc))
+
+    # Primary: engine.json (overrides trading.json)
+    try:
+        engine_cfg = json.loads(_ENGINE_JSON.read_text())
+        merged = _deep_merge(merged, engine_cfg)
+        logger.debug("config_loader.loaded_engine", path=str(_ENGINE_JSON))
+    except Exception as exc:
+        logger.warning("config_loader.engine_load_failed", path=str(_ENGINE_JSON), error=str(exc))
+
+    _cache = merged
     return _cache
 
 
@@ -49,19 +71,19 @@ def reload() -> dict[str, Any]:
 
 
 def get_config(dotpath: str, default: Any = None, env_key: str | None = None) -> Any:
-    """Get config value by dot-path. Falls back to env var, then default.
+    """비시크릿 설정 값을 dot-path로 조회. 환경변수 fallback, 그다음 default.
 
     Args:
         dotpath: e.g. "strategy_filters.funding_zscore_threshold"
-        default: fallback value if not found anywhere
-        env_key: optional env var name override (for backward compat)
+        default: 어디서도 못 찾으면 반환할 기본값
+        env_key: 명시적 env var 이름 (하위 호환용)
 
     Returns:
-        Value from trading.json, or env var, or default.
+        engine.json 또는 trading.json 값, 또는 env var, 또는 default.
     """
     data = _load()
 
-    # Navigate dot-path in trading.json
+    # Navigate dot-path
     parts = dotpath.split(".")
     node = data
     for part in parts:
@@ -74,13 +96,13 @@ def get_config(dotpath: str, default: Any = None, env_key: str | None = None) ->
     if node is not None:
         return node
 
-    # Fallback to env var
+    # Fallback to explicit env var
     if env_key:
         env_val = os.environ.get(env_key)
         if env_val is not None:
             return _coerce(env_val, default)
 
-    # Auto-derive env key from dotpath: strategy_filters.funding_zscore_threshold → FUNDING_ZSCORE_THRESHOLD
+    # Auto-derive env key from dotpath
     auto_key = parts[-1].upper()
     env_val = os.environ.get(auto_key)
     if env_val is not None:
@@ -90,7 +112,7 @@ def get_config(dotpath: str, default: Any = None, env_key: str | None = None) ->
 
 
 def _coerce(val: str, reference: Any) -> Any:
-    """Coerce string env val to match reference type."""
+    """string env var 값을 reference 타입으로 강제 변환."""
     if reference is None:
         return val
     if isinstance(reference, bool):

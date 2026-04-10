@@ -136,8 +136,6 @@ class Engine:
         self._exchange_health: dict[str, Decimal] = {}   # exchange_id -> health score (0-1)
         # US-131: RegimeDetector reference (set during _init_signal_pipeline)
         self._regime_detector: Any = None
-        # US-133: AtomicOrderExecutor for live IOC execution
-        self._atomic_order_executor: Any = None
         # US-146: ScheduledTuner (optional, enabled via ENABLE_INLINE_TUNER)
         self._scheduled_tuner: Any = None
         # US-165: Redis client reference for explicit close on shutdown
@@ -232,14 +230,14 @@ class Engine:
                 logger.warning("StrategyManager stop error: %s", exc)
 
         # US-155: Cancel open orders in live mode before disconnecting
-        if (self._settings is not None
-                and self._settings.execution_mode == "live"
+        # BUG-8 fix: use _engine_mode (engine.json 기준) instead of execution_mode (.env 기준)
+        from src.core.config import EngineMode
+        if (getattr(self, '_engine_mode', None) == EngineMode.LIVE
                 and self._exchanges):
             await self._cancel_open_orders()
 
         # Close open positions in live mode after cancelling orders
-        if (self._settings is not None
-                and self._settings.execution_mode == "live"
+        if (getattr(self, '_engine_mode', None) == EngineMode.LIVE
                 and self._exchanges):
             await self._close_all_positions_on_shutdown()
 
@@ -1103,10 +1101,13 @@ class Engine:
         )
 
         # Build strategy configs from tuned params + dynamic capital sizing
+        from src.core.config_loader import get_config
         sf_p = tuned.get("spot_futures", {})
+        _sf_max_hold_s = get_config("strategy_filters.spot_futures_max_hold_seconds", default=28800)
         sf_config = SpotFuturesConfig(
             min_basis_bps=Decimal(str(sf_p.get("min_basis_bps", 15))),
             max_position_size=_max_pos_usd,
+            max_holding_hours=_sf_max_hold_s / 3600.0,
         ) if sf_p.get("status") in ("READY", "MONITOR") else None
 
         fr_p = tuned.get("funding_rate", {})
@@ -1401,23 +1402,6 @@ class Engine:
         if self._dynamic_sizer is not None and self._signal_generator is not None:
             self._signal_generator._dynamic_sizer = self._dynamic_sizer
             logger.info("DynamicSizer wired to SignalGenerator")
-
-        # US-133: AtomicOrderExecutor (IOC) — initialize for live execution mode
-        # Read from engine.json "mode" (authoritative config) not .env (secrets only per architecture)
-        from src.core.config import load_engine_config
-        execution_mode_env = load_engine_config().get("mode", "paper").lower()
-        if execution_mode_env == "live":
-            try:
-                from src.execution.atomic import AtomicOrderExecutor
-                self._atomic_order_executor = AtomicOrderExecutor(timeout_ms=1000)
-                logger.info("AtomicOrderExecutor (IOC+market fallback) initialized for live mode")
-            except Exception as exc:
-                logger.warning("AtomicOrderExecutor init failed (non-fatal): %s", exc)
-        else:
-            logger.info(
-                "EXECUTION_MODE=%s — paper/shadow execution active (AtomicOrderExecutor disabled)",
-                execution_mode_env,
-            )
 
         # US-116: TCAAnalyzer
         try:

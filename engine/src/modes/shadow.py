@@ -1570,7 +1570,7 @@ class PaperMode:
         if self._telegram is not None:
             try:
                 await self._telegram.send_fill_enhanced({
-                    "mode": "🟣 [SHADOW]",
+                    "mode": "🟢 [PAPER]",
                     "strategy": sid,
                     "symbol": signal.symbol,
                     "buy_exchange": buy_ex,
@@ -1969,7 +1969,7 @@ class PaperMode:
         if self._telegram is not None:
             try:
                 await self._telegram.send_fill_enhanced({
-                    "mode": "🟣 [SHADOW]",
+                    "mode": "🟢 [PAPER]",
                     "strategy": sid,
                     "symbol": trade_request.legs[0].symbol if trade_request.legs else "unknown",
                     "buy_exchange": buy_exs[0] if buy_exs else "unknown",

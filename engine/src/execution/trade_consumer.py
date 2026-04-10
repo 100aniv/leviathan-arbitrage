@@ -266,7 +266,7 @@ class TradeRequestConsumer:
         # PHOENIX: Filter trades where any leg notional < min (config-driven)
         # Prevents imbalanced positions from per-adapter min_notional boosts.
         from src.core.config_loader import get_config
-        _MIN_TRADE_NOTIONAL = Decimal(str(get_config("execution.min_trade_notional_usd", default=10)))
+        _MIN_TRADE_NOTIONAL = Decimal(str(get_config("execution.min_trade_notional_usd") or 5))
         _small_legs = [
             leg for leg in trade_request.legs
             if leg.price and leg.price > 0 and leg.size * leg.price < _MIN_TRADE_NOTIONAL

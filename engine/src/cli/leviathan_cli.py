@@ -21,7 +21,6 @@ def main() -> None:
     sub.add_parser("status", help="엔진 상태 확인")
     sub.add_parser("start", help="인프라 + 엔진 시작")
     sub.add_parser("stop", help="엔진 중지")
-    sub.add_parser("shadow", help="Shadow 모드 10분 실행")
     sub.add_parser("health", help="헬스 체크 (Redis/DB/API)")
     sub.add_parser("test", help="테스트 실행")
     sub.add_parser("logs", help="최근 로그 조회")
@@ -37,7 +36,6 @@ def main() -> None:
         "status": cmd_status,
         "start": cmd_start,
         "stop": cmd_stop,
-        "shadow": cmd_shadow,
         "health": cmd_health,
         "test": cmd_test,
         "logs": cmd_logs,
@@ -83,14 +81,6 @@ def cmd_stop() -> None:
     print("LEVIATHAN 중지...")
     subprocess.run(["docker", "compose", "stop", "engine"], cwd=_project_root())
     print("완료")
-
-
-def cmd_shadow() -> None:
-    print("Shadow 모드 10분 실행...")
-    os.chdir(_engine_root())
-    env = os.environ.copy()
-    env["DATA_MODE"] = "shadow"
-    subprocess.run([sys.executable, "-m", "src.main"], timeout=600, env=env)
 
 
 def cmd_health() -> None:

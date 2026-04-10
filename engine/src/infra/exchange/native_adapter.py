@@ -325,9 +325,11 @@ class NativeAdapter(abc.ABC):
         if not self._http:
             raise RuntimeError(f"{self.exchange_id}: not connected — call connect() first")
 
-        # Sort params alphabetically when signed — exchange signature validates
-        # against the actual URL query string, so URL param order must match
-        # the order used in the signature computation.
+        # Bitget _auth_headers signs over sorted(params.items()) to build prehash.
+        # httpx sends params in dict iteration order. We sort here so both
+        # the signature computation and the actual URL use the same ordering.
+        # NOTE: Binance bypasses this path entirely via _signed_request(signed=False),
+        # so Binance ordering is unaffected. Bybit and OKX adapters also sort internally.
         if signed and params:
             params = dict(sorted(params.items()))
 

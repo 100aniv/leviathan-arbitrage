@@ -167,12 +167,18 @@ class SpotFuturesStrategy(BaseStrategy):
         if self._adaptive_threshold is not None:
             self._adaptive_threshold.update(float(abs_basis_bps))
 
-        # US-261: Dynamic basis threshold when ready, static fallback
+        # US-261: static min_basis is ENTRY FLOOR; adaptive p95 is OUTLIER CAP
+        _min_basis = self.config.min_basis_bps
         if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
-            _entry_bps, _ = self._adaptive_threshold.thresholds
-            _min_basis = Decimal(str(_entry_bps))
-        else:
-            _min_basis = self.config.min_basis_bps
+            _outlier_cap, _ = self._adaptive_threshold.thresholds  # p95
+            if float(abs_basis_bps) > _outlier_cap:
+                self._metrics.signals_filtered += 1
+                logger.info(
+                    "strategy.outlier_rejected strategy=spot_futures reason=outlier_cap "
+                    "symbol=%s basis_bps=%.2f cap_bps=%.2f",
+                    signal.symbol, float(abs_basis_bps), _outlier_cap,
+                )
+                return None
 
         if abs_basis_bps < _min_basis:
             self._metrics.signals_filtered += 1
@@ -330,3 +336,14 @@ class SpotFuturesStrategy(BaseStrategy):
                 resolved = self._resolve_spot_symbol(trade.symbol)
                 if resolved:
                     self._open_positions.pop(resolved, None)
+
+    def on_execution_rollback(self, symbol: str) -> None:
+        """롤백 완료 시 _open_positions에서 심볼 제거 — 재진입 lockout 방지.
+
+        ROLLED_BACK: leg2 실패 후 leg1 언와인드 성공 → 포지션 없음 → 즉시 재진입 허용.
+        ROLLBACK_FAILED: 호출하지 않음 (stranded position 존재).
+        """
+        resolved = self._resolve_spot_symbol(symbol) or symbol
+        if resolved in self._open_positions:
+            logger.info("sf.position_cleared_on_rollback symbol=%s", resolved)
+            self._open_positions.pop(resolved, None)

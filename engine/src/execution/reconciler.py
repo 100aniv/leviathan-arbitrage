@@ -83,6 +83,12 @@ class PositionReconciler:
         # Check: positions exchange has that engine doesn't know about
         for key, ex_pos in exchange_positions.items():
             if key not in engine_positions:
+                # Bug 28: skip positions where entry_price=0 (Bitget REST stale) AND size is tiny
+                # Real positions with entry_price=0 are still tracked — only skip truly negligible ones
+                notional_by_mark = abs(ex_pos.size * ex_pos.mark_price) if ex_pos.mark_price and ex_pos.mark_price > 0 else Decimal("0")
+                if ex_pos.entry_price == Decimal("0") and notional_by_mark < Decimal("0.01"):
+                    logger.debug("reconciler.ghost_skipped key=%s mark_notional=%s", key, notional_by_mark)
+                    continue
                 msg = (
                     f"{key}: engine has no record, "
                     f"exchange has size={ex_pos.size}"

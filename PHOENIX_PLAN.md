@@ -2340,3 +2340,84 @@ v16 실행 중 92개 에러 중 72개(78%)가 `NoneType object has no attribute 
 - [ ] v26 로그에서 margin_type WARNING → INFO/silent 확인
 - [ ] AtomicOrderExecutor wiring 또는 명시적 dead code 제거
 - [ ] FF 전략 holding_timeout 실제 동작 확인 (30분 후)
+
+
+---
+
+## §8.20 — v26~v27 전체 배관 감사 Round 3 + BUG-8~10 수정 (2026-04-10)
+
+> 방법론: PHOENIX_PLAN.md 기준 + 전체 모듈 트리 정독. config 파편화 해소 + 런타임 에러 0건 달성.
+
+### v26 실행 이력
+
+| 버전 | 시각 | Fills | PnL | 상태 |
+|------|------|-------|-----|------|
+| v26 | 2026-04-10 15:24 | 0건 | — | PORT 8000 충돌 후 종료 |
+| v27 (fix1) | 2026-04-10 16:18 | — | — | get_config NameError → 재시작 |
+| v27 (fix2) | 2026-04-10 16:19 | 실행 중 | — | 전략 1개 등록 (futures_futures_v1) ✅ |
+
+### 새로 발견 + 수정한 버그
+
+#### BUG-8 [HIGH]: stop() 메서드가 포지션 청산 건너뜀 (✅ 완료)
+- **파일**: `engine/src/main.py`
+- **원인**: `stop()` 내부에서 `self._settings.execution_mode == "live"` 체크 → `.env EXECUTION_MODE=paper` 읽어서 항상 `False` → `_cancel_open_orders()` + `_close_all_positions_on_shutdown()` 미호출
+- **수정**: `getattr(self, '_engine_mode', None) == EngineMode.LIVE` 로 변경 (engine.json 기준 `_engine_mode` 사용)
+- **영향**: v26 종료 시 12개 Binance + 8개 Bitget 포지션 잔류 → close_positions.py 2회 수동 청산. v27부터 정상 shutdown.
+
+#### BUG-9 [MEDIUM]: get_config NameError → 전략 등록 실패 (✅ 완료)
+- **파일**: `engine/src/main.py:_register_default_strategies()`
+- **원인**: line 1105에서 `get_config("strategy_filters.spot_futures_max_hold_seconds", ...)` 사용하지만 함수 스코프에 import 없음 → `NameError: name 'get_config' is not defined` → 전략 등록 전체 실패
+- **수정**: `_register_default_strategies()` 내 `from src.core.config_loader import get_config` 추가 (line 1104)
+- **영향**: v27 fix1에서 `StrategyManager initialized with 0 strategies` → fix2에서 `1 strategies` (futures_futures_v1)
+
+#### BUG-10 [LOW]: trading.json engine 블록이 engine.json mode 오버라이드 (✅ 완료)
+- **파일**: `engine/config/trading.json`
+- **원인**: `"engine": {"execution_mode": "paper", "data_mode": "shadow", ...}` 블록이 engine.json `mode: "live"` 를 config_loader deep merge에서 오버라이드 → 모드 충돌
+- **수정**: trading.json engine 블록 전체 제거. engine.json이 유일한 비시크릿 설정 소스.
+
+### 감사 결과 (배관 상태 최종)
+
+#### 전체 완료 ✅
+| 컴포넌트 | 위치 | 상태 |
+|---------|------|------|
+| DeduplicationGate | live.py:312-313, :895 | ✅ 생성+주입+호출 |
+| MarginTracker | live.py:319-320, :525 | ✅ 생성+주입+호출 |
+| StrandedPositionTracker | executor.py:143, 352~858 | ✅ 생성+6개 호출점 |
+| _rollback_attempted | executor.py:145, 203~794 | ✅ dedup guard 완성 |
+| pop_exit_requests | live.py:1537-1538 | ✅ 60초 폴링 |
+| TCA IS calc | live.py:1062-1083 | ✅ slippage_total DB 저장 |
+| TradeReconciler | live.py:322-324, :1544 | ✅ 10분 주기 |
+| get_trades() | native_binance.py:525, native_bitget.py:506 | ✅ 두 어댑터 구현 |
+| Binance -4168 | native_adapter.py:250 | ✅ silent 처리 |
+| on_execution_rollback | spot_futures.py, funding_rate.py | ✅ rollback 후 open_positions 해제 |
+| SpotFuturesConfig wiring | main.py:1105-1110 | ✅ max_holding_hours wiring |
+| Bitget taker fee | fee_model.py:82 | ✅ 0.0006 (6bps) |
+| futures_min_spread_bps | engine.json, strategy_params.json | ✅ 20bps |
+| config_loader primary | config_loader.py | ✅ engine.json wins deep merge |
+| AtomicOrderExecutor | main.py | ✅ dead code 제거 완료 |
+| sorted params | native_adapter.py | ✅ Bitget sign 순서 유지 |
+
+#### 설정 파일 역할 정리 (사용자 요청 반영)
+| 파일 | 역할 | 우선순위 |
+|------|------|---------|
+| `engine/.env` | 시크릿만 (API 키, DB URL) | — |
+| `engine/config/engine.json` | 모든 비시크릿 설정의 단일 진실 소스 | 1위 (wins) |
+| `engine/config/trading.json` | 레거시 (하위 호환용) | 2위 (fallback) |
+| `engine/config/strategy_params.json` | 전략별 튜닝 파라미터 | 3위 |
+| `config.yaml` | **해당 없음** — 이 프로젝트에 불필요 | — |
+
+### v27 검증 지표
+
+| 항목 | v26 | v27 | 상태 |
+|------|-----|-----|------|
+| Strategy registration | FAIL (NameError) | 1개 등록 (FF) | ✅ |
+| trading.json 충돌 | engine.execution_mode=paper | 블록 제거 | ✅ |
+| stop() 포지션 청산 | 미호출 | EngineMode.LIVE 체크 | ✅ |
+| sorted params | 제거됨 (Bitget 40009) | 복원 | ✅ |
+| engine.json primary | trading.json 오버라이드 가능성 | engine.json wins | ✅ |
+
+### 다음 반복 감사 항목
+- [ ] v27 30분 후 FF 체결 확인 (기대: Binance↔Bitget 20bps 이상 스프레드)
+- [ ] `telegram_trade_bot.py` os.getenv() 7개 → get_config() 변환 (설정 파편화 P1)
+- [ ] `engine/config/trading.json` 완전 deprecation (engine.json 완전 이전 후)
+- [ ] CI/CD `trading-ci.yml` 첫 PR 실행 검증

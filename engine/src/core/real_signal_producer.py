@@ -149,6 +149,8 @@ class RealDataSignalProducer:
         self._spread_ts_max_diff_s: float = 0.300  # 300ms timestamp cross-check
         # Rate-limit futures_spread_outlier logs: key=(symbol,ex_a,ex_b) → last_log_time
         self._outlier_log_cooldown: dict[tuple[str, str, str], float] = {}
+        # Global throttle: at most 1 outlier log per 5s across all pairs
+        self._outlier_global_last_log: float = 0.0
         # S10: Warmup guard — skip signals for first 5 seconds after startup
         # Disabled in test mode to avoid breaking integration tests
         self._first_update_mono: float = 0.0
@@ -441,6 +443,8 @@ class RealDataSignalProducer:
         for i in range(len(exchanges)):
             for j in range(i + 1, len(exchanges)):
                 ex_a, ex_b = exchanges[i], exchanges[j]
+                if ex_a == ex_b:
+                    continue
                 book_a = fut_books[ex_a]
                 book_b = fut_books[ex_b]
 
@@ -484,7 +488,8 @@ class RealDataSignalProducer:
                     if spread_bps > 100:
                         _olk1 = (symbol, ex_b, ex_a)
                         _now1 = time.monotonic()
-                        if _now1 - self._outlier_log_cooldown.get(_olk1, 0.0) > 60.0:
+                        if (_now1 - self._outlier_log_cooldown.get(_olk1, 0.0) > 300.0
+                                and _now1 - self._outlier_global_last_log > 5.0):
                             logger.warning(
                                 "real_signal_producer.futures_spread_outlier",
                                 extra={
@@ -495,6 +500,7 @@ class RealDataSignalProducer:
                                 },
                             )
                             self._outlier_log_cooldown[_olk1] = _now1
+                            self._outlier_global_last_log = _now1
                         if spread_bps > 200 and self._stale_detector is not None:
                             self._stale_detector.add_blacklist(ex_a, symbol, ttl_s=60.0)
                             self._stale_detector.add_blacklist(ex_b, symbol, ttl_s=60.0)
@@ -531,7 +537,8 @@ class RealDataSignalProducer:
                     if spread_bps > 100:
                         _olk2 = (symbol, ex_a, ex_b)
                         _now2 = time.monotonic()
-                        if _now2 - self._outlier_log_cooldown.get(_olk2, 0.0) > 60.0:
+                        if (_now2 - self._outlier_log_cooldown.get(_olk2, 0.0) > 300.0
+                                and _now2 - self._outlier_global_last_log > 5.0):
                             logger.warning(
                                 "real_signal_producer.futures_spread_outlier",
                                 extra={
@@ -542,6 +549,7 @@ class RealDataSignalProducer:
                                 },
                             )
                             self._outlier_log_cooldown[_olk2] = _now2
+                            self._outlier_global_last_log = _now2
                         if spread_bps > 200 and self._stale_detector is not None:
                             self._stale_detector.add_blacklist(ex_a, symbol, ttl_s=60.0)
                             self._stale_detector.add_blacklist(ex_b, symbol, ttl_s=60.0)

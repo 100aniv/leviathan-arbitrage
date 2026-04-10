@@ -1,4 +1,5 @@
 {
+  "_deprecated": "trading.json은 레거시 파일입니다. 모든 설정은 engine.json으로 이전되었습니다. engine.json이 우선순위가 높습니다 (config_loader.py deep merge). 이 파일은 하위 호환을 위해 유지됩니다.",
   "active_exchanges": [
     "binance",
     "bybit",
@@ -67,23 +68,6 @@
     "spot_futures": 5,
     "triangular": 5,
     "cex_dex": 5
-  },
-  "engine": {
-    "env": "dev",
-    "execution_mode": "paper",
-    "data_mode": "shadow",
-    "log_level": "INFO",
-    "api_port": 8000,
-    "ws_port": 8001,
-    "workers": 4,
-    "kill_switch_enabled": true,
-    "tuner_data_source": "timescaledb",
-    "max_position_usd": 10,
-    "max_daily_loss_usd": 15,
-    "active_exchanges": [
-      "binance",
-      "binance_futures"
-    ]
   },
   "strategy_filters": {
     "funding_zscore_threshold": -1,
