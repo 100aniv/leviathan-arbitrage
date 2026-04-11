@@ -460,6 +460,15 @@ class RealDataSignalProducer:
         if len(fut_books) < 2:
             # Round30 fix: flush summary even on early return so 60s timer always fires
             _avail = sorted(_all_for_symbol.keys())
+            # One-shot BTC/USDT diagnostic: log book state to understand missing exchange
+            if symbol == "BTC/USDT" and not getattr(self, "_ff_btc_debug_done", False):
+                logger.info(
+                    "real_signal_producer.ff_btc_debug symbol=BTC/USDT fut_books=%d avail=%s fut_exch=%s",
+                    len(fut_books),
+                    _avail,
+                    sorted(self._futures_exchanges),
+                )
+                self._ff_btc_debug_done = True
             self._flush_ff_summary(
                 signals,
                 early_return_reason=f"fut_books={len(fut_books)} all_exch={_avail}",
