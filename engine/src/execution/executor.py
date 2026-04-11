@@ -146,6 +146,10 @@ class AtomicExecutor:
         # PHOENIX v32: DeduplicationGate — Bug 26 fix (race-condition duplicate orders)
         from src.execution.dedup import DeduplicationGate
         self._dedup_gate = DeduplicationGate(window_s=10.0)
+        # PHOENIX v18: MarginTracker — in-flight reservation prevents concurrent signals
+        # from all passing guardian with same stale balance snapshot (BUG-19/29 fix).
+        from src.execution.margin_tracker import MarginTracker
+        self._margin_tracker = MarginTracker()
 
     def _get_lock(self, exchange_id: str) -> asyncio.Lock:
         return self._locks.setdefault(exchange_id, asyncio.Lock())
@@ -171,11 +175,16 @@ class AtomicExecutor:
         return is_halted()
 
     def _check_health(self, exchange_id: str) -> bool:
-        """Return True if exchange health_score > threshold."""
+        """Return True if exchange health_score >= threshold.
+
+        BUG-48: minimum score for idle-but-healthy REST-only adapter is exactly 0.6
+        (latency=1.0 + ws=1.0 + fill=1.0 with stale connection). Using >= so that
+        a perfectly-healthy adapter that hasn't made REST calls recently still passes.
+        """
         adapter = self._exchanges.get(exchange_id)
         if adapter is None:
             return False
-        return adapter.health_score > self._config.health_threshold
+        return adapter.health_score >= self._config.health_threshold
 
     async def _place_with_timeout(self, adapter: ExchangeAdapter, order: Order) -> Trade:
         """Place order with timeout. Raises asyncio.TimeoutError on timeout."""
@@ -248,11 +257,16 @@ class AtomicExecutor:
                         await adapter.cancel_order(effective_id)
                 # else: order was never submitted — nothing to cancel
             if order.order_id:
+                # BUG-03: prune to prevent unbounded growth (cap at 5000 entries)
+                if len(self._rollback_attempted) >= 5000:
+                    self._rollback_attempted.clear()
                 self._rollback_attempted[order.order_id] = "success"
             return True, ""
         except Exception as exc:
             logger.error("rollback_failed exchange=%s error=%s", exchange_id, exc)
             if order.order_id:
+                if len(self._rollback_attempted) >= 5000:
+                    self._rollback_attempted.clear()
                 self._rollback_attempted[order.order_id] = "failed"
             return False, str(exc)
 
@@ -361,8 +375,14 @@ class AtomicExecutor:
                 # Rollback: cancel unfilled, unwind filled
                 leg1_filled = leg1_trade is not None and leg1_result.filled_amount > 0
                 leg2_filled = leg2_trade is not None and leg2_result.filled_amount > 0
-                rb1, rb1_reason = (await self._rollback_order(exchange_id, leg1_order, filled=leg1_filled, filled_amount=leg1_result.filled_amount) if leg1_trade else (True, ""))
-                rb2, rb2_reason = (await self._rollback_order(exchange_id, leg2_order, filled=leg2_filled, filled_amount=leg2_result.filled_amount) if leg2_trade else (True, ""))
+                # BUG-85: errored legs (leg1_err/leg2_err is not None) must also attempt cancel —
+                # the order may have reached the exchange before the timeout/error response arrived.
+                # A cancel on a non-existent order is harmless (benign -2011 from Binance).
+                # Only skip rollback when we know the leg was never submitted (neither trade nor error).
+                _rb1_needed = leg1_trade is not None or leg1_err is not None
+                _rb2_needed = leg2_trade is not None or leg2_err is not None
+                rb1, rb1_reason = (await self._rollback_order(exchange_id, leg1_order, filled=leg1_filled, filled_amount=leg1_result.filled_amount) if _rb1_needed else (True, ""))
+                rb2, rb2_reason = (await self._rollback_order(exchange_id, leg2_order, filled=leg2_filled, filled_amount=leg2_result.filled_amount) if _rb2_needed else (True, ""))
 
                 if not rb1 or not rb2:
                     failed_order = leg1_order if not rb1 else leg2_order
@@ -409,7 +429,9 @@ class AtomicExecutor:
 
         finally:
             self._release_lock(exchange_id)
-            self._rollback_attempted.clear()
+            # BUG-93: do NOT clear — concurrent executions share this dict;
+            # clearing one call's entries corrupts another in-flight execution.
+            # order_id uniqueness guarantees no false dedup across executions.
 
     # -----------------------------------------------------------------------
     # MULTI-LEG SAME-EXCHANGE EXECUTION (sequential, N legs)
@@ -644,7 +666,30 @@ class AtomicExecutor:
                 strategy_id=strategy_id,
             )
 
-        # Step 1: Verify BOTH exchanges health_score > 0.9 — RC-CROSS-2
+        # Step 0c: MarginTracker — in-flight reservation (BUG-19/29 fix)
+        # Prevents concurrent signals from all passing guardian using the same stale balance.
+        # available_usd uses configured per-exchange budget; falls back to $500 for step2_1 tier.
+        _required_a = leg1_order.price * leg1_order.amount if leg1_order.price and leg1_order.amount else Decimal("0")
+        _required_b = leg2_order.price * leg2_order.amount if leg2_order.price and leg2_order.amount else Decimal("0")
+        # per_exchange_budget_usd: set to actual exchange margin balance for tight protection.
+        # Default 100_000 keeps normal test/low-capital operation unblocked; protection
+        # kicks in only when cumulative in-flight approaches the configured limit.
+        _budget_per_ex = Decimal(str(getattr(self._config, "per_exchange_budget_usd", 100_000)))
+        _margin_ok_a = await self._margin_tracker.check_and_reserve(ex_a_id, _required_a, _budget_per_ex)
+        _margin_ok_b = False
+        if _margin_ok_a:
+            _margin_ok_b = await self._margin_tracker.check_and_reserve(ex_b_id, _required_b, _budget_per_ex)
+        if not _margin_ok_a or not _margin_ok_b:
+            if _margin_ok_a:
+                await self._margin_tracker.release(ex_a_id, _required_a)
+            return ExecutionResult(
+                status=ExecutionStatus.REJECTED,
+                legs=[],
+                error="margin_tracker_blocked",
+                strategy_id=strategy_id,
+            )
+
+        # Step 1: Verify BOTH exchanges health_score >= 0.6 — RC-CROSS-2
         if not self._check_health(ex_a_id):
             return ExecutionResult(
                 status=ExecutionStatus.REJECTED,
@@ -856,7 +901,7 @@ class AtomicExecutor:
         finally:
             self._release_lock(ex_a_id)
             self._release_lock(ex_b_id)
-            self._rollback_attempted.clear()
+            # BUG-93: do NOT clear (see execute_same_exchange finally block comment)
 
     async def _do_rollback_cross(
         self,
@@ -996,11 +1041,14 @@ class AtomicExecutor:
             ex_a_id, ex_b_id, strategy_id
         )
 
-        expected_fills = {}
+        expected_fills: dict[str, Decimal] = {}
+        expected_symbols: dict[str, str] = {}
         if leg1_result and leg1_result.trade:
             expected_fills[ex_a_id] = leg1_result.trade.amount
+            expected_symbols[ex_a_id] = leg1_result.order.symbol
         if leg2_result and leg2_result.trade:
             expected_fills[ex_b_id] = leg2_result.trade.amount
+            expected_symbols[ex_b_id] = leg2_result.order.symbol
 
         for ex_id in (ex_a_id, ex_b_id):
             adapter = self._exchanges.get(ex_id)
@@ -1009,16 +1057,33 @@ class AtomicExecutor:
             try:
                 positions = await adapter.get_positions()
                 expected = expected_fills.get(ex_id, Decimal("0"))
+                expected_sym = expected_symbols.get(ex_id, "")
                 logger.info(
-                    "post_execution_reconcile ex=%s positions=%d expected_fill=%s",
-                    ex_id, len(positions), expected
+                    "post_execution_reconcile ex=%s positions=%d expected_fill=%s symbol=%s",
+                    ex_id, len(positions), expected, expected_sym,
                 )
-                # Step 14: Flag mismatch if position count is unexpected
-                if expected > 0 and len(positions) == 0:
-                    logger.warning(
-                        "reconcile_mismatch ex=%s expected_fill=%s but_no_positions strategy=%s",
-                        ex_id, expected, strategy_id
-                    )
+                # BUG-64: Check symbol-specific position, not total position count.
+                # len(positions)==0 misses the case where other symbols have open positions.
+                if expected > 0 and expected_sym:
+                    matching = [p for p in positions if p.symbol == expected_sym]
+                    if not matching:
+                        logger.warning(
+                            "reconcile_mismatch ex=%s symbol=%s expected_fill=%s "
+                            "but_no_matching_position strategy=%s",
+                            ex_id, expected_sym, expected, strategy_id,
+                        )
+                    else:
+                        # Check amount within 5% tolerance band
+                        actual_size = abs(matching[0].size)
+                        if actual_size > 0:
+                            diff_pct = abs(actual_size - expected) / expected
+                            if diff_pct > Decimal("0.05"):
+                                logger.warning(
+                                    "reconcile_amount_mismatch ex=%s symbol=%s "
+                                    "expected=%.6f actual=%.6f diff_pct=%.1f%% strategy=%s",
+                                    ex_id, expected_sym, float(expected),
+                                    float(actual_size), float(diff_pct * 100), strategy_id,
+                                )
             except Exception as exc:
                 logger.error(
                     "post_execution_reconcile_error ex=%s error=%s", ex_id, exc
