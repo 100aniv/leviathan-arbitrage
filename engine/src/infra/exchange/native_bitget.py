@@ -198,6 +198,13 @@ class NativeBitgetAdapter(NativeAdapter):
         quantizer = Decimal(10) ** (-decimals)
         return str(price.quantize(quantizer))
 
+    async def get_lot_step(self, symbol: str) -> Decimal:
+        """BUG-71: Return lot-size step for cross-exchange size synchronization."""
+        if self._market_type == "futures":
+            await self._fetch_contract_specs(symbol)
+            return self._qty_step_sizes.get(symbol, Decimal("0.001"))
+        return Decimal("0.001")
+
     def _quantize_futures_qty(self, symbol: str, qty: Decimal) -> Decimal:
         """Floor qty to nearest sizeMultiplier step — BUG-28 fix.
 

@@ -752,6 +752,40 @@ class AtomicExecutor:
                 await self._margin_tracker.release(ex_b_id, _required_b)
             raise
 
+        # BUG-71: Sync lot sizes across exchanges BEFORE placing orders.
+        # Each exchange independently floors qty to its own step size.
+        # If Binance stepSize=1.0 and Bitget stepSize=0.001, a 2.038 size
+        # becomes 2.0 on Binance and 2.038 on Bitget → $0.20 net-long mismatch.
+        # Fix: compute the coarser (larger) step and floor BOTH legs to it.
+        try:
+            _step_a = await adapter_a.get_lot_step(leg1_order.symbol)
+            _step_b = await adapter_b.get_lot_step(leg2_order.symbol)
+            _coarser = max(_step_a, _step_b)
+            if _coarser > Decimal("0"):
+                _synced = (leg1_order.amount // _coarser) * _coarser
+                if _synced <= Decimal("0"):
+                    if _margin_reserved_a:
+                        await self._margin_tracker.release(ex_a_id, _required_a)
+                    if _margin_reserved_b:
+                        await self._margin_tracker.release(ex_b_id, _required_b)
+                    self._release_lock(first_id)
+                    self._release_lock(second_id)
+                    return ExecutionResult(
+                        status=ExecutionStatus.REJECTED,
+                        legs=[],
+                        error=f"lot_size_sync_zero step={_coarser} amount={leg1_order.amount}",
+                        strategy_id=strategy_id,
+                    )
+                if _synced != leg1_order.amount:
+                    logger.info(
+                        "lot_size_synced symbol=%s step_a=%s step_b=%s original=%s synced=%s",
+                        leg1_order.symbol, _step_a, _step_b, leg1_order.amount, _synced,
+                    )
+                    leg1_order = leg1_order.model_copy(update={"amount": _synced})
+                    leg2_order = leg2_order.model_copy(update={"amount": _synced})
+        except Exception as _lsync_exc:
+            logger.debug("lot_size_sync_failed symbol=%s err=%s — using original sizes", leg1_order.symbol, _lsync_exc)
+
         leg1_result: LegResult | None = None
         leg2_result: LegResult | None = None
         leg1_trade: Trade | None = None

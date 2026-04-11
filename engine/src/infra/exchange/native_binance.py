@@ -237,6 +237,12 @@ class BinanceNativeAdapter(NativeAdapter):
             return qty
         return (qty // step) * step
 
+    async def get_lot_step(self, symbol: str) -> Decimal:
+        """BUG-71: Return lot-size step for cross-exchange size synchronization."""
+        if self._market_type == "futures":
+            return await self._get_lot_step(symbol)
+        return await self._get_spot_lot_step(symbol)
+
     async def _rest_place_order(self, order: Order) -> Trade:
         side = "BUY" if order.side == OrderSide.BUY else "SELL"
         order_type = "LIMIT" if order.order_type == OrderType.LIMIT else "MARKET"

@@ -276,6 +276,14 @@ class NativeAdapter(abc.ABC):
                 exchange_id=self.exchange_id,
             )
 
+    async def get_lot_step(self, symbol: str) -> Decimal:
+        """Return the minimum lot-size step for this exchange/symbol.
+
+        Override in concrete adapters for accurate values.
+        Default: 0.001 (safe for most altcoins).
+        """
+        return Decimal("0.001")
+
     @property
     def health_score(self) -> float:
         return self._health.health_score
