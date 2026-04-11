@@ -107,16 +107,18 @@ class BinanceFuturesCollector(BaseCollector):
         # Client-initiated pings (ping_interval=20) time out because server doesn't
         # respond to application-level pings → connection drops every 30-90s.
         # Fix: disable client pings; server pings keep connection alive.
+        import time as _time
         async with websockets.connect(url, ping_interval=None, ping_timeout=None) as ws:
             self._ws = ws
             self._connected = True
+            from src.collectors.base_collector import COLLECTOR_LAST_CONNECT
+            COLLECTOR_LAST_CONNECT[self.exchange_id] = _time.monotonic()  # Round33
             self._reconnect_delay = self.INITIAL_RECONNECT_DELAY
             logger.info("collector_connected", exchange=self.exchange_id)
 
             for symbol in self.symbols:
                 logger.info("collector_subscribed", exchange=self.exchange_id, symbol=symbol)
 
-            import time as _time
             async for raw in ws:
                 if not self._running:
                     break

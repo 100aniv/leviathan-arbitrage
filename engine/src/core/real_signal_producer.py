@@ -477,6 +477,24 @@ class RealDataSignalProducer:
             )
             return signals
 
+        # Round33: Post-reconnect cooldown — skip FF signals for 3s after any futures
+        # exchange reconnects. Prevents artificial spreads from stale orderbook data
+        # that survives briefly after a WS disconnect/reconnect cycle.
+        try:
+            from src.collectors.base_collector import COLLECTOR_LAST_CONNECT
+            _now_rc = time.monotonic()
+            _RECONNECT_COOLDOWN = 3.0
+            for _rc_ex in fut_books:
+                _rc_last = COLLECTOR_LAST_CONNECT.get(_rc_ex, 0.0)
+                if _rc_last > 0 and (_now_rc - _rc_last) < _RECONNECT_COOLDOWN:
+                    self._flush_ff_summary(
+                        signals,
+                        early_return_reason=f"reconnect_cooldown={_rc_ex} age={round(_now_rc - _rc_last, 1)}s",
+                    )
+                    return signals
+        except Exception:
+            pass
+
         exchanges = sorted(fut_books.keys())
         for i in range(len(exchanges)):
             for j in range(i + 1, len(exchanges)):

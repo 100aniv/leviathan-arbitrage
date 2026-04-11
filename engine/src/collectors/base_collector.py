@@ -12,6 +12,11 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
+# Round33: Module-level registry of last successful connect times per exchange.
+# Updated by _connect_and_listen when _connected = True.
+# Used by real_signal_producer to enforce a post-reconnect cooldown on FF signals.
+COLLECTOR_LAST_CONNECT: dict[str, float] = {}
+
 
 class BaseCollector(abc.ABC):
     """Abstract base for exchange-specific WebSocket orderbook collectors.
@@ -97,6 +102,7 @@ class BaseCollector(abc.ABC):
         async with websockets.connect(url, ping_interval=self.ping_interval, ping_timeout=self.ping_timeout) as ws:
             self._ws = ws
             self._connected = True
+            COLLECTOR_LAST_CONNECT[self.exchange_id] = time.monotonic()  # Round33
             self._reconnect_delay = self.INITIAL_RECONNECT_DELAY
             logger.info("collector_connected", exchange=self.exchange_id)
 
