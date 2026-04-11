@@ -1568,6 +1568,17 @@ class Engine:
                 for eid in self._exchanges.keys()
             }
 
+            # Settlement exits and reduceOnly closes bypass risk checks (early return — skip PortfolioState)
+            _is_close_req = any(
+                isinstance(leg.metadata, dict) and (
+                    leg.metadata.get("reduceOnly") is True or
+                    str(leg.metadata.get("leg_type", "")).startswith("settlement_close")
+                )
+                for leg in trade_request.legs
+            )
+            if _is_close_req:
+                return True, ""
+
             portfolio = PortfolioState(
                 total_capital=capital_total,
                 used_capital=used_capital,
@@ -1578,16 +1589,6 @@ class Engine:
                 volatility_1min={},   # populated when live vol data available
                 volatility_24h={},    # populated when live vol data available
             )
-            # Settlement exits and reduceOnly closes bypass risk checks
-            _is_close_req = any(
-                isinstance(leg.metadata, dict) and (
-                    leg.metadata.get("reduceOnly") is True or
-                    str(leg.metadata.get("leg_type", "")).startswith("settlement_close")
-                )
-                for leg in trade_request.legs
-            )
-            if _is_close_req:
-                return True, ""
 
             # Check each leg
             for leg in trade_request.legs:

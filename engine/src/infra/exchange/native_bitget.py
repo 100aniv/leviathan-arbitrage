@@ -599,8 +599,10 @@ class NativeBitgetAdapter(NativeAdapter):
             resp = await self._request("GET", "/api/v2/mix/order/fills", params=params, signed=True)
             fill_list = []
             if isinstance(resp, dict):
-                raw_data = resp.get("data") or {}
-                if isinstance(raw_data, dict):
+                raw_data = resp.get("data")
+                if raw_data is None:
+                    fill_list = []
+                elif isinstance(raw_data, dict):
                     fill_list = raw_data.get("fillList") or []
                 elif isinstance(raw_data, list):
                     fill_list = raw_data

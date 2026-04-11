@@ -411,11 +411,19 @@ class FundingRateStrategy(BaseStrategy):
         return reqs
 
     def on_execution_rollback(self, symbol: str) -> None:
-        """롤백 완료 시 _open_positions에서 심볼 제거 — 결제시간 전 lockout 방지.
+        """롤백 완료 시 _open_positions/_pending_settlement_positions에서 심볼 제거.
 
         ROLLED_BACK: 진입 실패 후 언와인드 완료 → 포지션 없음 → 즉시 재진입 허용.
+        Settlement exit rollback: pending_settlement_positions도 정리 → 재시도 허용.
         ROLLBACK_FAILED: 호출하지 않음 (stranded position 존재).
         """
         if symbol in self._open_positions:
             logger.info("fr.position_cleared_on_rollback symbol=%s", symbol)
             self._open_positions.pop(symbol, None)
+        if symbol in self._pending_settlement_positions:
+            logger.warning(
+                "fr.settlement_exit_rollback symbol=%s — clearing pending_settlement to allow retry",
+                symbol,
+            )
+            self._pending_settlement_positions.pop(symbol, None)
+            self._settlement_routed_at = 0.0
