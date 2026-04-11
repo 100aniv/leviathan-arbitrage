@@ -481,6 +481,7 @@ class FuturesFuturesStrategy(BaseStrategy):
 
         # Check margin safety: required margin must not exceed available * (1 - safety_pct)
         margin_available = Decimal(str(signal.metadata.get("margin_available", "0")))
+        required_margin = Decimal("0")  # initialized here; set inside if-block below
         if margin_available > Decimal("0"):
             required_margin = (signal.buy_price * size) / Decimal(str(self.config.max_leverage))
             max_allowed_margin = margin_available * (Decimal("1") - self.config.margin_safety_pct)
@@ -491,13 +492,16 @@ class FuturesFuturesStrategy(BaseStrategy):
                     "required=%.2f max_allowed=%.2f",
                     signal.symbol, float(required_margin), float(max_allowed_margin),
                 )
-                return None
+                return None  # SAFE: _pending_entry_symbols.add() not yet called
+
+        # Race guard: claim symbol before first await.
+        # try/finally guarantees discard on ALL exit paths including unhandled exceptions
+        # from check_and_reserve or cost calculators (MAJOR-1 fix — complete exception coverage).
+        if _sym:
+            self._pending_entry_symbols.add(_sym)
+        try:
             # Bug 29: MarginTracker — check in-flight reservations to prevent margin exhaustion
-            # Claim symbol BEFORE first await so concurrent coroutines see it (MAJOR-1 race fix).
-            # Try/finally in caller will discard after TradeRequest is returned or on any exception.
-            if _sym:
-                self._pending_entry_symbols.add(_sym)
-            if self._margin_tracker is not None:
+            if margin_available > Decimal("0") and self._margin_tracker is not None:
                 ok = await self._margin_tracker.check_and_reserve(
                     exchange_id=signal.buy_exchange,
                     required_usd=required_margin,
@@ -509,99 +513,98 @@ class FuturesFuturesStrategy(BaseStrategy):
                         "strategy.rejected strategy=futures_futures reason=margin_tracker_blocked symbol=%s",
                         signal.symbol,
                     )
-                    if _sym:
-                        self._pending_entry_symbols.discard(_sym)
-                    return None
+                    return None  # finally: discard
 
-        buy_notional = signal.buy_price * size
-        sell_notional = signal.sell_price * size
-        # BUG-14 fix: use estimate_futures_cost — single rollback, no network cost
-        # (futures P&L settled in USDT; prior 2×estimate_cost doubled rollback $0.25×2=$0.50)
-        if hasattr(self._cost_calculator, "estimate_futures_cost"):
-            total_cost = self._cost_calculator.estimate_futures_cost(
-                buy_exchange=signal.buy_exchange,
-                sell_exchange=signal.sell_exchange,
-                buy_notional=buy_notional,
-                sell_notional=sell_notional,
-            )
-        else:
-            # Fallback for stub: fees only via estimate_cost (no network, no rollback)
-            buy_cost = self._cost_calculator.estimate_cost(
-                exchange_id=signal.buy_exchange,
-                symbol=signal.symbol,
-                side=OrderSide.BUY,
-                size=size,
-                price=signal.buy_price,
-            )
-            sell_cost = self._cost_calculator.estimate_cost(
-                exchange_id=signal.sell_exchange,
-                symbol=signal.symbol,
-                side=OrderSide.SELL,
-                size=size,
-                price=signal.sell_price,
-            )
-            total_cost = buy_cost + sell_cost
-        gross_profit = (signal.sell_price - signal.buy_price) * size
-        net_profit = gross_profit - total_cost
-
-        if net_profit <= Decimal("0"):
-            self._metrics.signals_filtered += 1
-            logger.info(
-                "strategy.rejected strategy=futures_futures reason=net_profit_negative symbol=%s "
-                "net_profit=%.6f gross=%.6f cost=%.6f",
-                signal.symbol, float(net_profit), float(gross_profit), float(total_cost),
-            )
-            if _sym:
-                self._pending_entry_symbols.discard(_sym)
-            return None
-
-        def _to_futures_exchange(eid: str) -> str:
-            """Ensure exchange ID refers to the futures adapter (e.g. 'binance' → 'binance_futures')."""
-            if not eid.endswith("_futures"):
-                return f"{eid}_futures"
-            return eid
-
-        # Track entry for time-based exit; discard pending guard now that position is recorded.
-        if self.config.max_hold_seconds > 0 and signal.symbol:
-            self._open_positions[signal.symbol] = {
-                "buy_ex": _to_futures_exchange(signal.buy_exchange),
-                "sell_ex": _to_futures_exchange(signal.sell_exchange),
-                "size": size,
-                "entry_time": time.time(),
-            }
-        self._pending_entry_symbols.discard(_sym)  # release race guard — position is now tracked
-
-        self._metrics.trade_requests_generated += 1
-        return TradeRequest(
-            strategy_id=self.strategy_id,
-            legs=[
-                TradeLeg(
-                    exchange_id=_to_futures_exchange(signal.buy_exchange),
+            buy_notional = signal.buy_price * size
+            sell_notional = signal.sell_price * size
+            # BUG-14 fix: use estimate_futures_cost — single rollback, no network cost
+            # (futures P&L settled in USDT; prior 2×estimate_cost doubled rollback $0.25×2=$0.50)
+            if hasattr(self._cost_calculator, "estimate_futures_cost"):
+                total_cost = self._cost_calculator.estimate_futures_cost(
+                    buy_exchange=signal.buy_exchange,
+                    sell_exchange=signal.sell_exchange,
+                    buy_notional=buy_notional,
+                    sell_notional=sell_notional,
+                )
+            else:
+                # Fallback for stub: fees only via estimate_cost (no network, no rollback)
+                buy_cost = self._cost_calculator.estimate_cost(
+                    exchange_id=signal.buy_exchange,
                     symbol=signal.symbol,
                     side=OrderSide.BUY,
                     size=size,
-                    order_type=OrderType.MARKET,
                     price=signal.buy_price,
-                    metadata={"leverage": str(self.config.max_leverage), "leg_type": "futures"},
-                ),
-                TradeLeg(
-                    exchange_id=_to_futures_exchange(signal.sell_exchange),
+                )
+                sell_cost = self._cost_calculator.estimate_cost(
+                    exchange_id=signal.sell_exchange,
                     symbol=signal.symbol,
                     side=OrderSide.SELL,
                     size=size,
-                    order_type=OrderType.MARKET,
                     price=signal.sell_price,
-                    metadata={"leverage": str(self.config.max_leverage), "leg_type": "futures"},
-                ),
-            ],
-            expected_profit_usdt=net_profit,
-            confidence=signal.confidence,
-            metadata={
-                "gross_profit": str(gross_profit),
-                "total_cost": str(total_cost),
-                "leverage": str(self.config.max_leverage),
-            },
-        )
+                )
+                total_cost = buy_cost + sell_cost
+            gross_profit = (signal.sell_price - signal.buy_price) * size
+            net_profit = gross_profit - total_cost
+
+            if net_profit <= Decimal("0"):
+                self._metrics.signals_filtered += 1
+                logger.info(
+                    "strategy.rejected strategy=futures_futures reason=net_profit_negative symbol=%s "
+                    "net_profit=%.6f gross=%.6f cost=%.6f",
+                    signal.symbol, float(net_profit), float(gross_profit), float(total_cost),
+                )
+                return None  # finally: discard
+
+            def _to_futures_exchange(eid: str) -> str:
+                """Ensure exchange ID refers to the futures adapter (e.g. 'binance' → 'binance_futures')."""
+                if not eid.endswith("_futures"):
+                    return f"{eid}_futures"
+                return eid
+
+            # Track entry for time-based exit.
+            if self.config.max_hold_seconds > 0 and signal.symbol:
+                self._open_positions[signal.symbol] = {
+                    "buy_ex": _to_futures_exchange(signal.buy_exchange),
+                    "sell_ex": _to_futures_exchange(signal.sell_exchange),
+                    "size": size,
+                    "entry_time": time.time(),
+                }
+
+            self._metrics.trade_requests_generated += 1
+            return TradeRequest(
+                strategy_id=self.strategy_id,
+                legs=[
+                    TradeLeg(
+                        exchange_id=_to_futures_exchange(signal.buy_exchange),
+                        symbol=signal.symbol,
+                        side=OrderSide.BUY,
+                        size=size,
+                        order_type=OrderType.MARKET,
+                        price=signal.buy_price,
+                        metadata={"leverage": str(self.config.max_leverage), "leg_type": "futures"},
+                    ),
+                    TradeLeg(
+                        exchange_id=_to_futures_exchange(signal.sell_exchange),
+                        symbol=signal.symbol,
+                        side=OrderSide.SELL,
+                        size=size,
+                        order_type=OrderType.MARKET,
+                        price=signal.sell_price,
+                        metadata={"leverage": str(self.config.max_leverage), "leg_type": "futures"},
+                    ),
+                ],
+                expected_profit_usdt=net_profit,
+                confidence=signal.confidence,
+                metadata={
+                    "gross_profit": str(gross_profit),
+                    "total_cost": str(total_cost),
+                    "leverage": str(self.config.max_leverage),
+                },
+            )
+        finally:
+            # Unconditional cleanup: discard race guard on ALL exit paths (return, exception, cancel)
+            if _sym:
+                self._pending_entry_symbols.discard(_sym)
 
     async def on_fill(self, trade: Trade) -> None:
         await super().on_fill(trade)
