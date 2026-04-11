@@ -459,7 +459,11 @@ class RealDataSignalProducer:
         }
         if len(fut_books) < 2:
             # Round30 fix: flush summary even on early return so 60s timer always fires
-            self._flush_ff_summary(signals, early_return_reason=f"fut_books={len(fut_books)}")
+            _avail = sorted(_all_for_symbol.keys())
+            self._flush_ff_summary(
+                signals,
+                early_return_reason=f"fut_books={len(fut_books)} all_exch={_avail}",
+            )
             return signals
 
         exchanges = sorted(fut_books.keys())
