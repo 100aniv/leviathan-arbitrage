@@ -238,7 +238,7 @@ class BithumbCollector(BaseCollector):
             if last_mid is not None and last_mid > 0:
                 change_pct = abs(new_mid - last_mid) / last_mid
                 if change_pct > 0.5:  # >50% change
-                    logger.warning(
+                    logger.debug(
                         "bithumb_ws_price_guard_triggered",
                         symbol=symbol,
                         last_mid=last_mid,
@@ -304,7 +304,7 @@ class BithumbCollector(BaseCollector):
                 self._last_valid_mid[symbol] = rest_mid
             else:
                 # REST is in normal range → WS delta was corrupt fake spread
-                logger.info(
+                logger.debug(
                     "bithumb_2step_confirmed_fake_spread",
                     symbol=symbol,
                     last_mid=last_mid,
