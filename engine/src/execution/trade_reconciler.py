@@ -204,6 +204,18 @@ class TradeReconciler:
             else:
                 report.unmatched_exchange.append(ex_fill)
 
+        # DB rows with no matching exchange fill → phantom internal records
+        for _sym, _rows in db_by_symbol.items():
+            for _row in _rows:
+                _db_ts = _row["ts"].timestamp() if hasattr(_row["ts"], "timestamp") else float(_row["ts"])
+                if _db_ts not in matched_ts_keys:
+                    report.unmatched_internal.append({
+                        "symbol": _sym,
+                        "ts": str(_row["ts"]),
+                        "buy_exchange": _row.get("buy_exchange"),
+                        "sell_exchange": _row.get("sell_exchange"),
+                    })
+
         # IS 통계 계산
         if is_values:
             sorted_is = sorted(is_values)
