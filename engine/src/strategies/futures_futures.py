@@ -133,6 +133,18 @@ class FuturesFuturesStrategy(BaseStrategy):
                 name="ff_position_monitor",
             )
 
+    async def stop(self) -> None:
+        """전략 중지 + 모니터 태스크 명시적 취소."""
+        await super().stop()  # sets _is_active = False
+        if self._monitor_task is not None and not self._monitor_task.done():
+            import asyncio as _asyncio
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except _asyncio.CancelledError:
+                pass
+            logger.info("ff.monitor_task_cancelled")
+
     def on_execution_rollback(self, symbol: str) -> None:
         """실행 롤백 완료 시 처리 (BUG-J + BUG-62).
 
