@@ -59,9 +59,12 @@ class BitgetFuturesCollector(BaseCollector):
     ) -> None:
         # BUG-69: Bitget WS server does not respond to application-level pings.
         # Disable client-initiated pings; server-side keepalive handles the connection.
+        # BUG-74: data_timeout_s=60 detects zombie connections where TCP is alive
+        # but the Bitget server stopped pushing book updates (seen after order placement).
         super().__init__(
             exchange_id="bitget_futures", symbols=symbols, on_orderbook=on_orderbook,
             ping_interval=None, ping_timeout=None,
+            data_timeout_s=60.0,
         )
 
     # ------------------------------------------------------------------

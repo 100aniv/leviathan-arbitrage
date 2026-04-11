@@ -43,6 +43,7 @@ class BaseCollector(abc.ABC):
         on_orderbook: Callable[[str, str, list, list], Awaitable[None]] | None = None,
         ping_interval: int | None = 20,
         ping_timeout: int | None = 30,
+        data_timeout_s: float | None = None,
     ) -> None:
         """
         Args:
@@ -54,12 +55,16 @@ class BaseCollector(abc.ABC):
                            Set None for exchanges that use server-side keepalive
                            (Binance spot/futures — see BUG-69).
             ping_timeout: WebSocket ping timeout in seconds (default 30).
+            data_timeout_s: If set, force reconnect if no data received within
+                            this many seconds (BUG-74: zombie connection detection).
+                            None = no timeout (default).
         """
         self.exchange_id = exchange_id
         self.symbols = symbols
         self._on_orderbook = on_orderbook
         self.ping_interval = ping_interval
         self.ping_timeout = ping_timeout
+        self._data_timeout_s = data_timeout_s
         self._running = False
         self._ws = None
         self._reconnect_delay = self.INITIAL_RECONNECT_DELAY
@@ -127,9 +132,27 @@ class BaseCollector(abc.ABC):
                     logger.info("collector_subscribed", exchange=self.exchange_id, symbol=symbol)
 
             # Listen for messages
-            async for raw in ws:
-                if not self._running:
-                    break
+            # BUG-74: use timeout-based recv when data_timeout_s is set so zombie
+            # connections (TCP alive but server stopped sending data) are detected
+            # and force-reconnected rather than blocking forever.
+            import asyncio as _asyncio
+            while self._running:
+                try:
+                    if self._data_timeout_s is not None:
+                        raw = await _asyncio.wait_for(
+                            ws.recv(), timeout=self._data_timeout_s
+                        )
+                    else:
+                        raw = await ws.recv()
+                except _asyncio.TimeoutError:
+                    logger.warning(
+                        "collector_data_timeout",
+                        exchange=self.exchange_id,
+                        timeout_s=self._data_timeout_s,
+                    )
+                    break  # triggers reconnect via outer while loop
+                except Exception:
+                    break  # connection closed or other error → reconnect
                 self._last_message_time = time.monotonic()
                 self._message_count += 1
                 try:
