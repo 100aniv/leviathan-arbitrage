@@ -107,7 +107,48 @@ class TradeReconciler:
             return report
 
         if not exchange_fills:
+            # Exchange returned 0 fills — could be legitimate (no trades) or silent API failure.
+            # Still query DB: if DB rows exist but exchange returned nothing, those rows are
+            # unmatched_internal (possible phantom positions or API auth expiry blind spot).
             logger.debug("trade_reconciler_no_fills exchange=%s symbols=%s", exchange_id, symbols)
+            if self._db is not None:
+                try:
+                    since_ts = since_ms / 1000.0
+                    db_rows_check = await self._db.fetch(
+                        """
+                        SELECT ts, symbol, buy_exchange, sell_exchange
+                        FROM execution_log
+                        WHERE mode = 'live'
+                          AND ts >= to_timestamp($1)
+                          AND ($2 = '' OR buy_exchange = $2 OR sell_exchange = $2)
+                        LIMIT 50
+                        """,
+                        since_ts,
+                        exchange_id,
+                    )
+                    if db_rows_check:
+                        for row in db_rows_check:
+                            report.unmatched_internal.append({
+                                "symbol": row["symbol"],
+                                "ts": str(row["ts"]),
+                                "buy_exchange": row.get("buy_exchange"),
+                                "sell_exchange": row.get("sell_exchange"),
+                            })
+                        logger.warning(
+                            "trade_reconciler.api_returned_empty exchange=%s db_rows=%d "
+                            "(exchange returned 0 fills — possible API failure or phantom positions)",
+                            exchange_id, len(db_rows_check),
+                        )
+                        if self._telegram is not None:
+                            try:
+                                await self._telegram.send(
+                                    f"⚠️ TradeRecon: {exchange_id} 거래소 체결이력 0건이나 "
+                                    f"DB에 {len(db_rows_check)}건 존재 — API 실패 또는 팬텀 포지션 의심"
+                                )
+                            except Exception as _tg_exc:
+                                logger.debug("trade_reconciler.telegram_failed error=%s", _tg_exc)
+                except Exception as exc:
+                    logger.debug("trade_reconciler.db_check_on_empty_fills_failed error=%s", exc)
             return report
 
         # DB에서 같은 기간 체결 기록 조회 (db_pool이 없으면 skip)

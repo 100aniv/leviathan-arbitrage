@@ -308,6 +308,89 @@ class TestReconcilerUnmatchedInternal:
         assert any("내부 미매칭" in msg for msg in all_messages)
 
 
+class TestReconcilerEmptyFillsWithDBRows:
+    """CRITICAL fix: when exchange returns [] but DB has rows, must flag as unmatched_internal."""
+
+    @pytest.mark.asyncio
+    async def test_empty_fills_with_db_rows_flagged_as_unmatched_internal(
+        self, reconciler_with_db, mock_db
+    ):
+        """Exchange returns [] (silent API failure) but DB has a row → unmatched_internal populated."""
+        ts_now = time.time()
+        db_ts = _make_datetime_mock(ts_now - 1.0)
+
+        mock_db.fetch = AsyncMock(return_value=[{
+            "ts": db_ts,
+            "symbol": "BTC/USDT",
+            "buy_exchange": "binance_futures",
+            "sell_exchange": "bitget_futures",
+            "buy_price": 50000.0,
+            "sell_price": 50005.0,
+            "size": 0.001,
+            "slippage_total": None,
+        }])
+        mock_db.execute = AsyncMock()
+
+        adapter = AsyncMock()
+        adapter.get_trades = AsyncMock(return_value=[])  # silent API failure
+
+        report = await reconciler_with_db.reconcile_period(
+            exchange_adapter=adapter, exchange_id="binance_futures", since_ms=0,
+            symbols=["BTC/USDT"],
+        )
+        assert report.matched == 0
+        assert len(report.unmatched_internal) == 1
+        assert report.unmatched_internal[0]["symbol"] == "BTC/USDT"
+
+    @pytest.mark.asyncio
+    async def test_empty_fills_no_db_rows_returns_clean(self, reconciler_with_db, mock_db):
+        """Exchange returns [] AND DB has no rows → clean report (no false phantom)."""
+        mock_db.fetch = AsyncMock(return_value=[])
+        mock_db.execute = AsyncMock()
+
+        adapter = AsyncMock()
+        adapter.get_trades = AsyncMock(return_value=[])
+
+        report = await reconciler_with_db.reconcile_period(
+            exchange_adapter=adapter, exchange_id="binance_futures", since_ms=0,
+            symbols=["BTC/USDT"],
+        )
+        assert report.matched == 0
+        assert report.unmatched_internal == []
+
+    @pytest.mark.asyncio
+    async def test_empty_fills_with_db_rows_sends_telegram(self, mock_db):
+        """Silent API failure with DB rows triggers Telegram warning alert."""
+        telegram = AsyncMock()
+        telegram.send = AsyncMock()
+        reconciler = TradeReconciler(db_pool=mock_db, telegram=telegram)
+
+        ts_now = time.time()
+        db_ts = _make_datetime_mock(ts_now - 1.0)
+        mock_db.fetch = AsyncMock(return_value=[{
+            "ts": db_ts,
+            "symbol": "BTC/USDT",
+            "buy_exchange": "binance_futures",
+            "sell_exchange": "bitget_futures",
+            "buy_price": 50000.0,
+            "sell_price": 50005.0,
+            "size": 0.001,
+            "slippage_total": None,
+        }])
+        mock_db.execute = AsyncMock()
+
+        adapter = AsyncMock()
+        adapter.get_trades = AsyncMock(return_value=[])
+
+        await reconciler.reconcile_period(
+            exchange_adapter=adapter, exchange_id="binance_futures", since_ms=0,
+            symbols=["BTC/USDT"],
+        )
+        telegram.send.assert_called_once()
+        msg = telegram.send.call_args[0][0]
+        assert "팬텀" in msg or "API" in msg or "0건" in msg
+
+
 class TestReconcilerISCalculation:
     @pytest.mark.asyncio
     async def test_is_bps_calculated_for_matched_fill(self, reconciler_with_db, mock_db):

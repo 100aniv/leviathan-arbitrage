@@ -127,16 +127,17 @@ class MarginTracker:
                 float(effective),
             )
 
-    def reset(self, exchange_id: str | None = None) -> None:
+    async def reset(self, exchange_id: str | None = None) -> None:
         """Reset reserved amounts (call after halt clear or exchange reconnect)."""
-        if exchange_id:
-            self._entries = [(ex, amt, exp) for ex, amt, exp in self._entries if ex != exchange_id]
-        else:
-            self._entries.clear()
+        async with self._lock:
+            if exchange_id:
+                self._entries = [
+                    (ex, amt, exp) for ex, amt, exp in self._entries if ex != exchange_id
+                ]
+            else:
+                self._entries.clear()
 
-    def get_reserved(self, exchange_id: str) -> Decimal:
-        now = time.monotonic()
-        return sum(
-            (amt for ex, amt, exp in self._entries if ex == exchange_id and exp > now),
-            Decimal("0"),
-        )
+    async def get_reserved(self, exchange_id: str) -> Decimal:
+        """Return total in-flight reservation for exchange (lock-safe read)."""
+        async with self._lock:
+            return self._total_reserved(exchange_id)
