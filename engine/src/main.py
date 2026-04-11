@@ -238,6 +238,15 @@ class Engine:
             except Exception as exc:
                 logger.warning("TradeConsumer stop error: %s", exc)
 
+        # Stop LiveMode BEFORE cancelling orders — sets _running=False which gates
+        # _on_orderbook() preventing new signals from being processed after we start
+        # cancelling orders (avoids race where new orders open during shutdown cleanup).
+        if getattr(self, '_live_mode', None) is not None:
+            try:
+                await self._live_mode.stop()
+            except Exception as exc:
+                logger.warning("LiveMode stop error: %s", exc)
+
         # US-155: Cancel open orders in live mode before disconnecting
         # BUG-8 fix: use _engine_mode (engine.json 기준) instead of execution_mode (.env 기준)
         from src.core.config import EngineMode

@@ -228,6 +228,7 @@ class LiveMode(BaseMode):
         self._exchanges = exchanges or ["binance"]
         self._running = False
         self._first_trade_recorded = False
+        self._settlement_tasks: list[asyncio.Task] = []  # tracked fire-and-forget exit tasks
         self._stats = LiveModeStats(start_time=time.monotonic())
         self._fee_model = FeeModel()
 
@@ -632,6 +633,17 @@ class LiveMode(BaseMode):
                     await task
                 except asyncio.CancelledError:
                     pass
+
+        # Drain in-flight settlement exit tasks (fire-and-forget closes that must complete
+        # to avoid stranded one-legged positions on exchange shutdown).
+        if self._settlement_tasks:
+            live_tasks = [t for t in self._settlement_tasks if not t.done()]
+            if live_tasks:
+                logger.info("live_mode.draining_settlement_tasks count=%d", len(live_tasks))
+                _done, _pending = await asyncio.wait(live_tasks, timeout=10.0)
+                for t in _pending:
+                    logger.warning("live_mode.settlement_task_timeout — cancelling")
+                    t.cancel()
 
         # Stop collectors
         if self._collector_manager is not None:
@@ -1644,25 +1656,33 @@ class LiveMode(BaseMode):
         main.py._strategy_exit_poll_loop is gated to skip Live/Paper mode to avoid
         dual-drain race conditions.
         """
-        while self._running:
-            await asyncio.sleep(60.0)
-            await self._dedup_gate.cleanup_stale()
-            # Drain settlement/holding-timeout exit requests from strategies
-            if self._strategy_manager is not None:
-                for _sid in self._strategy_manager.list_strategies():
-                    _strat = self._strategy_manager.get_strategy(_sid)
-                    if _strat is not None and hasattr(_strat, "pop_exit_requests"):
-                        for _exit_req in _strat.pop_exit_requests():
-                            logger.info(
-                                "live_dedup_cleanup.settlement_exit strategy=%s legs=%d reason=%s",
-                                _sid,
-                                len(_exit_req.legs),
-                                _exit_req.metadata.get("reason", "unknown"),
-                            )
-                            asyncio.create_task(
-                                self._execute_trade_request(_exit_req),
-                                name="settlement_exit_trade",
-                            )
+        try:
+            while self._running:
+                await asyncio.sleep(60.0)
+                await self._dedup_gate.cleanup_stale()
+                # Drain settlement/holding-timeout exit requests from strategies
+                if self._strategy_manager is not None:
+                    for _sid in self._strategy_manager.list_strategies():
+                        _strat = self._strategy_manager.get_strategy(_sid)
+                        if _strat is not None and hasattr(_strat, "pop_exit_requests"):
+                            for _exit_req in _strat.pop_exit_requests():
+                                logger.info(
+                                    "live_dedup_cleanup.settlement_exit strategy=%s legs=%d reason=%s",
+                                    _sid,
+                                    len(_exit_req.legs),
+                                    _exit_req.metadata.get("reason", "unknown"),
+                                )
+                                _task = asyncio.create_task(
+                                    self._execute_trade_request(_exit_req),
+                                    name="settlement_exit_trade",
+                                )
+                                self._settlement_tasks.append(_task)
+                                _task.add_done_callback(
+                                    lambda t: self._settlement_tasks.remove(t)
+                                    if t in self._settlement_tasks else None
+                                )
+        except asyncio.CancelledError:
+            pass
 
     async def _margin_refresh_loop(self) -> None:
         """BUG-18 fix: every 60s, refresh cached margin_available per futures exchange.
@@ -1670,26 +1690,29 @@ class LiveMode(BaseMode):
         produce_futures_futures_signal() has no adapter access, so margin_available is
         injected into signal metadata in _route_signal_to_strategies() from this cache.
         """
-        while self._running:
-            try:
-                executor = self._executor
-                exchanges_dict: dict = getattr(executor, "_exchanges", None) or {}
-                futures_adapters = {k: v for k, v in exchanges_dict.items() if "futures" in k}
-                for ex_id, adapter in futures_adapters.items():
-                    try:
-                        balances = await adapter.get_balances()
-                        usdt = balances.get("USDT")
-                        if usdt is not None:
-                            self._cached_margin[ex_id] = usdt.free
-                            logger.debug(
-                                "live_mode.margin_cache_updated ex=%s margin=%.2f",
-                                ex_id, float(usdt.free),
-                            )
-                    except Exception as exc:
-                        logger.debug("live_mode.margin_refresh_failed ex=%s error=%s", ex_id, exc)
-            except Exception as exc:
-                logger.debug("live_mode.margin_refresh_loop_error error=%s", exc)
-            await asyncio.sleep(60.0)
+        try:
+            while self._running:
+                try:
+                    executor = self._executor
+                    exchanges_dict: dict = getattr(executor, "_exchanges", None) or {}
+                    futures_adapters = {k: v for k, v in exchanges_dict.items() if "futures" in k}
+                    for ex_id, adapter in futures_adapters.items():
+                        try:
+                            balances = await adapter.get_balances()
+                            usdt = balances.get("USDT")
+                            if usdt is not None:
+                                self._cached_margin[ex_id] = usdt.free
+                                logger.debug(
+                                    "live_mode.margin_cache_updated ex=%s margin=%.2f",
+                                    ex_id, float(usdt.free),
+                                )
+                        except Exception as exc:
+                            logger.debug("live_mode.margin_refresh_failed ex=%s error=%s", ex_id, exc)
+                except Exception as exc:
+                    logger.debug("live_mode.margin_refresh_loop_error error=%s", exc)
+                await asyncio.sleep(60.0)
+        except asyncio.CancelledError:
+            pass
 
     async def _trade_reconciler_loop(self) -> None:
         """Every 10 minutes: reconcile internal execution_log vs exchange fill history (PHOENIX v18 P0)."""
