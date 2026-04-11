@@ -2588,6 +2588,7 @@ class Engine:
             flash_guard=getattr(self, "_flash_guard", None),
             portfolio_risk=getattr(self, "_portfolio_risk", None),
             execution_mode=execution_mode,
+            tca_analyzer=getattr(self, "_tca_analyzer", None),
         )
 
         try:

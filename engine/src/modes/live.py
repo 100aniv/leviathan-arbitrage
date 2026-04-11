@@ -202,6 +202,7 @@ class LiveMode(BaseMode):
         portfolio_risk: Any | None = None,
         strategy_filter: list[str] | None = None,
         execution_mode: str = "paper",  # "paper" | "live"
+        tca_analyzer: Any | None = None,
     ) -> None:
         self._signal_generator = signal_generator
         self._executor = executor
@@ -221,6 +222,7 @@ class LiveMode(BaseMode):
         self._flash_guard = flash_guard
         self._portfolio_risk = portfolio_risk
         self._execution_mode = execution_mode
+        self._tca_analyzer = tca_analyzer  # TCAAnalyzer (US-116) — injected from main.py
 
         self._symbols = symbols or ["BTC/USDT"]
         self._exchanges = exchanges or ["binance"]
@@ -1152,6 +1154,18 @@ class LiveMode(BaseMode):
                         mode=self._execution_mode,
                         status="filled",
                     )
+                    # TCAAnalyzer: feed IS + latency data for real-time percentile tracking (US-116)
+                    # Lives inside the try block so _expected_buy is guaranteed to be defined.
+                    if self._tca_analyzer is not None and _buy_fill_price and _expected_buy and _expected_buy > 0:
+                        self._tca_analyzer.record_execution(
+                            expected_price=float(_expected_buy),
+                            fill_price=float(_buy_fill_price),
+                            latency_ms=(time.monotonic() - t0) * 1000,
+                            filled_ratio=1.0,
+                            strategy_id=sid,
+                            signal_ts=trade_request.metadata.get("signal_ts", 0.0) if trade_request.metadata else 0.0,
+                            fill_ts=time.time(),
+                        )
                 except Exception as exc:
                     logger.debug("live_mode.record_execution_failed error=%s", exc)
 
