@@ -11,12 +11,14 @@ from fastapi import Depends, HTTPException
 from typing import Any
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from src.core.config_loader import get_config
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # JWT Configuration — NO default secret. Fail-fast if unset in production.
 # ---------------------------------------------------------------------------
-_ENGINE_ENV = os.environ.get("ENGINE_ENV", "dev")
+_ENGINE_ENV = get_config("env", default="dev")
 
 _JWT_SECRET: str | None = os.environ.get("JWT_SECRET")
 if _JWT_SECRET is None:
@@ -36,8 +38,13 @@ _JWT_EXPIRY_HOURS = 24
 # ---------------------------------------------------------------------------
 # Dashboard credentials — bcrypt hashed password
 # ---------------------------------------------------------------------------
-DASHBOARD_USER = os.environ.get("DASHBOARD_USER", "admin")
+DASHBOARD_USER = get_config("security.dashboard_user", default="admin")
 _DASHBOARD_PASSWORD_RAW = os.environ.get("DASHBOARD_PASSWORD", "leviathan")
+if not os.environ.get("DASHBOARD_PASSWORD"):
+    logger.warning(
+        "DASHBOARD_PASSWORD env var not set — using insecure default. "
+        "Set DASHBOARD_PASSWORD before exposing the dashboard to any network."
+    )
 
 # Bcrypt hashing for password storage and verification
 try:

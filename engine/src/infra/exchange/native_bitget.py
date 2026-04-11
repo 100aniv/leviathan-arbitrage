@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import time
 from decimal import Decimal
 from typing import Any
@@ -608,20 +609,36 @@ class NativeBitgetAdapter(NativeAdapter):
                     fill_list = raw_data
             elif isinstance(resp, list):
                 fill_list = resp
+            def _sf(val: Any, default: float = 0.0) -> float:
+                """Safe float: converts API value, returns default on error or non-finite."""
+                try:
+                    result = float(val)
+                    return result if math.isfinite(result) else default
+                except (TypeError, ValueError, OverflowError):
+                    return default
+
+            def _si(val: Any, default: int = 0) -> int:
+                """Safe int: converts API value, clamps to safe range."""
+                try:
+                    return int(float(val) if isinstance(val, str) else val)
+                except (TypeError, ValueError, OverflowError):
+                    return default
+
             return [
                 {
                     "exchange": "bitget_futures",
-                    "symbol": d.get("symbol", ""),
+                    "symbol": str(d.get("symbol", "")),
                     "order_id": str(d.get("orderId", "")),
                     "trade_id": str(d.get("tradeId", "")),
                     "side": str(d.get("side", "")).lower(),
-                    "qty": float(d.get("baseVolume", 0) or d.get("qty", 0)),
-                    "price": float(d.get("price", 0)),
-                    "realized_pnl": float(d.get("profit", 0) or d.get("realizedPnl", 0)),
-                    "commission": float(d.get("fee", 0)),
-                    "ts_ms": int(d.get("cTime", 0) or d.get("ts", 0)),
+                    "qty": _sf(d.get("baseVolume") or d.get("qty")),
+                    "price": _sf(d.get("price")),
+                    "realized_pnl": _sf(d.get("profit") or d.get("realizedPnl")),
+                    "commission": _sf(d.get("fee")),
+                    "ts_ms": _si(d.get("cTime") or d.get("ts")),
                 }
                 for d in fill_list
+                if isinstance(d, dict)
             ]
         except Exception as exc:
             logger.warning("bitget.get_trades failed symbol=%s error=%s", symbol, exc)
