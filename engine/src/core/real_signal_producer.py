@@ -691,16 +691,17 @@ class RealDataSignalProducer:
         """
         _now_sum = time.monotonic()
         if _now_sum - self._ff_summary_last_ts >= 60.0:
-            _extra: dict = {
-                "pairs_evaluated": self._ff_pairs_evaluated,
-                "max_spread_bps": round(self._ff_max_spread_bps, 2) if self._ff_max_spread_bps > -9000 else None,
-                "stale_dropped": self._ff_stale_dropped,
-                "freshness_dropped": self._ff_freshness_dropped,
-                "signals_this_window": len(signals),
-            }
-            if early_return_reason:
-                _extra["early_return"] = early_return_reason
-            logger.info("real_signal_producer.ff_summary", extra=_extra)
+            _max_bps = round(self._ff_max_spread_bps, 2) if self._ff_max_spread_bps > -9000 else None
+            _early = f" early_return={early_return_reason}" if early_return_reason else ""
+            logger.info(
+                "real_signal_producer.ff_summary pairs=%d max_bps=%s stale=%d fresh_drop=%d sigs=%d%s",
+                self._ff_pairs_evaluated,
+                _max_bps,
+                self._ff_stale_dropped,
+                self._ff_freshness_dropped,
+                len(signals),
+                _early,
+            )
             self._ff_summary_last_ts = _now_sum
             self._ff_max_spread_bps = -9999.0
             self._ff_pairs_evaluated = 0
