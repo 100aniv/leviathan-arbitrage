@@ -148,7 +148,7 @@ class TradeReconciler:
                             except Exception as _tg_exc:
                                 logger.debug("trade_reconciler.telegram_failed error=%s", _tg_exc)
                 except Exception as exc:
-                    logger.debug("trade_reconciler.db_check_on_empty_fills_failed error=%s", exc)
+                    logger.warning("trade_reconciler.db_check_on_empty_fills_failed error=%s", exc)
             return report
 
         # DB에서 같은 기간 체결 기록 조회 (db_pool이 없으면 skip)
