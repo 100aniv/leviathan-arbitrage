@@ -9,6 +9,7 @@ import shutil
 import socket
 import sys
 import structlog
+from src.core.config_loader import get_config as _gc
 
 logger = structlog.get_logger(__name__)
 
@@ -125,7 +126,7 @@ class StartupChecker:
                 await conn.close()
 
     async def _check_api_port(self) -> bool:
-        port = int(os.getenv("API_PORT", "8000"))
+        port = int(_gc("api.port", default=8000))
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             sock.settimeout(1)

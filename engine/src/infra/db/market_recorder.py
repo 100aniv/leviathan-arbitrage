@@ -10,6 +10,8 @@ from typing import Any
 import asyncpg
 import structlog
 
+from src.core.config_loader import get_config
+
 log: structlog.BoundLogger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -64,8 +66,8 @@ class MarketRecorder:
         await recorder.stop()
     """
 
-    FLUSH_INTERVAL_MS: int = int(os.getenv("MARKET_FLUSH_INTERVAL_MS", "100"))
-    MAX_BUFFER_SIZE: int = int(os.getenv("MARKET_BUFFER_SIZE", "1000"))
+    FLUSH_INTERVAL_MS: int = get_config("db.flush_interval_ms", default=100)
+    MAX_BUFFER_SIZE: int = get_config("db.market_buffer_size", default=1000)
 
     # ------------------------------------------------------------------
     # Construction
@@ -265,7 +267,7 @@ class MarketRecorder:
     # Seconds to wait for a pool connection before giving up on this flush cycle.
     # Without a timeout, a dead pool causes acquire() to hang forever, which
     # stacks up unbounded overflow-flush tasks and eventually crashes the process.
-    ACQUIRE_TIMEOUT_S: float = float(os.getenv("MARKET_FLUSH_ACQUIRE_TIMEOUT_S", "5.0"))
+    ACQUIRE_TIMEOUT_S: float = get_config("db.flush_acquire_timeout_s", default=5.0)
 
     async def _flush(self) -> None:
         """Drain both queues into TimescaleDB using executemany.

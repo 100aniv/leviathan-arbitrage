@@ -10,6 +10,7 @@ US-209: Severity-based rate limiting (EMERGENCY/CRITICAL/WARNING/INFO)
 """
 from __future__ import annotations
 
+import asyncio
 import enum
 import html as _html
 import os
@@ -134,6 +135,9 @@ class TelegramAlerter:
         self._severity_filter = SeverityFilter()
         # Reusable HTTP client for connection pooling (US-168)
         self._http_client: httpx.AsyncClient | None = None
+        # BUG-03: Lock prevents race where two concurrent coroutines both see None
+        # and create separate clients (first one leaks connection pool).
+        self._http_client_lock: asyncio.Lock = asyncio.Lock()
 
     @property
     def bot_token(self) -> str | None:
@@ -721,8 +725,10 @@ class TelegramAlerter:
         }
 
         try:
-            if self._http_client is None:
-                self._http_client = httpx.AsyncClient(timeout=5.0)
+            # BUG-03: Lock-guarded lazy init prevents duplicate client creation
+            async with self._http_client_lock:
+                if self._http_client is None:
+                    self._http_client = httpx.AsyncClient(timeout=5.0)
             response = await self._http_client.post(url, json=payload)
             response.raise_for_status()
             logger.debug(
@@ -747,9 +753,10 @@ class TelegramAlerter:
 
     async def close(self) -> None:
         """Close the reusable HTTP client (US-168)."""
-        if self._http_client is not None:
-            await self._http_client.aclose()
-            self._http_client = None
+        async with self._http_client_lock:
+            if self._http_client is not None:
+                await self._http_client.aclose()
+                self._http_client = None
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ from src.api.auth import DASHBOARD_USER, require_auth, verify_password, create_t
 from src.api.middleware import IPWhitelistMiddleware, LoginRateLimitMiddleware, RateLimitMiddleware
 from src.api.websocket import ConnectionManager
 from src.core.config import get_settings
+from src.core.config_loader import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     ws_manager = ConnectionManager()
     context.ws_manager = ws_manager
 
-    _is_prod = os.environ.get("ENGINE_ENV", "dev") in ("prod", "staging")
+    _is_prod = get_config("env", default="dev") in ("prod", "staging")
     app = FastAPI(
         title="LEVIATHAN Arbitrage Engine",
         version="1.0.0",

@@ -1,6 +1,6 @@
 """LEVIATHAN Risk Guardian — Pre-Trade Checks.
 
-Implements 11 pre-trade checks (Amendment 1E, 3C, 7, US-154).
+Implements 12 pre-trade checks (Amendment 1E, 3C, 7, US-154).
 Check #0 (halt check) CANNOT be bypassed — uses threading.Event, no external deps.
 
 Check ordering:

@@ -69,6 +69,7 @@ class PositionReconciler:
         """
         # Fetch positions from all exchanges
         exchange_positions: dict[str, Position] = {}
+        fetch_failed_exchanges: list[str] = []  # BUG-01: track API failures
         for exchange_id, adapter in self._exchanges.items():
             try:
                 positions = await adapter.get_positions()
@@ -77,6 +78,7 @@ class PositionReconciler:
                     exchange_positions[key] = pos
             except Exception as exc:
                 logger.error("reconciler_fetch_error exchange=%s error=%s", exchange_id, exc)
+                fetch_failed_exchanges.append(exchange_id)  # BUG-01: don't return false negative
 
         discrepancies: list[str] = []
 
@@ -123,6 +125,10 @@ class PositionReconciler:
             msg = f"{stranded_key}: stranded position (rollback failed)"
             if msg not in discrepancies:
                 discrepancies.append(msg)
+
+        # BUG-01: API fetch failure means we have INCOMPLETE data — flag it, not clear
+        for ex_id in fetch_failed_exchanges:
+            discrepancies.append(f"{ex_id}: position fetch failed — reconciliation incomplete")
 
         has_discrepancy = len(discrepancies) > 0
 

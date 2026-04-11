@@ -55,27 +55,28 @@ def transport(app):
 class TestPatchMode:
     @pytest.mark.asyncio
     async def test_patch_mode_shadow(self, transport):
-        """mode='shadow' returns 200 with mode field set to shadow."""
+        """mode='shadow' is rejected with 400 — shadow mode removed."""
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.patch(
                 "/api/v1/settings/mode",
                 json={"mode": "shadow"},
                 headers=_auth_header(),
             )
-        assert resp.status_code == 200
-        assert resp.json()["mode"] == "shadow"
+        assert resp.status_code == 400
 
     @pytest.mark.asyncio
     async def test_patch_mode_shadow_updates_ctx(self, app):
-        """mode='shadow' mutation is persisted in engine context."""
+        """mode='shadow' is rejected — engine context not modified."""
         transport = ASGITransport(app=app)
+        orig_mode = getattr(app.state.engine_context, "execution_mode", None)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            await client.patch(
+            resp = await client.patch(
                 "/api/v1/settings/mode",
                 json={"mode": "shadow"},
                 headers=_auth_header(),
             )
-        assert app.state.engine_context.execution_mode == "shadow"
+        assert resp.status_code == 400
+        assert getattr(app.state.engine_context, "execution_mode", None) == orig_mode
 
     @pytest.mark.asyncio
     async def test_patch_mode_paper(self, transport):

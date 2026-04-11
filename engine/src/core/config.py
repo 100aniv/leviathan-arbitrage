@@ -564,7 +564,10 @@ class OperationalSettings(BaseSettings):
     regime_aware_allocation_enabled: bool = Field(default=True, alias="REGIME_AWARE_ALLOCATION_ENABLED")
 
     # Signal producer
-    exchange_stale_threshold_s: float = Field(default=1.5, alias="EXCHANGE_STALE_THRESHOLD_S")
+    # BUG-46: 1.5s too tight for Bitget event-driven books15 WS (quiet periods up to 3s normal).
+    # 3s freshness guard (book.last_update_time) is already the primary stale-book protection.
+    # 5s here acts as a secondary reconnect-detection fallback only.
+    exchange_stale_threshold_s: float = Field(default=5.0, alias="EXCHANGE_STALE_THRESHOLD_S")
     spot_futures_min_basis_bps: float = Field(default=5.0, alias="SPOT_FUTURES_MIN_BASIS_BPS")
 
 

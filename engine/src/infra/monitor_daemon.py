@@ -10,6 +10,7 @@ import asyncio
 import os
 import structlog
 
+from src.core.config_loader import get_config
 from src.infra.telegram import TelegramAlerter
 
 try:
@@ -138,7 +139,7 @@ class MonitorDaemon:
             logger.warning("httpx_not_available")
             return False
 
-        base_url = os.getenv("ENGINE_URL", "http://engine:8000")
+        base_url = get_config("monitoring.engine_url", default="http://engine:8000")
         url = f"{base_url.rstrip('/')}/health"
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -173,6 +174,6 @@ class MonitorDaemon:
 
 
 if __name__ == "__main__":
-    interval = int(os.getenv("MONITOR_INTERVAL_SEC", "300"))
+    interval = int(get_config("monitoring.monitor_interval_sec", default=300))
     daemon = MonitorDaemon(interval_sec=interval)
     asyncio.run(daemon.run())

@@ -336,15 +336,37 @@ class TestTriangularStrategyMetrics:
 
     @pytest.mark.asyncio
     async def test_trade_requests_generated_count(self):
+        """BUG-80: same path is deduplicated (inflight guard); different paths both pass."""
         strategy = TriangularStrategy(
             "tri_v1",
             make_calculator(Decimal("0.01")),
             TriangularConfig(min_profit_bps=Decimal("10")),
         )
         await strategy.start()
+        # Same path twice — second should be blocked by inflight guard
         signal = make_triangle_signal(spread_pct=Decimal("0.01"))
         await strategy.on_signal(signal)
         await strategy.on_signal(signal)
+        assert strategy.metrics.trade_requests_generated == 1
+        assert strategy.metrics.signals_filtered >= 1
+
+    @pytest.mark.asyncio
+    async def test_different_paths_both_generate(self):
+        """Two distinct triangle paths both generate trade requests."""
+        strategy = TriangularStrategy(
+            "tri_v1",
+            make_calculator(Decimal("0.01")),
+            TriangularConfig(min_profit_bps=Decimal("10")),
+        )
+        await strategy.start()
+        signal1 = make_triangle_signal(spread_pct=Decimal("0.01"))
+        signal2 = make_triangle_signal(
+            spread_pct=Decimal("0.01"),
+            path=["USDT", "ETH", "BNB"],
+            pairs=["ETH/USDT", "BNB/ETH", "BNB/USDT"],
+        )
+        await strategy.on_signal(signal1)
+        await strategy.on_signal(signal2)
         assert strategy.metrics.trade_requests_generated == 2
 
     @pytest.mark.asyncio

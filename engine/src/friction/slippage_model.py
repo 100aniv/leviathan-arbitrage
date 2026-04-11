@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
 
+from src.core.config_loader import get_config
 from src.core.order_book import OrderBook
 
 
@@ -69,16 +70,16 @@ class CEXOrderbookSlippage:
       - SLIPPAGE_CONSERVATIVE_MULTIPLIER (default 1.5)
     """
 
-    COLD_START_MULTIPLIER = Decimal(os.getenv("SLIPPAGE_CONSERVATIVE_MULTIPLIER", "1.5"))
-    GAMMA = float(os.getenv("SLIPPAGE_GAMMA", "0.5"))
-    T_0 = float(os.getenv("SLIPPAGE_T0", "60.0"))  # seconds
+    COLD_START_MULTIPLIER = Decimal(str(get_config("slippage.conservative_multiplier", default=1.5)))
+    GAMMA = float(get_config("slippage.gamma", default=0.5))
+    T_0 = float(get_config("slippage.t0", default=60.0))  # seconds
 
     # Flag indicating whether GAMMA has been calibrated against live data.
-    GAMMA_CALIBRATED: bool = os.getenv("SLIPPAGE_GAMMA_CALIBRATED", "false").lower() == "true"
+    GAMMA_CALIBRATED: bool = bool(get_config("slippage.gamma_calibrated", default=False))
 
     def __init__(
         self,
-        k: Decimal = Decimal(os.getenv("SLIPPAGE_K_DEFAULT", "1.0")),
+        k: Decimal = Decimal(str(get_config("slippage.k_default", default=1.0))),
         cold_start: bool = True,
     ) -> None:
         self.k = k

@@ -38,7 +38,12 @@ class BinanceFuturesCollector(BaseCollector):
     No API key is required.
     """
 
+    # Binance USDM Futures WS URL migration (2026-03-05 split, legacy retires 2026-04-23).
+    # Market data streams (depth, trades) → /market/ prefix.
+    # Old: wss://fstream.binance.com/ws/<stream>
+    # New: wss://fstream.binance.com/market/ws/<stream>
     _BASE_WS = "wss://fstream.binance.com"
+    _BASE_WS_MARKET = "wss://fstream.binance.com/market"
 
     def __init__(
         self,
@@ -56,8 +61,8 @@ class BinanceFuturesCollector(BaseCollector):
             f"{_normalize_symbol(s)}@depth20@100ms" for s in self.symbols
         )
         if len(self.symbols) == 1:
-            return f"{self._BASE_WS}/ws/{streams}"
-        return f"{self._BASE_WS}/stream?streams={streams}"
+            return f"{self._BASE_WS_MARKET}/ws/{streams}"
+        return f"{self._BASE_WS_MARKET}/stream?streams={streams}"
 
     def _subscribe_message(self, symbol: str) -> str | dict:
         # Subscription is encoded in the URL path; no subscribe frame needed.
@@ -97,7 +102,7 @@ class BinanceFuturesCollector(BaseCollector):
         url = self._ws_url()
         logger.info("collector_connecting", exchange=self.exchange_id, url=url)
 
-        async with websockets.connect(url, ping_interval=20, ping_timeout=10) as ws:
+        async with websockets.connect(url, ping_interval=20, ping_timeout=30) as ws:
             self._ws = ws
             self._connected = True
             self._reconnect_delay = self.INITIAL_RECONNECT_DELAY

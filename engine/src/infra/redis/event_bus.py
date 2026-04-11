@@ -98,7 +98,10 @@ class EventBus:
                     if data:
                         if isinstance(data, bytes):
                             data = data.decode()
-                        messages.append(json.loads(data))
+                        try:
+                            messages.append(json.loads(data))
+                        except (json.JSONDecodeError, ValueError):
+                            pass  # skip malformed messages — do not crash consumer loop
         return messages
 
     async def ack_message(self, stream: str, group: str, msg_id: bytes | str) -> None:
@@ -132,7 +135,10 @@ class EventBus:
             data = fields.get(b"data") or fields.get("data", b"{}")
             if isinstance(data, bytes):
                 data = data.decode()
-            event = json.loads(data)
+            try:
+                event = json.loads(data)
+            except (json.JSONDecodeError, ValueError):
+                event = {}  # skip malformed dead-letter — log but continue
 
             await self._client.xadd(self.DEAD_LETTER_STREAM, {
                 "original_stream": stream,

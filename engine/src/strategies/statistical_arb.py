@@ -357,6 +357,9 @@ class StatisticalArbStrategy(BaseStrategy):
             _entry_notional = self._pair_entry_notional.get(_pair_key_exit, _exit_notional)
             _std = _zscore_std(list(ps.spreads))
             _spread_pnl = (_entry_spread - spread) * _entry_notional / _std if _std > 0 else 0.0
+            # BUG-76: clear entry tracking so next entry on this pair uses fresh values
+            self._pair_entry_spread.pop(_pair_key_exit, None)
+            self._pair_entry_notional.pop(_pair_key_exit, None)
             self._pair_last_trade[_pair_key_exit] = time.monotonic()
             return TradeRequest(
                 strategy_id=self.strategy_id,
@@ -407,6 +410,9 @@ class StatisticalArbStrategy(BaseStrategy):
             _entry_notional_l = self._pair_entry_notional.get(_pair_key_exit_l, _exit_notional_l)
             _std_l = _zscore_std(list(ps.spreads))
             _spread_pnl_l = (spread - _entry_spread_l) * _entry_notional_l / _std_l if _std_l > 0 else 0.0
+            # BUG-76: clear entry tracking so next entry on this pair uses fresh values
+            self._pair_entry_spread.pop(_pair_key_exit_l, None)
+            self._pair_entry_notional.pop(_pair_key_exit_l, None)
             self._pair_last_trade[_pair_key_exit_l] = time.monotonic()
             return TradeRequest(
                 strategy_id=self.strategy_id,
@@ -447,13 +453,53 @@ class StatisticalArbStrategy(BaseStrategy):
             and abs(zscore) > self.config.zscore_hardstop
         ):
             logger.warning(
-                "stat_arb.hardstop: |z|=%.2f > %.2f for %s/%s on %s, forcing flat",
+                "stat_arb.hardstop: |z|=%.2f > %.2f for %s/%s on %s, emitting close",
                 abs(zscore), self.config.zscore_hardstop, symbol_a, symbol_b, exchange,
             )
+            _prev_state = ps.state
             ps.state = StatArbState.FLAT
             ps.bars_in_position = 0
-            self._metrics.signals_filtered += 1
-            return None
+            self._metrics.trade_requests_generated += 1
+            # BUG-75: emit close TradeRequest — returning None left phantom position on exchange
+            _close_side_a = OrderSide.SELL if _prev_state == StatArbState.LONG else OrderSide.BUY
+            _close_side_b = OrderSide.BUY if _prev_state == StatArbState.LONG else OrderSide.SELL
+            _hs_notional = float(self.config.max_position_size) * mid_b
+            _hs_size_a = Decimal(str(_hs_notional / mid_a)) if mid_a > 0 else self.config.max_position_size
+            _pair_key_hs = (symbol_a, symbol_b)
+            self._pair_entry_spread.pop(_pair_key_hs, None)
+            self._pair_entry_notional.pop(_pair_key_hs, None)
+            self._pair_last_trade[_pair_key_hs] = time.monotonic()
+            return TradeRequest(
+                strategy_id=self.strategy_id,
+                legs=[
+                    TradeLeg(
+                        exchange_id=exchange,
+                        symbol=symbol_a,
+                        side=_close_side_a,
+                        size=_hs_size_a,
+                        order_type=OrderType.MARKET,
+                        price=Decimal(str(mid_a)),
+                    ),
+                    TradeLeg(
+                        exchange_id=exchange,
+                        symbol=symbol_b,
+                        side=_close_side_b,
+                        size=self.config.max_position_size,
+                        order_type=OrderType.MARKET,
+                        price=Decimal(str(mid_b)),
+                    ),
+                ],
+                expected_profit_usdt=Decimal("0"),
+                confidence=0.0,
+                metadata={
+                    "action": "exit",
+                    "prev_state": _prev_state.value,
+                    "exit_reason": "hardstop",
+                    "zscore": str(zscore),
+                    "cross_asset": "true",
+                    "symbol2": symbol_b,
+                },
+            )
 
         if ps.state != StatArbState.FLAT:
             self._metrics.signals_filtered += 1
@@ -506,9 +552,9 @@ class StatisticalArbStrategy(BaseStrategy):
         _mean_spread = sum(ps.spreads) / len(ps.spreads) if ps.spreads else 0.0
         _spread_convergence = abs(spread - _mean_spread)  # fractional return
         _position_usd = float(self.config.max_position_size) * mid_b
-        # Cap position USD — conservative for Shadow (spread 수렴 보장 아님)
-        # Phase H-Final: cap at max_position_size (자본 비율 기반, main.py에서 설정)
-        _position_usd = min(_position_usd, float(self.config.max_position_size) * mid_b)
+        # BUG-79: cap at 5000 USD to prevent PnL overestimation (SSOT §4.2 규정)
+        # min(X, X) was a no-op; replaced with explicit USD cap
+        _position_usd = min(_position_usd, 5000.0)
         expected_spread_profit = (
             Decimal(str(_spread_convergence * _position_usd)) if _spread_convergence > 0 else Decimal("0")
         )
@@ -994,3 +1040,33 @@ class StatisticalArbStrategy(BaseStrategy):
 
     async def on_fill(self, trade: Trade) -> None:
         await super().on_fill(trade)
+
+    def pop_exit_requests(self) -> list:
+        """BUG-T3: stat_arb exits are returned inline from on_signal — nothing to drain.
+        Stub satisfies _strategy_exit_poll_loop hasattr check without queuing overhead.
+        """
+        return []
+
+    def on_execution_rollback(self, symbol: str) -> None:
+        """BUG-77: Reset pair state on rollback to prevent stuck LONG/SHORT state.
+
+        Finds all pair_states where symbol_a or symbol_b matches and resets to FLAT.
+        Clears entry tracking dicts to prevent stale PnL calculations.
+        BUG-T5: also reset legacy self._state for single-pair mode.
+        """
+        for (sym_a, sym_b), ps in self._pair_states.items():
+            if symbol in (sym_a, sym_b) and ps.state != StatArbState.FLAT:
+                logger.info(
+                    "stat_arb.rollback_reset pair=(%s,%s) prev_state=%s",
+                    sym_a, sym_b, ps.state,
+                )
+                ps.state = StatArbState.FLAT
+                ps.bars_in_position = 0
+                _pk = (sym_a, sym_b)
+                self._pair_entry_spread.pop(_pk, None)
+                self._pair_entry_notional.pop(_pk, None)
+        # BUG-T5: legacy single-pair mode uses self._state — reset on rollback
+        if self._state != StatArbState.FLAT:
+            logger.info("stat_arb.rollback_reset_legacy symbol=%s prev_state=%s", symbol, self._state)
+            self._state = StatArbState.FLAT
+            self._bars_in_position = 0

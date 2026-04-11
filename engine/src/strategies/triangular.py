@@ -62,6 +62,8 @@ class TriangularStrategy(BaseStrategy):
         super().__init__(strategy_id, cost_calculator)
         self._regime_detector = regime_detector
         self.config = config or TriangularConfig()
+        # BUG-80: inflight path guard — prevents duplicate 3-leg submissions for same path
+        self._inflight_paths: set[tuple[str, ...]] = set()
 
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1
@@ -107,9 +109,29 @@ class TriangularStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
-        # Apply minimum profit threshold
+        # BUG-80 P0: Validate exactly 3 legs — zip silently truncates mismatched lengths
+        if len(path) != 3 or len(pairs) != 3 or len(sides) != 3 or len(prices) != 3:
+            logger.warning(
+                "triangular.invalid_cycle path_len=%d pairs_len=%d sides_len=%d prices_len=%d",
+                len(path), len(pairs), len(sides), len(prices),
+            )
+            self._metrics.signals_filtered += 1
+            return None
+
+        # Apply minimum profit threshold + sanity cap (both use only spread_pct, no cost calc needed)
         min_profit = self.config.min_profit_bps / Decimal("10000")
         if signal.spread_pct < min_profit:
+            self._metrics.signals_filtered += 1
+            return None
+
+        # US-241: Sanity check — reject obviously fake spreads BEFORE cost estimation
+        # (moved up from post-cost-calc position — avoids unnecessary estimate_cost calls)
+        if signal.spread_pct > Decimal("0.05"):  # 5%
+            logger.warning(
+                "triangular.fake_spread_rejected spread_pct=%.4f path=%s",
+                float(signal.spread_pct),
+                path,
+            )
             self._metrics.signals_filtered += 1
             return None
 
@@ -167,6 +189,8 @@ class TriangularStrategy(BaseStrategy):
             total_cost += leg_cost
 
         # gross_profit = spread_pct * notional (USDT), not spread_pct * base_size
+        # CONTRACT: signal.spread_pct MUST equal (rate_AB * rate_BC * rate_CA - 1),
+        # i.e. the multiplicative cycle deviation. Additive spread would overstate PnL.
         notional = size * first_price
         gross_profit = signal.spread_pct * notional
         net_profit = gross_profit - total_cost
@@ -175,16 +199,14 @@ class TriangularStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
 
-        # US-241: Sanity check — reject obviously fake spreads (stale cross-pair data)
-        # Max realistic triangular profit is ~50bps; >500bps is certainly fake
-        if signal.spread_pct > Decimal("0.05"):  # 5%
-            logger.warning(
-                "triangular.fake_spread_rejected spread_pct=%.4f path=%s",
-                float(signal.spread_pct),
-                path,
-            )
+        # BUG-80 P1: Inflight guard — block duplicate path submission within same tick
+        # BUG-T4: use sorted pairs tuple (not currencies) so trade.symbol membership check works
+        _path_key = tuple(sorted(pairs))
+        if _path_key in self._inflight_paths:
+            logger.debug("triangular.inflight_blocked path=%s", path)
             self._metrics.signals_filtered += 1
             return None
+        self._inflight_paths.add(_path_key)
 
         # Build 3 trade legs with per-leg sizes
         legs: list[TradeLeg] = []
@@ -217,3 +239,9 @@ class TriangularStrategy(BaseStrategy):
 
     async def on_fill(self, trade: Trade) -> None:
         await super().on_fill(trade)
+        # BUG-80: clear inflight path on fill so the path can be re-entered next tick
+        self._inflight_paths = {pk for pk in self._inflight_paths if trade.symbol not in pk}
+
+    def on_execution_rollback(self, symbol: str) -> None:
+        """BUG-80: Clear inflight path on rollback to prevent permanent lockout."""
+        self._inflight_paths = {pk for pk in self._inflight_paths if symbol not in pk}

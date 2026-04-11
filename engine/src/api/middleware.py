@@ -18,6 +18,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
+from src.core.config_loader import get_config
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -27,7 +29,10 @@ logger = logging.getLogger(__name__)
 _API_PREFIX = "/api/v1/"
 
 TRUSTED_PROXIES = set(
-    os.environ.get("TRUSTED_PROXIES", "127.0.0.1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16").split(",")
+    os.environ.get(
+        "TRUSTED_PROXIES",
+        get_config("security.trusted_proxies", default="127.0.0.1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16"),
+    ).split(",")
 )
 
 
@@ -84,7 +89,12 @@ class IPWhitelistMiddleware(BaseHTTPMiddleware):
         if allowed_ips is not None:
             self._allowed = allowed_ips
         else:
-            raw = os.environ.get("ALLOWED_IPS", "127.0.0.1,::1,testclient")
+            # env var ALLOWED_IPS takes precedence (supports monkeypatch in tests),
+            # then engine.json security.allowed_ips, then hardcoded default
+            raw = os.environ.get(
+                "ALLOWED_IPS",
+                get_config("security.allowed_ips", default="127.0.0.1,::1,testclient"),
+            )
             self._allowed = _parse_allowed_ips(raw)
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:

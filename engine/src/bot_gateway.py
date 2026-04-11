@@ -61,7 +61,8 @@ async def main() -> None:
     if infra_bot is not None:
         try:
             from src.infra.monitor_daemon import MonitorDaemon
-            interval = int(os.getenv("MONITOR_INTERVAL_SEC", "300"))
+            from src.core.config_loader import get_config as _gc
+            interval = int(_gc("monitoring.monitor_interval_sec", default=300))
             monitor_daemon = MonitorDaemon(infra_bot=infra_bot, interval_sec=interval)
             infra_bot.set_monitor_daemon(monitor_daemon)
             logger.info("bot_gateway_monitor_daemon", status="initialized", interval=interval)

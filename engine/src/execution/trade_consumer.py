@@ -176,16 +176,28 @@ class TradeRequestConsumer:
                     await asyncio.sleep(_POLL_INTERVAL_MS / 1000.0)
                     continue
 
+                # BUG-65: use raw=True to preserve msg_id for ack_message
                 messages = await self._event_bus.subscribe(
                     stream=TRADE_REQUEST_STREAM,
                     group=CONSUMER_GROUP,
                     consumer=CONSUMER_NAME,
                     count=_BATCH_SIZE,
                     block_ms=_POLL_INTERVAL_MS,
+                    raw=True,
                 )
 
-                for msg in messages:
-                    await self._process_message(msg)
+                for raw_msg in messages:
+                    await self._process_message(raw_msg)
+                    # BUG-65: ack after successful processing to clear PEL
+                    # If _process_message raises, outer except prevents ack (allowing PEL retry)
+                    raw_msg_id = raw_msg.get("id") if isinstance(raw_msg, dict) else None
+                    if raw_msg_id:
+                        try:
+                            await self._event_bus.ack_message(
+                                TRADE_REQUEST_STREAM, CONSUMER_GROUP, raw_msg_id
+                            )
+                        except Exception:
+                            logger.debug("trade_consumer.ack_failed msg_id=%s", raw_msg_id)
 
             except asyncio.CancelledError:
                 break
@@ -194,11 +206,31 @@ class TradeRequestConsumer:
                 logger.exception("TradeRequestConsumer: unexpected error in consume loop")
                 await asyncio.sleep(_POLL_INTERVAL_MS / 1000.0)
 
-    async def _process_message(self, msg: dict[str, Any]) -> None:
-        """Process a single trade request message."""
+    async def _process_message(self, raw_msg: dict[str, Any]) -> None:
+        """Process a single trade request message.
+
+        BUG-65 fix: handles raw Redis stream format {"id": ..., "fields": {...}}
+        from the production consume loop. Also accepts plain dict format for
+        backwards compatibility with tests and direct callers.
+        """
+        import json as _json
+
+        # Detect raw Redis stream format vs plain dict format
+        if "id" in raw_msg and "fields" in raw_msg:
+            fields = raw_msg.get("fields", {})
+            data = fields.get(b"data") or fields.get("data") or ""
+            if isinstance(data, bytes):
+                data = data.decode()
+            try:
+                payload: dict[str, Any] = _json.loads(data) if data else {}
+            except _json.JSONDecodeError:
+                payload = {}
+        else:
+            # Plain dict (test/legacy format or already-deserialized payload)
+            payload = raw_msg
+
         try:
-            # Deserialize TradeRequest from event data
-            trade_request = TradeRequest.model_validate(msg)
+            trade_request = TradeRequest.model_validate(payload)
         except (ValueError, TypeError):
             self.error_count += 1
             logger.exception(
@@ -276,7 +308,7 @@ class TradeRequestConsumer:
                 "trade_consumer.min_notional_filtered strategy=%s legs=%d max_notional_usd=%.2f",
                 trade_request.strategy_id,
                 len(_small_legs),
-                float(max(l.size * l.price for l in _small_legs if l.price)),
+                float(max((l.size * l.price for l in _small_legs if l.price), default=Decimal("0"))),
             )
             return
 

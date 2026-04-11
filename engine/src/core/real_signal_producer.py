@@ -146,11 +146,18 @@ class RealDataSignalProducer:
         )
         self._spread_filter_min_samples: int = 20
         self._spread_filter_multiplier: float = 3.0
-        self._spread_ts_max_diff_s: float = 0.300  # 300ms timestamp cross-check
+        # BUG-44: increased 300ms→1000ms. Bitget books15 is event-driven (not 100ms guaranteed
+        # like Binance @depth20@100ms). During quiet markets a symbol may go 300-800ms without
+        # a Bitget push while Binance fires every 100ms → all FF signals silently dropped.
+        # 1000ms is still well below the 1500ms exchange-stale threshold.
+        self._spread_ts_max_diff_s: float = 1.000
         # Rate-limit futures_spread_outlier logs: key=(symbol,ex_a,ex_b) → last_log_time
         self._outlier_log_cooldown: dict[tuple[str, str, str], float] = {}
         # Global throttle: at most 1 outlier log per 5s across all pairs
         self._outlier_global_last_log: float = 0.0
+        # BUG-44: rate-limit ts_filter drop logs: key=(symbol,ex_a,ex_b) → last_log_time
+        self._ts_filter_log_cooldown: dict[tuple[str, str, str], float] = {}
+        self._ts_filter_global_last_log: float = 0.0
         # S10: Warmup guard — skip signals for first 5 seconds after startup
         # Disabled in test mode to avoid breaking integration tests
         self._first_update_mono: float = 0.0
@@ -349,13 +356,14 @@ class RealDataSignalProducer:
                     # US-230: rolling median spread outlier filter
                     _sf_key = (symbol, spot_ex, fut_ex)
                     _sf_history = self._rolling_spread[_sf_key]
-                    _sf_history.append(_sf_basis_bps)
                     # timestamp cross-check: skip if books updated > 300ms apart
+                    # BUG-66: append AFTER ts_diff filter to avoid polluting median
                     _sf_ts_spot = getattr(spot_book, "last_update_time", 0)
                     _sf_ts_fut = getattr(fut_book, "last_update_time", 0)
                     if _sf_ts_spot > 0 and _sf_ts_fut > 0:
                         if abs(_sf_ts_spot - _sf_ts_fut) > self._spread_ts_max_diff_s:
                             continue
+                    _sf_history.append(_sf_basis_bps)
                     if len(_sf_history) >= self._spread_filter_min_samples:
                         _sf_median = statistics.median(_sf_history)
                         if _sf_median > 0 and _sf_basis_bps > self._spread_filter_multiplier * _sf_median:
@@ -390,13 +398,13 @@ class RealDataSignalProducer:
                     # Rolling median spread outlier filter
                     _sf_key_back = (symbol, fut_ex, spot_ex)
                     _sf_history_back = self._rolling_spread[_sf_key_back]
-                    _sf_history_back.append(_sf_basis_bps_back)
-                    # Timestamp cross-check
+                    # Timestamp cross-check (BUG-66: append AFTER ts_diff filter)
                     _sf_ts_spot = getattr(spot_book, "last_update_time", 0)
                     _sf_ts_fut = getattr(fut_book, "last_update_time", 0)
                     if _sf_ts_spot > 0 and _sf_ts_fut > 0:
                         if abs(_sf_ts_spot - _sf_ts_fut) > self._spread_ts_max_diff_s:
                             continue
+                    _sf_history_back.append(_sf_basis_bps_back)
                     if len(_sf_history_back) >= self._spread_filter_min_samples:
                         _sf_median_back = statistics.median(_sf_history_back)
                         if _sf_median_back > 0 and _sf_basis_bps_back > self._spread_filter_multiplier * _sf_median_back:
@@ -486,6 +494,20 @@ class RealDataSignalProducer:
                 age_a = now_mono - book_a.last_update_time if book_a.last_update_time > 0 else 999.0
                 age_b = now_mono - book_b.last_update_time if book_b.last_update_time > 0 else 999.0
                 if age_a > 3.0 or age_b > 3.0:
+                    # BUG-44 diagnostic: log when freshness guard drops a pair (rate-limited)
+                    _fk = (symbol, min(ex_a, ex_b), max(ex_a, ex_b))
+                    if (now_mono - self._ts_filter_log_cooldown.get(_fk, 0.0) > 60.0
+                            and now_mono - self._ts_filter_global_last_log > 10.0):
+                        logger.debug(
+                            "real_signal_producer.ff_freshness_drop",
+                            extra={
+                                "symbol": symbol, "ex_a": ex_a, "ex_b": ex_b,
+                                "age_a_ms": round(age_a * 1000, 0),
+                                "age_b_ms": round(age_b * 1000, 0),
+                            },
+                        )
+                        self._ts_filter_log_cooldown[_fk] = now_mono
+                        self._ts_filter_global_last_log = now_mono
                     continue
 
                 # ex_a bid > ex_b ask → buy on ex_b, sell on ex_a
@@ -515,10 +537,27 @@ class RealDataSignalProducer:
                     # US-230: rolling median spread outlier filter
                     _ff_key = (symbol, min(ex_a, ex_b), max(ex_a, ex_b))
                     _ff_history = self._rolling_spread[_ff_key]
-                    _ff_history.append(spread_bps)
                     if book_a.last_update_time > 0 and book_b.last_update_time > 0:
-                        if abs(book_a.last_update_time - book_b.last_update_time) > self._spread_ts_max_diff_s:
+                        _ts_diff1 = abs(book_a.last_update_time - book_b.last_update_time)
+                        if _ts_diff1 > self._spread_ts_max_diff_s:
+                            # BUG-44: log when ts-sync filter drops a signal
+                            _tsk1 = (symbol, min(ex_a, ex_b), max(ex_a, ex_b))
+                            _now_ts1 = time.monotonic()
+                            if (_now_ts1 - self._ts_filter_log_cooldown.get(_tsk1, 0.0) > 60.0
+                                    and _now_ts1 - self._ts_filter_global_last_log > 10.0):
+                                logger.debug(
+                                    "real_signal_producer.ff_ts_filter_drop",
+                                    extra={
+                                        "symbol": symbol, "ex_a": ex_a, "ex_b": ex_b,
+                                        "diff_ms": round(_ts_diff1 * 1000, 1),
+                                        "threshold_ms": round(self._spread_ts_max_diff_s * 1000, 0),
+                                    },
+                                )
+                                self._ts_filter_log_cooldown[_tsk1] = _now_ts1
+                                self._ts_filter_global_last_log = _now_ts1
                             continue
+                    # BUG-66: append AFTER ts_diff filter to avoid polluting median with stale readings
+                    _ff_history.append(spread_bps)
                     if len(_ff_history) >= self._spread_filter_min_samples:
                         _ff_median = statistics.median(_ff_history)
                         if _ff_median > 0 and spread_bps > self._spread_filter_multiplier * _ff_median:
@@ -571,10 +610,27 @@ class RealDataSignalProducer:
                     # US-230: rolling median spread outlier filter
                     _ff_key = (symbol, min(ex_a, ex_b), max(ex_a, ex_b))
                     _ff_history = self._rolling_spread[_ff_key]
-                    _ff_history.append(spread_bps)
                     if book_a.last_update_time > 0 and book_b.last_update_time > 0:
-                        if abs(book_a.last_update_time - book_b.last_update_time) > self._spread_ts_max_diff_s:
+                        _ts_diff2 = abs(book_a.last_update_time - book_b.last_update_time)
+                        if _ts_diff2 > self._spread_ts_max_diff_s:
+                            # BUG-44: log when ts-sync filter drops a signal
+                            _tsk2 = (symbol, min(ex_a, ex_b), max(ex_a, ex_b))
+                            _now_ts2 = time.monotonic()
+                            if (_now_ts2 - self._ts_filter_log_cooldown.get(_tsk2, 0.0) > 60.0
+                                    and _now_ts2 - self._ts_filter_global_last_log > 10.0):
+                                logger.debug(
+                                    "real_signal_producer.ff_ts_filter_drop",
+                                    extra={
+                                        "symbol": symbol, "ex_a": ex_b, "ex_b": ex_a,
+                                        "diff_ms": round(_ts_diff2 * 1000, 1),
+                                        "threshold_ms": round(self._spread_ts_max_diff_s * 1000, 0),
+                                    },
+                                )
+                                self._ts_filter_log_cooldown[_tsk2] = _now_ts2
+                                self._ts_filter_global_last_log = _now_ts2
                             continue
+                    # BUG-66: append AFTER ts_diff filter to avoid polluting median with stale readings
+                    _ff_history.append(spread_bps)
                     if len(_ff_history) >= self._spread_filter_min_samples:
                         _ff_median = statistics.median(_ff_history)
                         if _ff_median > 0 and spread_bps > self._spread_filter_multiplier * _ff_median:
@@ -952,11 +1008,18 @@ class RealDataSignalProducer:
             if diff < _fr_min_diff:
                 continue
 
-            # Reference price from any available spot book
+            # Reference price from any available USDT spot book
+            # BUG-01: exclude KRW exchanges (prices off by ~1400x vs USDT)
             sym_books = books.get(symbol, {})
             if not sym_books:
                 continue
-            ref_book = next(iter(sym_books.values()))
+            ref_book = None
+            for _ex_id, _book in sym_books.items():
+                if _ex_id not in KRW_EXCHANGES:
+                    ref_book = _book
+                    break
+            if ref_book is None:
+                ref_book = next(iter(sym_books.values()))  # fallback: best effort
             ref_bid = ref_book.best_bid()
             if ref_bid is None or ref_bid <= 0:
                 continue

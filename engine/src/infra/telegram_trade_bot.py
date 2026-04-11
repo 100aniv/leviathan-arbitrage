@@ -479,7 +479,7 @@ class TradeTelegramBot(TelegramBotBase):
             "MDD_LIMIT": str(_gc("dynamic_risk.max_drawdown_pct", default=0.05)),
             "MAX_POSITION_SIZE": str(_gc("risk.max_position_usd", default=1000)),
             "SLIPPAGE_GAMMA": str(_gc("slippage.gamma", default=0.5)),
-            "ENGINE_ENV": os.getenv("ENGINE_ENV", "dev"),
+            "ENGINE_ENV": str(_gc("env", default="dev")),
             "EXECUTION_MODE": str(_gc("mode", default="paper")),
         }
 

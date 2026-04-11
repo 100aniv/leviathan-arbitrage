@@ -240,9 +240,10 @@ class TestMaxConcurrentPositions:
 
     @patch("src.risk.guardian.is_halted", return_value=False)
     def test_under_max_concurrent_positions_approves(self, _):
-        """len(position_sizes) = 19 < 20 → check passes (not rejected for concurrent limit)."""
+        """len(position_sizes) = 1 < max_concurrent_trades → check passes (not rejected for concurrent limit).
+        Note: engine.json max_concurrent_trades=2 (Phase 2 production limit). Test uses 1 position < 2."""
         guardian = _make_guardian()
-        positions = {f"TOKEN{i}/USDT": Decimal("100") for i in range(19)}
+        positions = {"TOKEN0/USDT": Decimal("100")}  # 1 position < max_concurrent_trades=2
         portfolio = _make_valid_portfolio(position_sizes=positions)
         proposal = _make_valid_proposal(symbol="NEW/USDT")
         with patch("src.infra.metrics.RISK_REJECTIONS_TOTAL") as mock_metric:

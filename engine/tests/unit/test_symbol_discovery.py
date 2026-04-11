@@ -148,10 +148,10 @@ class TestTradingSymbolsConfig:
             assert t.symbols == ["BTC/USDT", "ETH/USDT"]
 
     def test_min_exchanges_default(self):
-        """TRADING_SYMBOL_MIN_EXCHANGES is 2 per PHOENIX config (.env)."""
+        """TRADING_SYMBOL_MIN_EXCHANGES default is 3 per PHOENIX config (CLAUDE.md: min_exchanges=3 필수)."""
         from src.core.config import TradingSettings
         t = TradingSettings()
-        assert t.symbol_min_exchanges == 2
+        assert t.symbol_min_exchanges == 3
 
     def test_min_exchanges_override(self):
         """TRADING_SYMBOL_MIN_EXCHANGES can be overridden."""
