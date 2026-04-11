@@ -726,10 +726,19 @@ class AtomicExecutor:
         first_id, second_id = sorted([ex_a_id, ex_b_id])
         # Tier1 patch (PHOENIX §8.3): parallel lock acquire via asyncio.gather
         # sorted() preserved to prevent deadlocks (lock acquire order is canonical)
-        await asyncio.gather(
-            self._acquire_lock(first_id),
-            self._acquire_lock(second_id),
-        )
+        # Margin safety: wrap lock acquisition — if CancelledError/BaseException fires here
+        # (outside the try/finally block), we must release reserved margin before propagating.
+        try:
+            await asyncio.gather(
+                self._acquire_lock(first_id),
+                self._acquire_lock(second_id),
+            )
+        except BaseException:
+            if _margin_reserved_a:
+                await self._margin_tracker.release(ex_a_id, _required_a)
+            if _margin_reserved_b:
+                await self._margin_tracker.release(ex_b_id, _required_b)
+            raise
 
         leg1_result: LegResult | None = None
         leg2_result: LegResult | None = None
