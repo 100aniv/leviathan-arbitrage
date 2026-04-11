@@ -68,7 +68,7 @@
     "enable_ou_filter": false
   },
   "futures_futures": {
-    "min_spread_bps": 20.0,
+    "min_spread_bps": 15.0,
     "entry_threshold": 0.00025557303057935484,
     "exit_threshold": 6.82596457666553e-05,
     "stop_loss_pct": 0.00501931310745825,
