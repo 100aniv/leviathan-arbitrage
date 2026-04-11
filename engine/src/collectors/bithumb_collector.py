@@ -51,7 +51,11 @@ class BithumbCollector(BaseCollector):
         symbols: list[str],
         on_orderbook: Callable[[str, str, list, list], Awaitable[None]] | None = None,
     ) -> None:
-        super().__init__(exchange_id="bithumb", symbols=symbols, on_orderbook=on_orderbook)
+        # BUG-69: Bithumb WS server does not respond to application-level pings.
+        super().__init__(
+            exchange_id="bithumb", symbols=symbols, on_orderbook=on_orderbook,
+            ping_interval=None, ping_timeout=None,
+        )
         self._last_update: dict[str, float] = {}
         self._snapshot_fetched = False
         # Accumulated in-memory book: {symbol: {"bids": {price: qty}, "asks": {price: qty}}}
