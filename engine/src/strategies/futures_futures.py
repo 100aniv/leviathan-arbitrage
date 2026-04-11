@@ -48,6 +48,10 @@ class FuturesFuturesConfig(BaseModel):
     excluded_symbols: list[str] = Field(default_factory=list)
     # Exit: close positions older than max_hold_seconds (0 = disabled)
     max_hold_seconds: float = Field(default=1800.0, ge=0)  # 30min default (was 4H)
+    # BUG-72: Max simultaneous open positions to prevent Binance -2019 margin exhaustion.
+    # With $120 capital at 5x leverage, each ~$12 trade uses ~$2.5 margin.
+    # 4 positions = $10 margin = 8.3% of capital — safe headroom.
+    max_concurrent_positions: int = Field(default=4, ge=1, le=50)
 
 
 class FuturesFuturesStrategy(BaseStrategy):
@@ -312,6 +316,19 @@ class FuturesFuturesStrategy(BaseStrategy):
             logger.debug(
                 "strategy.rejected strategy=futures_futures reason=same_exchange exchange=%s",
                 _buy_futures_id,
+            )
+            return None
+
+        # BUG-72: Enforce max concurrent positions limit to prevent Binance -2019 margin exhaustion.
+        # With ~$12 per trade at 5x leverage, each position uses ~$2.5 margin.
+        # Reject new entries once the limit is reached (existing positions stay open until exit).
+        _cur_positions = len(self._open_positions) + len(self._pending_entry_symbols)
+        if _cur_positions >= self.config.max_concurrent_positions:
+            self._metrics.signals_filtered += 1
+            logger.debug(
+                "strategy.rejected strategy=futures_futures reason=max_concurrent_positions "
+                "current=%d limit=%d symbol=%s",
+                _cur_positions, self.config.max_concurrent_positions, signal.symbol,
             )
             return None
 
