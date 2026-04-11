@@ -45,6 +45,8 @@ class BithumbCollector(BaseCollector):
     """
 
     _WS_URL = "wss://pubwss.bithumb.com/pub/ws"
+    _FAKE_BLACKLIST_THRESHOLD = 3      # consecutive fakes before blacklisting
+    _FAKE_BLACKLIST_TTL_S = 600.0      # blacklist duration (10 minutes)
 
     def __init__(
         self,
@@ -70,12 +72,7 @@ class BithumbCollector(BaseCollector):
         # BUG-70b: Persistent fake symbol blacklist — symbols confirmed fake 3+ times
         # are silenced for 10 minutes to avoid constant REST verify calls.
         self._fake_confirm_count: dict[str, int] = {}  # consecutive fake confirmations
-        self._fake_blacklist_expiry: dict[str, float] = {}  # symbol → expiry timestamp
-        _FAKE_BLACKLIST_THRESHOLD = 3  # confirmations before blacklisting
-        _FAKE_BLACKLIST_TTL_S = 600.0  # 10 minutes
-        # Make these accessible as class attributes
-        self._FAKE_BLACKLIST_THRESHOLD = _FAKE_BLACKLIST_THRESHOLD
-        self._FAKE_BLACKLIST_TTL_S = _FAKE_BLACKLIST_TTL_S
+        self._fake_blacklist_expiry: dict[str, float] = {}  # symbol → expiry (monotonic)
 
     async def start(self) -> None:
         """Start with REST snapshots, then WS stream + per-symbol stale watcher."""
