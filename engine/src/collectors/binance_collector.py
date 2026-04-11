@@ -98,7 +98,9 @@ class BinanceCollector(BaseCollector):
         url = self._ws_url()
         logger.info("collector_connecting", exchange=self.exchange_id, url=url)
 
-        async with websockets.connect(url, ping_interval=20, ping_timeout=10) as ws:
+        # BUG-69: Binance WS server handles keepalive via server-side pings.
+        # Client-initiated pings time out — disable them.
+        async with websockets.connect(url, ping_interval=None, ping_timeout=None) as ws:
             self._ws = ws
             self._connected = True
             self._reconnect_delay = self.INITIAL_RECONNECT_DELAY
