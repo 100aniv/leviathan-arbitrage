@@ -164,6 +164,8 @@ class Engine:
         self._data_quality_manager: Any = None
         # SIT-3: FlashGuard — rapid price movement detection
         self._flash_guard: Any = None
+        # BUG-04: declare kill_switch so _redis_halt_watch_loop doesn't AttributeError before mode loop sets it
+        self._kill_switch: Any = None
         # US-351: BacktestMode result (populated by _backtest_mode_task)
         self._backtest_result: Any = None
 
@@ -215,19 +217,20 @@ class Engine:
         self.context.running = False
         self._shutdown_event.set()
 
-        # Stop trade consumer
-        if self._trade_consumer:
-            try:
-                await self._trade_consumer.stop()
-            except Exception as exc:
-                logger.warning("TradeConsumer stop error: %s", exc)
-
-        # Stop strategy manager
+        # BUG-82: Stop strategy manager FIRST so in-flight signals are drained
+        # before trade_consumer shuts down (prevents lost TradeRequests)
         if self._strategy_manager:
             try:
                 await self._strategy_manager.stop()
             except Exception as exc:
                 logger.warning("StrategyManager stop error: %s", exc)
+
+        # Stop trade consumer after strategies are silent
+        if self._trade_consumer:
+            try:
+                await self._trade_consumer.stop()
+            except Exception as exc:
+                logger.warning("TradeConsumer stop error: %s", exc)
 
         # US-155: Cancel open orders in live mode before disconnecting
         # BUG-8 fix: use _engine_mode (engine.json 기준) instead of execution_mode (.env 기준)
@@ -240,6 +243,13 @@ class Engine:
         if (getattr(self, '_engine_mode', None) == EngineMode.LIVE
                 and self._exchanges):
             await self._close_all_positions_on_shutdown()
+
+        # Stop collector manager (BUG-06: not stopped in live mode, leaked WS connections)
+        if self._collector_manager:
+            try:
+                await self._collector_manager.stop()
+            except Exception as exc:
+                logger.warning("CollectorManager stop error: %s", exc)
 
         # Disconnect exchanges
         for eid, adapter in self._exchanges.items():
@@ -1111,6 +1121,9 @@ class Engine:
         ) if sf_p.get("status") in ("READY", "MONITOR") else None
 
         fr_p = tuned.get("funding_rate", {})
+        # Use percentage-based _max_pos_usd (capital × per_trade_pct %).
+        # _MIN_NOTIONAL_USD in FundingRateStrategy is $5 (exchange min), so _max_pos_usd >= $5 needed.
+        # With capital=$120 and per_trade_pct=5%: _max_pos_usd=$6 > $5 → OK.
         fr_config = FundingRateConfig(
             min_funding_diff_bps=Decimal(str(fr_p.get("min_funding_diff_bps", 5))),
             max_position_size=_max_pos_usd,
@@ -1565,6 +1578,17 @@ class Engine:
                 volatility_1min={},   # populated when live vol data available
                 volatility_24h={},    # populated when live vol data available
             )
+            # Settlement exits and reduceOnly closes bypass risk checks
+            _is_close_req = any(
+                isinstance(leg.metadata, dict) and (
+                    leg.metadata.get("reduceOnly") is True or
+                    str(leg.metadata.get("leg_type", "")).startswith("settlement_close")
+                )
+                for leg in trade_request.legs
+            )
+            if _is_close_req:
+                return True, ""
+
             # Check each leg
             for leg in trade_request.legs:
                 price = leg.price or _BTC_REFERENCE_PRICE
@@ -1640,6 +1664,44 @@ class Engine:
                         "position_tracking_fail",
                         {"error_count": self._position_tracking_errors},
                     ))
+        # Record execution to TimescaleDB via market_recorder (DB recording gap fix)
+        if (getattr(execution_result.status, "value", str(execution_result.status)) == "success"
+                and self._market_recorder is not None and trade_request.legs):
+            try:
+                from src.core.models import OrderSide as _OS
+                _buy_legs = [l for l in trade_request.legs if l.side == _OS.BUY]
+                _sell_legs = [l for l in trade_request.legs if l.side == _OS.SELL]
+                if _buy_legs and _sell_legs:
+                    _bp = _buy_legs[0].price or Decimal("0")
+                    _sp = _sell_legs[0].price or Decimal("0")
+                    # Prefer actual fill prices from execution_result
+                    for _lr in getattr(execution_result, "legs", []):
+                        _t = getattr(_lr, "trade", None)
+                        _o = getattr(_lr, "order", None)
+                        if _t and _o:
+                            _s = getattr(_o.side, "value", str(_o.side)).upper()
+                            if _s == "BUY":
+                                _bp = Decimal(str(_t.price))
+                            else:
+                                _sp = Decimal(str(_t.price))
+                    _mode = "live" if hasattr(self, "_execution_mode") else "live"
+                    if hasattr(self, "_live_mode") and self._live_mode is not None:
+                        _mode = getattr(self._live_mode, "_execution_mode", "live")
+                    self._market_recorder.record_execution(
+                        strategy_id=trade_request.strategy_id,
+                        buy_exchange=str(_buy_legs[0].exchange_id),
+                        sell_exchange=str(_sell_legs[0].exchange_id),
+                        symbol=trade_request.legs[0].symbol,
+                        buy_price=_bp,
+                        sell_price=_sp,
+                        size=trade_request.legs[0].size,
+                        net_pnl=Decimal(str(getattr(execution_result, "pnl", 0) or 0)),
+                        status="filled",
+                        mode=_mode,
+                    )
+            except Exception as _rec_exc:
+                logger.debug("db_record_execution_failed strategy=%s err=%s", trade_request.strategy_id, _rec_exc)
+
         # US-175: Update ExposureTracker on successful fills
         if (getattr(execution_result.status, "value", str(execution_result.status)) == "success"
                 and self._exposure_tracker is not None):
@@ -1764,8 +1826,9 @@ class Engine:
                 pass  # Non-critical: CB feedback failure
 
         # BUG-J: ROLLED_BACK 완료 시 strategy._open_positions 해제 → 4H 심볼 차단 방지
+        # BUG-31: REJECTED도 해제 (주문 미발생 → position 없음)
         # ROLLBACK_FAILED는 stranded position 존재 → 해제 안 함
-        if getattr(execution_result.status, "value", str(execution_result.status)) == "rolled_back":
+        if getattr(execution_result.status, "value", str(execution_result.status)) in ("rolled_back", "rejected"):
             try:
                 strategy = self._strategy_manager.get_strategy(trade_request.strategy_id)
                 if strategy is not None and hasattr(strategy, "on_execution_rollback"):
@@ -1981,6 +2044,8 @@ class Engine:
             asyncio.create_task(self._dashboard_feed_loop(), name="dashboard_feed"),
             asyncio.create_task(self._btc_price_update_loop(), name="btc_price_update"),
             asyncio.create_task(self._redis_halt_watch_loop(), name="redis_halt_watch"),
+            # BUG-81: Poll strategies for pending exit requests (FF settlement, SF timeout)
+            asyncio.create_task(self._strategy_exit_poll_loop(), name="strategy_exit_poll"),
         ]
 
         # --- Single-axis mode routing (Phase H-2) ---
@@ -3127,6 +3192,11 @@ class Engine:
             # US-286: Sync health data to DataQualityManager
             if self._data_quality_manager is not None:
                 self._data_quality_manager.record_heartbeat(eid)
+            # BUG-48: refresh native adapter's own HealthChecker heartbeat every 10s.
+            # REST-only execution adapters (no WS stream) would otherwise go stale after
+            # 150s and drop to health_score=0.6 → livelock (all trades rejected).
+            if hasattr(adapter, '_health') and hasattr(adapter._health, 'record_heartbeat'):
+                adapter._health.record_heartbeat()
             if score < 0.9:
                 logger.warning("Exchange %s health_score=%.2f", eid, score)
 
@@ -3227,6 +3297,52 @@ class Engine:
             logger.debug("compliance_checker_not_available")
         except Exception as exc:
             logger.warning("compliance_startup_audit_error error=%s", exc)
+
+    async def _strategy_exit_poll_loop(self) -> None:
+        """BUG-81: Poll strategies for pending exit TradeRequests every 60s.
+
+        FundingRateStrategy queues settlement-close TradeRequests in
+        _pending_exit_requests. FuturesFuturesStrategy queues holding-timeout
+        exits via pop_exit_requests(). Without this loop those requests are
+        never routed and positions remain open forever.
+
+        NOTE: This loop is SKIPPED when LiveMode is active. LiveMode._dedup_cleanup_loop
+        already polls strategies every 60s and routes exits through _execute_trade_request
+        (full pipeline: kill switch, circuit breaker, Telegram alerts, PnL tracking).
+        Running both would cause a dual-drain race where exit requests are stolen between
+        consumers. This loop handles non-Live modes (e.g., backtest, paper w/o LiveMode).
+        """
+        try:
+            while self.state.running:
+                await asyncio.sleep(60)
+                # Skip when LiveMode is active — it has its own _dedup_cleanup_loop consumer
+                if getattr(self, "_live_mode", None) is not None:
+                    continue
+                if not self._strategy_manager:
+                    continue
+                try:
+                    # BUG-05: use public API instead of _strategies private dict
+                    for sid in self._strategy_manager.list_strategies():
+                        strategy = self._strategy_manager.get_strategy(sid)
+                        if strategy is None:
+                            continue
+                        if hasattr(strategy, "pop_exit_requests"):
+                            for exit_req in strategy.pop_exit_requests():
+                                logger.info(
+                                    "strategy_exit_poll strategy=%s legs=%d reason=%s",
+                                    sid,
+                                    len(exit_req.legs),
+                                    exit_req.metadata.get("reason", "unknown"),
+                                )
+                                if self._event_bus:
+                                    await self._event_bus.publish(
+                                        "leviathan:trade_requests",
+                                        exit_req.model_dump(mode="json"),
+                                    )
+                except Exception as exc:
+                    logger.warning("strategy_exit_poll_loop error=%s", exc)
+        except asyncio.CancelledError:  # BUG-02: handle cancellation cleanly
+            pass
 
     async def _reconcile_loop(self) -> None:
         interval = get_settings().operational.reconciliation_interval_s

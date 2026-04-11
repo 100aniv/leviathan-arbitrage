@@ -66,14 +66,24 @@ class FundingRateStrategy(BaseStrategy):
         self._regime_detector = regime_detector
         self.config = config or FundingRateConfig()
         # US-239: Track open positions per symbol to prevent duplicate entries
-        self._open_positions: dict[str, str] = {}  # symbol → direction
+        # BUG-74: value is now a dict {sell_exchange, buy_exchange, size} for settlement exits
+        self._open_positions: dict[str, Any] = {}  # symbol → position dict
         # US-239: Last settlement hour seen (for auto-release after settlement)
+        # Initialize to -1 (sentinel). _check_settlement_release guards against
+        # spurious startup triggers by skipping release when _open_positions is empty.
         self._last_settlement_hour: int = -1
         # US-262: Rolling funding rate history for z-score dynamic threshold
         from collections import deque
         self._funding_diff_history: deque[float] = deque(maxlen=360)  # ~8H at 80s intervals
         # US-268: OU Process for mean-reversion analysis
         self._ou = OUProcess(window=self.config.ou_window)
+        # BUG-74: Settlement exit queue — populated by _check_settlement_release, drained in on_signal
+        self._pending_exit_requests: list[TradeRequest] = []
+        # Issue#4: positions moved here during settlement so they can be restored on failed exit.
+        # Cleared automatically 90s after routing (market orders settle within seconds;
+        # 90s is conservative enough to detect genuine failures).
+        self._pending_settlement_positions: dict[str, Any] = {}  # symbol → pos dict
+        self._settlement_routed_at: float = 0.0  # monotonic timestamp when exits were routed
 
     def _minutes_to_next_settlement(self, now_utc: datetime | None = None) -> float:
         """Return minutes until next funding settlement (UTC 00/08/16).
@@ -89,16 +99,57 @@ class FundingRateStrategy(BaseStrategy):
         return min_hours_before * 60.0
 
     def _check_settlement_release(self) -> None:
-        """Auto-release all positions after a settlement hour passes."""
+        """Auto-release all positions after a settlement hour passes.
+
+        BUG-74: Queues exit TradeRequests before clearing _open_positions so
+        exchange positions are actually unwound (not just forgotten).
+        """
         now_utc = datetime.now(timezone.utc)
         current_hour = now_utc.hour
         if current_hour in self.config.settlement_hours and current_hour != self._last_settlement_hour:
             self._last_settlement_hour = current_hour
-            if self._open_positions:
-                self._open_positions.clear()
+            if not self._open_positions:
+                # No positions to release — skip spurious trigger (e.g., engine just started)
+                return
+            for symbol, pos in list(self._open_positions.items()):
+                if isinstance(pos, dict) and "sell_exchange" in pos:
+                    self._pending_exit_requests.append(TradeRequest(
+                        strategy_id=self.strategy_id,
+                        legs=[
+                            TradeLeg(
+                                exchange_id=pos["sell_exchange"],
+                                symbol=symbol,
+                                side=OrderSide.BUY,  # close the short leg
+                                size=pos["size"],
+                                order_type=OrderType.MARKET,
+                                price=None,
+                                metadata={"leg_type": "settlement_close_short", "reduceOnly": True},
+                            ),
+                            TradeLeg(
+                                exchange_id=pos["buy_exchange"],
+                                symbol=symbol,
+                                side=OrderSide.SELL,  # close the long leg
+                                size=pos.get("long_size", pos["size"]),  # use hedge-ratio size
+                                order_type=OrderType.MARKET,
+                                price=None,
+                                metadata={"leg_type": "settlement_close_long", "reduceOnly": True},
+                            ),
+                        ],
+                        expected_profit_usdt=Decimal("0"),
+                        confidence=0.0,
+                        metadata={"reason": "settlement_exit"},
+                    ))
+                    # Issue#4 fix: move to pending_settlement (not delete) so failed exits can retry.
+                    # Duplicate guard still blocks new entries since symbol is absent from _open_positions.
+                    self._pending_settlement_positions[symbol] = pos
+            self._open_positions.clear()
 
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1
+        logger.info(
+            "funding_rate.on_signal_entry sym=%s is_active=%s",
+            signal.symbol, self._is_active,
+        )
 
         if not self._is_active:
             self._metrics.signals_filtered += 1
@@ -111,6 +162,10 @@ class FundingRateStrategy(BaseStrategy):
 
         # US-239: Auto-release positions after settlement
         self._check_settlement_release()
+        # BUG-74: Drain settlement exit queue — return one exit TradeRequest per call
+        if self._pending_exit_requests:
+            self._settlement_routed_at = time.monotonic()  # mark routing time for 90s timeout
+            return self._pending_exit_requests.pop(0)
 
         # US-239: Settlement timing filter — only enter within window before settlement
         # Disabled when settlement_window_minutes == 0 (e.g., test mode)
@@ -120,9 +175,18 @@ class FundingRateStrategy(BaseStrategy):
                 self._metrics.signals_filtered += 1
                 return None
 
-        # US-239: Duplicate position guard — skip if already have position on this symbol
-        if signal.symbol in self._open_positions:
+        # US-239: Duplicate position guard — skip if already have position or pending settlement exit
+        # Check both _open_positions AND _pending_settlement_positions: after _check_settlement_release
+        # moves positions to _pending_settlement_positions, the symbol is absent from _open_positions
+        # but the exchange position still exists. Without this guard, a new entry would stack on top.
+        if signal.symbol in self._open_positions or signal.symbol in self._pending_settlement_positions:
             self._metrics.signals_filtered += 1
+            logger.info(
+                "funding_rate.duplicate_guard sym=%s open_pos=%s pending_settlement=%s",
+                signal.symbol,
+                list(self._open_positions.keys()),
+                list(self._pending_settlement_positions.keys()),
+            )
             return None
 
         # Extract funding rates from metadata
@@ -130,6 +194,10 @@ class FundingRateStrategy(BaseStrategy):
         funding_rate_buy = Decimal(str(signal.metadata.get("funding_rate_buy", "0")))
         funding_diff = funding_rate_sell - funding_rate_buy
         funding_diff_bps = funding_diff * Decimal("10000")
+        logger.info(
+            "funding_rate.evaluating sym=%s diff_bps=%.4f sell_rate=%s buy_rate=%s",
+            signal.symbol, float(funding_diff_bps), str(funding_rate_sell), str(funding_rate_buy),
+        )
 
         # US-268: OU Process mean-reversion filter
         self._ou.update(float(funding_diff_bps), time.monotonic())
@@ -166,6 +234,10 @@ class FundingRateStrategy(BaseStrategy):
 
         if funding_diff_bps < self.config.min_funding_diff_bps:
             self._metrics.signals_filtered += 1
+            logger.info(
+                "funding_rate.min_diff_rejected sym=%s diff_bps=%.4f threshold=%.1f",
+                signal.symbol, float(funding_diff_bps), float(self.config.min_funding_diff_bps),
+            )
             return None
 
         # PHOENIX: max_position_size is USD notional cap (set in main.py).
@@ -175,8 +247,8 @@ class FundingRateStrategy(BaseStrategy):
         base_size = min(signal.volume, _max_base)
         _position_usd = base_size * avg_price if avg_price > 0 else Decimal("0")
 
-        # PHOENIX: Ensure minimum notional $10 (exchange minimum is $5; use $10 for safety margin)
-        _MIN_NOTIONAL_USD = Decimal("10")
+        # PHOENIX: Ensure minimum notional $5 (exchange minimum)
+        _MIN_NOTIONAL_USD = Decimal("5")
         if _position_usd < _MIN_NOTIONAL_USD and avg_price > 0:
             min_size_needed = (_MIN_NOTIONAL_USD / avg_price).quantize(Decimal("0.00000001"))
             if min_size_needed <= _max_base:
@@ -188,7 +260,7 @@ class FundingRateStrategy(BaseStrategy):
                 )
             else:
                 self._metrics.signals_filtered += 1
-                logger.debug(
+                logger.info(
                     "funding_rate.min_notional_skip sym=%s pos_usd=%.2f max_base=%.4f",
                     signal.symbol, float(_position_usd), float(_max_base),
                 )
@@ -198,22 +270,34 @@ class FundingRateStrategy(BaseStrategy):
         # Apply hedge ratio to the long leg size
         long_size = (size * self.config.hedge_ratio).quantize(Decimal("0.00000001"))
 
-        # Friction costs for both legs
-        short_cost = self._cost_calculator.estimate_cost(
-            exchange_id=signal.sell_exchange,
-            symbol=signal.symbol,
-            side=OrderSide.SELL,
-            size=size,
-            price=signal.sell_price,
-        )
-        long_cost = self._cost_calculator.estimate_cost(
-            exchange_id=signal.buy_exchange,
-            symbol=signal.symbol,
-            side=OrderSide.BUY,
-            size=long_size,
-            price=signal.buy_price,
-        )
-        total_cost = short_cost + long_cost
+        # Friction costs for both legs — use estimate_futures_cost for accurate futures friction:
+        # no ETH network transfer (USDT-settled), rollback proportional to notional (not fixed $5).
+        buy_notional = long_size * signal.buy_price
+        sell_notional = size * signal.sell_price
+        if hasattr(self._cost_calculator, "estimate_futures_cost"):
+            total_cost = self._cost_calculator.estimate_futures_cost(
+                buy_exchange=str(signal.buy_exchange),
+                sell_exchange=str(signal.sell_exchange),
+                buy_notional=buy_notional,
+                sell_notional=sell_notional,
+            )
+        else:
+            total_cost = (
+                self._cost_calculator.estimate_cost(
+                    exchange_id=signal.sell_exchange,
+                    symbol=signal.symbol,
+                    side=OrderSide.SELL,
+                    size=size,
+                    price=signal.sell_price,
+                )
+                + self._cost_calculator.estimate_cost(
+                    exchange_id=signal.buy_exchange,
+                    symbol=signal.symbol,
+                    side=OrderSide.BUY,
+                    size=long_size,
+                    price=signal.buy_price,
+                )
+            )
 
         # NOTE: Slippage is already accounted for upstream by SignalGenerator
         # (CEXOrderbookSlippage pre-filter). Adding phantom slippage here
@@ -237,10 +321,21 @@ class FundingRateStrategy(BaseStrategy):
             )
             return None
 
-        # US-239: Record open position to prevent duplicate entries
-        self._open_positions[signal.symbol] = "short_high_long_low"
+        # US-239: Record open position to prevent duplicate entries (BUG-74: store exchange info for exit)
+        # Store long_size separately — hedge ratio may differ from short size, needed for settlement close
+        self._open_positions[signal.symbol] = {
+            "sell_exchange": str(signal.sell_exchange),
+            "buy_exchange": str(signal.buy_exchange),
+            "size": size,
+            "long_size": long_size,
+        }
 
         self._metrics.trade_requests_generated += 1
+        logger.info(
+            "funding_rate.trade_request_generated sym=%s net_profit=%.4f size=%s buy_ex=%s sell_ex=%s",
+            signal.symbol, float(net_profit), str(size),
+            str(signal.buy_exchange), str(signal.sell_exchange),
+        )
         return TradeRequest(
             strategy_id=self.strategy_id,
             legs=[
@@ -281,6 +376,39 @@ class FundingRateStrategy(BaseStrategy):
 
     async def on_fill(self, trade: Trade) -> None:
         await super().on_fill(trade)
+
+    def pop_exit_requests(self) -> list[TradeRequest]:
+        """Drain and return pending settlement-close TradeRequests.
+
+        Called by _strategy_exit_poll_loop in main.py every 60s so that
+        settlement exits are routed even when no new signal arrives.
+
+        Issue#4 fix: _pending_settlement_positions retains position data until 90s after
+        routing. Market orders settle in < 2s; 90s is generous. After 90s, if positions
+        are still in _pending_settlement_positions, they were likely filled successfully —
+        clear them. If fills genuinely failed, Telegram kill-switch or /closepositions handles it.
+        """
+        if self._pending_exit_requests:
+            # Exits are queued — record routing timestamp and return them
+            self._settlement_routed_at = time.monotonic()
+        elif self._pending_settlement_positions:
+            elapsed = time.monotonic() - self._settlement_routed_at
+            if self._settlement_routed_at > 0 and elapsed > 90:
+                logger.info(
+                    "fr.settlement_confirmed_by_timeout symbols=%s elapsed=%.0fs",
+                    list(self._pending_settlement_positions.keys()), elapsed,
+                )
+                self._pending_settlement_positions.clear()
+                self._settlement_routed_at = 0.0
+            elif self._settlement_routed_at == 0.0:
+                logger.warning(
+                    "fr.settlement_positions_unconfirmed symbols=%s — "
+                    "no exit requests routed yet; use /closepositions if positions exist",
+                    list(self._pending_settlement_positions.keys()),
+                )
+        reqs = list(self._pending_exit_requests)
+        self._pending_exit_requests.clear()
+        return reqs
 
     def on_execution_rollback(self, symbol: str) -> None:
         """롤백 완료 시 _open_positions에서 심볼 제거 — 결제시간 전 lockout 방지.

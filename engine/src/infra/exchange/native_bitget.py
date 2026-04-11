@@ -133,9 +133,11 @@ class NativeBitgetAdapter(NativeAdapter):
 
     def _ws_subscribe_message(self, symbol: str) -> dict | None:
         sym = _normalize_symbol(symbol)
+        # BUG-07: futures requires "USDT-FUTURES" instType, not "SPOT"
+        inst_type = "USDT-FUTURES" if self._market_type == "futures" else "SPOT"
         return {
             "op": "subscribe",
-            "args": [{"instType": "SPOT", "channel": "books5", "instId": sym}],
+            "args": [{"instType": inst_type, "channel": "books5", "instId": sym}],
         }
 
     def _parse_ws_orderbook(self, raw: str | bytes, symbol: str) -> OrderBook | None:
@@ -382,11 +384,47 @@ class NativeBitgetAdapter(NativeAdapter):
                 body["clientOid"] = order.client_order_id
             resp = await self._request("POST", "/api/v2/spot/trade/place-order", data=body, signed=True)
         rd = resp.get("data", {})
+        trade_id = str(rd.get("orderId", ""))
+        fill_price = order.price or Decimal("0")
+        fill_qty = order.amount
+
+        # BUG-61: Bitget place-order response omits fill price/qty for MARKET orders.
+        # Poll /api/v2/mix/order/detail up to 3 times to get actual avgPrice + baseVolume.
+        import asyncio as _asyncio
+        if self._market_type == "futures" and _is_market and trade_id:
+            for _attempt in range(3):
+                await _asyncio.sleep(0.2)
+                try:
+                    _detail = await self._request(
+                        "GET", "/api/v2/mix/order/detail",
+                        params={
+                            "symbol": sym,
+                            "productType": "USDT-FUTURES",
+                            "orderId": trade_id,
+                        },
+                        signed=True,
+                    )
+                    _d = _detail.get("data", {})
+                    if _d.get("status") == "filled":
+                        _avg = _d.get("priceAvg") or _d.get("price")
+                        _vol = _d.get("baseVolume") or _d.get("size")
+                        if _avg and Decimal(str(_avg)) > 0:
+                            fill_price = Decimal(str(_avg))
+                        if _vol and Decimal(str(_vol)) > 0:
+                            fill_qty = Decimal(str(_vol))
+                        logger.debug(
+                            "bitget_futures_fill_polled symbol=%s orderId=%s attempt=%d price=%s qty=%s",
+                            order.symbol, trade_id, _attempt + 1, fill_price, fill_qty,
+                        )
+                        break
+                except Exception as _pe:
+                    logger.debug("bitget_futures_poll_failed orderId=%s: %s", trade_id, _pe)
+
         return self._build_trade(
             order,
-            trade_id=str(rd.get("orderId", "")),
-            price=order.price or Decimal("0"),
-            amount=order.amount,
+            trade_id=trade_id,
+            price=fill_price,
+            amount=fill_qty,
         )
 
     async def place_ioc_limit(
@@ -423,6 +461,7 @@ class NativeBitgetAdapter(NativeAdapter):
             body["symbol"] = _normalize_symbol(symbol)
         if self._market_type == "futures":
             body["productType"] = "USDT-FUTURES"
+            body["marginCoin"] = "USDT"  # BUG-03: required by Bitget V2 mix cancel API
             resp = await self._request(
                 "POST", "/api/v2/mix/order/cancel-order", data=body, signed=True
             )
@@ -430,7 +469,14 @@ class NativeBitgetAdapter(NativeAdapter):
             resp = await self._request(
                 "POST", "/api/v2/spot/trade/cancel-order", data=body, signed=True
             )
-        return resp.get("code") == "00000"
+        code = resp.get("code", "")
+        if code == "00000":
+            return True
+        # BUG-04: 40762=order not found, 43011=already completed → desired outcome, return True
+        if code in ("40762", "43011", "40783"):
+            logger.info("bitget_cancel_benign code=%s — order already gone, treating as success", code)
+            return True
+        return False
 
     async def _rest_cancel_all_orders(self, symbol: str | None) -> int:
         if self._market_type == "futures":
@@ -545,7 +591,7 @@ class NativeBitgetAdapter(NativeAdapter):
         params: dict = {
             "productType": "USDT-FUTURES",
             "limit": str(min(limit, 100)),
-            "symbol": symbol.replace("/", "").upper() + "USDT",
+            "symbol": _normalize_symbol(symbol).upper(),
         }
         if start_time_ms:
             params["startTime"] = str(start_time_ms)
@@ -553,7 +599,11 @@ class NativeBitgetAdapter(NativeAdapter):
             resp = await self._request("GET", "/api/v2/mix/order/fills", params=params, signed=True)
             fill_list = []
             if isinstance(resp, dict):
-                fill_list = resp.get("data", {}).get("fillList") or resp.get("data") or []
+                raw_data = resp.get("data") or {}
+                if isinstance(raw_data, dict):
+                    fill_list = raw_data.get("fillList") or []
+                elif isinstance(raw_data, list):
+                    fill_list = raw_data
             elif isinstance(resp, list):
                 fill_list = resp
             return [
