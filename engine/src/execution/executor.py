@@ -257,16 +257,20 @@ class AtomicExecutor:
                         await adapter.cancel_order(effective_id)
                 # else: order was never submitted — nothing to cancel
             if order.order_id:
-                # BUG-03: prune to prevent unbounded growth (cap at 5000 entries)
+                # BUG-03: prune to prevent unbounded growth (cap at 5000 entries).
+                # Evict oldest 1000 entries instead of .clear() to avoid nuking
+                # dedup state for concurrent in-flight rollbacks (BUG-03 MAJOR fix).
                 if len(self._rollback_attempted) >= 5000:
-                    self._rollback_attempted.clear()
+                    for _k in list(self._rollback_attempted.keys())[:1000]:
+                        del self._rollback_attempted[_k]
                 self._rollback_attempted[order.order_id] = "success"
             return True, ""
         except Exception as exc:
             logger.error("rollback_failed exchange=%s error=%s", exchange_id, exc)
             if order.order_id:
                 if len(self._rollback_attempted) >= 5000:
-                    self._rollback_attempted.clear()
+                    for _k in list(self._rollback_attempted.keys())[:1000]:
+                        del self._rollback_attempted[_k]
                 self._rollback_attempted[order.order_id] = "failed"
             return False, str(exc)
 
@@ -385,16 +389,24 @@ class AtomicExecutor:
                 rb2, rb2_reason = (await self._rollback_order(exchange_id, leg2_order, filled=leg2_filled, filled_amount=leg2_result.filled_amount) if _rb2_needed else (True, ""))
 
                 if not rb1 or not rb2:
-                    failed_order = leg1_order if not rb1 else leg2_order
+                    # Register ALL failed legs (not just one) to correctly account for
+                    # stranded exposure when both rollbacks fail simultaneously.
+                    should_halt = False
                     reason = rb1_reason if not rb1 else rb2_reason
-                    should_halt = self._stranded_tracker.register(
-                        exchange_id=exchange_id,
-                        symbol=failed_order.symbol,
-                        side=str(failed_order.side),
-                        size=float(failed_order.amount),
-                        value_usd=float(failed_order.amount * (failed_order.price or Decimal("0"))),
-                        reason=reason,
-                    )
+                    for _rb_ok, _rb_reason, _fo in (
+                        (rb1, rb1_reason, leg1_order),
+                        (rb2, rb2_reason, leg2_order),
+                    ):
+                        if not _rb_ok:
+                            _sh = self._stranded_tracker.register(
+                                exchange_id=exchange_id,
+                                symbol=_fo.symbol,
+                                side=str(_fo.side),
+                                size=float(_fo.amount),
+                                value_usd=float(_fo.amount * (_fo.price or Decimal("0"))),
+                                reason=_rb_reason,
+                            )
+                            should_halt = should_halt or _sh
                     if should_halt:
                         halt_local()
                     logger.critical(
@@ -950,6 +962,7 @@ class AtomicExecutor:
 
         # F-5 fix: Unwind leg2 partial fill on Exchange B BEFORE unwinding leg1.
         # Executing leg2 unwind first reduces directional exposure faster.
+        _leg2_halt = False  # deferred halt signal from leg2 rollback failure
         leg2_filled = leg2_result.trade is not None and leg2_result.filled_amount > 0
         if leg2_filled:
             ex_b_id = leg2_result.order.exchange_id
@@ -1035,6 +1048,24 @@ class AtomicExecutor:
                 status=ExecutionStatus.ROLLBACK_FAILED,
                 legs=[leg1_result, leg2_result],
                 error=f"Rollback failed on {ex_a_id} — {'engine halted' if should_halt else 'stranded alert'}. Reason: {reason}",
+                strategy_id=strategy_id,
+            )
+
+        # Fire deferred halt: leg2 rollback failed + threshold exceeded, but leg1 succeeded.
+        # The comment at the deferral site said "fire from leg1 path if leg1 also fails" but
+        # that is too conservative — if leg2 stranded exposure exceeded $30 threshold we must
+        # halt regardless of leg1 outcome.
+        if _leg2_halt:
+            halt_local()
+            logger.critical(
+                "cross_exchange_deferred_leg2_halt_fired strategy=%s — "
+                "leg2 stranded threshold exceeded, leg1 rolled back cleanly",
+                strategy_id,
+            )
+            return ExecutionResult(
+                status=ExecutionStatus.ROLLBACK_FAILED,
+                legs=[leg1_result, leg2_result],
+                error=f"Leg2 rollback failed (stranded threshold exceeded) on {leg2_result.order.exchange_id if leg2_result.order else 'unknown'} — halt fired after leg1 unwind. Reason: {reason}",
                 strategy_id=strategy_id,
             )
 
