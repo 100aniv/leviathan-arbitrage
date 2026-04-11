@@ -8,8 +8,29 @@ TradeReconciler — 내부 execution_log vs 거래소 실체결 이력 대조.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
+
+# Known quote-asset suffixes ordered longest-first to avoid partial matches.
+_QUOTE_SUFFIXES = ("USDT", "USDC", "BUSD", "BTC", "ETH", "BNB", "FDUSD")
+_QUOTE_RE = re.compile(r"(" + "|".join(_QUOTE_SUFFIXES) + r")$")
+
+
+def _normalize_symbol(raw: str) -> str:
+    """Convert raw exchange symbol (e.g. 'BTCUSDT') to 'BASE/QUOTE' form.
+
+    Handles common quote suffixes.  Returns the raw string unchanged if no
+    known suffix is found so downstream matching can still attempt a lookup.
+    """
+    if "/" in raw:
+        return raw  # already normalized
+    m = _QUOTE_RE.search(raw)
+    if m:
+        base = raw[: m.start()]
+        quote = m.group(1)
+        return f"{base}/{quote}"
+    return raw
 
 logger = logging.getLogger(__name__)
 
@@ -85,11 +106,10 @@ class TradeReconciler:
 
         # DB에서 같은 기간 체결 기록 조회 (db_pool이 없으면 skip)
         if self._db is None:
-            # db_pool 없을 때: exchange fill count만 보고
-            report.matched = len(exchange_fills)
-            logger.info(
-                "trade_recon ex=%s matched=%d is_p95=%.1fbps (no_db)",
-                exchange_id, report.matched, 0.0,
+            # db_pool 없을 때: 매칭 불가 — 거짓 matched 보고 금지
+            logger.warning(
+                "trade_recon ex=%s skipped: no db_pool (exchange_fills=%d)",
+                exchange_id, len(exchange_fills),
             )
             return report
 
@@ -126,7 +146,7 @@ class TradeReconciler:
         matched_ts_keys: set[float] = set()
 
         for ex_fill in exchange_fills:
-            sym = ex_fill.get("symbol", "").replace("USDT", "/USDT")  # normalize
+            sym = _normalize_symbol(ex_fill.get("symbol", ""))
             ex_ts_ms = ex_fill.get("ts_ms", 0)
             ex_ts = ex_ts_ms / 1000.0 if ex_ts_ms else 0
             ex_price = ex_fill.get("price", 0)
@@ -155,16 +175,23 @@ class TradeReconciler:
                         is_values.append(is_bps)
 
                 # DB reconciliation_status 업데이트
+                # WHERE 절에 buy_exchange + sell_exchange 포함 → (ts, symbol) 단독으로는
+                # 동시 체결 시 여러 행이 있을 수 있어 multi-row 오염 방지.
                 try:
                     await self._db.execute(
                         """
                         UPDATE execution_log
                         SET reconciliation_status = 'matched',
                             reconciled_at = NOW()
-                        WHERE ts = $1 AND symbol = $2
+                        WHERE ts = $1
+                          AND symbol = $2
+                          AND buy_exchange = $3
+                          AND sell_exchange = $4
                         """,
                         best_match["ts"],
                         sym,
+                        best_match["buy_exchange"],
+                        best_match["sell_exchange"],
                     )
                 except Exception as exc:
                     logger.debug("trade_reconciler.db_update_failed ts=%s error=%s", best_match["ts"], exc)

@@ -132,9 +132,11 @@ class Engine:
         # US-129: Position tracking for RiskGuardian PortfolioState
         self._position_sizes: dict[str, Decimal] = {}   # symbol -> current notional exposure (nets out for hedged)
         self._cross_exchange_positions: set[str] = set()  # symbols with active cross-exchange hedged positions
-        # NOTE: _position_sizes nets BUY/SELL for same symbol (correct for exposure/Check#1/3),
+        self._cross_gross_exposure: Decimal = Decimal("0")  # gross capital in delta-neutral hedges (both legs)
+        # NOTE: _position_sizes nets BUY/SELL for same symbol (correct for directional exposure / Check#1),
         # but yields len=0 for delta-neutral hedged positions (funding_rate, spot_futures).
         # _cross_exchange_positions tracks these separately for Check #10 (max concurrent).
+        # _cross_gross_exposure tracks total capital deployed in hedges for Check #3 (total exposure).
         self._peak_equity: Decimal | None = None           # initialized to capital_total on first risk check
         self._total_pnl: Decimal = Decimal("0")          # cumulative realized PnL
         self._exchange_health: dict[str, Decimal] = {}   # exchange_id -> health score (0-1)
@@ -1583,19 +1585,23 @@ class Engine:
             if _is_close_req:
                 return True, ""
 
-            # Effective position map: _position_sizes nets BUY/SELL for hedged
-            # cross-exchange positions (funding_rate/spot_futures) to ~0, so
-            # _cross_exchange_positions fills in the gap for Check #10.
+            # Effective position map for Check #10 (max concurrent positions):
+            # _position_sizes nets BUY/SELL for delta-neutral hedged positions to ~0,
+            # so cross_exchange_positions fills the gap.  Sentinel value is Decimal("0")
+            # (not "1") so Check #1 sees zero directional exposure — correct for hedges.
             _effective_positions = dict(self._position_sizes)
             for _sym in self._cross_exchange_positions:
                 if _sym not in _effective_positions:
-                    _effective_positions[_sym] = Decimal("1")  # sentinel: position exists
+                    _effective_positions[_sym] = Decimal("0")  # sentinel: key present, no directional exposure
+
+            # Gross exposure = net directional + capital tied in cross-exchange hedges
+            _total_exposure = used_capital + self._cross_gross_exposure
 
             portfolio = PortfolioState(
                 total_capital=capital_total,
                 used_capital=used_capital,
                 current_drawdown_pct=current_drawdown_pct,
-                total_exposure=used_capital,
+                total_exposure=_total_exposure,
                 position_sizes=_effective_positions,
                 exchange_health_scores=exchange_health,
                 volatility_1min={},   # populated when live vol data available
@@ -1669,6 +1675,21 @@ class Engine:
                         self._cross_exchange_positions.add(sym)
                     elif _is_close or not _is_cross:
                         self._cross_exchange_positions.discard(sym)
+
+                # Track gross capital in delta-neutral hedges for Check #3 (total exposure).
+                # Both legs of a cross-exchange trade consume margin even though net = 0.
+                if _is_cross:
+                    _leg_gross = sum(
+                        trade.price * trade.amount
+                        for trade, order in legs_info
+                        if trade is not None and order is not None
+                    )
+                    if _is_close:
+                        self._cross_gross_exposure = max(
+                            Decimal("0"), self._cross_gross_exposure - _leg_gross
+                        )
+                    else:
+                        self._cross_gross_exposure += _leg_gross
                 # Update peak equity
                 capital = self._settings.capital.initial_capital if self._settings else Decimal("70")
                 capital_total = capital * max(len(self._exchanges), 1)
