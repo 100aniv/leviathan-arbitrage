@@ -36,8 +36,8 @@ class BaseCollector(abc.ABC):
         exchange_id: str,
         symbols: list[str],
         on_orderbook: Callable[[str, str, list, list], Awaitable[None]] | None = None,
-        ping_interval: int = 20,
-        ping_timeout: int = 30,
+        ping_interval: int | None = None,  # Round32 BUG-69: None = rely on server-side keepalive
+        ping_timeout: int | None = None,
     ) -> None:
         """
         Args:
