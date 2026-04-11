@@ -38,10 +38,10 @@ class BinanceFuturesCollector(BaseCollector):
     No API key is required.
     """
 
-    # Binance USDM Futures WS URL migration (2026-03-05 split, legacy retires 2026-04-23).
-    # Market data streams (depth, trades) → /market/ prefix.
-    # Old: wss://fstream.binance.com/ws/<stream>
-    # New: wss://fstream.binance.com/market/ws/<stream>
+    # Binance USDM Futures WS URLs.
+    # NOTE 2026-04-12: /market/stream combined endpoint times out (verified).
+    # Legacy /stream endpoint works for combined streams; use it for multi-symbol.
+    # /market/ws/<stream> works for single-symbol.
     _BASE_WS = "wss://fstream.binance.com"
     _BASE_WS_MARKET = "wss://fstream.binance.com/market"
 
@@ -62,7 +62,8 @@ class BinanceFuturesCollector(BaseCollector):
         )
         if len(self.symbols) == 1:
             return f"{self._BASE_WS_MARKET}/ws/{streams}"
-        return f"{self._BASE_WS_MARKET}/stream?streams={streams}"
+        # Use legacy /stream for combined (multi-symbol) — /market/stream times out (2026-04-12)
+        return f"{self._BASE_WS}/stream?streams={streams}"
 
     def _subscribe_message(self, symbol: str) -> str | dict:
         # Subscription is encoded in the URL path; no subscribe frame needed.
