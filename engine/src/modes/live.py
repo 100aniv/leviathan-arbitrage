@@ -1028,7 +1028,17 @@ class LiveMode(BaseMode):
                 self._notify_pre_exec_rollback(trade_request, sid)
                 return
 
-            exec_result = await self._route_to_executor(trade_request, orders)
+            try:
+                exec_result = await self._route_to_executor(trade_request, orders)
+            except Exception as _exec_exc:
+                # Unhandled executor exception: notify strategy to clear _open_positions
+                # so a phantom position record doesn't block re-entry for 30min (BUG-MAJOR-15).
+                logger.error(
+                    "live_mode.executor_unhandled_error strategy=%s error=%s — notifying rollback",
+                    sid, _exec_exc,
+                )
+                self._notify_pre_exec_rollback(trade_request, sid)
+                return
 
             if LIVE_EXECUTION_TIME is not None:
                 LIVE_EXECUTION_TIME.observe(time.monotonic() - t0)

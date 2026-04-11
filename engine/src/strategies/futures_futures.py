@@ -90,8 +90,13 @@ class FuturesFuturesStrategy(BaseStrategy):
         self._margin_tracker: Any | None = None  # injected by live.py
         # Position tracking for time-based exit: symbol → {buy_ex, sell_ex, size, entry_time}
         self._open_positions: dict[str, dict] = {}
+        # MAJOR-1 race guard: symbols with in-flight on_signal() calls (between check and write).
+        # Prevents concurrent coroutines from both passing _open_positions check before either writes.
+        self._pending_entry_symbols: set[str] = set()
         # PHOENIX v18: Pending exit TradeRequests from _open_positions_monitor
         self._pending_exit_requests: list = []
+        # BUG-62: snapshot of positions currently being exited → restore on rollback
+        self._pending_exits: dict[str, dict] = {}
 
         # US-260: Adaptive threshold — rolling percentile + volatility weight
         # Bug 26: Use adaptive_static_entry_bps (if set) as the outlier-filter baseline,
@@ -128,12 +133,19 @@ class FuturesFuturesStrategy(BaseStrategy):
             )
 
     def on_execution_rollback(self, symbol: str) -> None:
-        """실행 롤백 완료 시 _open_positions에서 해당 심볼 제거 (BUG-J).
+        """실행 롤백 완료 시 처리 (BUG-J + BUG-62).
 
-        ROLLED_BACK: leg2 실패 후 leg1 언와인드 성공 → 실제 포지션 없음 → 재진입 허용.
+        ENTRY rollback (ROLLED_BACK): leg2 실패 후 leg1 언와인드 성공 → 실제 포지션 없음 → _open_positions 제거.
+        EXIT rollback (ROLLED_BACK): exit 실패 후 partial fill 언와인드 성공 → 포지션 복원됨 → _pending_exits에서 복원.
         ROLLBACK_FAILED: 호출하지 않음 (stranded position 존재).
         """
-        if symbol in self._open_positions:
+        if symbol in self._pending_exits:
+            # Exit order rolled back → original position restored on exchange → re-track
+            restored = self._pending_exits.pop(symbol)
+            self._open_positions[symbol] = restored
+            logger.info("ff.position_restored_on_exit_rollback symbol=%s", symbol)
+        elif symbol in self._open_positions:
+            # Entry order rolled back → position was never actually opened → clear tracking
             logger.info("ff.position_cleared_on_rollback symbol=%s", symbol)
             self._open_positions.pop(symbol, None)
 
@@ -181,6 +193,8 @@ class FuturesFuturesStrategy(BaseStrategy):
                         metadata={"reason": "spread_reversion_monitor", "spread_bps": str(round(last_spread, 2)), "age_s": str(int(age_s))},
                     )
                     self._pending_exit_requests.append(exit_req)
+                    # BUG-62: save snapshot before removing — restored if exit rolls back
+                    self._pending_exits[sym] = dict(pos)
                     self._open_positions.pop(sym, None)
                     continue
 
@@ -217,6 +231,8 @@ class FuturesFuturesStrategy(BaseStrategy):
                         metadata={"reason": "holding_timeout", "age_s": str(int(age_s))},
                     )
                     self._pending_exit_requests.append(exit_req)
+                    # BUG-62: save snapshot before removing — restored if exit rolls back
+                    self._pending_exits[sym] = dict(pos)
                     # 중복 emit 방지: 모니터에서 즉시 제거
                     self._open_positions.pop(sym, None)
 
@@ -283,6 +299,12 @@ class FuturesFuturesStrategy(BaseStrategy):
 
         # Time-based exit or entry block: if open position for this symbol exists, handle it
         _sym = signal.symbol or ""
+        # MAJOR-1 race guard: reject if another on_signal() coroutine is already processing this
+        # symbol (between its _open_positions check and its _open_positions write, across an await).
+        if _sym and _sym in self._pending_entry_symbols:
+            self._metrics.signals_filtered += 1
+            logger.debug("strategy.rejected strategy=futures_futures reason=pending_entry symbol=%s", _sym)
+            return None
         if _sym and _sym in self._open_positions:
             pos = self._open_positions[_sym]
             age_s = time.time() - pos["entry_time"]
@@ -300,6 +322,8 @@ class FuturesFuturesStrategy(BaseStrategy):
                     "ff.spread_exit symbol=%s spread_bps=%.2f exit_threshold_bps=%.2f age_s=%.0f — 스프레드 수렴 청산",
                     _sym, _current_spread_bps, _exit_threshold_bps, age_s,
                 )
+                # BUG-62: save snapshot before removing — restored if exit rolls back
+                self._pending_exits[_sym] = dict(pos)
                 del self._open_positions[_sym]
                 self._metrics.trade_requests_generated += 1
                 return TradeRequest(
@@ -335,6 +359,8 @@ class FuturesFuturesStrategy(BaseStrategy):
                     "ff.time_exit symbol=%s age_s=%.0f max_hold_s=%.0f — closing position",
                     _sym, age_s, self.config.max_hold_seconds,
                 )
+                # BUG-62: save snapshot before removing — restored if exit rolls back
+                self._pending_exits[_sym] = dict(pos)
                 del self._open_positions[_sym]
                 self._metrics.trade_requests_generated += 1
                 return TradeRequest(
@@ -467,6 +493,10 @@ class FuturesFuturesStrategy(BaseStrategy):
                 )
                 return None
             # Bug 29: MarginTracker — check in-flight reservations to prevent margin exhaustion
+            # Claim symbol BEFORE first await so concurrent coroutines see it (MAJOR-1 race fix).
+            # Try/finally in caller will discard after TradeRequest is returned or on any exception.
+            if _sym:
+                self._pending_entry_symbols.add(_sym)
             if self._margin_tracker is not None:
                 ok = await self._margin_tracker.check_and_reserve(
                     exchange_id=signal.buy_exchange,
@@ -479,6 +509,8 @@ class FuturesFuturesStrategy(BaseStrategy):
                         "strategy.rejected strategy=futures_futures reason=margin_tracker_blocked symbol=%s",
                         signal.symbol,
                     )
+                    if _sym:
+                        self._pending_entry_symbols.discard(_sym)
                     return None
 
         buy_notional = signal.buy_price * size
@@ -519,6 +551,8 @@ class FuturesFuturesStrategy(BaseStrategy):
                 "net_profit=%.6f gross=%.6f cost=%.6f",
                 signal.symbol, float(net_profit), float(gross_profit), float(total_cost),
             )
+            if _sym:
+                self._pending_entry_symbols.discard(_sym)
             return None
 
         def _to_futures_exchange(eid: str) -> str:
@@ -527,7 +561,7 @@ class FuturesFuturesStrategy(BaseStrategy):
                 return f"{eid}_futures"
             return eid
 
-        # Track entry for time-based exit
+        # Track entry for time-based exit; discard pending guard now that position is recorded.
         if self.config.max_hold_seconds > 0 and signal.symbol:
             self._open_positions[signal.symbol] = {
                 "buy_ex": _to_futures_exchange(signal.buy_exchange),
@@ -535,6 +569,7 @@ class FuturesFuturesStrategy(BaseStrategy):
                 "size": size,
                 "entry_time": time.time(),
             }
+        self._pending_entry_symbols.discard(_sym)  # release race guard — position is now tracked
 
         self._metrics.trade_requests_generated += 1
         return TradeRequest(
