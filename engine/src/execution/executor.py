@@ -675,12 +675,19 @@ class AtomicExecutor:
         # Default 100_000 keeps normal test/low-capital operation unblocked; protection
         # kicks in only when cumulative in-flight approaches the configured limit.
         _budget_per_ex = Decimal(str(getattr(self._config, "per_exchange_budget_usd", 100_000)))
+        _margin_reserved_a = False
+        _margin_reserved_b = False
         _margin_ok_a = await self._margin_tracker.check_and_reserve(ex_a_id, _required_a, _budget_per_ex)
-        _margin_ok_b = False
         if _margin_ok_a:
+            _margin_reserved_a = True
             _margin_ok_b = await self._margin_tracker.check_and_reserve(ex_b_id, _required_b, _budget_per_ex)
+            if _margin_ok_b:
+                _margin_reserved_b = True
+        else:
+            _margin_ok_b = False
         if not _margin_ok_a or not _margin_ok_b:
-            if _margin_ok_a:
+            # Release already-reserved leg before returning (no try/finally yet)
+            if _margin_reserved_a:
                 await self._margin_tracker.release(ex_a_id, _required_a)
             return ExecutionResult(
                 status=ExecutionStatus.REJECTED,
@@ -901,6 +908,12 @@ class AtomicExecutor:
         finally:
             self._release_lock(ex_a_id)
             self._release_lock(ex_b_id)
+            # Release margin reservations — explicit release on success/rollback paths.
+            # TTL (60s) remains as safety net for unhandled paths.
+            if _margin_reserved_a:
+                await self._margin_tracker.release(ex_a_id, _required_a)
+            if _margin_reserved_b:
+                await self._margin_tracker.release(ex_b_id, _required_b)
             # BUG-93: do NOT clear (see execute_same_exchange finally block comment)
 
     async def _do_rollback_cross(

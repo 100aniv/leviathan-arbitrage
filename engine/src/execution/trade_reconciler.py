@@ -18,13 +18,19 @@ _QUOTE_RE = re.compile(r"(" + "|".join(_QUOTE_SUFFIXES) + r")$")
 
 
 def _normalize_symbol(raw: str) -> str:
-    """Convert raw exchange symbol (e.g. 'BTCUSDT') to 'BASE/QUOTE' form.
+    """Convert raw exchange symbol to 'BASE/QUOTE' canonical form.
 
-    Handles common quote suffixes.  Returns the raw string unchanged if no
-    known suffix is found so downstream matching can still attempt a lookup.
+    Handles:
+      - Futures contract perpetual suffix: 'BTC/USDT:USDT' → 'BTC/USDT'
+      - Raw exchange symbols without slash: 'BTCUSDT' → 'BTC/USDT'
+      - Already normalised: 'BTC/USDT' returned as-is
+    Returns the raw string unchanged if no known suffix is found.
     """
+    # Strip futures perpetual suffix (e.g. ':USDT', ':BTC') before further processing
+    if ":" in raw:
+        raw = raw.split(":")[0]
     if "/" in raw:
-        return raw  # already normalized
+        return raw  # already normalized (possibly after stripping ':' suffix)
     m = _QUOTE_RE.search(raw)
     if m:
         base = raw[: m.start()]
@@ -132,7 +138,7 @@ class TradeReconciler:
             )
         except Exception as exc:
             logger.warning("trade_reconciler.db_query_failed error=%s", exc)
-            report.matched = len(exchange_fills)
+            # Do NOT inflate matched count on DB failure — leave at 0 so alerts fire
             return report
 
         # symbol → list of db rows (시간순)
