@@ -666,7 +666,9 @@ class AtomicExecutor:
 
         # Step 0b: DeduplicationGate — Bug 26 fix (race-condition duplicate orders)
         # BUG-32: differentiate entry vs exit so close orders aren't blocked by recent entry
-        _is_close = any(
+        # BUG-75: use all() so mixed-leg trades (one reduceOnly, one not) are treated as entries.
+        # All 12 exit paths in futures_futures/spot_futures/funding_rate set reduceOnly on BOTH legs.
+        _is_close = all(
             o.metadata.get("reduceOnly") for o in [leg1_order, leg2_order]
         )
         _dedup_key = f"{strategy_id}:{leg1_order.symbol}:{'close' if _is_close else 'open'}"
@@ -709,6 +711,11 @@ class AtomicExecutor:
         _budget_per_ex = Decimal(str(getattr(self._config, "per_exchange_budget_usd", 100_000)))
         _margin_reserved_a = False
         _margin_reserved_b = False
+        if _is_close:
+            logger.debug(
+                "margin_check_bypassed_exit strategy=%s symbol=%s",
+                strategy_id, leg1_order.symbol,
+            )
         if not _is_close:
             _margin_ok_a = await self._margin_tracker.check_and_reserve(ex_a_id, _required_a, _budget_per_ex)
             if _margin_ok_a:

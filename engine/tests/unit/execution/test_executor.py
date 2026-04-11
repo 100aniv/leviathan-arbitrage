@@ -310,6 +310,45 @@ async def test_cross_exchange_exit_bypasses_margin_tracker(
 
 
 @pytest.mark.asyncio
+async def test_cross_exchange_exit_rollback_no_margin_leak(
+    executor: AtomicExecutor, exchange_a: MagicMock, exchange_b: MagicMock
+) -> None:
+    """BUG-75 + BUG-42 interaction: exit trade where leg2 fails must not leak
+    margin reservations. Since exits bypass margin_tracker, _entries must be
+    unchanged after a ROLLED_BACK or ROLLBACK_FAILED result.
+    """
+    import time as _time
+
+    # Pre-inject large in-flight so any accidental reservation would be detectable
+    _large = Decimal("90000")
+    _expires = _time.monotonic() + 60.0
+    executor._margin_tracker._entries.append(("binance", _large, _expires))
+    initial_entries_count = len(executor._margin_tracker._entries)
+
+    # Make leg2 raise to trigger rollback path
+    exchange_b.place_order = AsyncMock(side_effect=RuntimeError("exchange_b timeout"))
+
+    leg1 = Order(
+        exchange_id="binance", symbol="ETH/USDT", side=OrderSide.SELL,
+        order_type=OrderType.LIMIT, price=Decimal("3000"), amount=Decimal("0.1"),
+        metadata={"reduceOnly": True},
+    )
+    leg2 = Order(
+        exchange_id="okx", symbol="ETH/USDT", side=OrderSide.BUY,
+        order_type=OrderType.LIMIT, price=Decimal("3000"), amount=Decimal("0.1"),
+        metadata={"reduceOnly": True},
+    )
+    result = await executor.execute_cross_exchange(
+        leg1_order=leg1, leg2_order=leg2,
+        strategy_id="strat_1", min_edge=Decimal("0.001"),
+    )
+    # Result must be ROLLED_BACK or ROLLBACK_FAILED (not SUCCESS, not REJECTED)
+    assert result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.ROLLBACK_FAILED)
+    # margin_tracker must be unchanged — no phantom reservations from exit bypass
+    assert len(executor._margin_tracker._entries) == initial_entries_count
+
+
+@pytest.mark.asyncio
 async def test_cross_exchange_sequential_submission(
     executor: AtomicExecutor, exchange_a: MagicMock, exchange_b: MagicMock
 ) -> None:

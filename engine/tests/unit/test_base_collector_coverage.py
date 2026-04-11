@@ -63,10 +63,20 @@ def _make_ws_ctx(messages: list[str] | None = None, send_side_effect=None):
     msgs = list(messages or [])
 
     class _MockWS:
-        """Async-iterable fake WebSocket."""
+        """Fake WebSocket supporting both recv() and async-iteration protocols."""
 
         def __init__(self) -> None:
             self.send = AsyncMock(side_effect=send_side_effect)
+            self._recv_msgs = list(msgs)
+            self._recv_idx = 0
+
+        async def recv(self):
+            """Return next message or raise to trigger collector's break."""
+            if self._recv_idx >= len(self._recv_msgs):
+                raise Exception("no more messages")
+            msg = self._recv_msgs[self._recv_idx]
+            self._recv_idx += 1
+            return msg
 
         def __aiter__(self):
             return self._gen()
@@ -271,12 +281,10 @@ class TestConnectAndListen:
             class _WS:
                 send = AsyncMock()
 
-                def __aiter__(self):
-                    return self._gen()
-
-                async def _gen(self):
-                    collector._running = False  # flip before body executes
-                    yield '{"type": "orderbook", "symbol": "BTC/USDT", "bids": [], "asks": []}'
+                async def recv(self):
+                    """Set _running=False then raise — simulates external stop before message."""
+                    collector._running = False
+                    raise Exception("running_stopped")
 
             async def __aenter__(self):
                 return self._WS()
@@ -329,14 +337,14 @@ class TestConnectAndListen:
         class _CapturingCM:
             class _WS:
                 send = AsyncMock()
+                _captured = False
 
-                def __aiter__(self):
-                    return self._gen()
-
-                async def _gen(self):
-                    connected_during.append(collector._connected)
-                    return
-                    yield  # make it an async generator
+                async def recv(self):
+                    """Capture _connected on first call then raise to exit loop."""
+                    if not self._captured:
+                        self._captured = True
+                        connected_during.append(collector._connected)
+                    raise Exception("done")
 
             async def __aenter__(self):
                 return self._WS()
