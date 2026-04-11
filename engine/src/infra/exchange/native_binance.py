@@ -194,6 +194,7 @@ class BinanceNativeAdapter(NativeAdapter):
         if binance_sym not in self._step_sizes:
             try:
                 path = "/fapi/v1/exchangeInfo"
+                await self._rate_limiter.acquire("default")  # BUG-02: rate limit exchangeInfo
                 resp = await self._http.get(path, params={"symbol": binance_sym})
                 resp.raise_for_status()
                 info = resp.json()
@@ -215,6 +216,7 @@ class BinanceNativeAdapter(NativeAdapter):
         if cache_key not in self._step_sizes:
             try:
                 path = "/api/v3/exchangeInfo"
+                await self._rate_limiter.acquire("default")  # BUG-02: rate limit exchangeInfo
                 resp = await self._http.get(path, params={"symbol": binance_sym})
                 resp.raise_for_status()
                 info = resp.json()
@@ -386,8 +388,21 @@ class BinanceNativeAdapter(NativeAdapter):
                     logger.debug("futures_poll_failed orderId=%s: %s", trade_id, _pe)
 
         filled_qty = Decimal(str(raw.get("executedQty", order.amount)))
-        # Futures MARKET orders: fill price is in avgPrice, not price (price=0 for MARKET)
-        _price_field = raw.get("avgPrice") or raw.get("price") or str(order.price or "0")
+        # Futures MARKET orders: fill price is in avgPrice, not price (price=0 for MARKET).
+        # BUG-49: Binance returns avgPrice="0.00000" (truthy string) when order not yet filled.
+        # Must check numeric value > 0, not string truthiness.
+        def _nonzero_price_str(val: str | None) -> str | None:
+            if not val:
+                return None
+            try:
+                return val if Decimal(val) > 0 else None
+            except Exception:
+                return None
+        _price_field = (
+            _nonzero_price_str(raw.get("avgPrice"))
+            or _nonzero_price_str(raw.get("price"))
+            or str(order.price or "0")
+        )
         fill_price = Decimal(str(_price_field))
         # If still executedQty=0 after polling, fall back to requested amount (async fill confirmed)
         if filled_qty == Decimal("0") and order.order_type == OrderType.MARKET and trade_id:
@@ -560,13 +575,16 @@ class BinanceNativeAdapter(NativeAdapter):
     ) -> list[dict]:
         """Binance Futures 실체결 이력 조회 — GET /fapi/v1/userTrades.
 
-        symbol 없으면 최근 limit건 조회.
+        BUG-63: Binance Futures requires 'symbol' — empty symbol returns 400 error.
+        Return [] immediately if no symbol provided (reconciler skips empty-symbol calls).
         """
+        if not symbol:
+            return []
         params: dict = {"limit": min(limit, 1000)}
-        if symbol:
-            params["symbol"] = _symbol_to_binance(symbol)
+        params["symbol"] = _symbol_to_binance(symbol)
         if start_time_ms:
             params["startTime"] = start_time_ms
+        await self._rate_limiter.acquire("default")  # weight=5 per call
         try:
             data = await self._signed_request("GET", "/fapi/v1/userTrades", params=params)
             if not isinstance(data, list):
@@ -577,7 +595,7 @@ class BinanceNativeAdapter(NativeAdapter):
                     "symbol": d.get("symbol", ""),
                     "order_id": str(d.get("orderId", "")),
                     "trade_id": str(d.get("id", "")),
-                    "side": "buy" if d.get("buyer") else "sell",
+                    "side": d.get("side", "BUY").lower(),  # BUG-01: use explicit "side" field, not "buyer" boolean
                     "qty": float(d.get("qty", 0)),
                     "price": float(d.get("price", 0)),
                     "realized_pnl": float(d.get("realizedPnl", 0)),

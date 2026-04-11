@@ -596,6 +596,7 @@ class NativeBitgetAdapter(NativeAdapter):
         }
         if start_time_ms:
             params["startTime"] = str(start_time_ms)
+        await self._rate_limiter.acquire("default")  # 10 req/s, burst 20
         try:
             resp = await self._request("GET", "/api/v2/mix/order/fills", params=params, signed=True)
             fill_list = []
