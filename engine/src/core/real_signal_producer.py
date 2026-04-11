@@ -158,6 +158,12 @@ class RealDataSignalProducer:
         # BUG-44: rate-limit ts_filter drop logs: key=(symbol,ex_a,ex_b) → last_log_time
         self._ts_filter_log_cooldown: dict[tuple[str, str, str], float] = {}
         self._ts_filter_global_last_log: float = 0.0
+        # Periodic FF observability summary (every 60s) — Round29 fix
+        self._ff_summary_last_ts: float = 0.0
+        self._ff_max_spread_bps: float = -9999.0   # max (bid_a-ask_b)/ask_b*10000 seen
+        self._ff_pairs_evaluated: int = 0
+        self._ff_stale_dropped: int = 0
+        self._ff_freshness_dropped: int = 0
         # S10: Warmup guard — skip signals for first 5 seconds after startup
         # Disabled in test mode to avoid breaking integration tests
         self._first_update_mono: float = 0.0
@@ -471,6 +477,14 @@ class RealDataSignalProducer:
                 if any(v is None for v in [bid_a, ask_b, bid_b, ask_a]):
                     continue
 
+                # Round29 observability: track max spread (positive=inverted, negative=how far)
+                self._ff_pairs_evaluated += 1
+                _spread_ab = (float(bid_a) - float(ask_b)) / float(ask_b) * 10000
+                _spread_ba = (float(bid_b) - float(ask_a)) / float(ask_a) * 10000
+                _pair_max = max(_spread_ab, _spread_ba)
+                if _pair_max > self._ff_max_spread_bps:
+                    self._ff_max_spread_bps = _pair_max
+
                 # S10 fix: skip if either exchange recently reconnected (stale data guard)
                 # Only applied once both exchanges have been seen (avoids blocking cold-start)
                 now = time.monotonic()
@@ -478,6 +492,7 @@ class RealDataSignalProducer:
                 last_b = self._exchange_last_update.get(ex_b)
                 if last_a is not None and last_b is not None:
                     if (now - last_a) > self._exchange_stale_threshold or (now - last_b) > self._exchange_stale_threshold:
+                        self._ff_stale_dropped += 1
                         continue
 
                 # US-184 + S10: stale data cross-validation (BOTH exchanges)
@@ -508,6 +523,7 @@ class RealDataSignalProducer:
                         )
                         self._ts_filter_log_cooldown[_fk] = now_mono
                         self._ts_filter_global_last_log = now_mono
+                    self._ff_freshness_dropped += 1
                     continue
 
                 # ex_a bid > ex_b ask → buy on ex_b, sell on ex_a
@@ -655,6 +671,25 @@ class RealDataSignalProducer:
                             extra={"symbol": symbol, "buy_ex": ex_a, "sell_ex": ex_b},
                         )
                         signals.append(signal)
+
+        # Round29: periodic FF observability summary (every 60s)
+        _now_sum = time.monotonic()
+        if _now_sum - self._ff_summary_last_ts >= 60.0:
+            logger.info(
+                "real_signal_producer.ff_summary",
+                extra={
+                    "pairs_evaluated": self._ff_pairs_evaluated,
+                    "max_spread_bps": round(self._ff_max_spread_bps, 2),
+                    "stale_dropped": self._ff_stale_dropped,
+                    "freshness_dropped": self._ff_freshness_dropped,
+                    "signals_this_window": len(signals),
+                },
+            )
+            self._ff_summary_last_ts = _now_sum
+            self._ff_max_spread_bps = -9999.0
+            self._ff_pairs_evaluated = 0
+            self._ff_stale_dropped = 0
+            self._ff_freshness_dropped = 0
 
         return signals
 
