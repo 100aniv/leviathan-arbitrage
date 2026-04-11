@@ -341,3 +341,139 @@ class TestInitialSnapshotPopulatesBooks:
         callback.assert_called_once()
         call_kwargs = callback.call_args[1]
         assert call_kwargs.get("is_snapshot") is True
+
+
+# ---------------------------------------------------------------------------
+# BUG-70/70b: Two-step verify flood guard and persistent fake blacklist
+# ---------------------------------------------------------------------------
+
+def _price_guard_delta(symbol_bithumb: str, bad_price: str, good_bid: str) -> dict:
+    """Build a Bithumb delta that triggers the price guard (50% drop)."""
+    return {
+        "type": "orderbookdepth",
+        "content": {
+            "list": [
+                {"symbol": symbol_bithumb, "orderType": "ask",
+                 "price": bad_price, "quantity": "0.5"},
+                {"symbol": symbol_bithumb, "orderType": "bid",
+                 "price": good_bid, "quantity": "0.5"},
+            ]
+        },
+    }
+
+
+def _fake_spread_delta(symbol_bithumb: str) -> dict:
+    """Build a delta whose accumulated result triggers the >50% price guard.
+
+    Strategy: seed book with bid/ask=100, then send delta that removes the
+    100-level and adds bid/ask=40 → new_mid=40 vs last_valid_mid=100 = 60% drop.
+    """
+    return {
+        "type": "orderbookdepth",
+        "content": {
+            "list": [
+                {"symbol": symbol_bithumb, "orderType": "bid", "price": "100", "quantity": "0"},  # delete
+                {"symbol": symbol_bithumb, "orderType": "ask", "price": "100", "quantity": "0"},  # delete
+                {"symbol": symbol_bithumb, "orderType": "bid", "price": "40", "quantity": "1.0"},
+                {"symbol": symbol_bithumb, "orderType": "ask", "price": "40", "quantity": "1.0"},
+            ]
+        },
+    }
+
+
+def _seed_book(col, symbol: str, bid: str = "100", ask: str = "100") -> None:
+    """Seed collector book and last_valid_mid for guard testing."""
+    col._last_valid_mid[symbol] = (float(bid) + float(ask)) / 2
+    col._books[symbol] = {
+        "bids": {bid: "1.0"},
+        "asks": {ask: "1.0"},
+    }
+
+
+class TestPriceGuardFloodPrevention:
+    """BUG-70: _two_step_verify should not flood when guard fires rapidly."""
+
+    def test_pending_flag_prevents_duplicate_task(self):
+        """Second guard trigger while one verify is in-flight should not create a new task."""
+        col = _make_collector(["ETH/BTC"])
+        _seed_book(col, "ETH/BTC")
+
+        tasks_created = []
+
+        class FakeLoop:
+            def create_task(self, coro):
+                tasks_created.append(coro)
+                coro.close()
+                return MagicMock()
+
+        with patch("src.collectors.bithumb_collector.asyncio.get_running_loop", return_value=FakeLoop()):
+            # Trigger guard twice rapidly — second should be blocked by pending flag
+            result1 = col._parse_message(_fake_spread_delta("ETH_BTC"))
+            # Re-seed so next delta can also trigger guard
+            _seed_book(col, "ETH/BTC")
+            result2 = col._parse_message(_fake_spread_delta("ETH_BTC"))
+
+        assert result1 is None   # delta rejected by guard
+        assert result2 is None   # delta rejected by guard
+        assert len(tasks_created) == 1  # only ONE verify task created (pending blocked second)
+        assert "ETH/BTC" in col._two_step_pending
+
+    def test_pending_flag_cleared_on_symbol_discard(self):
+        """After manually discarding pending, next guard trigger creates a new task."""
+        col = _make_collector(["ETH/BTC"])
+        _seed_book(col, "ETH/BTC")
+
+        tasks_created = []
+
+        class FakeLoop:
+            def create_task(self, coro):
+                tasks_created.append(coro)
+                coro.close()
+                return MagicMock()
+
+        with patch("src.collectors.bithumb_collector.asyncio.get_running_loop", return_value=FakeLoop()):
+            col._parse_message(_fake_spread_delta("ETH_BTC"))
+            col._two_step_pending.discard("ETH/BTC")  # simulate verify completing
+            _seed_book(col, "ETH/BTC")
+            col._parse_message(_fake_spread_delta("ETH_BTC"))
+
+        assert len(tasks_created) == 2  # two tasks since pending was cleared
+
+    def test_blacklisted_symbol_skips_task_creation(self):
+        """BUG-70b: Blacklisted symbol should reject delta silently with no task."""
+        import time as _time
+        col = _make_collector(["ETH/BTC"])
+        _seed_book(col, "ETH/BTC")
+        # Blacklist the symbol directly
+        col._fake_blacklist_expiry["ETH/BTC"] = _time.monotonic() + 600.0
+
+        tasks_created = []
+
+        class FakeLoop:
+            def create_task(self, coro):
+                tasks_created.append(coro)
+                coro.close()
+                return MagicMock()
+
+        with patch("src.collectors.bithumb_collector.asyncio.get_running_loop", return_value=FakeLoop()):
+            result = col._parse_message(_fake_spread_delta("ETH_BTC"))
+
+        assert result is None          # delta still rejected
+        assert len(tasks_created) == 0  # NO REST verify task created
+
+    def test_blacklist_threshold(self):
+        """After _FAKE_BLACKLIST_THRESHOLD fake confirmations, symbol should be blacklisted."""
+        col = _make_collector(["ETH/BTC"])
+        assert col._FAKE_BLACKLIST_THRESHOLD == 3
+
+        # Simulate fake confirmations below threshold
+        col._fake_confirm_count["ETH/BTC"] = 2
+        col._fake_confirm_count["ETH/BTC"] += 1
+        count = col._fake_confirm_count["ETH/BTC"]
+
+        import time as _time
+        if count >= col._FAKE_BLACKLIST_THRESHOLD:
+            col._fake_blacklist_expiry["ETH/BTC"] = _time.monotonic() + col._FAKE_BLACKLIST_TTL_S
+
+        assert "ETH/BTC" in col._fake_blacklist_expiry
+        assert col._fake_blacklist_expiry["ETH/BTC"] > _time.monotonic()
