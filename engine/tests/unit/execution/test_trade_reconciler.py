@@ -265,6 +265,48 @@ class TestReconcilerUnmatchedInternal:
         assert len(report.unmatched_internal) == 1
         assert report.unmatched_internal[0]["symbol"] == "BTC/USDT"
 
+    @pytest.mark.asyncio
+    async def test_telegram_called_on_unmatched_internal(self, mock_db):
+        """DB phantom record (no matching exchange fill) triggers 내부 미매칭 Telegram alert."""
+        telegram = AsyncMock()
+        telegram.send = AsyncMock()
+        reconciler = TradeReconciler(db_pool=mock_db, telegram=telegram)
+
+        ts_now = time.time()
+        db_ts = _make_datetime_mock(ts_now - 1.0)
+
+        mock_db.fetch = AsyncMock(return_value=[{
+            "ts": db_ts,
+            "symbol": "BTC/USDT",
+            "buy_exchange": "binance_futures",
+            "sell_exchange": "bitget_futures",
+            "buy_price": 50000.0,
+            "sell_price": 50005.0,
+            "size": 0.001,
+            "slippage_total": None,
+        }])
+        mock_db.execute = AsyncMock()
+
+        adapter = AsyncMock()
+        # Exchange has ETH fill (different symbol from DB's BTC/USDT row):
+        #   - ETH fill → unmatched_exchange (no matching DB row)
+        #   - BTC/USDT DB row → unmatched_internal (no matching exchange fill)
+        # Both Telegram alerts fire; verify the internal-mismatch alert is among them.
+        adapter.get_trades = AsyncMock(return_value=[{
+            "symbol": "ETHUSDT",
+            "ts_ms": int(ts_now * 1000),
+            "price": 2000.0,
+            "side": "buy",
+        }])
+
+        await reconciler.reconcile_period(
+            exchange_adapter=adapter, exchange_id="binance_futures", since_ms=0,
+            symbols=["ETH/USDT"],
+        )
+        assert telegram.send.call_count >= 1
+        all_messages = [call[0][0] for call in telegram.send.call_args_list]
+        assert any("내부 미매칭" in msg for msg in all_messages)
+
 
 class TestReconcilerISCalculation:
     @pytest.mark.asyncio

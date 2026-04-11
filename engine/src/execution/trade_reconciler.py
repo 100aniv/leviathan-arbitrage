@@ -148,8 +148,15 @@ class TradeReconciler:
             db_by_symbol.setdefault(sym, []).append(row)
 
         # symbol+timestamp 기준 매칭 (±5초 window)
+        # matched_ts_keys uses integer milliseconds to avoid float64 precision collisions
+        # (two DB rows 0.1ms apart would hash-collide as float seconds).
         is_values: list[float] = []
-        matched_ts_keys: set[float] = set()
+        matched_ts_keys: set[int] = set()
+
+        def _row_ts_ms(row_ts) -> int:
+            """DB timestamp → integer milliseconds (collision-safe set key)."""
+            t = row_ts.timestamp() if hasattr(row_ts, "timestamp") else float(row_ts)
+            return int(t * 1000)
 
         for ex_fill in exchange_fills:
             sym = _normalize_symbol(ex_fill.get("symbol", ""))
@@ -165,12 +172,12 @@ class TradeReconciler:
             for db_row in candidates:
                 db_ts = db_row["ts"].timestamp() if hasattr(db_row["ts"], "timestamp") else float(db_row["ts"])
                 dt = abs(db_ts - ex_ts)
-                if dt < 5.0 and dt < best_dt and db_ts not in matched_ts_keys:
+                if dt < 5.0 and dt < best_dt and _row_ts_ms(db_row["ts"]) not in matched_ts_keys:
                     best_match = db_row
                     best_dt = dt
 
             if best_match is not None:
-                matched_ts_keys.add(best_match["ts"].timestamp() if hasattr(best_match["ts"], "timestamp") else float(best_match["ts"]))
+                matched_ts_keys.add(_row_ts_ms(best_match["ts"]))
                 report.matched += 1
 
                 # IS 계산: exchange fill vs our expected price
@@ -207,8 +214,7 @@ class TradeReconciler:
         # DB rows with no matching exchange fill → phantom internal records
         for _sym, _rows in db_by_symbol.items():
             for _row in _rows:
-                _db_ts = _row["ts"].timestamp() if hasattr(_row["ts"], "timestamp") else float(_row["ts"])
-                if _db_ts not in matched_ts_keys:
+                if _row_ts_ms(_row["ts"]) not in matched_ts_keys:
                     report.unmatched_internal.append({
                         "symbol": _sym,
                         "ts": str(_row["ts"]),
