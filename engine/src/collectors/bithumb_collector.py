@@ -67,8 +67,15 @@ class BithumbCollector(BaseCollector):
         self._last_valid_mid: dict[str, float] = {}
         # BUG-70: Prevent _two_step_verify flood — track in-flight verifications per symbol
         self._two_step_pending: set[str] = set()
-        # Last time _two_step_verify was triggered per symbol (for logging)
-        self._two_step_last_ts: dict[str, float] = {}
+        # BUG-70b: Persistent fake symbol blacklist — symbols confirmed fake 3+ times
+        # are silenced for 10 minutes to avoid constant REST verify calls.
+        self._fake_confirm_count: dict[str, int] = {}  # consecutive fake confirmations
+        self._fake_blacklist_expiry: dict[str, float] = {}  # symbol → expiry timestamp
+        _FAKE_BLACKLIST_THRESHOLD = 3  # confirmations before blacklisting
+        _FAKE_BLACKLIST_TTL_S = 600.0  # 10 minutes
+        # Make these accessible as class attributes
+        self._FAKE_BLACKLIST_THRESHOLD = _FAKE_BLACKLIST_THRESHOLD
+        self._FAKE_BLACKLIST_TTL_S = _FAKE_BLACKLIST_TTL_S
 
     async def start(self) -> None:
         """Start with REST snapshots, then WS stream + per-symbol stale watcher."""
@@ -253,10 +260,16 @@ class BithumbCollector(BaseCollector):
                         new_mid=new_mid,
                         change_pct=f"{change_pct:.1%}",
                     )
+                    # BUG-70b: Check persistent fake blacklist first
+                    _now = time.monotonic()
+                    _expiry = self._fake_blacklist_expiry.get(symbol, 0.0)
+                    if _now < _expiry:
+                        # Symbol is blacklisted — reject delta silently, no REST call
+                        return None
+
                     # BUG-70: Only schedule verify if no verify is already in-flight for this symbol
                     if symbol not in self._two_step_pending:
                         self._two_step_pending.add(symbol)
-                        self._two_step_last_ts[symbol] = time.monotonic()
                         try:
                             asyncio.get_running_loop().create_task(
                                 self._two_step_verify(symbol, last_mid)
@@ -313,14 +326,30 @@ class BithumbCollector(BaseCollector):
                     change_pct=f"{rest_change:.1%}",
                 )
                 self._last_valid_mid[symbol] = rest_mid
+                # Reset fake counter — this was a real move, not a persistent bad symbol
+                self._fake_confirm_count.pop(symbol, None)
+                self._fake_blacklist_expiry.pop(symbol, None)
             else:
                 # REST is in normal range → WS delta was corrupt fake spread
-                logger.debug(
-                    "bithumb_2step_confirmed_fake_spread",
-                    symbol=symbol,
-                    last_mid=last_mid,
-                    rest_mid=rest_mid,
-                )
+                self._fake_confirm_count[symbol] = self._fake_confirm_count.get(symbol, 0) + 1
+                count = self._fake_confirm_count[symbol]
+                if count >= self._FAKE_BLACKLIST_THRESHOLD:
+                    expiry = time.monotonic() + self._FAKE_BLACKLIST_TTL_S
+                    self._fake_blacklist_expiry[symbol] = expiry
+                    logger.info(
+                        "bithumb_fake_symbol_blacklisted",
+                        symbol=symbol,
+                        count=count,
+                        ttl_s=self._FAKE_BLACKLIST_TTL_S,
+                    )
+                else:
+                    logger.debug(
+                        "bithumb_2step_confirmed_fake_spread",
+                        symbol=symbol,
+                        last_mid=last_mid,
+                        rest_mid=rest_mid,
+                        count=count,
+                    )
                 self._last_valid_mid[symbol] = rest_mid
 
             # Either way, re-anchor the book from REST
