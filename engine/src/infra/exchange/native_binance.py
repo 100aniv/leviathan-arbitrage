@@ -584,7 +584,11 @@ class BinanceNativeAdapter(NativeAdapter):
 
         BUG-63: Binance Futures requires 'symbol' — empty symbol returns 400 error.
         Return [] immediately if no symbol provided (reconciler skips empty-symbol calls).
+        BUG-76: Spot adapter must not call /fapi/ endpoints — returns 404 HTML on api.binance.com.
+        Skip get_trades() for spot adapters; reconciler only needs futures fill history.
         """
+        if self._market_type != "futures":
+            return []
         if not symbol:
             return []
         params: dict = {"limit": min(limit, 1000)}
