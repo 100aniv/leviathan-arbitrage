@@ -197,7 +197,7 @@ class TradeRequestConsumer:
                                 TRADE_REQUEST_STREAM, CONSUMER_GROUP, raw_msg_id
                             )
                         except Exception:
-                            logger.debug("trade_consumer.ack_failed msg_id=%s", raw_msg_id)
+                            logger.warning("trade_consumer.ack_failed msg_id=%s — PEL may grow", raw_msg_id)
 
             except asyncio.CancelledError:
                 break

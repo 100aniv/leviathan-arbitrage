@@ -172,3 +172,54 @@ async def test_reconcile_triggers_pause_callback(reconciler: PositionReconciler)
     }
     await reconciler.reconcile(engine_positions)
     assert len(paused) > 0
+
+
+# ---------------------------------------------------------------------------
+# BUG-01: Fetch failure handling
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reconcile_fetch_failure_sets_field_not_discrepancy() -> None:
+    """Fetch failure sets fetch_failed_exchanges but does NOT call on_discrepancy."""
+    mock_ex = MagicMock()
+    mock_ex.exchange_id = "binance"
+    mock_ex.get_positions = AsyncMock(side_effect=Exception("API timeout"))
+
+    callback_called = []
+    r = PositionReconciler(
+        exchanges=[mock_ex],
+        on_discrepancy=lambda result: callback_called.append(True),
+    )
+    result = await r.reconcile({})
+
+    assert result.has_discrepancy is True
+    assert "binance" in result.fetch_failed_exchanges
+    assert result.discrepancies == []  # no real position mismatch
+    assert callback_called == []  # on_discrepancy NOT fired for fetch failure
+
+
+@pytest.mark.asyncio
+async def test_reconcile_fetch_failure_and_real_discrepancy_fires_callback() -> None:
+    """When both fetch failure AND real discrepancy, on_discrepancy still fires."""
+    mock_a = MagicMock()
+    mock_a.exchange_id = "binance"
+    mock_a.get_positions = AsyncMock(side_effect=Exception("timeout"))
+    mock_b = MagicMock()
+    mock_b.exchange_id = "okx"
+    mock_b.get_positions = AsyncMock(return_value=[
+        make_position("okx", "BTC/USDT", Decimal("0.5"))
+    ])
+
+    callback_called = []
+    r = PositionReconciler(
+        exchanges=[mock_a, mock_b],
+        on_discrepancy=lambda result: callback_called.append(True),
+    )
+    engine_positions = {}  # okx has position, engine doesn't know about it
+    result = await r.reconcile(engine_positions)
+
+    assert result.has_discrepancy is True
+    assert "binance" in result.fetch_failed_exchanges
+    assert len(result.discrepancies) > 0
+    assert callback_called == [True]  # on_discrepancy fires for real mismatch

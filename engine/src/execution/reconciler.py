@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Callable
 
@@ -21,6 +21,7 @@ class ReconciliationResult:
     discrepancies: list[str]
     engine_positions: dict[str, Position]
     exchange_positions: dict[str, Position]
+    fetch_failed_exchanges: list[str] = field(default_factory=list)
 
 
 class PositionReconciler:
@@ -126,20 +127,26 @@ class PositionReconciler:
             if msg not in discrepancies:
                 discrepancies.append(msg)
 
-        # BUG-01: API fetch failure means we have INCOMPLETE data — flag it, not clear
-        for ex_id in fetch_failed_exchanges:
-            discrepancies.append(f"{ex_id}: position fetch failed — reconciliation incomplete")
+        # BUG-01: API fetch failures = incomplete data — log separately, not as mismatch
+        if fetch_failed_exchanges:
+            logger.error(
+                "reconciler_fetch_incomplete exchanges=%s — reconciliation data incomplete",
+                fetch_failed_exchanges,
+            )
 
-        has_discrepancy = len(discrepancies) > 0
+        has_discrepancy = len(discrepancies) > 0 or bool(fetch_failed_exchanges)
 
         result = ReconciliationResult(
             has_discrepancy=has_discrepancy,
             discrepancies=discrepancies,
             engine_positions=engine_positions,
             exchange_positions=exchange_positions,
+            fetch_failed_exchanges=fetch_failed_exchanges,
         )
 
-        if has_discrepancy:
+        # Only call on_discrepancy for REAL position mismatches, not transient API failures.
+        # Fetch failures get logger.error above — no Telegram spam on exchange downtime.
+        if discrepancies:
             logger.critical(
                 "reconciler_discrepancy_found count=%d details=%s",
                 len(discrepancies),

@@ -315,6 +315,36 @@ class TestProcessMessage:
             await consumer._process_message(msg)
 
         assert consumer.risk_rejected_count == 1
+
+    async def test_raw_redis_format_parsed_correctly(self, consumer):
+        """BUG-65: _process_message handles raw {"id": ..., "fields": {b"data": ...}} format."""
+        import json
+        tr = _make_trade_request()
+        payload_bytes = json.dumps(tr.model_dump(mode="json")).encode()
+        raw_msg = {"id": b"1234567890-0", "fields": {b"data": payload_bytes}}
+
+        with patch("src.execution.trade_consumer.is_halted", return_value=False):
+            await consumer._process_message(raw_msg)
+
+        assert consumer.processed_count == 1
+
+    async def test_raw_redis_format_with_string_data_key(self, consumer):
+        """BUG-65: raw format also handles string 'data' key (decoded redis)."""
+        import json
+        tr = _make_trade_request()
+        payload_str = json.dumps(tr.model_dump(mode="json"))
+        raw_msg = {"id": "1234567890-0", "fields": {"data": payload_str}}
+
+        with patch("src.execution.trade_consumer.is_halted", return_value=False):
+            await consumer._process_message(raw_msg)
+
+        assert consumer.processed_count == 1
+
+    async def test_raw_redis_malformed_data_increments_error_count(self, consumer):
+        """BUG-65: raw format with malformed JSON in data field increments error_count."""
+        raw_msg = {"id": b"1234-0", "fields": {b"data": b"not-json"}}
+        await consumer._process_message(raw_msg)
+        assert consumer.error_count == 1
         assert consumer.execution_success_count == 0
 
     async def test_risk_check_exception_increments_error_count(self, consumer):
