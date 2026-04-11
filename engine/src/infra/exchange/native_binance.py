@@ -204,9 +204,10 @@ class BinanceNativeAdapter(NativeAdapter):
                             if f["filterType"] == "LOT_SIZE":
                                 self._step_sizes[binance_sym] = Decimal(str(f["stepSize"]))
             except Exception as exc:
-                logger.debug("lot_size_fetch_failed symbol=%s: %s", symbol, exc)
-            if binance_sym not in self._step_sizes:
-                self._step_sizes[binance_sym] = Decimal("0.001")  # safe default
+                # BUG-71: raise so executor rejects the trade rather than proceeding
+                # with a wrong 0.001 default that silently recreates the lot-size mismatch.
+                logger.warning("lot_size_fetch_failed symbol=%s: %s — re-raising for executor rejection", symbol, exc)
+                raise
         return self._step_sizes[binance_sym]
 
     async def _get_spot_lot_step(self, symbol: str) -> Decimal:

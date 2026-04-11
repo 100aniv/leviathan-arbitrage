@@ -89,6 +89,7 @@ class FuturesFuturesStrategy(BaseStrategy):
                 adaptive_static_entry_bps=Decimal(str(_at_bps_raw)) if _at_bps_raw is not None else None,
                 excluded_symbols=list(get_config("strategy_filters.futures_excluded_symbols", default=[])),
                 max_hold_seconds=float(get_config("strategy_filters.futures_max_hold_seconds", default=1800)),
+                max_concurrent_positions=int(get_config("strategy_filters.futures_max_concurrent_positions", default=4)),
             )
         self.config = config
         self._margin_tracker: Any | None = None  # injected by live.py

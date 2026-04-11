@@ -83,6 +83,7 @@ def make_exchange(
         best_bid=Decimal("49999"),
     ))
     ex.get_positions = AsyncMock(return_value=[])
+    ex.get_lot_step = AsyncMock(return_value=Decimal("0.001"))
     return ex
 
 

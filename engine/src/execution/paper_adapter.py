@@ -281,6 +281,11 @@ class PaperExchangeAdapter:
             exchange_id=self.exchange_id,
         )
 
+    async def get_lot_step(self, symbol: str) -> "Decimal":
+        """Paper adapter: return a fine-grained step so lot_size_sync is a no-op."""
+        from decimal import Decimal
+        return Decimal("0.001")
+
     @property
     def health_score(self) -> float:
         """Paper adapter is always healthy."""

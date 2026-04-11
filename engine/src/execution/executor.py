@@ -783,8 +783,48 @@ class AtomicExecutor:
                     )
                     leg1_order = leg1_order.model_copy(update={"amount": _synced})
                     leg2_order = leg2_order.model_copy(update={"amount": _synced})
+                # BUG-71 Major #2: Reject if synced notional < exchange MIN_NOTIONAL.
+                # Each adapter independently bumps sub-notional qty using its own step size,
+                # desynchronizing the legs again. Reject here to prevent the desync.
+                from src.core.config_loader import get_config as _gc
+                _min_notional = Decimal(str(_gc("execution.min_trade_notional_usd") or 5))
+                _synced_notional = _synced * (leg1_order.price or Decimal("0"))
+                if Decimal("0") < _synced_notional < _min_notional:
+                    logger.warning(
+                        "lot_size_sync_sub_notional symbol=%s synced=%s notional=%.4f min=%.2f — rejecting",
+                        leg1_order.symbol, _synced, float(_synced_notional), float(_min_notional),
+                    )
+                    if _margin_reserved_a:
+                        await self._margin_tracker.release(ex_a_id, _required_a)
+                    if _margin_reserved_b:
+                        await self._margin_tracker.release(ex_b_id, _required_b)
+                    self._release_lock(first_id)
+                    self._release_lock(second_id)
+                    return ExecutionResult(
+                        status=ExecutionStatus.REJECTED,
+                        legs=[],
+                        error=f"lot_size_sync_sub_notional synced={_synced} notional={_synced_notional:.4f}",
+                        strategy_id=strategy_id,
+                    )
         except Exception as _lsync_exc:
-            logger.debug("lot_size_sync_failed symbol=%s err=%s — using original sizes", leg1_order.symbol, _lsync_exc)
+            # BUG-71 Major #1: Reject trade when lot_size sync fails.
+            # Proceeding with original unsynchronized sizes causes unhedged exposure.
+            logger.warning(
+                "lot_size_sync_failed symbol=%s err=%s — rejecting trade to prevent unhedged exposure",
+                leg1_order.symbol, _lsync_exc,
+            )
+            if _margin_reserved_a:
+                await self._margin_tracker.release(ex_a_id, _required_a)
+            if _margin_reserved_b:
+                await self._margin_tracker.release(ex_b_id, _required_b)
+            self._release_lock(first_id)
+            self._release_lock(second_id)
+            return ExecutionResult(
+                status=ExecutionStatus.REJECTED,
+                legs=[],
+                error=f"lot_size_sync_failed: {_lsync_exc}",
+                strategy_id=strategy_id,
+            )
 
         leg1_result: LegResult | None = None
         leg2_result: LegResult | None = None
