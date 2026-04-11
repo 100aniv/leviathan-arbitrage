@@ -339,6 +339,10 @@ class LiveMode(BaseMode):
         # TradeReconciler: exchange fill reconciliation (PHOENIX v18 P0)
         from src.execution.trade_reconciler import TradeReconciler
         self._trade_reconciler = TradeReconciler(db_pool=db_pool, telegram=telegram)
+        # Symbol window: recently-seen symbols with expiry timestamps (20-minute TTL).
+        # Ensures recently-closed positions are still reconciled even after _open_positions
+        # is cleared — prevents blind spot where reconciler reports "all clear" on empty symbols.
+        self._recon_symbol_window: dict[str, float] = {}  # symbol → last_seen_epoch
 
         # KRW/USDT normalization (ported from ShadowMode)
         _raw_krw_rate = get_settings().operational.krw_usdt_rate
@@ -1686,14 +1690,26 @@ class LiveMode(BaseMode):
             futures_adapters = {k: v for k, v in exchanges_dict.items()
                                 if hasattr(v, "get_trades")}
             since_ms = int((time.time() - 600) * 1000)
-            # Collect tracked symbols from strategies (for per-symbol reconciliation)
+            # Collect tracked symbols from strategies + 20-min rolling window.
+            # The window prevents the blind spot where _open_positions is empty (position just
+            # closed) but a late exchange fill or phantom DB record still needs reconciliation.
+            _now = time.time()
+            _ttl = 1200.0  # 20 minutes — covers 2 full reconciliation cycles
             tracked_symbols: list[str] = []
             if self._strategy_manager is not None:
                 for sid in self._strategy_manager.list_strategies():
                     strategy = self._strategy_manager.get_strategy(sid)
                     if strategy is not None:
                         open_pos = getattr(strategy, "_open_positions", {})
-                        tracked_symbols.extend(open_pos.keys())
+                        for sym in open_pos.keys():
+                            tracked_symbols.append(sym)
+                            self._recon_symbol_window[sym] = _now  # refresh TTL
+            # Add still-warm symbols from the rolling window
+            for sym, last_seen in list(self._recon_symbol_window.items()):
+                if _now - last_seen <= _ttl:
+                    tracked_symbols.append(sym)
+                else:
+                    del self._recon_symbol_window[sym]  # expire
             symbols_arg = list(dict.fromkeys(tracked_symbols)) or None  # dedupe, None if empty
 
             for eid, adapter in futures_adapters.items():
