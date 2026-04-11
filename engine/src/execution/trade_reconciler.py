@@ -8,6 +8,7 @@ TradeReconciler — 내부 execution_log vs 거래소 실체결 이력 대조.
 from __future__ import annotations
 
 import logging
+import math
 import re
 import time
 from dataclasses import dataclass, field
@@ -263,12 +264,12 @@ class TradeReconciler:
                         "sell_exchange": _row.get("sell_exchange"),
                     })
 
-        # IS 통계 계산
+        # IS 통계 계산 (nearest-rank percentile: clamp to [0, n-1])
         if is_values:
             sorted_is = sorted(is_values)
             n = len(sorted_is)
-            report.is_p50_bps = sorted_is[n // 2]
-            report.is_p95_bps = sorted_is[int(n * 0.95)]
+            report.is_p50_bps = sorted_is[min(int(n * 0.50), n - 1)]
+            report.is_p95_bps = sorted_is[min(max(0, int(math.ceil(n * 0.95)) - 1), n - 1)]
 
         if report.unmatched_internal:
             logger.warning(
