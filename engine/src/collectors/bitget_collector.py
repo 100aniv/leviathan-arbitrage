@@ -51,7 +51,12 @@ class BitgetCollector(BaseCollector):
         symbols: list[str],
         on_orderbook: Callable[[str, str, list, list], Awaitable[None]] | None = None,
     ) -> None:
-        super().__init__(exchange_id="bitget", symbols=symbols, on_orderbook=on_orderbook)
+        # BUG-69: Bitget WS server does not respond to application-level pings.
+        # Disable client-initiated pings; server-side keepalive handles the connection.
+        super().__init__(
+            exchange_id="bitget", symbols=symbols, on_orderbook=on_orderbook,
+            ping_interval=None, ping_timeout=None,
+        )
 
     # ------------------------------------------------------------------
     # BaseCollector interface
