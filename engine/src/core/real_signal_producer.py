@@ -458,6 +458,8 @@ class RealDataSignalProducer:
             if ex_id in self._futures_exchanges
         }
         if len(fut_books) < 2:
+            # Round30 fix: flush summary even on early return so 60s timer always fires
+            self._flush_ff_summary(signals, early_return_reason=f"fut_books={len(fut_books)}")
             return signals
 
         exchanges = sorted(fut_books.keys())
@@ -672,26 +674,38 @@ class RealDataSignalProducer:
                         )
                         signals.append(signal)
 
-        # Round29: periodic FF observability summary (every 60s)
+        # Round29/30: periodic FF observability summary (every 60s)
+        self._flush_ff_summary(signals)
+
+        return signals
+
+    def _flush_ff_summary(
+        self,
+        signals: list,
+        early_return_reason: str | None = None,
+    ) -> None:
+        """Flush FF observability summary if 60s window has elapsed.
+
+        Called at ALL return points in _evaluate_futures_futures (Round30 fix:
+        was only called at normal return, missing early-return cases).
+        """
         _now_sum = time.monotonic()
         if _now_sum - self._ff_summary_last_ts >= 60.0:
-            logger.info(
-                "real_signal_producer.ff_summary",
-                extra={
-                    "pairs_evaluated": self._ff_pairs_evaluated,
-                    "max_spread_bps": round(self._ff_max_spread_bps, 2),
-                    "stale_dropped": self._ff_stale_dropped,
-                    "freshness_dropped": self._ff_freshness_dropped,
-                    "signals_this_window": len(signals),
-                },
-            )
+            _extra: dict = {
+                "pairs_evaluated": self._ff_pairs_evaluated,
+                "max_spread_bps": round(self._ff_max_spread_bps, 2) if self._ff_max_spread_bps > -9000 else None,
+                "stale_dropped": self._ff_stale_dropped,
+                "freshness_dropped": self._ff_freshness_dropped,
+                "signals_this_window": len(signals),
+            }
+            if early_return_reason:
+                _extra["early_return"] = early_return_reason
+            logger.info("real_signal_producer.ff_summary", extra=_extra)
             self._ff_summary_last_ts = _now_sum
             self._ff_max_spread_bps = -9999.0
             self._ff_pairs_evaluated = 0
             self._ff_stale_dropped = 0
             self._ff_freshness_dropped = 0
-
-        return signals
 
     async def _evaluate_statistical_arb(
         self,
