@@ -95,6 +95,7 @@ class FuturesFuturesStrategy(BaseStrategy):
         self._pending_entry_symbols: set[str] = set()
         # PHOENIX v18: Pending exit TradeRequests from _open_positions_monitor
         self._pending_exit_requests: list = []
+        self._monitor_task: "asyncio.Task | None" = None  # stored ref prevents GC / allows cancel
         # BUG-62: snapshot of positions currently being exited → restore on rollback
         self._pending_exits: dict[str, dict] = {}
 
@@ -127,7 +128,7 @@ class FuturesFuturesStrategy(BaseStrategy):
         await super().start()
         if self.config.max_hold_seconds > 0:
             import asyncio as _asyncio
-            _asyncio.create_task(
+            self._monitor_task = _asyncio.create_task(
                 self._open_positions_monitor(),
                 name="ff_position_monitor",
             )
@@ -152,89 +153,94 @@ class FuturesFuturesStrategy(BaseStrategy):
     async def _open_positions_monitor(self) -> None:
         """60초마다 _open_positions 점검 — max_hold_seconds 초과 또는 spread 수렴 시 exit TradeRequest 생성."""
         import asyncio as _asyncio
-        while self._is_active:
-            await _asyncio.sleep(60)
-            now = time.time()
-            for sym, pos in list(self._open_positions.items()):
-                age_s = now - pos["entry_time"]
+        try:
+            while self._is_active:
+                await _asyncio.sleep(60)
+                now = time.time()
+                for sym, pos in list(self._open_positions.items()):
+                    age_s = now - pos["entry_time"]
 
-                # Spread-reversion exit from monitor (uses last stored spread from on_signal)
-                _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.5
-                last_spread = pos.get("last_spread_bps")
-                if last_spread is not None and last_spread <= _exit_threshold_bps:
-                    logger.info(
-                        "ff.spread_exit_monitor symbol=%s last_spread_bps=%.2f exit_threshold_bps=%.2f age_s=%.0f — 스프레드 수렴 청산",
-                        sym, last_spread, _exit_threshold_bps, age_s,
-                    )
-                    exit_req = TradeRequest(
-                        strategy_id=self.strategy_id,
-                        legs=[
-                            TradeLeg(
-                                exchange_id=pos["buy_ex"],
-                                symbol=sym,
-                                side=OrderSide.SELL,
-                                size=pos["size"],
-                                order_type=OrderType.MARKET,
-                                price=None,
-                                metadata={"leg_type": "spread_exit_close_long", "reduceOnly": True},
-                            ),
-                            TradeLeg(
-                                exchange_id=pos["sell_ex"],
-                                symbol=sym,
-                                side=OrderSide.BUY,
-                                size=pos["size"],
-                                order_type=OrderType.MARKET,
-                                price=None,
-                                metadata={"leg_type": "spread_exit_close_short", "reduceOnly": True},
-                            ),
-                        ],
-                        expected_profit_usdt=Decimal("0"),
-                        confidence=1.0,
-                        metadata={"reason": "spread_reversion_monitor", "spread_bps": str(round(last_spread, 2)), "age_s": str(int(age_s))},
-                    )
-                    self._pending_exit_requests.append(exit_req)
-                    # BUG-62: save snapshot before removing — restored if exit rolls back
-                    self._pending_exits[sym] = dict(pos)
-                    self._open_positions.pop(sym, None)
-                    continue
+                    # Spread-reversion exit from monitor (uses last stored spread from on_signal)
+                    _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.5
+                    last_spread = pos.get("last_spread_bps")
+                    if last_spread is not None and last_spread <= _exit_threshold_bps:
+                        logger.info(
+                            "ff.spread_exit_monitor symbol=%s last_spread_bps=%.2f exit_threshold_bps=%.2f age_s=%.0f — 스프레드 수렴 청산",
+                            sym, last_spread, _exit_threshold_bps, age_s,
+                        )
+                        exit_req = TradeRequest(
+                            strategy_id=self.strategy_id,
+                            legs=[
+                                TradeLeg(
+                                    exchange_id=pos["buy_ex"],
+                                    symbol=sym,
+                                    side=OrderSide.SELL,
+                                    size=pos["size"],
+                                    order_type=OrderType.MARKET,
+                                    price=None,
+                                    metadata={"leg_type": "spread_exit_close_long", "reduceOnly": True},
+                                ),
+                                TradeLeg(
+                                    exchange_id=pos["sell_ex"],
+                                    symbol=sym,
+                                    side=OrderSide.BUY,
+                                    size=pos["size"],
+                                    order_type=OrderType.MARKET,
+                                    price=None,
+                                    metadata={"leg_type": "spread_exit_close_short", "reduceOnly": True},
+                                ),
+                            ],
+                            expected_profit_usdt=Decimal("0"),
+                            confidence=1.0,
+                            metadata={"reason": "spread_reversion_monitor", "spread_bps": str(round(last_spread, 2)), "age_s": str(int(age_s))},
+                        )
+                        self._pending_exit_requests.append(exit_req)
+                        # BUG-62: save snapshot before removing — restored if exit rolls back
+                        self._pending_exits[sym] = dict(pos)
+                        self._open_positions.pop(sym, None)
+                        continue
 
-                if age_s > self.config.max_hold_seconds:
-                    logger.warning(
-                        "ff.stale_position symbol=%s age_s=%.0f max_hold_s=%.0f "
-                        "— exit TradeRequest 생성",
-                        sym, age_s, self.config.max_hold_seconds,
-                    )
-                    exit_req = TradeRequest(
-                        strategy_id=self.strategy_id,
-                        legs=[
-                            TradeLeg(
-                                exchange_id=pos["buy_ex"],
-                                symbol=sym,
-                                side=OrderSide.SELL,
-                                size=pos["size"],
-                                order_type=OrderType.MARKET,
-                                price=None,
-                                metadata={"leg_type": "time_exit_close_long", "reduceOnly": True},
-                            ),
-                            TradeLeg(
-                                exchange_id=pos["sell_ex"],
-                                symbol=sym,
-                                side=OrderSide.BUY,
-                                size=pos["size"],
-                                order_type=OrderType.MARKET,
-                                price=None,
-                                metadata={"leg_type": "time_exit_close_short", "reduceOnly": True},
-                            ),
-                        ],
-                        expected_profit_usdt=Decimal("0"),
-                        confidence=0.0,
-                        metadata={"reason": "holding_timeout", "age_s": str(int(age_s))},
-                    )
-                    self._pending_exit_requests.append(exit_req)
-                    # BUG-62: save snapshot before removing — restored if exit rolls back
-                    self._pending_exits[sym] = dict(pos)
-                    # 중복 emit 방지: 모니터에서 즉시 제거
-                    self._open_positions.pop(sym, None)
+                    if age_s > self.config.max_hold_seconds:
+                        logger.warning(
+                            "ff.stale_position symbol=%s age_s=%.0f max_hold_s=%.0f "
+                            "— exit TradeRequest 생성",
+                            sym, age_s, self.config.max_hold_seconds,
+                        )
+                        exit_req = TradeRequest(
+                            strategy_id=self.strategy_id,
+                            legs=[
+                                TradeLeg(
+                                    exchange_id=pos["buy_ex"],
+                                    symbol=sym,
+                                    side=OrderSide.SELL,
+                                    size=pos["size"],
+                                    order_type=OrderType.MARKET,
+                                    price=None,
+                                    metadata={"leg_type": "time_exit_close_long", "reduceOnly": True},
+                                ),
+                                TradeLeg(
+                                    exchange_id=pos["sell_ex"],
+                                    symbol=sym,
+                                    side=OrderSide.BUY,
+                                    size=pos["size"],
+                                    order_type=OrderType.MARKET,
+                                    price=None,
+                                    metadata={"leg_type": "time_exit_close_short", "reduceOnly": True},
+                                ),
+                            ],
+                            expected_profit_usdt=Decimal("0"),
+                            confidence=0.0,
+                            metadata={"reason": "holding_timeout", "age_s": str(int(age_s))},
+                        )
+                        self._pending_exit_requests.append(exit_req)
+                        # BUG-62: save snapshot before removing — restored if exit rolls back
+                        self._pending_exits[sym] = dict(pos)
+                        # 중복 emit 방지: 모니터에서 즉시 제거
+                        self._open_positions.pop(sym, None)
+        except _asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception("ff.monitor_unexpected_error — monitor task exiting; positions may not be auto-exited")
 
     def pop_exit_requests(self) -> list:
         """pending exit TradeRequests를 반환하고 목록 초기화."""
