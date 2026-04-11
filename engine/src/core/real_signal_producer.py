@@ -164,6 +164,8 @@ class RealDataSignalProducer:
         self._ff_pairs_evaluated: int = 0
         self._ff_stale_dropped: int = 0
         self._ff_freshness_dropped: int = 0
+        self._ff_ts_sync_dropped: int = 0         # Round31: ts_diff > 1s filter drops
+        self._ff_max_bps_post_fresh: float = -9999.0  # Round31: max spread AFTER freshness
         # S10: Warmup guard — skip signals for first 5 seconds after startup
         # Disabled in test mode to avoid breaking integration tests
         self._first_update_mono: float = 0.0
@@ -541,6 +543,10 @@ class RealDataSignalProducer:
                     self._ff_freshness_dropped += 1
                     continue
 
+                # Round31: track max spread AFTER freshness check (more accurate than pre-fresh)
+                if _pair_max > self._ff_max_bps_post_fresh:
+                    self._ff_max_bps_post_fresh = _pair_max
+
                 # ex_a bid > ex_b ask → buy on ex_b, sell on ex_a
                 if float(bid_a) > float(ask_b):
                     # US-184 + S10 + US-225: spread outlier filter
@@ -571,6 +577,7 @@ class RealDataSignalProducer:
                     if book_a.last_update_time > 0 and book_b.last_update_time > 0:
                         _ts_diff1 = abs(book_a.last_update_time - book_b.last_update_time)
                         if _ts_diff1 > self._spread_ts_max_diff_s:
+                            self._ff_ts_sync_dropped += 1  # Round31
                             # BUG-44: log when ts-sync filter drops a signal
                             _tsk1 = (symbol, min(ex_a, ex_b), max(ex_a, ex_b))
                             _now_ts1 = time.monotonic()
@@ -644,6 +651,7 @@ class RealDataSignalProducer:
                     if book_a.last_update_time > 0 and book_b.last_update_time > 0:
                         _ts_diff2 = abs(book_a.last_update_time - book_b.last_update_time)
                         if _ts_diff2 > self._spread_ts_max_diff_s:
+                            self._ff_ts_sync_dropped += 1  # Round31
                             # BUG-44: log when ts-sync filter drops a signal
                             _tsk2 = (symbol, min(ex_a, ex_b), max(ex_a, ex_b))
                             _now_ts2 = time.monotonic()
@@ -705,21 +713,26 @@ class RealDataSignalProducer:
         _now_sum = time.monotonic()
         if _now_sum - self._ff_summary_last_ts >= 60.0:
             _max_bps = round(self._ff_max_spread_bps, 2) if self._ff_max_spread_bps > -9000 else None
+            _max_bps_pf = round(self._ff_max_bps_post_fresh, 2) if self._ff_max_bps_post_fresh > -9000 else None
             _early = f" early_return={early_return_reason}" if early_return_reason else ""
             logger.info(
-                "real_signal_producer.ff_summary pairs=%d max_bps=%s stale=%d fresh_drop=%d sigs=%d%s",
+                "real_signal_producer.ff_summary pairs=%d max_bps=%s max_bps_pf=%s stale=%d fresh_drop=%d ts_drop=%d sigs=%d%s",
                 self._ff_pairs_evaluated,
                 _max_bps,
+                _max_bps_pf,
                 self._ff_stale_dropped,
                 self._ff_freshness_dropped,
+                self._ff_ts_sync_dropped,
                 len(signals),
                 _early,
             )
             self._ff_summary_last_ts = _now_sum
             self._ff_max_spread_bps = -9999.0
+            self._ff_max_bps_post_fresh = -9999.0
             self._ff_pairs_evaluated = 0
             self._ff_stale_dropped = 0
             self._ff_freshness_dropped = 0
+            self._ff_ts_sync_dropped = 0
 
     async def _evaluate_statistical_arb(
         self,
