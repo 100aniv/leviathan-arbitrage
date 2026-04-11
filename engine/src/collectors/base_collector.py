@@ -36,8 +36,8 @@ class BaseCollector(abc.ABC):
         exchange_id: str,
         symbols: list[str],
         on_orderbook: Callable[[str, str, list, list], Awaitable[None]] | None = None,
-        ping_interval: int | None = None,  # Round32 BUG-69: None = rely on server-side keepalive
-        ping_timeout: int | None = None,
+        ping_interval: int | None = 20,
+        ping_timeout: int | None = 30,
     ) -> None:
         """
         Args:
@@ -45,8 +45,10 @@ class BaseCollector(abc.ABC):
             symbols: List of trading pairs (e.g. ["BTC/USDT"])
             on_orderbook: Async callback(exchange_id, symbol, bids, asks)
                          bids/asks are list of [price_str, qty_str]
-            ping_interval: WebSocket ping interval in seconds (default 20)
-            ping_timeout: WebSocket ping timeout in seconds (default 30)
+            ping_interval: WebSocket ping interval in seconds (default 20).
+                           Set None for exchanges that use server-side keepalive
+                           (Binance spot/futures — see BUG-69).
+            ping_timeout: WebSocket ping timeout in seconds (default 30).
         """
         self.exchange_id = exchange_id
         self.symbols = symbols
