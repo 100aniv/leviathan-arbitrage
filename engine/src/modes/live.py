@@ -239,8 +239,13 @@ class LiveMode(BaseMode):
             self._total_capital_usd: float = float(
                 _gc(f"capital.tiers.{_tier}.initial_usd", default=120.0)
             )
+            # Session loss hard stop: live.max_daily_loss_pct from engine.json (default 5%)
+            self._max_session_loss_usd: float = self._total_capital_usd * float(
+                _gc("live.max_daily_loss_pct", default=5.0)
+            ) / 100.0
         except Exception:
             self._total_capital_usd = 120.0
+            self._max_session_loss_usd = 6.0  # 5% of $120
 
         # Orderbook store: symbol -> exchange_id -> OrderBook
         self._books: dict[str, dict[str, Any]] = {}
@@ -930,6 +935,28 @@ class LiveMode(BaseMode):
                         return
             except Exception as exc:
                 logger.debug("live_mode.flash_guard_check_error: %s", exc)
+
+        # --- Session loss hard stop (max_daily_loss_pct from engine.json) ---
+        # Fires KillSwitch halt when cumulative session PnL exceeds the loss limit.
+        # CB auto-recovers after 5min but this check requires manual clear_halt() to resume.
+        _session_loss = -self._stats.total_pnl  # positive means loss
+        if _session_loss >= self._max_session_loss_usd:
+            from src.risk.kill_switch import halt_local
+            halt_local()
+            logger.critical(
+                "live_mode.session_loss_limit_exceeded loss=%.2f limit=%.2f — HALT",
+                _session_loss, self._max_session_loss_usd,
+            )
+            if self._telegram is not None:
+                try:
+                    await self._telegram.send_alert(
+                        f"🚨 SESSION LOSS LIMIT: ${_session_loss:.2f} >= ${self._max_session_loss_usd:.2f} — ENGINE HALTED"
+                    )
+                except Exception:
+                    pass
+            self._stats.trades_risk_blocked += 1
+            self._notify_pre_exec_rollback(trade_request, sid)
+            return
 
         # --- Risk guardian check ---
         if self._risk_guardian is not None:
