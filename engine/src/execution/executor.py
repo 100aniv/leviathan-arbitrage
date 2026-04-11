@@ -701,30 +701,34 @@ class AtomicExecutor:
         # before reservation to avoid leaking in-flight margin.
         # available_usd uses configured per-exchange budget; falls back to $100k for
         # low-capital operation; tighten to actual balance for production protection.
+        # BUG-75: Exit trades (reduceOnly) free margin rather than consuming it.
+        # Skipping reservation for exits prevents thrashing where exits can never
+        # execute because in-flight entry margin blocks them.
         _required_a = leg1_order.price * leg1_order.amount if leg1_order.price and leg1_order.amount else Decimal("0")
         _required_b = leg2_order.price * leg2_order.amount if leg2_order.price and leg2_order.amount else Decimal("0")
         _budget_per_ex = Decimal(str(getattr(self._config, "per_exchange_budget_usd", 100_000)))
         _margin_reserved_a = False
         _margin_reserved_b = False
-        _margin_ok_a = await self._margin_tracker.check_and_reserve(ex_a_id, _required_a, _budget_per_ex)
-        if _margin_ok_a:
-            _margin_reserved_a = True
-            _margin_ok_b = await self._margin_tracker.check_and_reserve(ex_b_id, _required_b, _budget_per_ex)
-            if _margin_ok_b:
-                _margin_reserved_b = True
-        else:
-            _margin_ok_b = False
-        if not _margin_ok_a or not _margin_ok_b:
-            # Release already-reserved leg; clear flag to prevent double-release in finally
-            if _margin_reserved_a:
-                await self._margin_tracker.release(ex_a_id, _required_a)
-                _margin_reserved_a = False
-            return ExecutionResult(
-                status=ExecutionStatus.REJECTED,
-                legs=[],
-                error="margin_tracker_blocked",
-                strategy_id=strategy_id,
-            )
+        if not _is_close:
+            _margin_ok_a = await self._margin_tracker.check_and_reserve(ex_a_id, _required_a, _budget_per_ex)
+            if _margin_ok_a:
+                _margin_reserved_a = True
+                _margin_ok_b = await self._margin_tracker.check_and_reserve(ex_b_id, _required_b, _budget_per_ex)
+                if _margin_ok_b:
+                    _margin_reserved_b = True
+            else:
+                _margin_ok_b = False
+            if not _margin_ok_a or not _margin_ok_b:
+                # Release already-reserved leg; clear flag to prevent double-release in finally
+                if _margin_reserved_a:
+                    await self._margin_tracker.release(ex_a_id, _required_a)
+                    _margin_reserved_a = False
+                return ExecutionResult(
+                    status=ExecutionStatus.REJECTED,
+                    legs=[],
+                    error="margin_tracker_blocked",
+                    strategy_id=strategy_id,
+                )
 
         # Step 2-3: Balance/margin checks — skipped in unit layer (handled by guardian)
         # Step 4: Re-read orderbooks REMOVED — adds ~600ms REST latency.

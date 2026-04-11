@@ -262,6 +262,54 @@ async def test_cross_exchange_success(
 
 
 @pytest.mark.asyncio
+async def test_cross_exchange_exit_bypasses_margin_tracker(
+    executor: AtomicExecutor, exchange_a: MagicMock, exchange_b: MagicMock
+) -> None:
+    """BUG-75: reduceOnly exit trades must succeed even when margin_tracker is exhausted.
+
+    Entries are blocked when in_flight >= budget; exits must bypass this check
+    so convergence exits don't thrash in a restore→block→restore loop.
+    """
+    import time as _time
+
+    # Directly inject large in-flight reservation (bypasses check_and_reserve validation)
+    # so net_available < required for a $50k entry but margin_tracker is "full"
+    _large = Decimal("90000")
+    _expires = _time.monotonic() + 60.0
+    executor._margin_tracker._entries.append(("binance", _large, _expires))
+    executor._margin_tracker._entries.append(("okx", _large, _expires))
+
+    # Exit trade: both legs have reduceOnly=True — must bypass margin check
+    leg1 = Order(
+        exchange_id="binance", symbol="BTC/USDT", side=OrderSide.SELL,
+        order_type=OrderType.LIMIT, price=Decimal("50000"), amount=Decimal("1.0"),
+        metadata={"reduceOnly": True},
+    )
+    leg2 = Order(
+        exchange_id="okx", symbol="BTC/USDT", side=OrderSide.BUY,
+        order_type=OrderType.LIMIT, price=Decimal("50000"), amount=Decimal("1.0"),
+        metadata={"reduceOnly": True},
+    )
+    result = await executor.execute_cross_exchange(
+        leg1_order=leg1, leg2_order=leg2,
+        strategy_id="strat_1", min_edge=Decimal("0.001"),
+    )
+    # Exit must not be blocked by exhausted margin
+    assert result.status == ExecutionStatus.SUCCESS
+
+    # Verify that an entry IS still blocked with same exhausted margin
+    # (in_flight = 90000, net_available = 10000 < effective 57500 for $50k order)
+    entry_leg1 = make_order("binance", OrderSide.BUY)
+    entry_leg2 = make_order("okx", OrderSide.SELL)
+    entry_result = await executor.execute_cross_exchange(
+        leg1_order=entry_leg1, leg2_order=entry_leg2,
+        strategy_id="strat_1", min_edge=Decimal("0.001"),
+    )
+    assert entry_result.status == ExecutionStatus.REJECTED
+    assert entry_result.error == "margin_tracker_blocked"
+
+
+@pytest.mark.asyncio
 async def test_cross_exchange_sequential_submission(
     executor: AtomicExecutor, exchange_a: MagicMock, exchange_b: MagicMock
 ) -> None:
