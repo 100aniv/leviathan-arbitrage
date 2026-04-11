@@ -1184,9 +1184,12 @@ class LiveMode(BaseMode):
                         _is_buy_bps = abs(_buy_fill_price - _expected_buy) / _expected_buy * Decimal("10000")
                     if _sell_fill_price and _expected_sell and _expected_sell > 0:
                         _is_sell_bps = abs(_sell_fill_price - _expected_sell) / _expected_sell * Decimal("10000")
+                    # IS total is only meaningful when BOTH legs have actual fill prices.
+                    # When only one leg fills (partial fill / rollback), recording buy+0
+                    # would understate true IS — emit None to flag as incomplete.
                     _is_total_bps: Decimal | None = (
-                        (_is_buy_bps or Decimal("0")) + (_is_sell_bps or Decimal("0"))
-                        if (_is_buy_bps or _is_sell_bps) else None
+                        _is_buy_bps + _is_sell_bps
+                        if (_is_buy_bps is not None and _is_sell_bps is not None) else None
                     )
                     self._market_recorder.record_execution(
                         strategy_id=sid,
