@@ -2142,13 +2142,15 @@ class Engine:
 
         elif self._engine_mode == EngineMode.LIVE:
             # Live: live WS data + AtomicExecutor full capital
-            tasks.append(
-                asyncio.create_task(self._strategy_manager_loop(), name="strategy_mgr")
-            )
+            # BUG-73: Do NOT start _strategy_manager_loop in LIVE mode.
+            # live.py routes signals via route_signal() directly (in-process, no Redis).
+            # Starting StrategyManager's Redis consume loop causes a race where the same
+            # FF signal is processed by BOTH live.py (Path A, full accounting) AND
+            # StrategyManager → TradeConsumer (Path B, no PnL/Telegram/DB accounting).
             tasks.append(
                 asyncio.create_task(self._live_mode_loop(), name="live_mode")
             )
-            logger.info("EngineMode: LIVE — live WS data + AtomicExecutor (full)")
+            logger.info("EngineMode: LIVE — live WS data + AtomicExecutor (direct in-process routing)")
 
         else:
             logger.warning("Unknown engine_mode=%s — falling back to BACKTEST", self._engine_mode)
