@@ -228,12 +228,28 @@ class TradeReconciler:
                 "trade_reconciler.unmatched exchange=%s unmatched_internal=%d",
                 exchange_id, len(report.unmatched_internal),
             )
+            if self._telegram is not None:
+                try:
+                    await self._telegram.send(
+                        f"⚠️ TradeRecon: {exchange_id} 내부 미매칭 {len(report.unmatched_internal)}건 "
+                        f"(DB 체결 기록이 거래소 체결 이력에 없음)"
+                    )
+                except Exception as _tg_exc:
+                    logger.debug("trade_reconciler.telegram_failed error=%s", _tg_exc)
 
         if report.unmatched_exchange:
             logger.warning(
                 "trade_reconciler.unmatched_exchange exchange=%s count=%d",
                 exchange_id, len(report.unmatched_exchange),
             )
+            if self._telegram is not None:
+                try:
+                    await self._telegram.send(
+                        f"⚠️ TradeRecon: {exchange_id} 거래소 미매칭 {len(report.unmatched_exchange)}건 "
+                        f"(거래소 체결이 내부 DB에 없음)"
+                    )
+                except Exception as _tg_exc:
+                    logger.debug("trade_reconciler.telegram_failed error=%s", _tg_exc)
 
         logger.info(
             "trade_recon ex=%s matched=%d is_p95=%.1fbps",

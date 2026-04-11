@@ -317,6 +317,9 @@ class LiveMode(BaseMode):
         self._collector_manager: Any | None = None
         self._daily_task: asyncio.Task | None = None
         self._funding_rate_task: asyncio.Task | None = None
+        self._dedup_cleanup_task: asyncio.Task | None = None
+        self._trade_reconciler_task: asyncio.Task | None = None
+        self._margin_refresh_task: asyncio.Task | None = None
 
         # Collision detection: (symbol, exchange_pair) -> last_trade_time
         from src.execution.dedup import DeduplicationGate
@@ -344,6 +347,7 @@ class LiveMode(BaseMode):
         self._krw_rate: float = _raw_krw_rate
         self._krw_rate_task: asyncio.Task | None = None
         self._krw_stale: bool = False
+        self._krw_fail_count: int = 0  # BUG-88: require 5 consecutive failures before marking stale
         self._krw_exchanges: set[str] = set(KRW_EXCHANGES)
 
         # Bithumb delta orderbook handling
@@ -531,13 +535,13 @@ class LiveMode(BaseMode):
         )
 
         # DeduplicationGate periodic cleanup
-        asyncio.create_task(self._dedup_cleanup_loop(), name="live_dedup_cleanup")
+        self._dedup_cleanup_task = asyncio.create_task(self._dedup_cleanup_loop(), name="live_dedup_cleanup")
 
         # TradeReconciler 10-min periodic loop (PHOENIX v18 P0)
-        asyncio.create_task(self._trade_reconciler_loop(), name="live_trade_recon")
+        self._trade_reconciler_task = asyncio.create_task(self._trade_reconciler_loop(), name="live_trade_recon")
 
         # BUG-18 fix: margin cache refresh loop (every 60s)
-        asyncio.create_task(self._margin_refresh_loop(), name="live_margin_refresh")
+        self._margin_refresh_task = asyncio.create_task(self._margin_refresh_loop(), name="live_margin_refresh")
 
         # Inject MarginTracker into futures_futures strategy
         if self._strategy_manager is not None:
@@ -611,8 +615,11 @@ class LiveMode(BaseMode):
         self._running = False
         logger.info("live_mode.stopping")
 
-        # Cancel background tasks
-        for task in [self._daily_task, self._funding_rate_task, self._krw_rate_task]:
+        # Cancel background tasks (BUG-87: include dedup/reconciler/margin tasks)
+        for task in [
+            self._daily_task, self._funding_rate_task, self._krw_rate_task,
+            self._dedup_cleanup_task, self._trade_reconciler_task, self._margin_refresh_task,
+        ]:
             if task is not None and not task.done():
                 task.cancel()
                 try:
@@ -763,7 +770,8 @@ class LiveMode(BaseMode):
                     if self._strategy_manager is not None:
                         await self._route_signal_to_strategies(signal)
             except Exception as exc:
-                logger.debug("live_mode.real_signal_producer_error: %s", exc)
+                # BUG-45: was debug — any FF/SF evaluation exception silently lost
+                logger.warning("live_mode.real_signal_producer_error: %s", exc, exc_info=True)
 
         # --- MultiStrategySignalProducer (additional signals) ---
         if self._multi_signal_producer is not None:
@@ -791,9 +799,18 @@ class LiveMode(BaseMode):
         # produce_futures_futures_signal() has no adapter access at signal time,
         # so margin_available would always be "0" → margin check silently skipped.
         if signal.strategy_id == "futures_futures_spread" and signal.buy_exchange:
-            cached = self._cached_margin.get(signal.buy_exchange)
-            if cached and cached > Decimal("0"):
-                signal.metadata["margin_available"] = str(cached)
+            buy_margin = self._cached_margin.get(signal.buy_exchange) or Decimal("0")
+            sell_margin = (
+                self._cached_margin.get(signal.sell_exchange) or Decimal("0")
+                if signal.sell_exchange else Decimal("0")
+            )
+            # Both exchanges need margin (BUY long + SELL short); use the binding constraint.
+            if buy_margin > 0 and sell_margin > 0:
+                effective_margin = min(buy_margin, sell_margin)
+            else:
+                effective_margin = buy_margin or sell_margin
+            if effective_margin > Decimal("0"):
+                signal.metadata["margin_available"] = str(effective_margin)
 
         try:
             trade_requests = await self._strategy_manager.route_signal(signal)
@@ -832,16 +849,19 @@ class LiveMode(BaseMode):
         t0 = time.monotonic()
         sid = trade_request.strategy_id or self.STRATEGY_ID
         self._stats.signals_detected += 1
+        logger.info("live_mode.execute_trade_entry strategy=%s legs=%d", sid, len(trade_request.legs))
 
         # --- Strategy filter allowlist ---
         if self._strategy_filter is not None and sid not in self._strategy_filter:
-            logger.debug("live_mode.strategy_filtered strategy=%s", sid)
+            logger.info("live_mode.strategy_filtered strategy=%s", sid)
+            self._notify_pre_exec_rollback(trade_request, sid)
             return
 
         # --- Strategy loss cooldown (US-164) ---
         if sid in self._strategy_disable_until:
             if time.monotonic() < self._strategy_disable_until[sid]:
                 logger.debug("live_mode.strategy_cooldown strategy=%s", sid)
+                self._notify_pre_exec_rollback(trade_request, sid)
                 return
             else:
                 del self._strategy_disable_until[sid]
@@ -856,6 +876,7 @@ class LiveMode(BaseMode):
         if self._kill_switch is not None and hasattr(self._kill_switch, 'is_halted'):
             if self._kill_switch.is_halted():
                 logger.warning("live_mode.kill_switch_active — skipping trade")
+                self._notify_pre_exec_rollback(trade_request, sid)
                 return
 
         # --- Circuit breaker check ---
@@ -863,6 +884,7 @@ class LiveMode(BaseMode):
             try:
                 if hasattr(self._circuit_breaker, 'is_open') and self._circuit_breaker.is_open():
                     logger.warning("live_mode.circuit_breaker_open — skipping trade strategy=%s", sid)
+                    self._notify_pre_exec_rollback(trade_request, sid)
                     return
             except Exception as exc:
                 logger.debug("live_mode.circuit_breaker_check_error: %s", exc)
@@ -876,6 +898,7 @@ class LiveMode(BaseMode):
                     self._rate_buckets[ex] = TokenBucket(rate=5.0, capacity=10.0)
                 if not self._rate_buckets[ex].try_acquire():
                     logger.warning("live_mode.rate_limited exchange=%s strategy=%s", ex, sid)
+                    self._notify_pre_exec_rollback(trade_request, sid)
                     return
 
         # --- FlashGuard check ---
@@ -885,6 +908,7 @@ class LiveMode(BaseMode):
                     blocked = self._flash_guard.check(trade_request)
                     if blocked:
                         logger.warning("live_mode.flash_guard_blocked strategy=%s", sid)
+                        self._notify_pre_exec_rollback(trade_request, sid)
                         return
             except Exception as exc:
                 logger.debug("live_mode.flash_guard_check_error: %s", exc)
@@ -903,6 +927,7 @@ class LiveMode(BaseMode):
                     self._stats.trades_risk_blocked += 1
                     strat_stats.rejections += 1
                     logger.info("live_mode.risk_rejected strategy=%s", sid)
+                    self._notify_pre_exec_rollback(trade_request, sid)
                     return
             except Exception as exc:
                 logger.warning("live_mode.risk_check_error: %s", exc)
@@ -918,6 +943,7 @@ class LiveMode(BaseMode):
                     "live_mode.symbol_cooldown symbol=%s cooldown_s=%.0f",
                     _sym_key, self._symbol_cooldown_s,
                 )
+                self._notify_pre_exec_rollback(trade_request, sid)
                 return
             self._symbol_last_trade[_sym_key] = time.monotonic()
 
@@ -925,6 +951,7 @@ class LiveMode(BaseMode):
         collision_key = self._build_collision_key(trade_request)
         if not await self._dedup_gate.check_and_register(collision_key):
             logger.debug("live_mode.dedup_blocked key=%s", collision_key)
+            self._notify_pre_exec_rollback(trade_request, sid)
             return
 
         # --- Execute via DI executor (v7: global semaphore — max 2 concurrent) ---
@@ -947,11 +974,13 @@ class LiveMode(BaseMode):
                     sid, len(_small_legs),
                     float(max(l.size * l.price for l in _small_legs if l.price)),
                 )
+                self._notify_pre_exec_rollback(trade_request, sid)
                 return
 
             orders = self._legs_to_orders(trade_request)
             if not orders:
                 logger.warning("live_mode.no_valid_orders strategy=%s", sid)
+                self._notify_pre_exec_rollback(trade_request, sid)
                 return
 
             exec_result = await self._route_to_executor(trade_request, orders)
@@ -980,6 +1009,9 @@ class LiveMode(BaseMode):
                     # BUG-2 fix: notify strategy on successful rollback so it clears
                     # _open_positions and allows re-entry (prevents 30min lockout)
                     # BUG-31: also clear on REJECTED (no orders placed, pre-validation failed)
+                    # BUG-84: ROLLBACK_FAILED must NOT notify — a stranded position exists and
+                    # clearing _open_positions would let the strategy re-enter the same symbol,
+                    # creating a duplicate position. strategies document "ROLLBACK_FAILED: do not call".
                     if exec_result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.REJECTED):
                         symbol = trade_request.legs[0].symbol if trade_request.legs else None
                         if symbol and self._strategy_manager is not None:
@@ -1011,9 +1043,11 @@ class LiveMode(BaseMode):
                     _t = getattr(_lr, 'trade', None)
                     if _t is None:
                         continue
-                    _side_str = str(getattr(_lr, 'side', '') or '').upper()
+                    # BUG-67: LegResult has no .side attr — use .order.side
+                    _lr_order = getattr(_lr, 'order', None)
+                    _lr_side = getattr(_lr_order, 'side', None)
                     _fee_total += Decimal(str(getattr(_t, 'fee', 0) or 0))
-                    if "SELL" in _side_str:
+                    if _lr_side == OrderSide.SELL:
                         _sell_fill_price = Decimal(str(_t.price))
                     else:
                         _buy_fill_price = Decimal(str(_t.price))
@@ -1228,6 +1262,8 @@ class LiveMode(BaseMode):
             results = []
             for order in orders:
                 # Single-leg: use execute_multi_leg with 1 order if available
+                # BUG-92: execute_same_exchange(order, order) doubles the position.
+                # execute_multi_leg always available on AtomicExecutor — use it.
                 if hasattr(self._executor, 'execute_multi_leg'):
                     result = await self._executor.execute_multi_leg(
                         exchange_id=order.exchange_id,
@@ -1235,14 +1271,31 @@ class LiveMode(BaseMode):
                         strategy_id=sid,
                     )
                 else:
-                    result = await self._executor.execute_same_exchange(
-                        exchange_id=order.exchange_id,
-                        leg1_order=order,
-                        leg2_order=order,
-                        strategy_id=sid,
+                    logger.error(
+                        "live_mode.fallback_no_multi_leg_executor exchange=%s strategy=%s — skipping leg",
+                        order.exchange_id, sid,
                     )
+                    continue
                 results.append(result)
             return results
+
+    def _notify_pre_exec_rollback(self, trade_request: TradeRequest, sid: str) -> None:
+        """Pre-execution guard rollback: clear optimistic _open_positions on early return.
+
+        FuturesFutures (and other strategies) may set _open_positions[symbol] inside
+        evaluate() before returning the TradeRequest. If any pre-execution guard rejects
+        the trade, we must notify the strategy to clear that entry — otherwise the symbol
+        is locked out for max_hold_seconds.
+        """
+        _sym = trade_request.legs[0].symbol if trade_request.legs else None
+        if not _sym or self._strategy_manager is None:
+            return
+        _strat = self._strategy_manager.get_strategy(sid)
+        if _strat is not None and hasattr(_strat, "on_execution_rollback"):
+            try:
+                _strat.on_execution_rollback(_sym)
+            except Exception as _e:
+                logger.debug("live_mode.pre_exec_rollback_notify_failed strategy=%s sym=%s err=%s", sid, _sym, _e)
 
     def _build_collision_key(self, trade_request: TradeRequest) -> str:
         """Build collision detection key from trade request.
@@ -1536,13 +1589,16 @@ class LiveMode(BaseMode):
                                 if new_rate > 0:
                                     self._krw_rate = new_rate
                                     self._krw_stale = False
+                                    self._krw_fail_count = 0  # BUG-88: reset on success
                                     logger.debug("live_mode.krw_rate_updated rate=%.2f", new_rate)
                         else:
                             logger.debug("live_mode.krw_rate_fetch_http_error status=%d", resp.status_code)
                     except Exception as exc:
                         logger.debug("live_mode.krw_rate_fetch_error: %s", exc)
-                        # Mark stale after 5 consecutive failures
-                        self._krw_stale = True
+                        # BUG-88: only mark stale after 5 consecutive failures
+                        self._krw_fail_count += 1
+                        if self._krw_fail_count >= 5:
+                            self._krw_stale = True
                     await asyncio.sleep(60)
         except asyncio.CancelledError:
             pass
@@ -1562,19 +1618,32 @@ class LiveMode(BaseMode):
             del self._recent_trades[k]
 
     async def _dedup_cleanup_loop(self) -> None:
-        """Periodically clean up stale dedup gate entries + FF exit request polling."""
+        """Periodically clean up stale dedup gate entries and drain settlement exit requests.
+
+        Settlement exit requests generated by strategies (e.g., FundingRateStrategy at
+        settlement time) must be routed through LiveMode._execute_trade_request to get
+        full pipeline treatment: kill switch, circuit breaker, Telegram alerts, PnL tracking.
+        main.py._strategy_exit_poll_loop is gated to skip Live/Paper mode to avoid
+        dual-drain race conditions.
+        """
         while self._running:
             await asyncio.sleep(60.0)
             await self._dedup_gate.cleanup_stale()
-            # PHOENIX v18: FF 포지션 모니터 exit TradeRequest 처리
+            # Drain settlement/holding-timeout exit requests from strategies
             if self._strategy_manager is not None:
                 for _sid in self._strategy_manager.list_strategies():
                     _strat = self._strategy_manager.get_strategy(_sid)
                     if _strat is not None and hasattr(_strat, "pop_exit_requests"):
                         for _exit_req in _strat.pop_exit_requests():
+                            logger.info(
+                                "live_dedup_cleanup.settlement_exit strategy=%s legs=%d reason=%s",
+                                _sid,
+                                len(_exit_req.legs),
+                                _exit_req.metadata.get("reason", "unknown"),
+                            )
                             asyncio.create_task(
                                 self._execute_trade_request(_exit_req),
-                                name="ff_exit_trade",
+                                name="settlement_exit_trade",
                             )
 
     async def _margin_refresh_loop(self) -> None:
@@ -1613,14 +1682,27 @@ class LiveMode(BaseMode):
                 break
             executor = self._executor
             exchanges_dict: dict = getattr(executor, "_exchanges", None) or {}
-            futures_adapters = {k: v for k, v in exchanges_dict.items() if "futures" in k}
+            # Include both futures AND spot adapters that implement get_trades()
+            futures_adapters = {k: v for k, v in exchanges_dict.items()
+                                if hasattr(v, "get_trades")}
             since_ms = int((time.time() - 600) * 1000)
+            # Collect tracked symbols from strategies (for per-symbol reconciliation)
+            tracked_symbols: list[str] = []
+            if self._strategy_manager is not None:
+                for sid in self._strategy_manager.list_strategies():
+                    strategy = self._strategy_manager.get_strategy(sid)
+                    if strategy is not None:
+                        open_pos = getattr(strategy, "_open_positions", {})
+                        tracked_symbols.extend(open_pos.keys())
+            symbols_arg = list(dict.fromkeys(tracked_symbols)) or None  # dedupe, None if empty
+
             for eid, adapter in futures_adapters.items():
                 try:
                     await self._trade_reconciler.reconcile_period(
                         exchange_adapter=adapter,
                         exchange_id=eid,
                         since_ms=since_ms,
+                        symbols=symbols_arg,
                     )
                 except Exception as exc:
                     logger.warning("trade_recon_loop_error exchange=%s error=%s", eid, exc)
