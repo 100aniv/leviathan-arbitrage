@@ -65,6 +65,10 @@ class BithumbCollector(BaseCollector):
         self._http_client: httpx.AsyncClient | None = None
         # Last known valid mid prices for WS delta sanity checks
         self._last_valid_mid: dict[str, float] = {}
+        # BUG-70: Prevent _two_step_verify flood — track in-flight verifications per symbol
+        self._two_step_pending: set[str] = set()
+        # Last time _two_step_verify was triggered per symbol (for logging)
+        self._two_step_last_ts: dict[str, float] = {}
 
     async def start(self) -> None:
         """Start with REST snapshots, then WS stream + per-symbol stale watcher."""
@@ -249,13 +253,16 @@ class BithumbCollector(BaseCollector):
                         new_mid=new_mid,
                         change_pct=f"{change_pct:.1%}",
                     )
-                    # Devil's Advocate 2-step: schedule REST re-sync to verify
-                    try:
-                        asyncio.get_running_loop().create_task(
-                            self._two_step_verify(symbol, last_mid)
-                        )
-                    except RuntimeError:
-                        pass  # No running loop (tests/sync context) — skip task creation
+                    # BUG-70: Only schedule verify if no verify is already in-flight for this symbol
+                    if symbol not in self._two_step_pending:
+                        self._two_step_pending.add(symbol)
+                        self._two_step_last_ts[symbol] = time.monotonic()
+                        try:
+                            asyncio.get_running_loop().create_task(
+                                self._two_step_verify(symbol, last_mid)
+                            )
+                        except RuntimeError:
+                            self._two_step_pending.discard(symbol)
                     return None  # Reject this delta
 
             # Update last valid mid price
@@ -321,6 +328,9 @@ class BithumbCollector(BaseCollector):
 
         except Exception as exc:
             logger.error("bithumb_2step_verify_error", symbol=symbol, error=str(exc))
+        finally:
+            # BUG-70: Always clear pending flag so next guard trigger can schedule a new verify
+            self._two_step_pending.discard(symbol)
 
     async def refresh_symbols(self, symbols: list[str]) -> int:
         """Re-fetch REST snapshots for a specific set of symbols in parallel (max 5 concurrent).
