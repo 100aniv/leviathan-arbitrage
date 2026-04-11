@@ -670,6 +670,7 @@ class TestModeSwitch:
 
     @pytest.mark.asyncio
     async def test_switch_to_shadow_mode(self):
+        """mode='shadow' is rejected with 400 — shadow mode removed."""
         ctx = _make_context(execution_mode="paper")
         app = create_app(ctx)
         transport = ASGITransport(app=app)
@@ -679,9 +680,8 @@ class TestModeSwitch:
                 json={"mode": "shadow"},
                 headers=_auth_headers(),
             )
-        assert resp.status_code == 200
-        assert resp.json()["mode"] == "shadow"
-        assert ctx.execution_mode == "shadow"
+        assert resp.status_code == 400
+        assert ctx.execution_mode == "paper"
 
     @pytest.mark.asyncio
     async def test_switch_to_paper_mode(self):

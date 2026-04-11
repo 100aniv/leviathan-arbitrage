@@ -63,9 +63,12 @@ class TestHealthChecker:
         import time
         checker = HealthChecker("test_exchange")
         checker._metrics.last_heartbeat = time.monotonic() - 200  # 200s stale
+        # 3 disconnects needed: threshold=0.50, 1 disconnect → score=0.56 (above), 3 → score=0.48 (below)
+        checker.record_ws_disconnect()
+        checker.record_ws_disconnect()
         checker.record_ws_disconnect()
         score = checker.health_score
-        # Stale data + disconnect: connection_score=0, ws_score degraded → score < 0.5
+        # Stale data + 3x disconnect: connection_score=0, ws_score=0.4 → total=0.48 < 0.50
         assert score < 0.5
 
     def test_many_disconnects_reduce_ws_stability(self):

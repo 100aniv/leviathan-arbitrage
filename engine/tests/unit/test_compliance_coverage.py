@@ -431,7 +431,8 @@ class TestCheckSlippageModel:
 
         with patch("src.infra.compliance._try_import_attr", return_value=(True, mock_cls)):
             with patch("os.getenv", return_value=None):
-                items = checker._check_slippage_model()
+                with patch("src.core.config_loader.get_config", return_value=None):  # engine.json also has slippage.gamma
+                    items = checker._check_slippage_model()
 
         gamma_item = next(i for i in items if i.name == "Power-Law-Gamma")
         assert gamma_item.status == ComplianceStatus.PARTIAL

@@ -618,29 +618,12 @@ class TestStartBackgroundTasks:
 
         assert "paper_mode" in created_tasks
 
-    @pytest.mark.asyncio
-    async def test_shadow_mode_starts_canary_task(self):
-        """EngineMode.SHADOW → shadow_canary (LiveMode small capital) task."""
-        engine = _make_engine()
-        engine._settings = MagicMock()
-        engine._strategy_manager = AsyncMock()
-        engine._trade_consumer = AsyncMock()
-        engine.context.ws_manager = None
-
-        created_tasks = []
-
-        def mock_create_task(coro, name=None):
-            task = MagicMock()
-            task.done.return_value = True
-            created_tasks.append(name or "unknown")
-            coro.close()
-            return task
-
-        with patch.dict(os.environ, {"ENGINE_MODE": "shadow", "EXECUTION_MODE": "paper"}):
-            with patch("asyncio.create_task", side_effect=mock_create_task):
-                await engine._start_background_tasks()
-
-        assert "shadow_canary" in created_tasks
+    def test_shadow_mode_raises_runtime_error(self):
+        """ENGINE_MODE=shadow raises RuntimeError — shadow mode is fully removed."""
+        from src.core.config import resolve_engine_mode
+        with patch.dict(os.environ, {"ENGINE_MODE": "shadow"}):
+            with pytest.raises(RuntimeError, match="EngineMode.SHADOW is removed"):
+                resolve_engine_mode(engine_mode="shadow")
 
     @pytest.mark.asyncio
     async def test_background_tasks_always_includes_core_loops(self):

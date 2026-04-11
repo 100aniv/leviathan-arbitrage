@@ -42,23 +42,23 @@ class TestBinanceFuturesCollectorIdentity:
 
 class TestWsUrl:
     def test_ws_url_single_symbol(self):
-        """Single symbol uses per-symbol stream endpoint."""
+        """Single symbol uses per-symbol stream endpoint (new /market/ prefix, BUG-68)."""
         collector = BinanceFuturesCollector(symbols=["BTC/USDT"])
         url = collector._ws_url()
-        assert url == "wss://fstream.binance.com/ws/btcusdt@depth20@100ms"
+        assert url == "wss://fstream.binance.com/market/ws/btcusdt@depth20@100ms"
 
     def test_ws_url_multi_symbol(self):
-        """Multiple symbols use combined stream endpoint."""
+        """Multiple symbols use combined stream endpoint (new /market/ prefix, BUG-68)."""
         collector = BinanceFuturesCollector(symbols=["BTC/USDT", "ETH/USDT"])
         url = collector._ws_url()
-        assert url == "wss://fstream.binance.com/stream?streams=btcusdt@depth20@100ms/ethusdt@depth20@100ms"
+        assert url == "wss://fstream.binance.com/market/stream?streams=btcusdt@depth20@100ms/ethusdt@depth20@100ms"
 
     def test_ws_url_symbol_normalized_to_lowercase_no_slash(self):
         """Symbols like BTC/USDT are normalized to btcusdt."""
         collector = BinanceFuturesCollector(symbols=["SOL/USDT"])
         url = collector._ws_url()
         assert "solusdt" in url
-        assert "/" not in url.split("/ws/")[-1]
+        assert "/" not in url.split("/market/ws/")[-1]
 
     def test_subscribe_message_returns_empty_string(self):
         """Subscription is encoded in URL path; no subscribe frame is sent."""

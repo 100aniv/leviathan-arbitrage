@@ -73,6 +73,7 @@ class TestStartupChecker:
     async def test_check_api_port_available(self):
         checker = StartupChecker()
         # Port 19999 should be available on most systems
-        with patch.dict("os.environ", {"API_PORT": "19999"}):
+        # Mock _gc to return 19999 (startup_checker uses _gc, not os.environ["API_PORT"])
+        with patch("src.infra.startup_checker._gc", return_value=19999):
             result = await checker._check_api_port()
             assert result is True

@@ -186,7 +186,8 @@ class TestUS239FundingRateSettlement:
     def _make_strategy(self, settlement_window_minutes: float = 30.0):
         from src.strategies.funding_rate import FundingRateConfig, FundingRateStrategy
         calc = MagicMock()
-        calc.estimate_cost.return_value = Decimal("0.5")
+        calc.estimate_cost.return_value = Decimal("1.0")
+        calc.estimate_futures_cost.return_value = Decimal("1.0")
         config = FundingRateConfig(
             min_funding_diff_bps=Decimal("5"),
             settlement_window_minutes=settlement_window_minutes,
@@ -265,10 +266,15 @@ class TestUS239FundingRateSettlement:
 
     @pytest.mark.asyncio
     async def test_settlement_release_clears_positions(self):
-        """Positions are cleared after settlement hour passes."""
+        """Positions are cleared after settlement hour passes and exit requests queued."""
         strategy = self._make_strategy(settlement_window_minutes=30.0)
-        # Enter position
-        strategy._open_positions["BTC/USDT:USDT"] = "short_high_long_low"
+        # Enter position using the correct dict format (BUG-74: dict with exchange info)
+        strategy._open_positions["BTC/USDT:USDT"] = {
+            "sell_exchange": "binance_futures",
+            "buy_exchange": "bybit",
+            "size": Decimal("0.5"),
+            "long_size": Decimal("0.5"),
+        }
         # Simulate settlement at hour 8
         strategy._last_settlement_hour = -1
         fake_time = datetime(2026, 3, 18, 8, 0, 0, tzinfo=timezone.utc)
@@ -276,7 +282,12 @@ class TestUS239FundingRateSettlement:
             mock_dt.now.return_value = fake_time
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
             strategy._check_settlement_release()
+        # Position cleared from open positions
         assert len(strategy._open_positions) == 0
+        # BUG-74: exit TradeRequests must be queued (not just silently dropped)
+        assert len(strategy._pending_exit_requests) > 0
+        # Issue#4: retained in pending_settlement_positions for retry
+        assert len(strategy._pending_settlement_positions) == 1
 
     def test_minutes_to_next_settlement(self):
         """Correctly computes minutes to next settlement."""

@@ -106,9 +106,8 @@ async def close_all(dry_run: bool = True):
                 open_positions_check = [p for p in positions if p.size != 0]
                 if open_positions_check or attempt == retries - 1:
                     break
-                import asyncio as _asyncio
                 print(f"    -> Bitget: no positions yet, waiting 5s (attempt {attempt+1}/{retries})...")
-                await _asyncio.sleep(5)
+                await asyncio.sleep(5)
             open_positions = [p for p in positions if p.size != 0]
 
             if not open_positions:
@@ -129,6 +128,8 @@ async def close_all(dry_run: bool = True):
                 print(f"    {'WOULD CLOSE' if dry_run else 'CLOSING'}: {pos.symbol} {side_str} {size} (entry={pos.entry_price}, {pnl_str})")
 
                 if not dry_run:
+                    if eid == "bitget_futures":
+                        await asyncio.sleep(0.5)  # Bitget rate limit guard: 2 req/s
                     hold_side = "long" if pos.size > 0 else "short"
                     # Bitget: use close-positions endpoint (place-order tradeSide=close returns 22002)
                     # Other exchanges: use place-order with reduceOnly
@@ -185,6 +186,7 @@ async def close_all(dry_run: bool = True):
                 print(f"\n  [PARANOID CLOSE] Bitget stale-data guard — {len(_paranoid_raw)} symbol(s) (incl. stale)...")
                 paranoid_closed = 0
                 for sym_normalized in sorted(_paranoid_raw):
+                    await asyncio.sleep(0.5)  # BUG-28: rate limit guard between paranoid close requests
                     for hold_side in ("long", "short"):
                         try:
                             resp = await adapter._request(

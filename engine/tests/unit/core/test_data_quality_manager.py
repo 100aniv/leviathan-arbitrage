@@ -190,8 +190,8 @@ class TestHealthScoreIntegration:
         dqm.register_exchange("binance")
         dqm.record_ws_disconnect("binance")
         score = dqm.get_health_score("binance")
-        assert score < 0.9   # ws_score reduced by disconnect
-        assert score > 0.5   # still connected (data is fresh)
+        assert score < 1.0   # ws_score reduced by disconnect (1 disconnect → ws_score=0.8 → total=0.96)
+        assert score > 0.9   # still healthy (data is fresh, only ws_score affected)
 
     def test_get_all_health_scores(self):
         dqm = DataQualityManager()
@@ -287,7 +287,10 @@ class TestHealthScoreIntegration:
         # Stale data + WS disconnect = truly unhealthy exchange.
         checker = dqm._health_checkers["binance"]
         checker._metrics.last_heartbeat = time.monotonic() - 200
-        dqm.record_ws_disconnect("binance")  # also record disconnect for ws_score penalty
+        # 3 disconnects needed: threshold=0.50, 1 disconnect → score=0.56 (passes), 3 → score=0.48 (rejects)
+        dqm.record_ws_disconnect("binance")
+        dqm.record_ws_disconnect("binance")
+        dqm.record_ws_disconnect("binance")
         guardian.data_quality_manager = dqm
 
         proposal = TradeProposal(
