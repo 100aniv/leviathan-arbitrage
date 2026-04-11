@@ -90,6 +90,9 @@ class SpotFuturesStrategy(BaseStrategy):
 
         # US-271: Open position tracking for holding timeout
         self._open_positions: dict[str, OpenPosition] = {}
+        self._pending_timeout_requests: list = []  # queue for multi-position timeout closes
+        # BUG-91: symbols queued for close but not yet confirmed filled — prevent premature pop
+        self._pending_close_symbols: set[str] = set()
         from src.core.config_loader import get_config
         self._holding_timeout_enabled = get_config("strategy_filters.enable_holding_timeout", default=False)
 
@@ -102,23 +105,29 @@ class SpotFuturesStrategy(BaseStrategy):
 
         # US-271: Expire stale positions by max_holding_hours — close BOTH legs
         if self._holding_timeout_enabled:
+            # Return any previously queued timeout closes (multi-position drain)
+            if self._pending_timeout_requests:
+                return self._pending_timeout_requests.pop(0)
+
             now = time.monotonic()
             max_hold_s = self.config.max_holding_hours * 3600.0
             expired = [
                 sym for sym, pos in self._open_positions.items()
                 if now - pos.entry_time >= max_hold_s
+                and sym not in self._pending_close_symbols  # BUG-91: skip already-queued
             ]
+            # Queue ALL expired closes — prevents signal loss and skipped positions
             for sym in expired:
-                pos = self._open_positions.pop(sym)
-                # Contango: we bought spot + sold futures → close by selling spot + buying futures
-                # Backwardation: we sold spot + bought futures → close by buying spot + selling futures
+                pos = self._open_positions[sym]  # BUG-91: don't pop — remove only on confirmed fill
+                self._pending_close_symbols.add(sym)
+                # Contango: bought spot + sold futures → close by selling spot + buying futures
+                # Backwardation: sold spot + bought futures → close by buying spot + selling futures
                 spot_close_side = OrderSide.SELL if pos.side == "contango" else OrderSide.BUY
                 futures_close_side = OrderSide.BUY if pos.side == "contango" else OrderSide.SELL
                 futures_sym = pos.futures_symbol or sym
                 futures_ex = pos.futures_exchange or pos.exchange_id
                 self._metrics.trade_requests_generated += 1
-                # Emit closing request with BOTH legs (spot + futures)
-                return TradeRequest(
+                self._pending_timeout_requests.append(TradeRequest(
                     strategy_id=self.strategy_id,
                     legs=[
                         TradeLeg(
@@ -127,8 +136,8 @@ class SpotFuturesStrategy(BaseStrategy):
                             side=spot_close_side,
                             size=pos.size,
                             order_type=OrderType.MARKET,
-                            price=pos.entry_price,
-                            metadata={"leg_type": "timeout_close_spot"},
+                            price=None,  # MARKET close — no expected price (prevents stale IS calc)
+                            metadata={"leg_type": "timeout_close_spot", "reduceOnly": True},
                         ),
                         TradeLeg(
                             exchange_id=futures_ex,
@@ -136,14 +145,16 @@ class SpotFuturesStrategy(BaseStrategy):
                             side=futures_close_side,
                             size=pos.size,
                             order_type=OrderType.MARKET,
-                            price=pos.entry_price,
-                            metadata={"leg_type": "timeout_close_futures"},
+                            price=None,  # MARKET close — no expected price (prevents stale IS calc)
+                            metadata={"leg_type": "timeout_close_futures", "reduceOnly": True},
                         ),
                     ],
                     expected_profit_usdt=Decimal("0"),
                     confidence=0.0,
                     metadata={"reason": "holding_timeout"},
-                )
+                ))
+            if self._pending_timeout_requests:
+                return self._pending_timeout_requests.pop(0)
 
         # US-254: Regime check — block new entries in CRISIS mode
         if self._regime_detector is not None:
@@ -162,10 +173,6 @@ class SpotFuturesStrategy(BaseStrategy):
         exchange_id = signal.buy_exchange
         basis_bps = Decimal(str(signal.metadata.get("basis_bps", "0")))
         abs_basis_bps = abs(basis_bps)
-
-        # US-261: Feed basis to adaptive threshold tracker
-        if self._adaptive_threshold is not None:
-            self._adaptive_threshold.update(float(abs_basis_bps))
 
         # US-261: static min_basis is ENTRY FLOOR; adaptive p95 is OUTLIER CAP
         _min_basis = self.config.min_basis_bps
@@ -188,6 +195,12 @@ class SpotFuturesStrategy(BaseStrategy):
                 signal.symbol, float(abs_basis_bps), float(_min_basis),
             )
             return None
+
+        # BUG-H fix (spot_futures): Feed basis to adaptive threshold AFTER min_basis filter.
+        # Calling update() before the filter contaminates the distribution with sub-threshold
+        # noise, pulling p95 down and causing legitimate spreads to be rejected as outliers.
+        if self._adaptive_threshold is not None:
+            self._adaptive_threshold.update(float(abs_basis_bps))
 
         # US-270: OU basis modeling — update with raw (signed) basis_bps, no abs()
         self._ou_basis.update(float(basis_bps), time.monotonic())
@@ -215,6 +228,12 @@ class SpotFuturesStrategy(BaseStrategy):
 
         spot_symbol = str(signal.metadata.get("spot_symbol", signal.symbol))
         futures_symbol = str(signal.metadata.get("futures_symbol", signal.symbol))
+        # BUG-94: warn if required metadata fields missing (both legs get same symbol)
+        if "spot_symbol" not in signal.metadata or "futures_symbol" not in signal.metadata:
+            logger.warning(
+                "sf.missing_metadata symbol=%s spot=%s futures=%s — check signal producer",
+                signal.symbol, spot_symbol, futures_symbol,
+            )
         # PHOENIX: max_position_size is USD notional cap — divide by price to get base units
         _sf_avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
         size = min(signal.volume, (self.config.max_position_size / _sf_avg_price) if _sf_avg_price > 0 else signal.volume)
@@ -326,6 +345,16 @@ class SpotFuturesStrategy(BaseStrategy):
                 return spot_sym
         return None
 
+    def pop_exit_requests(self) -> list:
+        """Drain pending holding-timeout close TradeRequests.
+
+        Called by _strategy_exit_poll_loop in main.py every 60s so that
+        timeout exits are routed even when no new signal arrives.
+        """
+        reqs = list(self._pending_timeout_requests)
+        self._pending_timeout_requests.clear()
+        return reqs
+
     async def on_fill(self, trade: Trade) -> None:
         await super().on_fill(trade)
         # US-271/US-322: Remove closed position on exit fill
@@ -336,14 +365,23 @@ class SpotFuturesStrategy(BaseStrategy):
                 resolved = self._resolve_spot_symbol(trade.symbol)
                 if resolved:
                     self._open_positions.pop(resolved, None)
+                    self._pending_close_symbols.discard(resolved)  # BUG-91: clear pending flag
 
     def on_execution_rollback(self, symbol: str) -> None:
         """롤백 완료 시 _open_positions에서 심볼 제거 — 재진입 lockout 방지.
 
         ROLLED_BACK: leg2 실패 후 leg1 언와인드 성공 → 포지션 없음 → 즉시 재진입 허용.
         ROLLBACK_FAILED: 호출하지 않음 (stranded position 존재).
+
+        BUG-91: close TradeRequest 실패 시 _pending_close_symbols만 제거
+        (position은 여전히 거래소에 살아있으므로 _open_positions 유지).
         """
         resolved = self._resolve_spot_symbol(symbol) or symbol
-        if resolved in self._open_positions:
+        if resolved in self._pending_close_symbols:
+            # Close request rolled back → keep position tracked, allow retry next tick
+            logger.info("sf.close_rollback_retry symbol=%s", resolved)
+            self._pending_close_symbols.discard(resolved)
+        elif resolved in self._open_positions:
+            # Entry request rolled back → no position on exchange
             logger.info("sf.position_cleared_on_rollback symbol=%s", resolved)
             self._open_positions.pop(resolved, None)
