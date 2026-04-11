@@ -963,7 +963,7 @@ class AtomicExecutor:
                     "cross_exchange_leg2_rollback_failed exchange=%s strategy=%s reason=%s",
                     ex_b_id, strategy_id, rb2_reason
                 )
-                self._stranded_tracker.register(
+                _leg2_halt = self._stranded_tracker.register(
                     exchange_id=ex_b_id,
                     symbol=leg2_result.order.symbol,
                     side=str(leg2_result.order.side),
@@ -971,6 +971,15 @@ class AtomicExecutor:
                     value_usd=float(leg2_result.filled_amount * (leg2_result.order.price or Decimal("0"))),
                     reason=f"leg2_partial_fill_rollback_failed:{rb2_reason}",
                 )
+                if _leg2_halt:
+                    # Halt threshold reached on leg2 failure.
+                    # Do NOT halt immediately — allow leg1 corrective unwind to proceed.
+                    # The halt will fire from the leg1 path below if leg1 also fails.
+                    logger.warning(
+                        "cross_exchange_stranded_leg2_halt_threshold_reached exchange=%s symbol=%s "
+                        "— deferring halt to allow leg1 corrective unwind",
+                        ex_b_id, leg2_result.order.symbol,
+                    )
 
         # BUG-42: exit leg1 filled + leg2 failed → do NOT unwind leg1 (already closed).
         # The stranded position is the UNCLOSED side on ex_b (leg2), not ex_a.
