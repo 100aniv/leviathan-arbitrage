@@ -71,6 +71,8 @@ class MarginTracker:
         Applies 15% buffer: effective_required = required_usd * 1.15.
         Prunes expired entries before checking.
         """
+        if required_usd == Decimal("0"):
+            return True  # zero-amount: no reservation needed, avoid polluting _entries
         effective = required_usd * (Decimal("1") + _BUFFER_PCT)
         async with self._lock:
             self._prune_expired()
