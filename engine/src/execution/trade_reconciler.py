@@ -115,7 +115,7 @@ class TradeReconciler:
             if self._db is not None:
                 try:
                     since_ts = since_ms / 1000.0
-                    db_rows_check = await self._db.fetch(
+                    db_rows_check = await self._db.pool.fetch(
                         """
                         SELECT ts, symbol, buy_exchange, sell_exchange
                         FROM execution_log
@@ -164,7 +164,7 @@ class TradeReconciler:
         # DB에서 해당 기간 체결 기록 조회
         try:
             since_ts = since_ms / 1000.0
-            db_rows = await self._db.fetch(
+            db_rows = await self._db.pool.fetch(
                 """
                 SELECT ts, symbol, buy_exchange, sell_exchange,
                        buy_price, sell_price, size, slippage_total
@@ -233,7 +233,7 @@ class TradeReconciler:
                 # WHERE 절에 buy_exchange + sell_exchange 포함 → (ts, symbol) 단독으로는
                 # 동시 체결 시 여러 행이 있을 수 있어 multi-row 오염 방지.
                 try:
-                    await self._db.execute(
+                    await self._db.pool.execute(
                         """
                         UPDATE execution_log
                         SET reconciliation_status = 'matched',

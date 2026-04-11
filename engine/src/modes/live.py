@@ -996,7 +996,13 @@ class LiveMode(BaseMode):
         collision_key = self._build_collision_key(trade_request)
         if not await self._dedup_gate.check_and_register(collision_key):
             logger.debug("live_mode.dedup_blocked key=%s", collision_key)
-            self._notify_pre_exec_rollback(trade_request, sid)
+            # BUG-79: For close/exit orders, dedup block means the first exit is still
+            # in flight and has already moved the position to _pending_exits.
+            # Calling _notify_pre_exec_rollback would erroneously restore the position
+            # from _pending_exits → thrash loop. Only notify rollback for entry orders.
+            _is_close_req = any(leg.metadata.get("reduceOnly") for leg in trade_request.legs)
+            if not _is_close_req:
+                self._notify_pre_exec_rollback(trade_request, sid)
             return
 
         # --- Execute via DI executor (v7: global semaphore — max 2 concurrent) ---

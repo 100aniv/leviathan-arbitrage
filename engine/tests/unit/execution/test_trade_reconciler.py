@@ -69,6 +69,9 @@ def reconciler_no_db():
 @pytest.fixture
 def mock_db():
     db = AsyncMock()
+    # BUG-77: production code uses self._db.pool.fetch(); make pool self-referential
+    # so existing mock_db.fetch assignments are accessible via mock_db.pool.fetch too.
+    db.pool = db
     return db
 
 
