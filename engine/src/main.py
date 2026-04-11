@@ -130,7 +130,11 @@ class Engine:
         self._rebalancer: Any = None  # US-120
         self._balance_tracker: Any = None  # US-120
         # US-129: Position tracking for RiskGuardian PortfolioState
-        self._position_sizes: dict[str, Decimal] = {}   # symbol -> current notional exposure
+        self._position_sizes: dict[str, Decimal] = {}   # symbol -> current notional exposure (nets out for hedged)
+        self._cross_exchange_positions: set[str] = set()  # symbols with active cross-exchange hedged positions
+        # NOTE: _position_sizes nets BUY/SELL for same symbol (correct for exposure/Check#1/3),
+        # but yields len=0 for delta-neutral hedged positions (funding_rate, spot_futures).
+        # _cross_exchange_positions tracks these separately for Check #10 (max concurrent).
         self._peak_equity: Decimal | None = None           # initialized to capital_total on first risk check
         self._total_pnl: Decimal = Decimal("0")          # cumulative realized PnL
         self._exchange_health: dict[str, Decimal] = {}   # exchange_id -> health score (0-1)
@@ -1579,12 +1583,20 @@ class Engine:
             if _is_close_req:
                 return True, ""
 
+            # Effective position map: _position_sizes nets BUY/SELL for hedged
+            # cross-exchange positions (funding_rate/spot_futures) to ~0, so
+            # _cross_exchange_positions fills in the gap for Check #10.
+            _effective_positions = dict(self._position_sizes)
+            for _sym in self._cross_exchange_positions:
+                if _sym not in _effective_positions:
+                    _effective_positions[_sym] = Decimal("1")  # sentinel: position exists
+
             portfolio = PortfolioState(
                 total_capital=capital_total,
                 used_capital=used_capital,
                 current_drawdown_pct=current_drawdown_pct,
                 total_exposure=used_capital,
-                position_sizes=dict(self._position_sizes),
+                position_sizes=_effective_positions,
                 exchange_health_scores=exchange_health,
                 volatility_1min={},   # populated when live vol data available
                 volatility_24h={},    # populated when live vol data available
@@ -1619,9 +1631,11 @@ class Engine:
         # US-129: Update position tracking and peak equity for RiskGuardian PortfolioState
         if getattr(execution_result.status, "value", str(execution_result.status)) == "success":
             try:
-                for leg in getattr(execution_result, "legs", []):
-                    trade = getattr(leg, "trade", None)
-                    order = getattr(leg, "order", None)
+                legs_info = [
+                    (getattr(leg, "trade", None), getattr(leg, "order", None))
+                    for leg in getattr(execution_result, "legs", [])
+                ]
+                for trade, order in legs_info:
                     if trade is not None and order is not None:
                         symbol = order.symbol
                         pos_value = trade.price * trade.amount
@@ -1637,6 +1651,24 @@ class Engine:
                                 self._position_sizes.pop(symbol, None)
                             else:
                                 self._position_sizes[symbol] = updated
+                # Track cross-exchange hedged positions (funding_rate, spot_futures)
+                # _position_sizes nets BUY/SELL to ~0 for hedged positions, so we track separately
+                buy_exchanges = {order.exchange_id for _, order in legs_info if order and getattr(order.side, "value", str(order.side)).upper() == "BUY"}
+                sell_exchanges = {order.exchange_id for _, order in legs_info if order and getattr(order.side, "value", str(order.side)).upper() == "SELL"}
+                symbols_in_exec = {order.symbol for _, order in legs_info if order}
+                _is_cross = bool(buy_exchanges and sell_exchanges and buy_exchanges != sell_exchanges)
+                _is_close = any(
+                    isinstance(getattr(order, "metadata", None), dict) and (
+                        order.metadata.get("reduceOnly") is True or
+                        str(order.metadata.get("leg_type", "")).startswith("settlement_close")
+                    )
+                    for _, order in legs_info if order
+                )
+                for sym in symbols_in_exec:
+                    if _is_cross and not _is_close:
+                        self._cross_exchange_positions.add(sym)
+                    elif _is_close or not _is_cross:
+                        self._cross_exchange_positions.discard(sym)
                 # Update peak equity
                 capital = self._settings.capital.initial_capital if self._settings else Decimal("70")
                 capital_total = capital * max(len(self._exchanges), 1)
