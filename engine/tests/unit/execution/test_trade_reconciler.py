@@ -269,7 +269,7 @@ class TestReconcilerUnmatchedInternal:
     async def test_telegram_called_on_unmatched_internal(self, mock_db):
         """DB phantom record (no matching exchange fill) triggers 내부 미매칭 Telegram alert."""
         telegram = AsyncMock()
-        telegram.send = AsyncMock()
+        telegram.send_alert = AsyncMock()
         reconciler = TradeReconciler(db_pool=mock_db, telegram=telegram)
 
         ts_now = time.time()
@@ -303,8 +303,8 @@ class TestReconcilerUnmatchedInternal:
             exchange_adapter=adapter, exchange_id="binance_futures", since_ms=0,
             symbols=["ETH/USDT"],
         )
-        assert telegram.send.call_count >= 1
-        all_messages = [call[0][0] for call in telegram.send.call_args_list]
+        assert telegram.send_alert.call_count >= 1
+        all_messages = [call[0][0] for call in telegram.send_alert.call_args_list]
         assert any("내부 미매칭" in msg for msg in all_messages)
 
 
@@ -362,7 +362,7 @@ class TestReconcilerEmptyFillsWithDBRows:
     async def test_empty_fills_with_db_rows_sends_telegram(self, mock_db):
         """Silent API failure with DB rows triggers Telegram warning alert."""
         telegram = AsyncMock()
-        telegram.send = AsyncMock()
+        telegram.send_alert = AsyncMock()
         reconciler = TradeReconciler(db_pool=mock_db, telegram=telegram)
 
         ts_now = time.time()
@@ -386,8 +386,8 @@ class TestReconcilerEmptyFillsWithDBRows:
             exchange_adapter=adapter, exchange_id="binance_futures", since_ms=0,
             symbols=["BTC/USDT"],
         )
-        telegram.send.assert_called_once()
-        msg = telegram.send.call_args[0][0]
+        telegram.send_alert.assert_called_once()
+        msg = telegram.send_alert.call_args[0][0]
         assert "팬텀" in msg or "API" in msg or "0건" in msg
 
 
@@ -474,7 +474,7 @@ class TestReconcilerTelegramAlerts:
     @pytest.mark.asyncio
     async def test_telegram_called_on_unmatched_exchange(self, mock_db):
         telegram = AsyncMock()
-        telegram.send = AsyncMock()
+        telegram.send_alert = AsyncMock()
         reconciler = TradeReconciler(db_pool=mock_db, telegram=telegram)
 
         ts_now = time.time()
@@ -494,5 +494,5 @@ class TestReconcilerTelegramAlerts:
             exchange_adapter=adapter, exchange_id="binance_futures", since_ms=0
         )
         # unmatched_exchange should trigger Telegram alert
-        telegram.send.assert_called_once()
-        assert "거래소 미매칭" in telegram.send.call_args[0][0]
+        telegram.send_alert.assert_called_once()
+        assert "거래소 미매칭" in telegram.send_alert.call_args[0][0]

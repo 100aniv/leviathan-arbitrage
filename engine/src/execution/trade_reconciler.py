@@ -141,7 +141,7 @@ class TradeReconciler:
                         )
                         if self._telegram is not None:
                             try:
-                                await self._telegram.send(
+                                await self._telegram.send_alert(
                                     f"⚠️ TradeRecon: {exchange_id} 거래소 체결이력 0건이나 "
                                     f"DB에 {len(db_rows_check)}건 존재 — API 실패 또는 팬텀 포지션 의심"
                                 )
@@ -277,7 +277,7 @@ class TradeReconciler:
             )
             if self._telegram is not None:
                 try:
-                    await self._telegram.send(
+                    await self._telegram.send_alert(
                         f"⚠️ TradeRecon: {exchange_id} 내부 미매칭 {len(report.unmatched_internal)}건 "
                         f"(DB 체결 기록이 거래소 체결 이력에 없음)"
                     )
@@ -291,7 +291,7 @@ class TradeReconciler:
             )
             if self._telegram is not None:
                 try:
-                    await self._telegram.send(
+                    await self._telegram.send_alert(
                         f"⚠️ TradeRecon: {exchange_id} 거래소 미매칭 {len(report.unmatched_exchange)}건 "
                         f"(거래소 체결이 내부 DB에 없음)"
                     )
