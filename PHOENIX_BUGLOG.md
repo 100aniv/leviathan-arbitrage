@@ -28,6 +28,7 @@
 | §8.27 포지션 대조 + 마진 | v45 | BUG-81~83 | reconcile 헤지모드 레그 합산, 마진 폴백 우회 수정, reconciler 윈도우 통일 |
 | §8.28 이중 청산 방지 + 수수료 | v46 | BUG-CRITICAL-1~2, BUG-84~85 | FF/SF 이중 exit 방지, reconciler false alarm, Bitget Futures fee 수정 |
 | §8.29 체결 안전성 + 수수료 정확도 | v47 | BUG-HIGH-1~2, BUG-MEDIUM-3 | FF on_fill stub, Binance Futures fee endpoint, Bitget market_type guard |
+| §8.30 Telegram 안전성 + MDD 수정 | v48 | BUG-HIGH-3~5, BUG-MEDIUM-4~5 | telegram HTTP lock scope, paper mode param, MDD 음수시작 수정, atomic .env write |
 
 ---
 
@@ -1588,3 +1589,65 @@ Spot `/api/v3/account` 응답의 `makerCommission=10` = basis points(0.10%) → 
 | FF on_fill() exit | stub (no-op) | **_pending_exits + _exiting_symbols 정리** |
 | Binance futures fee endpoint | /api/v3/account (spot) | **/fapi/v1/commissionRate (futures 전용)** |
 | Bitget get_trades() spot guard | 없음 | **market_type != "futures" 시 즉시 반환** |
+
+---
+
+## §8.30 Telegram 안전성 + MDD 수정 — v48 (2026-04-12)
+
+### BUG-HIGH-3: Telegram HTTP 클라이언트 lock 범위 — race condition
+
+**파일**: `engine/src/infra/telegram.py` (line ~728)
+
+**원인**: `async with self._http_client_lock:` 블록 안에서 클라이언트를 생성하지만 lock 해제 후 `self._http_client.post()` 호출.
+lock 해제 ~ post() 호출 사이에 `close()`가 `self._http_client = None`으로 설정하면 `AttributeError: NoneType.post` crash.
+EMERGENCY 알림(kill switch) 전송 실패 위험.
+
+**수정**: lock 내부에서 `client = self._http_client` 로컬 변수 캡처, lock 밖에서 `client.post()` 호출.
+**상태**: ✅ 완료
+
+### BUG-HIGH-4: send_alert_with_severity paper mode 우회
+
+**파일**: `engine/src/infra/telegram.py` (line ~315, 341)
+
+**원인**: `send_alert_with_severity(message, severity)` 내부에서 `send_alert(message, level=level)` 호출 시 `mode` 파라미터 미전달 (기본값 `"live"`).
+paper 환경에서 severity 경로로 알림 발송 시 실제 Telegram 메시지 송출 → 의도치 않은 운영자 알림.
+
+**수정**: `send_alert_with_severity()`에 `mode: str = "live"` 파라미터 추가, `send_alert()` 호출에 전달.
+**상태**: ✅ 완료
+
+### BUG-HIGH-5: walk_forward.py MDD 초기값 0.0 — 음수 시작 PnL 누락
+
+**파일**: `engine/src/analysis/walk_forward.py` (`_compute_mdd`, line ~258)
+
+**원인**: `dd = (peak - cumulative) / peak if peak > 0 else 0.0`에서 `peak=0`이면 항상 `dd=0.0`.
+모든 거래가 손실로 시작하는 경우(peak=0, cumulative<0) 드로다운이 0%로 계산 → LiveGate MDD 체크 과소평가 → live 전환 기준 완화.
+
+**수정**:
+```python
+if peak > 0:
+    dd = (peak - cumulative) / peak
+elif cumulative < 0:
+    dd = -cumulative / max(abs(cumulative), 1.0)  # 절대 손실 기반
+else:
+    dd = 0.0
+```
+**상태**: ✅ 완료
+
+### BUG-MEDIUM: settings.py _update_env_file atomic write
+
+**파일**: `engine/src/api/routes/settings.py` (line ~100)
+
+**원인**: `env_path.write_text(content)` 직접 덮어쓰기.
+엔진이 write 도중 `.env`를 읽으면 부분적 내용 읽기 가능 (mode switch 중 `EXECUTION_MODE` 빈값 위험).
+
+**수정**: `tmp_path.write_text() + os.replace()` atomic rename.
+**상태**: ✅ 완료
+
+### v48 변경사항 요약
+
+| 항목 | v47 이전 | v48 |
+|------|---------|-----|
+| Telegram HTTP lock scope | lock 밖 post() 호출 | **lock 내 client 캡처 후 사용** |
+| severity filter paper mode | mode 미전달 → 실제 알림 송출 | **mode 파라미터 전달 → paper 억제** |
+| walk_forward MDD | peak=0 → dd=0.0 (음수 누락) | **cumulative<0 시 절대 손실 기반** |
+| .env 파일 write | 직접 덮어쓰기 | **atomic rename (tmp+replace)** |

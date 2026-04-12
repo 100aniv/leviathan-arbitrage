@@ -97,7 +97,11 @@ def _update_env_file(key: str, value: str) -> bool:
             content = pattern.sub(f"{key}={value}", content)
         else:
             content = content.rstrip("\n") + f"\n{key}={value}\n"
-        env_path.write_text(content)
+        # BUG-MEDIUM: atomic write — engine could read partial .env during direct overwrite
+        import os as _os
+        tmp_path = env_path.with_suffix(".env.tmp")
+        tmp_path.write_text(content)
+        _os.replace(tmp_path, env_path)
         return True
     except Exception as exc:
         logger.warning("Failed to update .env %s: %s", key, exc)

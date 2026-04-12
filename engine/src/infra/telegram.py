@@ -313,7 +313,7 @@ class TelegramAlerter:
     # ---------------------------------------------------------------------------
 
     async def send_alert_with_severity(
-        self, message: str, severity: AlertSeverity
+        self, message: str, severity: AlertSeverity, mode: str = "live"
     ) -> bool:
         """Send an alert respecting per-severity rate limits.
 
@@ -338,7 +338,8 @@ class TelegramAlerter:
             AlertSeverity.INFO: "INFO",
         }
         level = level_map.get(severity, "INFO")
-        result = await self.send_alert(message, level=level)
+        # BUG-HIGH: pass mode to send_alert so paper mode suppression is respected
+        result = await self.send_alert(message, level=level, mode=mode)
         if result:
             self._severity_filter.record_send(severity)
         return result
@@ -726,10 +727,13 @@ class TelegramAlerter:
 
         try:
             # BUG-03: Lock-guarded lazy init prevents duplicate client creation
+            # BUG-HIGH: capture client ref under lock so close() can't race between
+            # lock release and post() call (NoneType crash).
             async with self._http_client_lock:
                 if self._http_client is None:
                     self._http_client = httpx.AsyncClient(timeout=5.0)
-            response = await self._http_client.post(url, json=payload)
+                client = self._http_client
+            response = await client.post(url, json=payload)
             response.raise_for_status()
             logger.debug(
                 "telegram_alert_sent",

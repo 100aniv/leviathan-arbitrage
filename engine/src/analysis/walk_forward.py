@@ -255,7 +255,15 @@ class WalkForwardAnalyzer:
             cumulative += pnl
             if cumulative > peak:
                 peak = cumulative
-            dd = (peak - cumulative) / peak if peak > 0 else 0.0
+            # BUG-HIGH: peak=0 + cumulative<0 case (all-losses sequence) was silently
+            # returning dd=0. Fix: use abs(cumulative) as denominator when peak=0.
+            if peak > 0:
+                dd = (peak - cumulative) / peak
+            elif cumulative < 0:
+                # Started negative from zero — normalise by absolute loss magnitude
+                dd = -cumulative / max(abs(cumulative), 1.0)
+            else:
+                dd = 0.0
             if dd > max_dd:
                 max_dd = dd
 
