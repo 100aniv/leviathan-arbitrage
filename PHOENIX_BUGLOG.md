@@ -30,6 +30,7 @@
 | §8.29 체결 안전성 + 수수료 정확도 | v47 | BUG-HIGH-1~2, BUG-MEDIUM-3 | FF on_fill stub, Binance Futures fee endpoint, Bitget market_type guard |
 | §8.30 Telegram 안전성 + MDD 수정 | v48 | BUG-HIGH-3~5, BUG-MEDIUM-4~5 | telegram HTTP lock scope, paper mode param, MDD 음수시작 수정, atomic .env write |
 | §8.31 코드 품질 + 회귀 수정 | v49 | BUG-MEDIUM-5~9, REGRESSION | adaptive double-filter 제거, leviathan_cli 3-bot, Binance 상수화, telegram HTML escape, MDD 회귀 수정 |
+| §8.32 asyncio 안전성 + overfill 감지 | v50 | BUG-HIGH-6~7 | asyncio.get_running_loop() 전환, reconcile_overfill 경고 로그 추가 |
 
 ---
 
@@ -1671,3 +1672,17 @@ else:
 ### 테스트 결과
 - 4765 passed, 12 skipped, 0 failed
 - test_mdd_zero_when_only_losses_no_prior_peak: PASS (회귀 수정)
+
+---
+
+## §8.32 asyncio 안전성 + overfill 감지 — v50 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| HIGH-6 | HIGH | executor.py | reconcile_overfill 무음 처리 — actual > expected*1.05 시 경고 없음 | elif 브랜치 추가, reconcile_overfill 경고 로그 |
+| HIGH-7 | HIGH | executor.py | asyncio.get_event_loop() Python 3.12 deprecation — 7곳 모두 위험 | get_running_loop()로 전체 교체 |
+
+### 테스트 결과
+- execution/ + lifecycle: 222 passed, 3 skipped

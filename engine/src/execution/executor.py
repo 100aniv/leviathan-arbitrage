@@ -29,7 +29,7 @@ def _async_log_info(msg: str, *args: Any) -> None:
     Does NOT apply to ERROR/CRITICAL — those remain synchronous for safety.
     """
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         loop.call_soon(lambda: logger.info(msg, *args))
     except RuntimeError:
         # Fallback if no running loop (shouldn't happen in async context)
@@ -381,7 +381,7 @@ class AtomicExecutor:
             _margin_reserved = True
 
         # Bug 13-A (PHOENIX §8.2): per-strategy latency measurement
-        _t0 = asyncio.get_event_loop().time()
+        _t0 = asyncio.get_running_loop().time()
         await self._acquire_lock(exchange_id)
 
         try:
@@ -481,7 +481,7 @@ class AtomicExecutor:
                 )
 
             # Bug 13-A: same-exchange = 2-leg parallel
-            _elapsed_ms = (asyncio.get_event_loop().time() - _t0) * 1000
+            _elapsed_ms = (asyncio.get_running_loop().time() - _t0) * 1000
             # Tier1 patch 3-1: async log (non-critical INFO off hot path)
             _async_log_info(
                 "latency_measured strategy=%s legs=2 mode=same_exchange elapsed_ms=%.1f",
@@ -540,7 +540,7 @@ class AtomicExecutor:
 
         adapter = self._exchanges[exchange_id]
         # Bug 13-A (PHOENIX §8.2): per-strategy latency measurement
-        _t0 = asyncio.get_event_loop().time()
+        _t0 = asyncio.get_running_loop().time()
         await self._acquire_lock(exchange_id)
 
         completed: list[LegResult] = []
@@ -658,7 +658,7 @@ class AtomicExecutor:
                     )
 
             # Bug 13-A: multi-leg same-exchange = N-leg sequential
-            _elapsed_ms = (asyncio.get_event_loop().time() - _t0) * 1000
+            _elapsed_ms = (asyncio.get_running_loop().time() - _t0) * 1000
             # Tier1 patch 3-1: async logs off hot path
             _async_log_info(
                 "multi_leg_success legs=%d strategy=%s",
@@ -801,7 +801,7 @@ class AtomicExecutor:
         # Step 5: max_rollback_cost check (Amendment 3C) — delegated to guardian
         # Step 6-7: Acquire execution locks on BOTH exchanges (sorted to prevent deadlock)
         # Bug 13-A (PHOENIX §8.2): cross-exchange latency measurement starts here
-        _t0 = asyncio.get_event_loop().time()
+        _t0 = asyncio.get_running_loop().time()
         first_id, second_id = sorted([ex_a_id, ex_b_id])
         # Tier1 patch (PHOENIX §8.3): parallel lock acquire via asyncio.gather
         # sorted() preserved to prevent deadlocks (lock acquire order is canonical)
@@ -1064,7 +1064,7 @@ class AtomicExecutor:
             reconcile_task.add_done_callback(self._reconcile_done_callback)
 
             # Bug 13-A: cross-exchange = 2-leg sequential
-            _elapsed_ms = (asyncio.get_event_loop().time() - _t0) * 1000
+            _elapsed_ms = (asyncio.get_running_loop().time() - _t0) * 1000
             # Tier1 patch 3-1: async logs off hot path
             _async_log_info(
                 "cross_exchange_success leg1=%s leg2=%s strategy=%s",
@@ -1294,16 +1294,22 @@ class AtomicExecutor:
                         # matching[0] alone would pick whichever leg the exchange returns
                         # first, silently evaluating the wrong leg.
                         actual_size = sum(abs(p.size) for p in matching)
-                        # Check for under-fill only: actual < expected order size.
-                        # NOTE: actual_size is the cumulative exchange position across
-                        # all orders, so it can legitimately exceed expected
-                        # (single-order size). Only warn on under-fill.
                         if actual_size > 0 and actual_size < expected * Decimal("0.95"):
                             logger.warning(
                                 "reconcile_underfill ex=%s symbol=%s "
                                 "expected=%.6f actual=%.6f strategy=%s",
                                 ex_id, expected_sym, float(expected),
                                 float(actual_size), strategy_id,
+                            )
+                        elif actual_size > expected * Decimal("1.05"):
+                            logger.warning(
+                                "reconcile_overfill ex=%s symbol=%s "
+                                "expected=%.6f actual=%.6f ratio=%.3f strategy=%s — "
+                                "possible double-execution or stranded position",
+                                ex_id, expected_sym, float(expected),
+                                float(actual_size),
+                                float(actual_size / expected) if expected else 0.0,
+                                strategy_id,
                             )
             except Exception as exc:
                 logger.error(
