@@ -169,9 +169,9 @@ class TestReconcilerSymbolNormalization:
 
 class TestReconcilerTimestampMatching:
     @pytest.mark.asyncio
-    async def test_within_5s_window_matches(self, reconciler_with_db, mock_db):
+    async def test_within_30s_window_matches(self, reconciler_with_db, mock_db):
         ts_now = time.time()
-        db_ts = _make_datetime_mock(ts_now - 4.9)  # 4.9s earlier — within window
+        db_ts = _make_datetime_mock(ts_now - 29.9)  # 29.9s earlier — within 30s window
 
         mock_db.fetch = AsyncMock(return_value=[{
             "ts": db_ts,
@@ -199,9 +199,9 @@ class TestReconcilerTimestampMatching:
         assert report.matched == 1
 
     @pytest.mark.asyncio
-    async def test_outside_5s_window_unmatched(self, reconciler_with_db, mock_db):
+    async def test_outside_30s_window_unmatched(self, reconciler_with_db, mock_db):
         ts_now = time.time()
-        db_ts = _make_datetime_mock(ts_now - 6.0)  # 6s earlier — outside window
+        db_ts = _make_datetime_mock(ts_now - 31.0)  # 31s earlier — outside 30s window
 
         mock_db.fetch = AsyncMock(return_value=[{
             "ts": db_ts,
@@ -431,6 +431,43 @@ class TestReconcilerISCalculation:
         assert report.is_p95_bps is not None
 
 
+    @pytest.mark.asyncio
+    async def test_is_bps_uses_sell_price_for_sell_leg(self, reconciler_with_db, mock_db):
+        """When exchange_id matches sell_exchange, sell_price is used for IS calc (not buy_price)."""
+        ts_now = time.time()
+        db_ts = _make_datetime_mock(ts_now - 0.5)
+
+        mock_db.fetch = AsyncMock(return_value=[{
+            "ts": db_ts,
+            "symbol": "BTC/USDT",
+            "buy_exchange": "binance_futures",
+            "sell_exchange": "bitget_futures",
+            "buy_price": 50000.0,
+            "sell_price": 50010.0,   # expected sell price
+            "size": 0.001,
+            "slippage_total": None,
+        }])
+        mock_db.execute = AsyncMock()
+
+        adapter = AsyncMock()
+        adapter.get_trades = AsyncMock(return_value=[{
+            "symbol": "BTCUSDT",
+            "ts_ms": int(ts_now * 1000),
+            "price": 50007.5,  # actual fill: 2.5 bps below expected sell price 50010
+            "side": "sell",
+        }])
+
+        # exchange_id=bitget_futures → sell leg → db_price = sell_price = 50010
+        report = await reconciler_with_db.reconcile_period(
+            exchange_adapter=adapter, exchange_id="bitget_futures", since_ms=0,
+            symbols=["BTC/USDT"],
+        )
+        assert report.matched == 1
+        # IS = |50007.5 - 50010| / 50010 * 10000 ≈ 0.5 bps
+        assert report.is_p50_bps is not None
+        assert abs(report.is_p50_bps - 0.5) < 0.1
+
+
 class TestReconcilerDBFailurePath:
     @pytest.mark.asyncio
     async def test_db_query_failure_leaves_matched_at_zero(self, reconciler_with_db, mock_db):
@@ -494,7 +531,8 @@ class TestReconcilerTelegramAlerts:
         }])
 
         await reconciler.reconcile_period(
-            exchange_adapter=adapter, exchange_id="binance_futures", since_ms=0
+            exchange_adapter=adapter, exchange_id="binance_futures", since_ms=0,
+            symbols=["BTC/USDT"],  # bypass DB symbol derivation (mock_db.fetch=[] exits early)
         )
         # unmatched_exchange should trigger Telegram alert
         telegram.send_alert.assert_called_once()

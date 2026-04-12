@@ -56,7 +56,7 @@ def _normalize_price_to_usdt(price: Decimal, exchange: str, symbol: str,
 
     cross-exchange 비교 시에만 사용 — PnL 계산에는 원본 가격을 사용해야 한다.
     """
-    if symbol.endswith("/KRW") and exchange in _KRW_EXCHANGES:
+    if symbol.endswith("/KRW") and exchange in KRW_EXCHANGES:
         return price * krw_rate
     return price
 
@@ -238,7 +238,7 @@ class RealDataSignalProducer:
 
         # Cross-exchange KRW↔USDT arb (backtest only — live uses SignalGenerator directly)
         # K-BT-10~12: Binance USDT vs Upbit/Bithumb/Coinone KRW comparison
-        if self._backtest_mode and exchange_id in _KRW_EXCHANGES and symbol.endswith("/KRW"):
+        if self._backtest_mode and exchange_id in KRW_EXCHANGES and symbol.endswith("/KRW"):
             signals.extend(
                 await self._evaluate_cross_exchange_krw(
                     exchange_id, symbol, book, all_books, simulated_ts=simulated_ts
@@ -639,8 +639,8 @@ class RealDataSignalProducer:
                         )
                         signals.append(signal)
 
-                # Reverse: ex_b bid > ex_a ask
-                if float(bid_b) > float(ask_a):
+                # Reverse: ex_b bid > ex_a ask (elif prevents double-signal on crossed book)
+                elif float(bid_b) > float(ask_a):
                     # US-184 + S10 + US-225: spread outlier filter
                     spread_bps = (float(bid_b) - float(ask_a)) / float(ask_a) * 10000
                     if spread_bps > 100:
@@ -914,6 +914,11 @@ class RealDataSignalProducer:
                 other_books = {k: v for k, v in sym_books.items() if k != slow_ex}
                 if not self._stale_detector.check_cross_exchange(slow_ex, symbol, slow_book, {symbol: other_books}):
                     continue
+            # Freshness guard: skip if either book is older than 3s
+            _age_fast = time.monotonic() - fast_book.last_update_time if getattr(fast_book, "last_update_time", 0) > 0 else 999.0
+            _age_slow = time.monotonic() - slow_book.last_update_time if getattr(slow_book, "last_update_time", 0) > 0 else 999.0
+            if _age_fast > 3.0 or _age_slow > 3.0:
+                continue
             fast_mid = (float(fast_bid) + float(fast_ask)) / 2
             slow_mid = (float(slow_bid) + float(slow_ask)) / 2
             if fast_mid <= 0 or slow_mid <= 0:
@@ -973,7 +978,7 @@ class RealDataSignalProducer:
         # USDT 거래소 오더북 조회
         usdt_books = all_books.get(usdt_symbol, {})
         for usdt_exchange, usdt_book in usdt_books.items():
-            if usdt_exchange in _KRW_EXCHANGES:
+            if usdt_exchange in KRW_EXCHANGES:
                 continue  # USDT 거래소만 비교
 
             usdt_bid = usdt_book.best_bid()

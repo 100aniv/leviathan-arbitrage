@@ -202,3 +202,40 @@ class TestInitialization:
         assert await tracker.get_net_exposure("binance", "ETH") == Decimal("0")
         await tracker.update_exposure("binance", "ETH", Decimal("3.0"))
         assert await tracker.get_net_exposure("binance", "ETH") == Decimal("3.0")
+
+
+class TestExposureTrackerSnapshot:
+    """Tests for synchronous snapshot() method used by risk check PortfolioState."""
+
+    @pytest.mark.asyncio
+    async def test_snapshot_empty_initially(self, tracker):
+        assert tracker.snapshot() == {}
+
+    @pytest.mark.asyncio
+    async def test_snapshot_reflects_update(self, tracker):
+        await tracker.update_exposure("binance", "BTC", Decimal("0.5"))
+        snap = tracker.snapshot()
+        assert snap == {("binance", "BTC"): Decimal("0.5")}
+
+    @pytest.mark.asyncio
+    async def test_snapshot_removes_zero_exposure(self, tracker):
+        await tracker.update_exposure("binance", "BTC", Decimal("1.0"))
+        await tracker.update_exposure("binance", "BTC", Decimal("-1.0"))  # nets to 0
+        snap = tracker.snapshot()
+        assert ("binance", "BTC") not in snap
+
+    @pytest.mark.asyncio
+    async def test_snapshot_is_copy_not_reference(self, tracker):
+        await tracker.update_exposure("binance", "ETH", Decimal("2.0"))
+        snap = tracker.snapshot()
+        snap[("binance", "ETH")] = Decimal("999")  # mutate copy
+        # Internal snapshot unaffected
+        assert tracker.snapshot()[("binance", "ETH")] == Decimal("2.0")
+
+    @pytest.mark.asyncio
+    async def test_snapshot_multiple_assets(self, tracker):
+        await tracker.update_exposure("binance", "BTC", Decimal("1.0"))
+        await tracker.update_exposure("bitget", "ETH", Decimal("-0.5"))
+        snap = tracker.snapshot()
+        assert snap[("binance", "BTC")] == Decimal("1.0")
+        assert snap[("bitget", "ETH")] == Decimal("-0.5")

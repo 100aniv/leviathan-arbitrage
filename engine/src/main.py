@@ -1303,14 +1303,19 @@ class Engine:
                 _max_dd_pct = Decimal(str(_risk_cfg["max_daily_loss_pct"])) / Decimal("100")
             else:
                 _max_dd_pct = Decimal("0.50")  # fallback: 50% (permissive for alpha testing)
+            # Amendment 7: wire max_net_exposure_per_asset from trading.json
+            _max_net_exp = Decimal(str(_risk_cfg.get("max_net_exposure_per_asset", 0)))
             self._risk_guardian = RiskGuardian(
                 circuit_breaker=self._circuit_breaker,
                 max_position_pct=_max_pos_pct,
                 max_drawdown_pct=_max_dd_pct,
+                max_net_exposure_per_asset=_max_net_exp,
             )
             logger.info(
-                "RiskGuardian initialized with 9 pre-trade checks, max_position_pct=%.1f%%",
+                "RiskGuardian initialized with 9 pre-trade checks, max_position_pct=%.1f%% "
+                "max_net_exposure_per_asset=%s",
                 float(_max_pos_pct) * 100,
+                _max_net_exp,
             )
         except Exception as exc:
             logger.warning("RiskGuardian init failed: %s", exc)
@@ -1606,6 +1611,14 @@ class Engine:
             # Gross exposure = net directional + capital tied in cross-exchange hedges
             _total_exposure = used_capital + self._cross_gross_exposure
 
+            # US-175/Amendment 7: populate net_exposures from ExposureTracker snapshot.
+            # snapshot() is synchronous and always reflects latest fills in this process.
+            _net_exposures = (
+                self._exposure_tracker.snapshot()
+                if self._exposure_tracker is not None
+                else {}
+            )
+
             portfolio = PortfolioState(
                 total_capital=capital_total,
                 used_capital=used_capital,
@@ -1615,6 +1628,7 @@ class Engine:
                 exchange_health_scores=exchange_health,
                 volatility_1min={},   # populated when live vol data available
                 volatility_24h={},    # populated when live vol data available
+                net_exposures=_net_exposures,
             )
 
             # Check each leg
@@ -1776,16 +1790,21 @@ class Engine:
                         base_asset = order.symbol.split("/")[0]
                         side = getattr(order.side, "value", str(order.side)).upper()
                         delta = trade.amount if side == "BUY" else -trade.amount
-                        asyncio.create_task(
-                            self._exposure_tracker.update_exposure(
-                                order.exchange_id if hasattr(order, "exchange_id") else
-                                getattr(leg, "exchange_id", "unknown"),
-                                base_asset,
-                                Decimal(str(delta)),
-                            )
+                        _ex_id = (order.exchange_id if hasattr(order, "exchange_id")
+                                  else getattr(leg, "exchange_id", "unknown"))
+                        _task = asyncio.create_task(
+                            self._exposure_tracker.update_exposure(_ex_id, base_asset, Decimal(str(delta)))
                         )
-            except Exception:
-                pass  # Non-critical: exposure tracking failure
+                        # Log but don't propagate task exceptions (non-critical tracking)
+                        def _on_exp_done(t: asyncio.Task, _ex=_ex_id, _ba=base_asset) -> None:
+                            if not t.cancelled() and t.exception() is not None:
+                                logger.warning(
+                                    "exposure_tracker.update_failed ex=%s asset=%s err=%s",
+                                    _ex, _ba, t.exception(),
+                                )
+                        _task.add_done_callback(_on_exp_done)
+            except Exception as _exp_exc:
+                logger.debug("exposure_tracking.loop_error %s", _exp_exc)  # Non-critical
 
         # US-115: Feed slippage data to feedback loop
         if self._slippage_feedback is not None and hasattr(execution_result, 'legs'):
@@ -3263,8 +3282,12 @@ class Engine:
             # 150s and drop to health_score=0.6 → livelock (all trades rejected).
             if hasattr(adapter, '_health') and hasattr(adapter._health, 'record_heartbeat'):
                 adapter._health.record_heartbeat()
-            if score < 0.9:
+            if score < 0.50:
+                logger.critical("Exchange %s health_score=%.2f — approaching rejection threshold", eid, score)
+            elif score < 0.70:
                 logger.warning("Exchange %s health_score=%.2f", eid, score)
+            elif score < 0.90:
+                logger.debug("Exchange %s health_score=%.2f", eid, score)
 
         # US-286: Periodic DQM cleanup + stats logging
         if self._data_quality_manager is not None:
@@ -3460,6 +3483,10 @@ class Engine:
                 logger.debug("Position reconciliation tick — snapshot saved (%d exchanges)", len(current))
 
                 # US-250: PositionReconciler — compare engine vs exchange positions
+                # NOTE: _position_manager must be populated for this to be meaningful.
+                # In live mode, _paper_mode=None causes early continue above, so this
+                # block is unreachable in live mode until _position_manager is wired.
+                # TODO: wire _position_manager.update_position() from live trade fills.
                 if self._position_reconciler is not None:
                     try:
                         from src.core.models import Position
@@ -3479,7 +3506,7 @@ class Engine:
                                 len(result.discrepancies),
                             )
                     except Exception as exc:
-                        logger.debug("position_reconciler_error: %s", exc)
+                        logger.warning("position_reconciler_error: %s", exc)
             except asyncio.CancelledError:
                 break
             except Exception as exc:

@@ -37,6 +37,9 @@ class ExposureTracker:
     def __init__(self, redis_client: Any = None) -> None:
         self._redis = redis_client
         self._memory: dict[str, str] = {}  # fallback when Redis unavailable
+        # Always-maintained local snapshot for synchronous reads (e.g. risk check).
+        # Updated on every update_exposure() call regardless of Redis backend.
+        self._local_snapshot: dict[tuple[str, str], Decimal] = {}
 
     async def get_net_exposure(self, exchange_id: str, base_asset: str) -> Decimal:
         """Read current net exposure. Returns 0 if no data."""
@@ -69,6 +72,13 @@ class ExposureTracker:
         else:
             self._memory[key] = str(new_val)
 
+        # Update local snapshot (always, even when Redis is primary backend).
+        snap_key = (exchange_id, base_asset)
+        if new_val == Decimal("0"):
+            self._local_snapshot.pop(snap_key, None)
+        else:
+            self._local_snapshot[snap_key] = new_val
+
         logger.debug(
             "exposure_updated",
             exchange=exchange_id,
@@ -77,6 +87,15 @@ class ExposureTracker:
             new_net=str(new_val),
         )
         return new_val
+
+    def snapshot(self) -> dict[tuple[str, str], Decimal]:
+        """Return a synchronous copy of current net exposures.
+
+        Safe to call from sync contexts (e.g. PortfolioState construction
+        inside a risk check closure). Always reflects the latest fills seen
+        by this process, regardless of Redis backend.
+        """
+        return dict(self._local_snapshot)
 
     async def check_correlation(
         self,

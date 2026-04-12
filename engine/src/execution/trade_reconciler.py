@@ -87,22 +87,39 @@ class TradeReconciler:
             logger.debug("trade_reconciler_skip exchange=%s no get_trades", exchange_id)
             return report
 
+        # When symbols=None, derive active symbols from DB execution_log for the period.
+        # get_trades(symbol="") returns [] on all adapters — never call it with empty symbol.
+        if not symbols and self._db is not None:
+            try:
+                since_ts = since_ms / 1000.0
+                sym_rows = await self._db.pool.fetch(
+                    """
+                    SELECT DISTINCT symbol FROM execution_log
+                    WHERE mode = 'live'
+                      AND ts >= to_timestamp($1)
+                      AND (buy_exchange = $2 OR sell_exchange = $2)
+                    """,
+                    since_ts, exchange_id,
+                )
+                symbols = [r["symbol"] for r in sym_rows] if sym_rows else []
+                logger.debug("trade_reconciler.derived_symbols exchange=%s count=%d", exchange_id, len(symbols))
+            except Exception as exc:
+                logger.warning("trade_reconciler.symbol_query_failed exchange=%s error=%s", exchange_id, exc)
+                return report
+
+        if not symbols:
+            logger.debug("trade_reconciler.no_symbols_to_reconcile exchange=%s", exchange_id)
+            return report
+
         try:
-            if symbols:
-                exchange_fills: list[dict] = []
-                for sym in symbols:
-                    fills = await exchange_adapter.get_trades(
-                        symbol=sym,
-                        start_time_ms=since_ms,
-                        limit=200,
-                    )
-                    exchange_fills.extend(fills)
-            else:
-                exchange_fills = await exchange_adapter.get_trades(
-                    symbol="",
+            exchange_fills: list[dict] = []
+            for sym in symbols:
+                fills = await exchange_adapter.get_trades(
+                    symbol=sym,
                     start_time_ms=since_ms,
                     limit=200,
                 )
+                exchange_fills.extend(fills)
         except Exception as exc:
             logger.warning("trade_reconciler.get_trades_failed exchange=%s error=%s", exchange_id, exc)
             return report
@@ -214,7 +231,7 @@ class TradeReconciler:
             for db_row in candidates:
                 db_ts = db_row["ts"].timestamp() if hasattr(db_row["ts"], "timestamp") else float(db_row["ts"])
                 dt = abs(db_ts - ex_ts)
-                if dt < 5.0 and dt < best_dt and _row_ts_ms(db_row["ts"]) not in matched_ts_keys:
+                if dt < 30.0 and dt < best_dt and _row_ts_ms(db_row["ts"]) not in matched_ts_keys:
                     best_match = db_row
                     best_dt = dt
 
@@ -223,8 +240,14 @@ class TradeReconciler:
                 report.matched += 1
 
                 # IS 계산: exchange fill vs our expected price
+                # BUG-FIX: use exchange_id to identify arb leg role, NOT ex_side (fill direction).
+                # For cross-exchange arb, the fill side on each exchange matches the arb leg:
+                # buy_exchange=binance → buy leg; sell_exchange=bitget → sell leg.
                 if ex_price and ex_price > 0:
-                    db_price = float(best_match["buy_price"] if ex_side == "buy" else best_match["sell_price"])
+                    if exchange_id == best_match.get("buy_exchange"):
+                        db_price = float(best_match["buy_price"] or 0)
+                    else:
+                        db_price = float(best_match["sell_price"] or 0)
                     if db_price and db_price > 0:
                         is_bps = abs(ex_price - db_price) / db_price * 10000
                         is_values.append(is_bps)
