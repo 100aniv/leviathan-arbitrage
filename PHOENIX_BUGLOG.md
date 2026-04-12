@@ -1751,3 +1751,20 @@ else:
 
 ### 테스트 결과
 - 5549 passed, 12 skipped, 0 failed (guardian 41개 포함)
+
+---
+
+## §8.38 ack 제어 + 방향 키 분리 + 체결 알림 escape — v56 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| HIGH-14 | HIGH | real_signal_producer.py | contango/backwardation 동일 키 버킷 — (symbol,min,max) 동일하여 이종 스프레드 혼합 → 아웃라이어 필터 무효화 | 키에 "contango"/"backwardation" 방향 추가로 분리 |
+| HIGH-15 | HIGH | trade_consumer.py | _process_message 항상 None 반환 → 예외/킬스위치 시에도 ack 실행 — PEL retry 차단 | bool 반환 도입: 킬스위치 → False(PEL유지), 나머지 → True(ack) |
+| HIGH-16 | HIGH | telegram.py | send_fill_kr 전략/심볼/거래소 필드 HTML escape 미적용 — Telegram 파싱 오류 시 체결 알림 소실 가능 | _html.escape() 적용 |
+
+### 카나리 상태
+- PID 628, v56 코드, LIVE 모드 정상 기동
+- 포지션 클린 (10개 Bitget 미청산 포지션 close_positions.py --execute로 청산)
+- 시그널 수신 중 (min_spread 15bps 필터 적용, 체결 대기)
