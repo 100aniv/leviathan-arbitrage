@@ -677,3 +677,16 @@ class FuturesFuturesStrategy(BaseStrategy):
 
     async def on_fill(self, trade: Trade) -> None:
         await super().on_fill(trade)
+        # BUG-HIGH: clear _pending_exits/_exiting_symbols on exit fill to prevent
+        # indefinite leak when on_execution_success is not called (partial fills).
+        _EXIT_LEG_TYPES = frozenset((
+            "futures_close", "spread_exit_close_long", "spread_exit_close_short",
+            "time_exit_close_long", "time_exit_close_short",
+        ))
+        leg_type = (trade.metadata or {}).get("leg_type", "")
+        if leg_type in _EXIT_LEG_TYPES:
+            sym = trade.symbol
+            self._exiting_symbols.discard(sym)
+            if sym in self._pending_exits:
+                self._pending_exits.pop(sym)
+                logger.debug("ff.on_fill_exit_cleanup symbol=%s leg_type=%s", sym, leg_type)

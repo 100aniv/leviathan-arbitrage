@@ -606,6 +606,10 @@ class NativeBitgetAdapter(NativeAdapter):
 
         Bitget API requires 'symbol' param — returns [] if symbol is empty.
         """
+        if self._market_type != "futures":
+            # BUG-MEDIUM: /api/v2/mix/order/fills is futures-only endpoint
+            logger.debug("bitget.get_trades skipped: market_type=%s", self._market_type)
+            return []
         if not symbol:
             # Bitget fills API does not support all-symbol queries
             return []

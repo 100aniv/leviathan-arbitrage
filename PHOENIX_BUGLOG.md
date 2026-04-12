@@ -27,6 +27,7 @@
 | §8.26 체결 품질 | v44 | BUG-80 | reconcile_overfill 감지 추가, 리뷰어 if/elif 검증 완료 |
 | §8.27 포지션 대조 + 마진 | v45 | BUG-81~83 | reconcile 헤지모드 레그 합산, 마진 폴백 우회 수정, reconciler 윈도우 통일 |
 | §8.28 이중 청산 방지 + 수수료 | v46 | BUG-CRITICAL-1~2, BUG-84~85 | FF/SF 이중 exit 방지, reconciler false alarm, Bitget Futures fee 수정 |
+| §8.29 체결 안전성 + 수수료 정확도 | v47 | BUG-HIGH-1~2, BUG-MEDIUM-3 | FF on_fill stub, Binance Futures fee endpoint, Bitget market_type guard |
 
 ---
 
@@ -1534,3 +1535,56 @@ Taker 기준 0.10% vs 0.06% = 66% 과대 산정.
 | SF timeout close 이중 drain | on_signal() + pop_exit_requests() 양쪽 | **pop_exit_requests() 단독 소비** |
 | Reconciler fetch 실패 포지션 | false alarm 발생 | **fetch_failed 거래소 skip** |
 | Bitget Futures taker fee | 0.10% (하드코딩) | **0.06% (USDT-M VIP0 실제값)** |
+
+---
+
+## §8.29 체결 안전성 + 수수료 정확도 — v47 (2026-04-12)
+
+### BUG-HIGH-1: FF on_fill() stub — exit fill 시 _pending_exits 누수
+
+**파일**: `engine/src/strategies/futures_futures.py` (line ~678)
+
+**원인**: `on_fill()` 메서드가 `super().on_fill()` 호출만 하는 stub.
+`on_execution_success`가 호출되지 않는 경우(partial fill, reconciler 직접 호출)
+`_pending_exits[sym]`이 영구 누적 → 다음 rollback 시 이미 청산된 포지션이 복원됨.
+
+**수정**: exit leg_type 패턴 감지 후 `_pending_exits` + `_exiting_symbols` 정리:
+```python
+_EXIT_LEG_TYPES = frozenset(("futures_close", "spread_exit_close_long", ...))
+if leg_type in _EXIT_LEG_TYPES:
+    self._exiting_symbols.discard(sym)
+    self._pending_exits.pop(sym, None)
+```
+**상태**: ✅ 완료
+
+### BUG-HIGH-2: Binance Futures _rest_get_fee_rate() spot endpoint 사용
+
+**파일**: `engine/src/infra/exchange/native_binance.py` (line ~565)
+
+**원인**: `_rest_get_fee_rate()`가 `market_type` 무관하게 `/api/v3/account` (spot endpoint) 호출.
+Futures adapter에서 spot endpoint를 fapi.binance.com 기반 URL로 호출 → 404 또는 잘못된 데이터.
+Spot `/api/v3/account` 응답의 `makerCommission=10` = basis points(0.10%) → futures fee 오산.
+
+**수정**: `if self._market_type == "futures"` 분기:
+- `GET /fapi/v1/commissionRate?symbol=<sym>` 호출
+- `makerCommissionRate` / `takerCommissionRate` decimal 직접 파싱
+- API 실패 시 fallback: maker=0.0002, taker=0.0004
+**상태**: ✅ 완료
+
+### BUG-MEDIUM-3: Bitget get_trades() market_type guard 누락
+
+**파일**: `engine/src/infra/exchange/native_bitget.py` (`get_trades`)
+
+**원인**: spot adapter에서 `get_trades()` 호출 시 `/api/v2/mix/order/fills` (futures endpoint)를 호출.
+빈 결과 반환되나 경고 없음 → 설정 오류 침묵 처리.
+
+**수정**: 메서드 진입부에 `if self._market_type != "futures": return []` 가드 추가.
+**상태**: ✅ 완료
+
+### v47 변경사항 요약
+
+| 항목 | v46 이전 | v47 |
+|------|---------|-----|
+| FF on_fill() exit | stub (no-op) | **_pending_exits + _exiting_symbols 정리** |
+| Binance futures fee endpoint | /api/v3/account (spot) | **/fapi/v1/commissionRate (futures 전용)** |
+| Bitget get_trades() spot guard | 없음 | **market_type != "futures" 시 즉시 반환** |

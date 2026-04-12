@@ -563,8 +563,23 @@ class BinanceNativeAdapter(NativeAdapter):
         )
 
     async def _rest_get_fee_rate(self, symbol: str) -> FeeRate:
+        if self._market_type == "futures":
+            # BUG-HIGH: Futures fee rates live at /fapi/v1/commissionRate, not spot /api/v3/account.
+            # FAPI returns decimal rates (0.0002 = 0.02%), not basis points.
+            try:
+                binance_sym = _symbol_to_binance(symbol) if symbol else "BTCUSDT"
+                raw = await self._signed_request(
+                    "GET", "/fapi/v1/commissionRate", params={"symbol": binance_sym}
+                )
+                maker = Decimal(str(raw.get("makerCommissionRate", "0.0002")))
+                taker = Decimal(str(raw.get("takerCommissionRate", "0.0004")))
+            except Exception as exc:
+                logger.debug("binance_futures_fee_fallback symbol=%s err=%s", symbol, exc)
+                maker = Decimal("0.0002")
+                taker = Decimal("0.0004")
+            return FeeRate(maker=maker, taker=taker, symbol=symbol, exchange_id=self.exchange_id)
         raw = await self._signed_request("GET", "/api/v3/account")
-        # Binance returns basis points (e.g., 10 = 0.10%)
+        # Binance spot returns basis points (e.g., 10 = 0.10%)
         maker = Decimal(str(raw.get("makerCommission", 10))) / Decimal("10000")
         taker = Decimal(str(raw.get("takerCommission", 10))) / Decimal("10000")
         return FeeRate(
@@ -595,26 +610,30 @@ class BinanceNativeAdapter(NativeAdapter):
         params["symbol"] = _symbol_to_binance(symbol)
         if start_time_ms:
             params["startTime"] = start_time_ms
-        await self._rate_limiter.acquire("default")  # weight=5 per call
+        await self._rate_limiter.acquire("default")  # weight=20 per call (FAPI v1 userTrades)
         try:
             data = await self._signed_request("GET", "/fapi/v1/userTrades", params=params)
             if not isinstance(data, list):
                 return []
-            return [
-                {
-                    "exchange": "binance_futures",
-                    "symbol": d.get("symbol", ""),
-                    "order_id": str(d.get("orderId", "")),
-                    "trade_id": str(d.get("id", "")),
-                    "side": d.get("side", "BUY").lower(),  # BUG-01: use explicit "side" field, not "buyer" boolean
-                    "qty": float(d.get("qty", 0)),
-                    "price": float(d.get("price", 0)),
-                    "realized_pnl": float(d.get("realizedPnl", 0)),
-                    "commission": float(d.get("commission", 0)),
-                    "ts_ms": int(d.get("time", 0)),
-                }
-                for d in data
-            ]
+            results = []
+            for d in data:
+                try:
+                    results.append({
+                        "exchange": "binance_futures",
+                        "symbol": d.get("symbol", ""),
+                        "order_id": str(d.get("orderId", "")),
+                        "trade_id": str(d.get("id", "")),
+                        "side": d.get("side", "BUY").lower(),  # BUG-01: use explicit "side" field, not "buyer" boolean
+                        "qty": float(d.get("qty") or 0),
+                        "price": float(d.get("price") or 0),
+                        "realized_pnl": float(d.get("realizedPnl") or 0),
+                        "commission": float(d.get("commission") or 0),
+                        "ts_ms": int(d.get("time") or 0),
+                    })
+                except (TypeError, ValueError) as row_exc:
+                    logger.warning("binance.get_trades row_parse_error symbol=%s trade_id=%s error=%s",
+                                   symbol, d.get("id", "?"), row_exc)
+            return results
         except Exception as exc:
             logger.warning("binance.get_trades failed symbol=%s error=%s", symbol, exc)
             return []
