@@ -23,6 +23,7 @@
 | §8.22 인프라 복구 | v33~v36 | BUG-15~17 | 인프라 복구 + 테스트 전면 수정 |
 | §8.23 감사 R5 | v37~v41 | BUG-64~72 | 심볼별 reconcile, stale 오염, Binance WS URL |
 | §8.24 감사 R6 | v42 | BUG-73~77 | ExposureTracker dead wiring, reconciler 윈도우, KRW NameError, crossed-book 이중신호, latency freshness |
+| §8.25 운영 안정성 | v43 | BUG-78~79 | futures_margin_low 알림, reconcile_amount_mismatch false alarm 수정 |
 
 ---
 
@@ -1236,6 +1237,38 @@ if raw_book_age is None:
 | 낙관적 포지션 잔류 | 11개 경로 누락 | **모든 경로 rollback 알림** |
 | 매도 마진 검사 | 미검사 | **min(buy,sell) margin** |
 | reconciler 전략 목록 | self._strategies (비어있음) | **strategy_manager.list_strategies()** |
+
+---
+
+## §8.25 운영 안정성 — v43 (2026-04-12)
+
+### BUG-78: futures_margin_low 알림 누락
+
+**파일**: `engine/src/modes/live.py`
+
+**원인**: `_refresh_margin_cache_loop`에서 `margin_cache_updated`가 DEBUG 레벨만 출력.
+Binance/Bitget Futures 잔고 < $5 (최소 계약 증거금 미달)여도 운영자가 인지 불가.
+실제 카나리 상황: margin_available=2.25, max_allowed=1.80 < required=2.40 → 94분간 100% 거부.
+**수정**: `margin < 5.0` 시 WARNING 격상: `"futures_futures trades blocked until balance >= $5"`
+**상태**: ✅ 완료
+
+### BUG-79: reconcile_amount_mismatch false alarm 100%
+
+**파일**: `engine/src/execution/executor.py`
+
+**원인**: post-execution 대조에서 `matching[0].size` = 거래소 **누적 포지션** 전체를 단건 주문량 `expected`와 비교.
+예: 기존 포지션 1.0 BTC → 추가 1.0 BTC 주문 → 누적=2.0, expected=1.0 → diff_pct=100% → false alarm.
+BLUR 포지션에서 매번 100% mismatch 경고 발생.
+**수정**: `actual < expected * 0.95` (언더필) 시에만 경고. 초과(누적)는 정상으로 무시.
+로그명 변경: `reconcile_amount_mismatch` → `reconcile_underfill` (의미 명확화)
+**상태**: ✅ 완료
+
+### v43 변경사항 요약
+
+| 항목 | v42 이전 | v43 |
+|------|---------|-----|
+| 선물 마진 부족 알림 | DEBUG 레벨 (인지 불가) | **WARNING: futures_margin_low** |
+| reconcile 대조 로직 | 누적 포지션 vs 단건 → 100% false | **언더필만 경고** |
 
 ---
 
