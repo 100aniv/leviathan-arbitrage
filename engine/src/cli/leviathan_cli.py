@@ -108,7 +108,14 @@ def cmd_logs() -> None:
 def cmd_env_check() -> None:
     print(".env 변수 검증")
     env_file = os.path.join(_engine_root(), ".env")
-    required = ["DATABASE_URL", "REDIS_URL", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]
+    required = [
+        "DATABASE_URL",
+        "REDIS_URL",
+        "TRADE_TELEGRAM_BOT_TOKEN",
+        "TRADE_TELEGRAM_CHAT_ID",
+        "INFRA_TELEGRAM_BOT_TOKEN",
+        "INFRA_TELEGRAM_CHAT_ID",
+    ]
 
     try:
         from dotenv import load_dotenv  # noqa: PLC0415

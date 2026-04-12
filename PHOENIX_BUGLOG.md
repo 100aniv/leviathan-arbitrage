@@ -29,6 +29,7 @@
 | §8.28 이중 청산 방지 + 수수료 | v46 | BUG-CRITICAL-1~2, BUG-84~85 | FF/SF 이중 exit 방지, reconciler false alarm, Bitget Futures fee 수정 |
 | §8.29 체결 안전성 + 수수료 정확도 | v47 | BUG-HIGH-1~2, BUG-MEDIUM-3 | FF on_fill stub, Binance Futures fee endpoint, Bitget market_type guard |
 | §8.30 Telegram 안전성 + MDD 수정 | v48 | BUG-HIGH-3~5, BUG-MEDIUM-4~5 | telegram HTTP lock scope, paper mode param, MDD 음수시작 수정, atomic .env write |
+| §8.31 코드 품질 + 회귀 수정 | v49 | BUG-MEDIUM-5~9, REGRESSION | adaptive double-filter 제거, leviathan_cli 3-bot, Binance 상수화, telegram HTML escape, MDD 회귀 수정 |
 
 ---
 
@@ -1651,3 +1652,22 @@ else:
 | severity filter paper mode | mode 미전달 → 실제 알림 송출 | **mode 파라미터 전달 → paper 억제** |
 | walk_forward MDD | peak=0 → dd=0.0 (음수 누락) | **cumulative<0 시 절대 손실 기반** |
 | .env 파일 write | 직접 덮어쓰기 | **atomic rename (tmp+replace)** |
+
+---
+
+## §8.31 코드 품질 + 회귀 수정 — v49 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| MEDIUM-5 | MEDIUM | adaptive_threshold.py | soft-clip 이중 필터 — update() hard-clip 이후 재차 상위5% trim → dynamic_entry 하향 편향 | soft-clip 제거, _sorted 직접 재사용 |
+| MEDIUM-6 | MEDIUM | adaptive_threshold.py | sorted() 중복 호출 — thresholds 프로퍼티에서 _percentile(exit) 내부 재정렬 | data=_sorted 전달 |
+| MEDIUM-7 | MEDIUM | leviathan_cli.py | TELEGRAM_BOT_TOKEN 레거시 체크 — 3-bot 아키텍처 미반영 오진단 | TRADE/INFRA 3-bot 변수로 교체 |
+| MEDIUM-8 | MEDIUM | native_binance.py | "FILLED"/"NEW" 매직 스트링 + 함수 내부 import asyncio | 모듈 상수 + 상단 import |
+| MEDIUM-9 | MEDIUM | telegram.py | HTML escape 미적용 — kill_switch reason/circuit_breaker reason/db_failure error 필드 | _html.escape(str(...)) 적용 |
+| REGRESSION | HIGH | walk_forward.py | v48 _compute_mdd elif cumulative<0 브랜치 — 기존 MDD=0(no-prior-peak) 테스트 깨짐 | 회귀 수정: elif 브랜치 제거 |
+
+### 테스트 결과
+- 4765 passed, 12 skipped, 0 failed
+- test_mdd_zero_when_only_losses_no_prior_peak: PASS (회귀 수정)

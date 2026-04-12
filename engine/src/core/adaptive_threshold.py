@@ -120,12 +120,11 @@ class AdaptiveThreshold:
 
         vol_mult = self._volatility_multiplier()
 
-        # Soft-clip: sort observations, trim top 5%, compute entry from trimmed data
+        # update() already hard-clips outliers at static_entry * max_entry_multiplier.
+        # Redundant soft-clip removed (double-filter caused downward bias on entry threshold).
         _sorted = sorted(self._observations)
-        _trim_n = max(1, int(len(_sorted) * 0.95))
-        _trimmed = _sorted[:_trim_n]
-        dynamic_entry = self._percentile(self.entry_percentile, data=_trimmed) * vol_mult
-        dynamic_exit = self._percentile(self.exit_percentile)
+        dynamic_entry = self._percentile(self.entry_percentile, data=_sorted) * vol_mult
+        dynamic_exit = self._percentile(self.exit_percentile, data=_sorted)
 
         # A/B comparison logging for shadow analysis
         logger.debug(

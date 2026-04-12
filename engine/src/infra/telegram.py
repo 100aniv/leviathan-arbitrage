@@ -416,7 +416,7 @@ class TelegramAlerter:
             lines = [
                 "🚨 <b>긴급: 킬 스위치 작동</b>",
                 "",
-                f"<b>사유:</b> {data.get('reason', '알 수 없음')}",
+                f"<b>사유:</b> {_html.escape(str(data.get('reason', '알 수 없음')))}",
                 f"<b>취소 주문:</b> {data.get('cancelled_orders', 0)}건",
                 f"<b>청산 포지션:</b> {data.get('closed_positions', 0)}건",
                 f"<b>Redis 중단:</b> {'예' if data.get('redis_halt') else '아니오'}",
@@ -427,14 +427,14 @@ class TelegramAlerter:
             lines = [
                 f"{emoji} <b>서킷 브레이커: {state}</b>",
                 "",
-                f"<b>사유:</b> {data.get('reason', '알 수 없음')}",
+                f"<b>사유:</b> {_html.escape(str(data.get('reason', '알 수 없음')))}",
             ]
         elif alert_type == "db_failure":
             lines = [
                 "🔴 <b>DB 장애 감지</b>",
                 "",
                 f"<b>유형:</b> {data.get('db_type', 'TimescaleDB')}",
-                f"<b>오류:</b> {data.get('error', '알 수 없음')}",
+                f"<b>오류:</b> {_html.escape(str(data.get('error', '알 수 없음')))}",
                 f"<b>영향:</b> {data.get('impact', '데이터 저장 불가')}",
             ]
         # --- shadow.py templates ---
@@ -531,7 +531,7 @@ class TelegramAlerter:
                 "",
                 f"<b>거래소:</b> {data.get('exchange', 'N/A')}",
                 f"<b>주문 ID:</b> {data.get('order_id', 'N/A')}",
-                f"<b>오류:</b> {data.get('error', '알 수 없음')}",
+                f"<b>오류:</b> {_html.escape(str(data.get('error', '알 수 없음')))}",
             ]
         elif alert_type == "balance_mismatch":
             lines = [

@@ -6,11 +6,16 @@ Testnet: https://testnet.binance.vision
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import zlib
 from decimal import Decimal
 from typing import Any
+
+# Binance order status constants
+_ORDER_STATUS_NEW = "NEW"
+_ORDER_STATUS_FILLED = "FILLED"
 
 from src.core.models import (
     Balance,
@@ -344,7 +349,6 @@ class BinanceNativeAdapter(NativeAdapter):
         if self._market_type == "futures" and order.metadata.get("reduceOnly"):
             params["reduceOnly"] = "true"
 
-        import asyncio as _asyncio
         path = "/fapi/v1/order" if self._market_type == "futures" else "/api/v3/order"
         try:
             raw = await self._signed_request("POST", path, params=params)
@@ -377,15 +381,15 @@ class BinanceNativeAdapter(NativeAdapter):
         if (
             self._market_type == "futures"
             and order.order_type == OrderType.MARKET
-            and raw.get("status") in ("NEW", None)
+            and raw.get("status") in (_ORDER_STATUS_NEW, None)
             and trade_id
         ):
             for _attempt in range(3):
-                await _asyncio.sleep(0.2)
+                await asyncio.sleep(0.2)
                 try:
                     _qp = {"symbol": _symbol_to_binance(order.symbol), "orderId": trade_id}
                     raw = await self._signed_request("GET", path, params=_qp)
-                    if raw.get("status") == "FILLED":
+                    if raw.get("status") == _ORDER_STATUS_FILLED:
                         logger.debug(
                             "futures_market_fill_polled symbol=%s orderId=%s attempt=%d",
                             order.symbol, trade_id, _attempt + 1,
