@@ -221,7 +221,7 @@ class FuturesFuturesStrategy(BaseStrategy):
 
                     # Spread-reversion exit from monitor (uses last stored spread from on_signal)
                     # Use adaptive threshold if ready — mirrors on_signal path (prevents divergence).
-                    _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.5
+                    _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.15  # near-zero: 30bps*0.15=4.5bps
                     if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
                         _, _at_exit_m = self._adaptive_threshold.thresholds
                         if _at_exit_m and _at_exit_m > 0:
@@ -403,7 +403,7 @@ class FuturesFuturesStrategy(BaseStrategy):
 
             # --- Spread-reversion exit (PRIMARY exit) ---
             # Exit when spread closes back below exit threshold (profit locked in)
-            _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.5
+            _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.15  # near-zero: 30bps*0.15=4.5bps
             if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
                 _, _at_exit = self._adaptive_threshold.thresholds  # (p95_entry, p50_exit)
                 if _at_exit and _at_exit > 0:
