@@ -678,7 +678,7 @@ class RealDataSignalProducer:
                                 logger.debug(
                                     "real_signal_producer.ff_ts_filter_drop",
                                     extra={
-                                        "symbol": symbol, "ex_a": ex_b, "ex_b": ex_a,
+                                        "symbol": symbol, "ex_a": ex_a, "ex_b": ex_b,
                                         "diff_ms": round(_ts_diff2 * 1000, 1),
                                         "threshold_ms": round(self._spread_ts_max_diff_s * 1000, 0),
                                     },

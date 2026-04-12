@@ -25,6 +25,7 @@
 | §8.24 감사 R6 | v42 | BUG-73~77 | ExposureTracker dead wiring, reconciler 윈도우, KRW NameError, crossed-book 이중신호, latency freshness |
 | §8.25 운영 안정성 | v43 | BUG-78~79 | futures_margin_low 알림, reconcile_amount_mismatch false alarm 수정 |
 | §8.26 체결 품질 | v44 | BUG-80 | reconcile_overfill 감지 추가, 리뷰어 if/elif 검증 완료 |
+| §8.27 포지션 대조 + 마진 | v45 | BUG-81~83 | reconcile 헤지모드 레그 합산, 마진 폴백 우회 수정, reconciler 윈도우 통일 |
 
 ---
 
@@ -1392,3 +1393,76 @@ elif actual_size > expected * Decimal("1.05"):
 |------|---------|-----|
 | reconcile_overfill 감지 | 없음 | **actual > expected*1.05 시 WARNING** |
 | if/elif 구조 | v42 수정 → 재검증 | **lines 569/643 if/elif 확인 완료** |
+
+---
+
+## §8.27 포지션 대조 + 마진 안전성 — v45 (2026-04-12)
+
+### BUG-81: reconcile matching[0] — 헤지 모드 포지션 레그 오선택
+
+**파일**: `engine/src/execution/executor.py` (line ~1296)
+
+**원인**: `matching = [p for p in positions if p.symbol == expected_sym]` 이후 `matching[0]`만 사용.
+헤지 모드(Binance Futures hedge mode) 계좌에서 동일 심볼에 롱/숏 양쪽 포지션 존재 가능.
+거래소가 먼저 반환하는 레그가 기대 레그와 다르면 underfill 감지 완전 무효화.
+**수정**:
+```python
+actual_size = sum(abs(p.size) for p in matching)
+```
+모든 매칭 레그를 합산 → 전체 포지션 크기 정확 반영
+**상태**: ✅ 완료
+
+### BUG-82: live.py 마진 폴백 — 매도 사이드 가드 우회
+
+**파일**: `engine/src/modes/live.py` (line ~831)
+
+**원인**:
+```python
+if buy_margin > 0 and sell_margin > 0:
+    effective_margin = min(buy_margin, sell_margin)
+else:
+    effective_margin = buy_margin or sell_margin  # ← 매도 마진 누락 시 매수만 체크
+```
+`sell_exchange`가 `_cached_margin`에 없을 경우(`sell_margin=0`) else 분기 → `buy_margin`만으로 마진 주입.
+선물 숏 레그의 마진이 전혀 검증되지 않고 거래 진행.
+**수정**: 두 마진 모두 양수일 때만 주입. 한쪽이라도 미확인 시 주입 스킵.
+```python
+if buy_margin > 0 and sell_margin > 0:
+    effective_margin = min(buy_margin, sell_margin)
+    signal.metadata["margin_available"] = str(effective_margin)
+elif buy_margin > 0 and not signal.sell_exchange:
+    # Spot-only signal (no sell-side margin requirement)
+    signal.metadata["margin_available"] = str(buy_margin)
+```
+**상태**: ✅ 완료
+
+### BUG-83: reconciler since_ms 600s ≠ _ttl 1200s — 미매칭 false alarm
+
+**파일**: `engine/src/modes/live.py` (line ~1870)
+
+**원인**: `since_ms = int((time.time() - 600) * 1000)` (10분 윈도우)
+`_recon_symbol_window` TTL = 1200초 (20분). 11~20분 이전 체결 심볼이 윈도우에 남아있지만
+DB 쿼리(10분)에서 해당 체결 없음 → exchange fill이 DB에 없는 것처럼 보임 → false alarm 텔레그램 알림.
+**수정**: `since_ms = int((time.time() - 1200) * 1000)` (TTL과 일치)
+**부수 수정**: `trade_reconciler.py:209` 주석 "±5초 window" → "±30초 window" (코드와 불일치 수정)
+**상태**: ✅ 완료
+
+### MEDIUM: real_signal_producer.py reverse-direction 로그 필드 교환
+
+**파일**: `engine/src/core/real_signal_producer.py` (line 681)
+
+**원인**: `elif float(bid_b) > float(ask_a)` 분기의 `ff_ts_filter_drop` 로그에서
+`"ex_a": ex_b, "ex_b": ex_a` — 거래소 레이블 교환됨 (copy-paste 오류).
+런타임 동작 무관하나 ts_filter 디버깅 시 잘못된 거래소 표시.
+**수정**: `"ex_a": ex_a, "ex_b": ex_b` (정상화)
+**상태**: ✅ 완료
+
+### v45 변경사항 요약
+
+| 항목 | v44 이전 | v45 |
+|------|---------|-----|
+| reconcile 포지션 선택 | `matching[0]` 첫 번째만 | **`sum(abs(p.size) for p in matching)` 전체 합산** |
+| 마진 폴백 | 한쪽 누락 시 다른 쪽만 사용 | **양쪽 모두 확인 시에만 주입** |
+| reconciler 쿼리 윈도우 | 600s (TTL 1200s와 불일치) | **1200s (TTL와 일치, false alarm 제거)** |
+| ff_ts_filter 로그 필드 | ex_a←→ex_b 교환 | **정상 필드 순서** |
+| trade_reconciler 주석 | ±5초 (코드 30초와 불일치) | **±30초 (코드와 일치)** |

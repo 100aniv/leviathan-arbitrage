@@ -1289,21 +1289,18 @@ class AtomicExecutor:
                             ex_id, expected_sym, expected, strategy_id,
                         )
                     else:
-                        # Check for under-fill only: actual position < expected order size.
-                        # NOTE: actual_size is the cumulative exchange position across all
-                        # orders, so it can legitimately exceed expected (single-order size).
-                        # Only warn when actual < expected (under-filled / partial fill).
-                        actual_size = abs(matching[0].size)
+                        # BUG-81: sum all matching legs (hedge-mode accounts can have
+                        # both long and short positions for the same symbol).
+                        # matching[0] alone would pick whichever leg the exchange returns
+                        # first, silently evaluating the wrong leg.
+                        actual_size = sum(abs(p.size) for p in matching)
+                        # Check for under-fill only: actual < expected order size.
+                        # NOTE: actual_size is the cumulative exchange position across
+                        # all orders, so it can legitimately exceed expected
+                        # (single-order size). Only warn on under-fill.
                         if actual_size > 0 and actual_size < expected * Decimal("0.95"):
                             logger.warning(
                                 "reconcile_underfill ex=%s symbol=%s "
-                                "expected=%.6f actual=%.6f strategy=%s",
-                                ex_id, expected_sym, float(expected),
-                                float(actual_size), strategy_id,
-                            )
-                        elif actual_size > expected * Decimal("1.05"):
-                            logger.warning(
-                                "reconcile_overfill ex=%s symbol=%s "
                                 "expected=%.6f actual=%.6f strategy=%s",
                                 ex_id, expected_sym, float(expected),
                                 float(actual_size), strategy_id,

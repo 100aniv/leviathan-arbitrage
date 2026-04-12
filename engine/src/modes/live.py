@@ -827,13 +827,15 @@ class LiveMode(BaseMode):
                 self._cached_margin.get(signal.sell_exchange) or Decimal("0")
                 if signal.sell_exchange else Decimal("0")
             )
-            # Both exchanges need margin (BUY long + SELL short); use the binding constraint.
+            # BUG-82: Both exchanges need margin (BUY long + SELL short).
+            # If either side is unknown (not yet cached), skip margin injection entirely
+            # rather than using only one side — avoids bypassing sell-side margin guard.
             if buy_margin > 0 and sell_margin > 0:
                 effective_margin = min(buy_margin, sell_margin)
-            else:
-                effective_margin = buy_margin or sell_margin
-            if effective_margin > Decimal("0"):
                 signal.metadata["margin_available"] = str(effective_margin)
+            elif buy_margin > 0 and not signal.sell_exchange:
+                # Spot-only signal with no sell-side margin requirement
+                signal.metadata["margin_available"] = str(buy_margin)
 
         try:
             trade_requests = await self._strategy_manager.route_signal(signal)
@@ -1865,7 +1867,7 @@ class LiveMode(BaseMode):
                     # Include both futures AND spot adapters that implement get_trades()
                     futures_adapters = {k: v for k, v in exchanges_dict.items()
                                         if hasattr(v, "get_trades")}
-                    since_ms = int((time.time() - 600) * 1000)
+                    since_ms = int((time.time() - 1200) * 1000)  # BUG-83: match _ttl=1200s to avoid unmatched false alarms
                     # Collect tracked symbols from strategies + 20-min rolling window.
                     # The window prevents the blind spot where _open_positions is empty (position just
                     # closed) but a late exchange fill or phantom DB record still needs reconciliation.

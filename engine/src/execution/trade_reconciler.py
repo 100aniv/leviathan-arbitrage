@@ -206,7 +206,7 @@ class TradeReconciler:
             sym = row["symbol"]
             db_by_symbol.setdefault(sym, []).append(row)
 
-        # symbol+timestamp 기준 매칭 (±5초 window)
+        # symbol+timestamp 기준 매칭 (±30초 window, BUG-74에서 5s→30s 변경)
         # matched_ts_keys uses integer milliseconds to avoid float64 precision collisions
         # (two DB rows 0.1ms apart would hash-collide as float seconds).
         is_values: list[float] = []
