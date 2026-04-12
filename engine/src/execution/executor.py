@@ -431,8 +431,8 @@ class AtomicExecutor:
             leg1_ratio = leg1_result.fill_ratio(leg1_order.amount)
             leg2_ratio = leg2_result.fill_ratio(leg2_order.amount)
             partial_below = (
-                (leg1_trade is not None and leg1_ratio <= self._config.partial_fill_threshold) or
-                (leg2_trade is not None and leg2_ratio <= self._config.partial_fill_threshold)
+                (leg1_trade is not None and leg1_ratio < self._config.partial_fill_threshold) or
+                (leg2_trade is not None and leg2_ratio < self._config.partial_fill_threshold)
             )
 
             if has_failure or partial_below:
@@ -619,7 +619,7 @@ class AtomicExecutor:
                 completed.append(leg_result)
 
                 fill_ratio = leg_result.fill_ratio(order.amount)
-                if fill_ratio <= self._config.partial_fill_threshold:
+                if fill_ratio < self._config.partial_fill_threshold:
                     logger.warning(
                         "multi_leg_partial_below_threshold leg=%d ratio=%s strategy=%s",
                         i, fill_ratio, strategy_id,
@@ -979,7 +979,7 @@ class AtomicExecutor:
             # Step 9: Evaluate Leg 1 fill
             leg1_ratio = leg1_result.fill_ratio(leg1_order.amount)
 
-            if leg1_ratio <= self._config.partial_fill_threshold:
+            if leg1_ratio < self._config.partial_fill_threshold:
                 # Partial ≤80% or zero fill → unwind if filled, cancel if not
                 logger.warning(
                     "leg1_partial_below_threshold ratio=%s strategy=%s",
@@ -1051,7 +1051,7 @@ class AtomicExecutor:
 
             # Step 11: Evaluate Leg 2 fill
             leg2_ratio = leg2_result.fill_ratio(adjusted_leg2.amount)
-            if leg2_ratio <= self._config.partial_fill_threshold:
+            if leg2_ratio < self._config.partial_fill_threshold:
                 return await self._do_rollback_cross(
                     ex_a_id, leg1_order, leg1_result,
                     leg2_result, strategy_id,

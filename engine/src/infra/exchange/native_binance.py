@@ -328,10 +328,13 @@ class BinanceNativeAdapter(NativeAdapter):
                     step = await self._get_lot_step(order.symbol)
                     qty = self._quantize_qty(qty, step)
                     # PHOENIX: Enforce Binance Futures MIN_NOTIONAL ($5) — use $6 safety buffer
+                    # CRITICAL: while 루프 대신 ceiling division — SHIB 같은 저가 토큰에서 50만회 이상 반복 방지
                     if order.price and order.price > 0:
                         _MIN_NOTIONAL = Decimal("6")
-                        while qty * order.price < _MIN_NOTIONAL and step > 0:
-                            qty = qty + step
+                        if qty * order.price < _MIN_NOTIONAL and step > 0:
+                            import math as _math
+                            _min_lots = _math.ceil(float(_MIN_NOTIONAL / order.price) / float(step))
+                            qty = Decimal(str(_min_lots)) * step
                         logger.debug(
                             "futures_qty_adjusted symbol=%s qty=%s notional=%.2f",
                             order.symbol, qty, float(qty * order.price),

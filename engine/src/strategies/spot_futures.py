@@ -233,7 +233,10 @@ class SpotFuturesStrategy(BaseStrategy):
             )
         # PHOENIX: max_position_size is USD notional cap — divide by price to get base units
         _sf_avg_price = (signal.buy_price + signal.sell_price) / Decimal("2")
-        size = min(signal.volume, (self.config.max_position_size / _sf_avg_price) if _sf_avg_price > 0 else signal.volume)
+        if _sf_avg_price <= 0:
+            logger.warning("sf.signal_rejected avg_price=0 symbol=%s — 잘못된 신호 거부", signal.symbol)
+            return None
+        size = min(signal.volume, self.config.max_position_size / _sf_avg_price)
 
         # Contango: sell futures (expensive), buy spot (cheap)
         # Backwardation: buy futures (cheap), sell spot (expensive)

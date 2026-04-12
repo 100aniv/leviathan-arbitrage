@@ -1768,3 +1768,18 @@ else:
 - PID 628, v56 코드, LIVE 모드 정상 기동
 - 포지션 클린 (10개 Bitget 미청산 포지션 close_positions.py --execute로 청산)
 - 시그널 수신 중 (min_spread 15bps 필터 적용, 체결 대기)
+
+---
+
+## §8.39 MIN_NOTIONAL 루프 + partial_fill 오판 + SF 가격 가드 — v57 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| CRITICAL-4 | CRITICAL | native_binance.py | MIN_NOTIONAL while 루프 — SHIB 같은 저가 토큰($0.000012) 에서 50만 회 반복 → 이벤트 루프 블록 | ceiling division으로 교체: _math.ceil(_MIN_NOTIONAL/price/step) |
+| HIGH-17 | HIGH | executor.py | partial_fill_threshold `<=` → 80% 정확 체결 시 불필요 롤백 (4곳: same/multi/cross × 2legs) | `<` 로 교체 (4곳 일괄) |
+| HIGH-18 | HIGH | spot_futures.py | _sf_avg_price == 0 시 max_position_size 우회 — signal.volume 전체 주문 가능 | avg_price <= 0 → return None (신호 거부) |
+
+### 테스트 결과
+- executor/strategies/binance 관련 726 passed, 0 failed

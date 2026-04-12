@@ -1813,7 +1813,7 @@ class LiveMode(BaseMode):
                                 )
                                 self._settlement_tasks.append(_task)
                                 _task.add_done_callback(
-                                    lambda t: self._settlement_tasks.remove(t)
+                                    lambda t: self._settlement_tasks.remove(t)  # noqa: B023
                                     if t in self._settlement_tasks else None
                                 )
         except asyncio.CancelledError:
