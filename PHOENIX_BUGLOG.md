@@ -24,6 +24,7 @@
 | §8.23 감사 R5 | v37~v41 | BUG-64~72 | 심볼별 reconcile, stale 오염, Binance WS URL |
 | §8.24 감사 R6 | v42 | BUG-73~77 | ExposureTracker dead wiring, reconciler 윈도우, KRW NameError, crossed-book 이중신호, latency freshness |
 | §8.25 운영 안정성 | v43 | BUG-78~79 | futures_margin_low 알림, reconcile_amount_mismatch false alarm 수정 |
+| §8.26 체결 품질 | v44 | BUG-80 | reconcile_overfill 감지 추가, 리뷰어 if/elif 검증 완료 |
 
 ---
 
@@ -1349,3 +1350,45 @@ if _age_fast > 3.0 or _age_slow > 3.0:
 | KRW_EXCHANGES 참조 | `_KRW_EXCHANGES` NameError | **`KRW_EXCHANGES` 정상 참조** |
 | crossed-book 이중 신호 | if/if → 양방향 동시 발생 | **if/elif → 단방향만** |
 | latency_arb freshness | 없음 | **3초 초과 시 skip** |
+
+---
+
+## §8.26 체결 품질 — v44 (2026-04-12)
+
+### BUG-80: reconcile_overfill 감지 누락
+
+**파일**: `engine/src/execution/executor.py` (line ~1304)
+
+**원인**: `post_execution_reconcile`에서 언더필(actual < expected*0.95)만 경고.
+누적 포지션이 주문 크기를 초과하는 오버필(actual > expected*1.05) 상황은 무음 처리.
+→ 거래소에서 슬리피지 또는 중복 체결로 예상보다 많은 포지션이 잡혀도 감지 불가.
+**수정**:
+```python
+elif actual_size > expected * Decimal("1.05"):
+    logger.warning(
+        "reconcile_overfill ex=%s symbol=%s expected=%.6f actual=%.6f strategy=%s",
+        ex_id, expected_sym, float(expected), float(actual_size), strategy_id,
+    )
+```
+**비고**: 코드 리뷰어(sonnet) HIGH 이슈 지적으로 추가. 언더필과 대칭적 감지 완성.
+**상태**: ✅ 완료
+
+### 리뷰어 HIGH 이슈 — if/elif 구조 검증 (BUG-76 후속)
+
+**파일**: `engine/src/core/real_signal_producer.py` (lines 569, 643)
+
+**리뷰어 지적**: futures_futures 시그널 루프에서 Forward(bid_a > ask_b)와 Reverse(bid_b > ask_a) 블록이 독립 `if`로 동시 발행 가능.
+
+**검증 결과**: 이미 v42에서 수정됨.
+- Line 569: `if float(bid_a) > float(ask_b):`
+- Line 643: `elif float(bid_b) > float(ask_a):`  ← v42에서 if → elif 수정 완료
+
+**수학적 불가 증명**: `bid_a > ask_b` AND `bid_b > ask_a` 동시 성립 → `ask_b ≥ bid_b > ask_a ≥ bid_a > ask_b` = 모순. 그러나 elif 구조로 명시적 상호 배제 보장.
+**상태**: ✅ (v42에서 이미 완료, v44에서 재검증)
+
+### v44 변경사항 요약
+
+| 항목 | v43 이전 | v44 |
+|------|---------|-----|
+| reconcile_overfill 감지 | 없음 | **actual > expected*1.05 시 WARNING** |
+| if/elif 구조 | v42 수정 → 재검증 | **lines 569/643 if/elif 확인 완료** |

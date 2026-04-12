@@ -1301,6 +1301,13 @@ class AtomicExecutor:
                                 ex_id, expected_sym, float(expected),
                                 float(actual_size), strategy_id,
                             )
+                        elif actual_size > expected * Decimal("1.05"):
+                            logger.warning(
+                                "reconcile_overfill ex=%s symbol=%s "
+                                "expected=%.6f actual=%.6f strategy=%s",
+                                ex_id, expected_sym, float(expected),
+                                float(actual_size), strategy_id,
+                            )
             except Exception as exc:
                 logger.error(
                     "post_execution_reconcile_error ex=%s error=%s", ex_id, exc
