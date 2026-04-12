@@ -883,9 +883,13 @@ class LiveMode(BaseMode):
         # --- Strategy loss cooldown (US-164) ---
         if sid in self._strategy_disable_until:
             if time.monotonic() < self._strategy_disable_until[sid]:
-                logger.debug("live_mode.strategy_cooldown strategy=%s", sid)
-                self._notify_pre_exec_rollback(trade_request, sid)
-                return
+                # CRITICAL: exit/close orders bypass cooldown — stuck positions must
+                # be closeable regardless of loss cooldown state. Only block new entries.
+                _is_exit_req = bool(trade_request.legs) and all(leg.metadata.get("reduceOnly") for leg in trade_request.legs)
+                if not _is_exit_req:
+                    logger.debug("live_mode.strategy_cooldown strategy=%s", sid)
+                    self._notify_pre_exec_rollback(trade_request, sid)
+                    return
             else:
                 del self._strategy_disable_until[sid]
 
@@ -979,29 +983,37 @@ class LiveMode(BaseMode):
 
         # --- Per-symbol cooldown (v7: prevent same-symbol burst) ---
         # BUG-36: skip cooldown for close/exit orders so rapid exits aren't blocked
+        # FIX: check ALL leg symbols — spot_futures has different symbols per leg
+        # (legs[0]=spot, legs[1]=futures); only checking legs[0] left futures leg
+        # unprotected after ROLLBACK_FAILED cooldown was set on both legs.
         _is_close_req = any(leg.metadata.get("reduceOnly") for leg in trade_request.legs)
-        _sym_key = trade_request.legs[0].symbol if trade_request.legs else ""
-        if _sym_key and not _is_close_req:
-            _last = self._symbol_last_trade.get(_sym_key, 0.0)
-            if time.monotonic() - _last < self._symbol_cooldown_s:
-                logger.debug(
-                    "live_mode.symbol_cooldown symbol=%s cooldown_s=%.0f",
-                    _sym_key, self._symbol_cooldown_s,
-                )
-                self._notify_pre_exec_rollback(trade_request, sid)
-                return
-            self._symbol_last_trade[_sym_key] = time.monotonic()
+        _sym_keys = [l.symbol for l in trade_request.legs if l.symbol]
+        if _sym_keys and not _is_close_req:
+            _now = time.monotonic()
+            for _sk in _sym_keys:
+                _last = self._symbol_last_trade.get(_sk, 0.0)
+                if _now - _last < self._symbol_cooldown_s:
+                    logger.debug(
+                        "live_mode.symbol_cooldown symbol=%s cooldown_s=%.0f",
+                        _sk, self._symbol_cooldown_s,
+                    )
+                    self._notify_pre_exec_rollback(trade_request, sid)
+                    return
+            for _sk in _sym_keys:
+                self._symbol_last_trade[_sk] = _now
 
         # --- Collision detection (DeduplicationGate: atomic check-and-register) ---
         collision_key = self._build_collision_key(trade_request)
         if not await self._dedup_gate.check_and_register(collision_key):
-            logger.debug("live_mode.dedup_blocked key=%s", collision_key)
             # BUG-79: For close/exit orders, dedup block means the first exit is still
             # in flight and has already moved the position to _pending_exits.
             # Calling _notify_pre_exec_rollback would erroneously restore the position
             # from _pending_exits → thrash loop. Only notify rollback for entry orders.
             _is_close_req = any(leg.metadata.get("reduceOnly") for leg in trade_request.legs)
-            if not _is_close_req:
+            if _is_close_req:
+                logger.warning("live_mode.dedup_blocked_close key=%s — first exit still in flight", collision_key)
+            else:
+                logger.debug("live_mode.dedup_blocked key=%s", collision_key)
                 self._notify_pre_exec_rollback(trade_request, sid)
             return
 
@@ -1067,6 +1079,21 @@ class LiveMode(BaseMode):
                             })
                         except Exception:
                             pass
+                    # DEFENSE-IN-DEPTH: ROLLBACK_FAILED = stranded position on exchange.
+                    # BUG-84's strategy-level guard prevents re-entry via _open_positions, but
+                    # set LiveMode-level symbol cooldown as backup (e.g. on strategy restart).
+                    # Cover ALL legs — spot_futures has legs[0]=spot, legs[1]=futures with
+                    # different symbols; only cooling legs[0] leaves the futures leg unprotected.
+                    if exec_result.status == ExecutionStatus.ROLLBACK_FAILED:
+                        _rf_now = time.monotonic()
+                        _rf_symbols = [l.symbol for l in trade_request.legs if l.symbol]
+                        for _rf_sym in _rf_symbols:
+                            self._symbol_last_trade[_rf_sym] = _rf_now
+                        if _rf_symbols:
+                            logger.warning(
+                                "live_mode.rollback_failed_cooldown_set symbols=%s cooldown_s=%.0f",
+                                _rf_symbols, self._symbol_cooldown_s,
+                            )
                     # BUG-2 fix: notify strategy on successful rollback so it clears
                     # _open_positions and allows re-entry (prevents 30min lockout)
                     # BUG-31: also clear on REJECTED (no orders placed, pre-validation failed)
@@ -1085,8 +1112,32 @@ class LiveMode(BaseMode):
                                         "live_mode.rollback_notify_failed strategy=%s symbol=%s err=%s",
                                         sid, symbol, _rb_err,
                                     )
+                        # HIGH: post-rollback re-entry race prevention.
+                        # After ROLLED_BACK, the exchange is processing an unwind order.
+                        # Reset per-symbol cooldown so the strategy cannot re-enter
+                        # the same symbol until exchange unwind has settled (cooldown_s).
+                        # REJECTED has no exchange activity → no cooldown needed.
+                        # Asymmetry note: ROLLED_BACK uses legs[0].symbol only (unwind is
+                        # a single-leg cancel/reverse on the filled leg). ROLLBACK_FAILED
+                        # (above) covers ALL legs because both legs may be stranded.
+                        if exec_result.status == ExecutionStatus.ROLLED_BACK and symbol:
+                            self._symbol_last_trade[symbol] = time.monotonic()
+                            logger.debug(
+                                "live_mode.rollback_cooldown_set symbol=%s cooldown_s=%.0f",
+                                symbol, self._symbol_cooldown_s,
+                            )
                     strat_stats.rejections += 1
                     return
+
+            # --- Notify strategy of successful execution (BUG-80: clean _pending_exits) ---
+            _success_symbol = trade_request.legs[0].symbol if trade_request.legs else None
+            if _success_symbol and self._strategy_manager is not None:
+                _strat_s = self._strategy_manager.get_strategy(sid)
+                if _strat_s is not None and hasattr(_strat_s, "on_execution_success"):
+                    try:
+                        _strat_s.on_execution_success(_success_symbol)
+                    except Exception as _se_err:
+                        logger.debug("live_mode.success_notify_failed strategy=%s err=%s", sid, _se_err)
 
             # --- Record trade result ---
             self._stats.trades_executed += 1
@@ -1098,6 +1149,8 @@ class LiveMode(BaseMode):
             # Extract actual fill prices + fees from exec_result for recording
             _buy_fill_price: Decimal | None = None
             _sell_fill_price: Decimal | None = None
+            _buy_fill_from_result: bool = False  # True only if price came from actual executor fill
+            _sell_fill_from_result: bool = False
             _fee_total: Decimal = Decimal("0")
             if exec_result is not None and hasattr(exec_result, 'legs'):
                 for _lr in exec_result.legs:
@@ -1108,15 +1161,22 @@ class LiveMode(BaseMode):
                     _lr_order = getattr(_lr, 'order', None)
                     _lr_side = getattr(_lr_order, 'side', None)
                     _fee_total += Decimal(str(getattr(_t, 'fee', 0) or 0))
+                    # BUG-37: Bitget market order polling may return price=0 on miss.
+                    # Only accept fill price > 0 as a real fill; 0 falls through to fallback.
+                    _raw_price = Decimal(str(_t.price or 0))
                     if _lr_side == OrderSide.SELL:
-                        _sell_fill_price = Decimal(str(_t.price))
+                        if _raw_price > 0:
+                            _sell_fill_price = _raw_price
+                            _sell_fill_from_result = True
                     else:
-                        _buy_fill_price = Decimal(str(_t.price))
-            # Fallback to request leg prices
-            if _buy_fill_price is None:
+                        if _raw_price > 0:
+                            _buy_fill_price = _raw_price
+                            _buy_fill_from_result = True
+            # Fallback to request leg prices (used for PnL/spread only, NOT for IS calculation)
+            if not _buy_fill_price:
                 _bl = [l for l in (trade_request.legs or []) if l.side == OrderSide.BUY]
                 _buy_fill_price = _bl[0].price if _bl and _bl[0].price else None
-            if _sell_fill_price is None:
+            if not _sell_fill_price:
                 _sl = [l for l in (trade_request.legs or []) if l.side == OrderSide.SELL]
                 _sell_fill_price = _sl[0].price if _sl and _sl[0].price else None
             # Gross spread bps from signal or fill prices
@@ -1186,9 +1246,11 @@ class LiveMode(BaseMode):
                     _expected_sell = sell_legs[0].price if sell_legs and sell_legs[0].price else None
                     _is_buy_bps: Decimal | None = None
                     _is_sell_bps: Decimal | None = None
-                    if _buy_fill_price and _expected_buy and _expected_buy > 0:
+                    # Only compute IS when fill price came from actual executor result.
+                    # Fallback prices equal expected prices → IS=0 which is misleadingly accurate.
+                    if _buy_fill_from_result and _buy_fill_price and _expected_buy and _expected_buy > 0:
                         _is_buy_bps = abs(_buy_fill_price - _expected_buy) / _expected_buy * Decimal("10000")
-                    if _sell_fill_price and _expected_sell and _expected_sell > 0:
+                    if _sell_fill_from_result and _sell_fill_price and _expected_sell and _expected_sell > 0:
                         _is_sell_bps = abs(_sell_fill_price - _expected_sell) / _expected_sell * Decimal("10000")
                     # IS total is only meaningful when BOTH legs have actual fill prices.
                     # When only one leg fills (partial fill / rollback), recording buy+0
@@ -1362,12 +1424,17 @@ class LiveMode(BaseMode):
         evaluate() before returning the TradeRequest. If any pre-execution guard rejects
         the trade, we must notify the strategy to clear that entry — otherwise the symbol
         is locked out for max_hold_seconds.
+
+        BUG-36 follow-up: notify ALL leg symbols (not just legs[0]) so spot_futures
+        (which has different symbols on each leg) fully clears both leg positions.
         """
-        _sym = trade_request.legs[0].symbol if trade_request.legs else None
-        if not _sym or self._strategy_manager is None:
+        if not trade_request.legs or self._strategy_manager is None:
             return
         _strat = self._strategy_manager.get_strategy(sid)
-        if _strat is not None and hasattr(_strat, "on_execution_rollback"):
+        if _strat is None or not hasattr(_strat, "on_execution_rollback"):
+            return
+        _syms = {leg.symbol for leg in trade_request.legs if leg.symbol}
+        for _sym in _syms:
             try:
                 _strat.on_execution_rollback(_sym)
             except Exception as _e:
@@ -1431,12 +1498,24 @@ class LiveMode(BaseMode):
         if exec_result is not None and hasattr(exec_result, 'legs'):
             net_pnl = Decimal("0")
             has_trades = False
+            has_zero_price_leg = False
             for leg_result in exec_result.legs:
                 trade = getattr(leg_result, 'trade', None)
                 if trade is None:
                     continue
                 has_trades = True
                 fill_price = Decimal(str(trade.price))
+                if fill_price <= Decimal("0"):
+                    # Ghost fill or market order with unknown fill price — cannot compute
+                    # meaningful PnL from this leg. Fall through to expected_profit_usdt.
+                    logger.warning(
+                        "live_mode.zero_price_leg_pnl_abort strategy=%s symbol=%s expected_profit=%s",
+                        getattr(trade_request, "strategy_id", "unknown"),
+                        getattr(getattr(leg_result, "order", None), "symbol", "unknown"),
+                        trade_request.expected_profit_usdt,
+                    )
+                    has_zero_price_leg = True
+                    break
                 fill_amount = Decimal(str(trade.amount))
                 fill_fee = Decimal(str(getattr(trade, 'fee', 0)))
                 notional = fill_price * fill_amount
@@ -1448,8 +1527,12 @@ class LiveMode(BaseMode):
                 else:
                     net_pnl -= notional + fill_fee
 
-            if has_trades:
+            if has_trades and not has_zero_price_leg:
                 return net_pnl
+            if has_zero_price_leg:
+                # Return expected profit from trade request (0 for exits) rather than
+                # a misleading fill-price-based PnL that inflates to full position value.
+                return trade_request.expected_profit_usdt
 
         # 3. Fallback: estimate from trade_request legs
         net_pnl = Decimal("0")
@@ -1748,10 +1831,18 @@ class LiveMode(BaseMode):
                             usdt = balances.get("USDT")
                             if usdt is not None:
                                 self._cached_margin[ex_id] = usdt.free
-                                logger.debug(
-                                    "live_mode.margin_cache_updated ex=%s margin=%.2f",
-                                    ex_id, float(usdt.free),
-                                )
+                                _margin_f = float(usdt.free)
+                                if _margin_f < 5.0:
+                                    logger.warning(
+                                        "live_mode.futures_margin_low ex=%s margin=%.2f "
+                                        "— futures_futures trades blocked until balance >= $5",
+                                        ex_id, _margin_f,
+                                    )
+                                else:
+                                    logger.debug(
+                                        "live_mode.margin_cache_updated ex=%s margin=%.2f",
+                                        ex_id, _margin_f,
+                                    )
                         except Exception as exc:
                             logger.debug("live_mode.margin_refresh_failed ex=%s error=%s", ex_id, exc)
                 except Exception as exc:

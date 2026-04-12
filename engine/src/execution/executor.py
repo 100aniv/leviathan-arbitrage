@@ -119,6 +119,7 @@ class ExecutionConfig:
     timeout_ms: int = _LEG_TIMEOUT_MS
     partial_fill_threshold: Decimal = Decimal("0.80")
     post_reconcile_delay_s: float = float(_RECONCILIATION_INTERVAL_S)
+    per_exchange_budget_usd: Decimal = Decimal("100000")  # BUG-33: per-exchange margin budget; override from engine.json in production
     health_threshold: float = _HEALTH_THRESHOLD
 
 
@@ -243,9 +244,33 @@ class AtomicExecutor:
                 )
                 logger.info(
                     "rollback_unwind exchange=%s side=%s amount=%s symbol=%s",
-                    exchange_id, opposite_side, order.amount, order.symbol,
+                    exchange_id, opposite_side, unwind_qty, order.symbol,
                 )
-                await self._place_with_timeout(adapter, unwind_order)
+                unwind_trade = await self._place_with_timeout(adapter, unwind_order)
+                # CRITICAL: verify unwind was fully filled (BUG-83: partial fill = unhedged exposure)
+                if unwind_trade is not None:
+                    from decimal import Decimal as _D
+                    _filled = getattr(unwind_trade, "amount", None)
+                    if _filled is not None:
+                        _tolerance = _D("0.95")
+                        if _D(str(_filled)) < _D(str(unwind_qty)) * _tolerance:
+                            _residual = _D(str(unwind_qty)) - _D(str(_filled))
+                            logger.critical(
+                                "rollback_partial_fill exchange=%s symbol=%s "
+                                "requested=%s filled=%s residual=%s — UNHEDGED EXPOSURE",
+                                exchange_id, order.symbol, unwind_qty, _filled, _residual,
+                            )
+                            if self._stranded_tracker is not None:
+                                _price = float(order.price or 0)
+                                self._stranded_tracker.register(
+                                    exchange_id=exchange_id,
+                                    symbol=order.symbol,
+                                    side=str(opposite_side),
+                                    size=float(_residual),
+                                    value_usd=float(_residual) * _price,
+                                    reason="rollback_partial_fill",
+                                )
+                            return False, f"rollback_partial_fill:{_filled}/{unwind_qty}"
             else:
                 effective_id = order_id or order.order_id
                 if effective_id:
@@ -334,11 +359,40 @@ class AtomicExecutor:
             )
 
         adapter = self._exchanges[exchange_id]
+
+        # BUG-33: MarginTracker reservation for same-exchange path (mirrors execute_cross_exchange).
+        # Without this, two concurrent same-exchange signals both pass guardian with the
+        # same stale balance snapshot, causing over-commitment.
+        _required = (
+            (leg1_order.price * leg1_order.amount if leg1_order.price and leg1_order.amount else Decimal("0"))
+            + (leg2_order.price * leg2_order.amount if leg2_order.price and leg2_order.amount else Decimal("0"))
+        )
+        _budget_per_ex = self._config.per_exchange_budget_usd
+        _margin_reserved = False
+        if not _is_close:
+            _margin_ok = await self._margin_tracker.check_and_reserve(exchange_id, _required, _budget_per_ex)
+            if not _margin_ok:
+                return ExecutionResult(
+                    status=ExecutionStatus.REJECTED,
+                    legs=[],
+                    error="margin_tracker_blocked",
+                    strategy_id=strategy_id,
+                )
+            _margin_reserved = True
+
         # Bug 13-A (PHOENIX §8.2): per-strategy latency measurement
         _t0 = asyncio.get_event_loop().time()
         await self._acquire_lock(exchange_id)
 
         try:
+            # TOCTOU guard: re-check halt immediately before exchange I/O.
+            if self._check_halt():
+                return ExecutionResult(
+                    status=ExecutionStatus.REJECTED,
+                    legs=[],
+                    error="Engine halted (pre-leg1 TOCTOU check)",
+                    strategy_id=strategy_id,
+                )
             # Submit both legs in parallel
             results = await asyncio.gather(
                 self._place_with_timeout(adapter, leg1_order),
@@ -441,6 +495,8 @@ class AtomicExecutor:
 
         finally:
             self._release_lock(exchange_id)
+            if _margin_reserved:
+                await self._margin_tracker.release(exchange_id, _required)
             # BUG-93: do NOT clear — concurrent executions share this dict;
             # clearing one call's entries corrupts another in-flight execution.
             # order_id uniqueness guarantees no false dedup across executions.
@@ -708,7 +764,7 @@ class AtomicExecutor:
         # execute because in-flight entry margin blocks them.
         _required_a = leg1_order.price * leg1_order.amount if leg1_order.price and leg1_order.amount else Decimal("0")
         _required_b = leg2_order.price * leg2_order.amount if leg2_order.price and leg2_order.amount else Decimal("0")
-        _budget_per_ex = Decimal(str(getattr(self._config, "per_exchange_budget_usd", 100_000)))
+        _budget_per_ex = self._config.per_exchange_budget_usd
         _margin_reserved_a = False
         _margin_reserved_b = False
         if _is_close:
@@ -843,6 +899,17 @@ class AtomicExecutor:
 
         try:
             # ── PHASE SEQUENTIAL SUBMISSION ──────────────────────────────
+
+            # TOCTOU guard: re-check halt immediately before any exchange I/O.
+            # Kill switch may have been triggered after pre-validation passed and
+            # while waiting for locks — prevent placing orders after halt.
+            if self._check_halt():
+                return ExecutionResult(
+                    status=ExecutionStatus.REJECTED,
+                    legs=[],
+                    error="Engine halted (pre-leg1 TOCTOU check)",
+                    strategy_id=strategy_id,
+                )
 
             # Step 8: Submit Leg 1 on Exchange A
             try:
@@ -1222,17 +1289,18 @@ class AtomicExecutor:
                             ex_id, expected_sym, expected, strategy_id,
                         )
                     else:
-                        # Check amount within 5% tolerance band
+                        # Check for under-fill only: actual position < expected order size.
+                        # NOTE: actual_size is the cumulative exchange position across all
+                        # orders, so it can legitimately exceed expected (single-order size).
+                        # Only warn when actual < expected (under-filled / partial fill).
                         actual_size = abs(matching[0].size)
-                        if actual_size > 0:
-                            diff_pct = abs(actual_size - expected) / expected
-                            if diff_pct > Decimal("0.05"):
-                                logger.warning(
-                                    "reconcile_amount_mismatch ex=%s symbol=%s "
-                                    "expected=%.6f actual=%.6f diff_pct=%.1f%% strategy=%s",
-                                    ex_id, expected_sym, float(expected),
-                                    float(actual_size), float(diff_pct * 100), strategy_id,
-                                )
+                        if actual_size > 0 and actual_size < expected * Decimal("0.95"):
+                            logger.warning(
+                                "reconcile_underfill ex=%s symbol=%s "
+                                "expected=%.6f actual=%.6f strategy=%s",
+                                ex_id, expected_sym, float(expected),
+                                float(actual_size), strategy_id,
+                            )
             except Exception as exc:
                 logger.error(
                     "post_execution_reconcile_error ex=%s error=%s", ex_id, exc
