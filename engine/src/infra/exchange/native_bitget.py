@@ -659,7 +659,7 @@ class NativeBitgetAdapter(NativeAdapter):
                     "qty": _sf(d.get("baseVolume") or d.get("qty")),
                     "price": _sf(d.get("price")),
                     "realized_pnl": _sf(d.get("profit") or d.get("realizedPnl")),
-                    "commission": _sf(d.get("fee")),
+                    "commission": abs(_sf(d.get("fee"))),
                     "ts_ms": _si(d.get("cTime") or d.get("ts")),
                 }
                 for d in fill_list

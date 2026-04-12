@@ -1735,3 +1735,19 @@ else:
 | MEDIUM-12 | MEDIUM | futures_futures.py | 모니터 경로 static exit threshold — on_signal adaptive와 불일치 | adaptive threshold 적용 통일 |
 | MEDIUM-13 | MEDIUM | margin_tracker.py | release() 절대값 허용 오차 0.01 — 대형 포지션 릴리스 실패 가능 | 상대값 허용 오차 (0.1%) 적용 |
 | MEDIUM-14 | MEDIUM | stranded.py | register() 비멱등성 — 동일 롤백 이중 호출 시 USD 이중 산정 | 5초 dedup 가드 추가 |
+
+---
+
+## §8.37 시맨틱 오염 + 수수료 부호 + 아웃라이어 키 수정 — v55 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| HIGH-11 | HIGH | reconciler.py | has_discrepancy가 API 조회 실패(fetch_failed_exchanges)를 포지션 불일치로 오분류 — 거래소 다운타임 시 on_discrepancy 오발동 가능 | has_discrepancy = len(discrepancies) > 0 으로 분리, fetch_failed_exchanges는 별도 필드 |
+| HIGH-12 | HIGH | real_signal_producer.py | 백워데이션 롤링 스프레드 키가 (symbol, fut_ex, spot_ex) — 컨타고 키 (symbol, spot_ex, fut_ex)와 별도 버킷 → 아웃라이어 필터 백워데이션 경로에서 미작동 | 양방향 키 min/max 정규화: (symbol, min(a,b), max(a,b)) |
+| HIGH-13 | HIGH | native_bitget.py | Bitget V2 fee 필드가 음수 float → commission이 음수 저장 → IS 계산 시 PnL 과대평가 2×fee | abs(_sf(d.get("fee"))) 적용 |
+| TEST-FIX | - | test_guardian.py / test_reconciler.py | v52 check_number="4e" 수정 미반영 테스트, has_discrepancy 시맨틱 변경 미반영 테스트 | 2개 테스트 업데이트 |
+
+### 테스트 결과
+- 5549 passed, 12 skipped, 0 failed (guardian 41개 포함)

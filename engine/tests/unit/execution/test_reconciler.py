@@ -193,8 +193,8 @@ async def test_reconcile_fetch_failure_sets_field_not_discrepancy() -> None:
     )
     result = await r.reconcile({})
 
-    assert result.has_discrepancy is True
-    assert "binance" in result.fetch_failed_exchanges
+    assert result.has_discrepancy is False  # fetch failure ≠ real position mismatch
+    assert "binance" in result.fetch_failed_exchanges  # fetch failure는 별도 필드로 전달
     assert result.discrepancies == []  # no real position mismatch
     assert callback_called == []  # on_discrepancy NOT fired for fetch failure
 

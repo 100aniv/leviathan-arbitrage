@@ -568,9 +568,9 @@ class TestPrometheusCounters:
         portfolio = make_portfolio(
             net_exposures={("binance", "BTC"): Decimal("0.8")}
         )
-        before = self._get_count("4", "net_exposure_exceeded")
+        before = self._get_count("4e", "net_exposure_exceeded")
         guardian.check(proposal, portfolio)
-        after = self._get_count("4", "net_exposure_exceeded")
+        after = self._get_count("4e", "net_exposure_exceeded")
         assert after == before + 1
 
     def test_approved_trade_does_not_increment_any_counter(self):

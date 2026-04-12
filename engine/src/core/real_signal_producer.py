@@ -362,7 +362,7 @@ class RealDataSignalProducer:
                     if _sf_basis_bps < _sf_min_bps:
                         continue
                     # US-230: rolling median spread outlier filter
-                    _sf_key = (symbol, spot_ex, fut_ex)
+                    _sf_key = (symbol, min(spot_ex, fut_ex), max(spot_ex, fut_ex))
                     _sf_history = self._rolling_spread[_sf_key]
                     # timestamp cross-check: skip if books updated > 300ms apart
                     # BUG-66: append AFTER ts_diff filter to avoid polluting median
@@ -404,7 +404,7 @@ class RealDataSignalProducer:
                     if _sf_basis_bps_back < _sf_min_bps:
                         continue
                     # Rolling median spread outlier filter
-                    _sf_key_back = (symbol, fut_ex, spot_ex)
+                    _sf_key_back = (symbol, min(spot_ex, fut_ex), max(spot_ex, fut_ex))
                     _sf_history_back = self._rolling_spread[_sf_key_back]
                     # Timestamp cross-check (BUG-66: append AFTER ts_diff filter)
                     _sf_ts_spot = getattr(spot_book, "last_update_time", 0)

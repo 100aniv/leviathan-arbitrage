@@ -139,7 +139,8 @@ class PositionReconciler:
                 fetch_failed_exchanges,
             )
 
-        has_discrepancy = len(discrepancies) > 0 or bool(fetch_failed_exchanges)
+        # API 조회 실패(fetch_failed_exchanges)는 실제 포지션 불일치가 아님 — has_discrepancy에서 제외
+        has_discrepancy = len(discrepancies) > 0
 
         result = ReconciliationResult(
             has_discrepancy=has_discrepancy,
