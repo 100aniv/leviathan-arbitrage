@@ -149,8 +149,14 @@ class AtomicExecutor:
         self._dedup_gate = DeduplicationGate(window_s=10.0)
         # PHOENIX v18: MarginTracker — in-flight reservation prevents concurrent signals
         # from all passing guardian with same stale balance snapshot (BUG-19/29 fix).
+        # NOTE: replaced at runtime by live.py via set_margin_tracker() to share the
+        # same instance with the strategy layer (prevents dual-tracking divergence).
         from src.execution.margin_tracker import MarginTracker
         self._margin_tracker = MarginTracker()
+
+    def set_margin_tracker(self, tracker: Any) -> None:
+        """Inject a shared MarginTracker (called by live.py to unify strategy + executor tracking)."""
+        self._margin_tracker = tracker
 
     def _get_lock(self, exchange_id: str) -> asyncio.Lock:
         return self._locks.setdefault(exchange_id, asyncio.Lock())

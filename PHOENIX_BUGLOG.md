@@ -32,6 +32,7 @@
 | §8.31 코드 품질 + 회귀 수정 | v49 | BUG-MEDIUM-5~9, REGRESSION | adaptive double-filter 제거, leviathan_cli 3-bot, Binance 상수화, telegram HTML escape, MDD 회귀 수정 |
 | §8.32 asyncio 안전성 + overfill 감지 | v50 | BUG-HIGH-6~7 | asyncio.get_running_loop() 전환, reconcile_overfill 경고 로그 추가 |
 | §8.33 Reconciler 매칭 품질 + 마진 루프 문서화 | v51 | BUG-MEDIUM-10~11 | reconciler 20% size discriminant, live.py 마진 루프 네이밍 컨벤션 문서화 |
+| §8.34 MarginTracker 공유 + 메트릭 레이블 | v52 | BUG-CRITICAL-3, BUG-HIGH-8 | 이중 MarginTracker 단일 인스턴스 통합, guardian 4e 레이블 수정 |
 
 ---
 
@@ -1698,3 +1699,14 @@ else:
 |---|--------|------|------|------|
 | MEDIUM-10 | MEDIUM | trade_reconciler.py | 30s window 타임스탬프 단독 매칭 — 사이즈 불일치 무시로 false-match 가능 | 20% size 근접도 discriminant 추가 |
 | MEDIUM-11 | MEDIUM | live.py | `_margin_refresh_loop` "futures" in k 문자열 휴리스틱 — 어댑터 누락 리스크 | 네이밍 컨벤션 주석 문서화 |
+
+---
+
+## §8.34 MarginTracker 공유 + 메트릭 레이블 수정 — v52 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| CRITICAL-3 | CRITICAL | executor.py / live.py | 이중 MarginTracker 인스턴스 — strategy layer와 executor layer가 별도 추적 → 동시 신호 시 margin 과다 허용 | set_margin_tracker()로 live._margin_tracker를 executor에 주입, 단일 공유 인스턴스 |
+| HIGH-8 | HIGH | guardian.py | CHECK #4e 메트릭 레이블이 "4" → circuit_breaker와 구별 불가 | check_number="4e"로 수정 |

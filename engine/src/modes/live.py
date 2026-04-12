@@ -339,6 +339,10 @@ class LiveMode(BaseMode):
         # MarginTracker: in-flight margin reservation (Bug 29)
         from src.execution.margin_tracker import MarginTracker
         self._margin_tracker = MarginTracker()
+        # CRITICAL: share this instance with the executor so strategy-layer and
+        # executor-layer track the same in-flight reservations (prevents dual-tracking divergence).
+        if hasattr(self._executor, "set_margin_tracker"):
+            self._executor.set_margin_tracker(self._margin_tracker)
 
         # BUG-18 fix: cached margin_available per futures exchange (refreshed every 60s)
         # produce_futures_futures_signal() has no adapter access, so we inject here.

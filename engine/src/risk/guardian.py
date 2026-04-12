@@ -249,11 +249,11 @@ class RiskGuardian:
             hypothetical_net = current_net + delta
             if abs(hypothetical_net) > self._max_net_exposure_per_asset:
                 RISK_REJECTIONS_TOTAL.labels(
-                    check_number="4", reason="net_exposure_exceeded"
+                    check_number="4e", reason="net_exposure_exceeded"
                 ).inc()
                 return RiskCheckResult(
                     approved=False,
-                    rejected_at_check=4,
+                    rejected_at_check=4,  # integer 4 retained for backward compat; label "4e" distinguishes in metrics
                     reason=(
                         f"Net exposure limit exceeded (Amendment 7): "
                         f"|{hypothetical_net}| > {self._max_net_exposure_per_asset} "
@@ -356,14 +356,17 @@ class RiskGuardian:
                     # US-264: ENFORCE position scaling (was log-only before US-264)
                     if self._dynamic_sizer is not None:
                         self._dynamic_sizer.set_correlation_scale(proposal.strategy_id, evt.scale)
-                    # US-264: Apply scale directly to proposal size even without DynamicSizer
-                    proposal.size = proposal.size * Decimal(str(evt.scale))
+                    # BUG-38: Do NOT mutate proposal.size — check() must be side-effect-free.
+                    # _dynamic_sizer.set_correlation_scale() above updates the sizer for
+                    # future signals. Mutating proposal.size here doesn't affect the already-
+                    # committed trade_request size and silently corrupts the input object.
+                    _scaled_size = proposal.size * Decimal(str(evt.scale))
                     RISK_REJECTIONS_TOTAL.labels(
                         check_number="9", reason="correlation_scale_down"
                     ).inc()
                     logger.info(
-                        "risk_check_9_enforced scale=%.2f new_size=%.6f strategy=%s reason=%s",
-                        evt.scale, float(proposal.size), proposal.strategy_id, evt.reason,
+                        "risk_check_9_enforced scale=%.2f recommended_size=%.6f strategy=%s reason=%s",
+                        evt.scale, float(_scaled_size), proposal.strategy_id, evt.reason,
                     )
                     break
 
@@ -416,7 +419,10 @@ class RiskGuardian:
                         self._cb.trigger_manual("per_strategy_all_halted")
                     )
                 except RuntimeError:
-                    pass  # No event loop — non-critical
+                    logger.error(
+                        "risk_check_12_global_cb_trigger_failed — no event loop; "
+                        "all strategies halted but global CB NOT triggered (safety gap)"
+                    )
                 logger.warning(
                     "risk_check_12_global_cb_triggered",
                     halted=halted,
@@ -481,6 +487,27 @@ class RiskGuardian:
                 strategy_id,
             )
             return False
+        # CHECK #6 (lite): Max single trade notional — prevents runaway large orders.
+        # Cross-exchange arbitrage legs offset directionally but both consume capital/margin.
+        # Use max leg notional (not sum) to avoid double-counting hedged positions.
+        try:
+            legs = getattr(trade_request, "legs", None) or []
+            if legs and total_capital_usd > 0:
+                max_leg_notional = max(
+                    (float(getattr(l, "size", 0) or 0) * float(getattr(l, "price", 0) or 0)
+                     for l in legs),
+                    default=0.0,
+                )
+                max_trade_value = total_capital_usd * float(self._max_single_trade_pct)
+                if max_leg_notional > max_trade_value:
+                    logger.warning(
+                        "risk_check_trade_request_rejected reason=trade_too_large "
+                        "strategy=%s notional=%.2f max=%.2f",
+                        strategy_id, max_leg_notional, max_trade_value,
+                    )
+                    return False
+        except Exception as _e:
+            logger.debug("check_trade_request.check6_error %s", _e)
         return True
 
     async def emergency_pause(self) -> None:
