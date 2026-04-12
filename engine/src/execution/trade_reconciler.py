@@ -227,13 +227,22 @@ class TradeReconciler:
             candidates = db_by_symbol.get(sym, [])
             best_match = None
             best_dt = float("inf")
+            ex_qty = float(ex_fill.get("qty", 0))
 
             for db_row in candidates:
                 db_ts = db_row["ts"].timestamp() if hasattr(db_row["ts"], "timestamp") else float(db_row["ts"])
                 dt = abs(db_ts - ex_ts)
-                if dt < 30.0 and dt < best_dt and _row_ts_ms(db_row["ts"]) not in matched_ts_keys:
-                    best_match = db_row
-                    best_dt = dt
+                if dt >= 30.0 or dt >= best_dt or _row_ts_ms(db_row["ts"]) in matched_ts_keys:
+                    continue
+                # Size discriminant: reject matches where sizes differ by >20%
+                # to reduce false-positive matching between different trades on the same symbol
+                db_qty = float(db_row.get("size") or 0)
+                if db_qty > 0 and ex_qty > 0:
+                    ratio = ex_qty / db_qty
+                    if ratio < 0.80 or ratio > 1.20:
+                        continue
+                best_match = db_row
+                best_dt = dt
 
             if best_match is not None:
                 matched_ts_keys.add(_row_ts_ms(best_match["ts"]))

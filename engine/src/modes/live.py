@@ -1826,6 +1826,9 @@ class LiveMode(BaseMode):
                 try:
                     executor = self._executor
                     exchanges_dict: dict = getattr(executor, "_exchanges", None) or {}
+                    # Naming convention: futures adapters must have "futures" in their key
+                    # (e.g. "binance_futures", "bitget_futures"). Adapters named otherwise
+                    # will not receive margin caching and will block futures_futures trades.
                     futures_adapters = {k: v for k, v in exchanges_dict.items() if "futures" in k}
                     for ex_id, adapter in futures_adapters.items():
                         try:

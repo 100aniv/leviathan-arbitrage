@@ -31,6 +31,7 @@
 | §8.30 Telegram 안전성 + MDD 수정 | v48 | BUG-HIGH-3~5, BUG-MEDIUM-4~5 | telegram HTTP lock scope, paper mode param, MDD 음수시작 수정, atomic .env write |
 | §8.31 코드 품질 + 회귀 수정 | v49 | BUG-MEDIUM-5~9, REGRESSION | adaptive double-filter 제거, leviathan_cli 3-bot, Binance 상수화, telegram HTML escape, MDD 회귀 수정 |
 | §8.32 asyncio 안전성 + overfill 감지 | v50 | BUG-HIGH-6~7 | asyncio.get_running_loop() 전환, reconcile_overfill 경고 로그 추가 |
+| §8.33 Reconciler 매칭 품질 + 마진 루프 문서화 | v51 | BUG-MEDIUM-10~11 | reconciler 20% size discriminant, live.py 마진 루프 네이밍 컨벤션 문서화 |
 
 ---
 
@@ -1686,3 +1687,14 @@ else:
 
 ### 테스트 결과
 - execution/ + lifecycle: 222 passed, 3 skipped
+
+---
+
+## §8.33 Reconciler 매칭 품질 + 마진 루프 문서화 — v51 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| MEDIUM-10 | MEDIUM | trade_reconciler.py | 30s window 타임스탬프 단독 매칭 — 사이즈 불일치 무시로 false-match 가능 | 20% size 근접도 discriminant 추가 |
+| MEDIUM-11 | MEDIUM | live.py | `_margin_refresh_loop` "futures" in k 문자열 휴리스틱 — 어댑터 누락 리스크 | 네이밍 컨벤션 주석 문서화 |
