@@ -196,7 +196,12 @@ class FuturesFuturesStrategy(BaseStrategy):
                     age_s = now - pos["entry_time"]
 
                     # Spread-reversion exit from monitor (uses last stored spread from on_signal)
+                    # Use adaptive threshold if ready — mirrors on_signal path (prevents divergence).
                     _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.5
+                    if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
+                        _, _at_exit_m = self._adaptive_threshold.thresholds
+                        if _at_exit_m and _at_exit_m > 0:
+                            _exit_threshold_bps = float(_at_exit_m)
                     last_spread = pos.get("last_spread_bps")
                     if last_spread is not None and last_spread <= _exit_threshold_bps:
                         if sym in self._exiting_symbols:

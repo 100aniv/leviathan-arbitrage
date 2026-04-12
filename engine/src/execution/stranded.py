@@ -81,6 +81,19 @@ class StrandedPositionTracker:
         now = time.monotonic()
         self._entries = [e for e in self._entries if now - e.created_at < _ENTRY_TTL_S]
 
+        # Idempotency guard: skip if same (exchange, symbol, side) was registered within 5s.
+        # Prevents double-counting when executor calls register() from both explicit rollback
+        # path and the finally block for the same failure event.
+        _DEDUP_WINDOW_S = 5.0
+        for e in reversed(self._entries):
+            if (e.exchange_id == exchange_id and e.symbol == symbol and e.side == side
+                    and now - e.created_at < _DEDUP_WINDOW_S):
+                logger.debug(
+                    "stranded_dedup_skipped exchange=%s symbol=%s side=%s",
+                    exchange_id, symbol, side,
+                )
+                return False
+
         entry = _StrandedEntry(
             exchange_id=exchange_id,
             symbol=symbol,

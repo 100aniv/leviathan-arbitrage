@@ -112,7 +112,7 @@ class MarginTracker:
             self._prune_expired()
             # Remove the first (oldest) matching entry for this exchange
             for i, (ex, amt, exp) in enumerate(self._entries):
-                if ex == exchange_id and abs(amt - effective) < Decimal("0.01"):
+                if ex == exchange_id and abs(amt - effective) / max(effective, Decimal("0.01")) < Decimal("0.001"):
                     self._entries.pop(i)
                     logger.debug(
                         "margin_tracker.released exchange=%s released=%.2f remaining=%.2f",

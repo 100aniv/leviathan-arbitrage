@@ -34,6 +34,7 @@
 | §8.33 Reconciler 매칭 품질 + 마진 루프 문서화 | v51 | BUG-MEDIUM-10~11 | reconciler 20% size discriminant, live.py 마진 루프 네이밍 컨벤션 문서화 |
 | §8.34 MarginTracker 공유 + 메트릭 레이블 | v52 | BUG-CRITICAL-3, BUG-HIGH-8 | 이중 MarginTracker 단일 인스턴스 통합, guardian 4e 레이블 수정 |
 | §8.35 DeduplicationGate 단순화 + FF 심볼 키 통일 | v53 | BUG-HIGH-9~10 | dedup per-key lock TOCTOU 제거, FF _open_positions 키 _sym 통일 |
+| §8.36 MEDIUM 품질 수정 | v54 | BUG-MEDIUM-12~14 | FF 모니터 adaptive threshold, margin_tracker 상대 허용오차, stranded dedup 5s |
 
 ---
 
@@ -1722,3 +1723,15 @@ else:
 |---|--------|------|------|------|
 | HIGH-9 | HIGH | dedup.py | per-key lock + meta_lock TOCTOU — cleanup 중 락 오브젝트 교체로 동일 key 두 락 가능 | meta_lock 단독 사용, per-key lock 제거 (asyncio 단일 스레드 특성 활용) |
 | HIGH-10 | HIGH | futures_futures.py | _open_positions 키 signal.symbol vs _sym 불일치 — rollback 시 discard 무효 가능 | signal.symbol → _sym으로 통일 |
+
+---
+
+## §8.36 MEDIUM 품질 수정 — v54 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| MEDIUM-12 | MEDIUM | futures_futures.py | 모니터 경로 static exit threshold — on_signal adaptive와 불일치 | adaptive threshold 적용 통일 |
+| MEDIUM-13 | MEDIUM | margin_tracker.py | release() 절대값 허용 오차 0.01 — 대형 포지션 릴리스 실패 가능 | 상대값 허용 오차 (0.1%) 적용 |
+| MEDIUM-14 | MEDIUM | stranded.py | register() 비멱등성 — 동일 롤백 이중 호출 시 USD 이중 산정 | 5초 dedup 가드 추가 |
