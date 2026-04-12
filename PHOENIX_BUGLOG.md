@@ -33,6 +33,7 @@
 | §8.32 asyncio 안전성 + overfill 감지 | v50 | BUG-HIGH-6~7 | asyncio.get_running_loop() 전환, reconcile_overfill 경고 로그 추가 |
 | §8.33 Reconciler 매칭 품질 + 마진 루프 문서화 | v51 | BUG-MEDIUM-10~11 | reconciler 20% size discriminant, live.py 마진 루프 네이밍 컨벤션 문서화 |
 | §8.34 MarginTracker 공유 + 메트릭 레이블 | v52 | BUG-CRITICAL-3, BUG-HIGH-8 | 이중 MarginTracker 단일 인스턴스 통합, guardian 4e 레이블 수정 |
+| §8.35 DeduplicationGate 단순화 + FF 심볼 키 통일 | v53 | BUG-HIGH-9~10 | dedup per-key lock TOCTOU 제거, FF _open_positions 키 _sym 통일 |
 
 ---
 
@@ -1710,3 +1711,14 @@ else:
 |---|--------|------|------|------|
 | CRITICAL-3 | CRITICAL | executor.py / live.py | 이중 MarginTracker 인스턴스 — strategy layer와 executor layer가 별도 추적 → 동시 신호 시 margin 과다 허용 | set_margin_tracker()로 live._margin_tracker를 executor에 주입, 단일 공유 인스턴스 |
 | HIGH-8 | HIGH | guardian.py | CHECK #4e 메트릭 레이블이 "4" → circuit_breaker와 구별 불가 | check_number="4e"로 수정 |
+
+---
+
+## §8.35 DeduplicationGate 단순화 + FF 심볼 키 통일 — v53 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| HIGH-9 | HIGH | dedup.py | per-key lock + meta_lock TOCTOU — cleanup 중 락 오브젝트 교체로 동일 key 두 락 가능 | meta_lock 단독 사용, per-key lock 제거 (asyncio 단일 스레드 특성 활용) |
+| HIGH-10 | HIGH | futures_futures.py | _open_positions 키 signal.symbol vs _sym 불일치 — rollback 시 discard 무효 가능 | signal.symbol → _sym으로 통일 |

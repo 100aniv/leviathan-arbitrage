@@ -631,8 +631,9 @@ class FuturesFuturesStrategy(BaseStrategy):
                 return eid
 
             # Track entry for time-based exit.
-            if self.config.max_hold_seconds > 0 and signal.symbol:
-                self._open_positions[signal.symbol] = {
+            # Use _sym (= signal.symbol or "") to match the lookup key used everywhere else.
+            if self.config.max_hold_seconds > 0 and _sym:
+                self._open_positions[_sym] = {
                     "buy_ex": _to_futures_exchange(signal.buy_exchange),
                     "sell_ex": _to_futures_exchange(signal.sell_exchange),
                     "size": size,
