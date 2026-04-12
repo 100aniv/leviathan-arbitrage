@@ -328,8 +328,13 @@ class NativeAdapter(abc.ABC):
         data: dict[str, Any] | None = None,
         signed: bool = False,
         headers: dict[str, str] | None = None,
+        _retry: int = 3,
     ) -> dict:
-        """Execute an authenticated or public REST request."""
+        """Execute an authenticated or public REST request with retry/backoff.
+
+        Retries on 429 (rate limit) and transient network errors (timeout, connect).
+        Uses exponential backoff: 1s, 2s, 4s.
+        """
         if not self._http:
             raise RuntimeError(f"{self.exchange_id}: not connected — call connect() first")
 
@@ -345,13 +350,46 @@ class NativeAdapter(abc.ABC):
         if signed:
             req_headers.update(self._auth_headers(method, path, params, data))
 
-        resp = await self._http.request(
-            method,
-            path,
-            params=params,
-            json=data if method in ("POST", "PUT", "DELETE") and data else None,
-            headers=req_headers,
-        )
+        import httpx as _httpx
+        last_exc: Exception | None = None
+        for _attempt in range(_retry):
+            if _attempt > 0:
+                _delay = 2 ** (_attempt - 1)  # 1s, 2s
+                logger.warning(
+                    "request_retry exchange=%s attempt=%d/%d delay=%.1fs",
+                    self.exchange_id, _attempt + 1, _retry, _delay,
+                )
+                await asyncio.sleep(_delay)
+            try:
+                resp = await self._http.request(
+                    method,
+                    path,
+                    params=params,
+                    json=data if method in ("POST", "PUT", "DELETE") and data else None,
+                    headers=req_headers,
+                )
+            except (_httpx.ConnectTimeout, _httpx.ReadTimeout, _httpx.ConnectError) as exc:
+                last_exc = exc
+                logger.warning(
+                    "request_transient_err exchange=%s attempt=%d/%d err=%s",
+                    self.exchange_id, _attempt + 1, _retry, exc,
+                )
+                continue
+            # Retry on 429
+            if resp.status_code == 429:
+                last_exc = None  # will re-raise as HTTPStatusError after retries
+                logger.warning(
+                    "request_rate_limited exchange=%s attempt=%d/%d — backing off",
+                    self.exchange_id, _attempt + 1, _retry,
+                )
+                continue
+            break
+        else:
+            # All retries exhausted
+            if last_exc:
+                raise last_exc
+            # Fall through to error handling with last resp (429)
+
         if resp.is_error:
             try:
                 body = resp.json()
