@@ -103,6 +103,9 @@ class FuturesFuturesStrategy(BaseStrategy):
         self._monitor_task: "asyncio.Task | None" = None  # stored ref prevents GC / allows cancel
         # BUG-62: snapshot of positions currently being exited → restore on rollback
         self._pending_exits: dict[str, dict] = {}
+        # BUG-CRITICAL: exit race guard — prevents duplicate exit from both monitor + on_signal()
+        # Both paths independently check _open_positions; this set ensures only one wins.
+        self._exiting_symbols: set[str] = set()
 
         # US-260: Adaptive threshold — rolling percentile + volatility weight
         # Bug 26: Use adaptive_static_entry_bps (if set) as the outlier-filter baseline,
@@ -157,6 +160,7 @@ class FuturesFuturesStrategy(BaseStrategy):
         EXIT rollback (ROLLED_BACK): exit 실패 후 partial fill 언와인드 성공 → 포지션 복원됨 → _pending_exits에서 복원.
         ROLLBACK_FAILED: 호출하지 않음 (stranded position 존재).
         """
+        self._exiting_symbols.discard(symbol)
         if symbol in self._pending_exits:
             # Exit order rolled back → original position restored on exchange → re-track
             restored = self._pending_exits.pop(symbol)
@@ -167,20 +171,37 @@ class FuturesFuturesStrategy(BaseStrategy):
             logger.info("ff.position_cleared_on_rollback symbol=%s", symbol)
             self._open_positions.pop(symbol, None)
 
+    def on_execution_success(self, symbol: str) -> None:
+        """성공적 실행 완료 시 _pending_exits 정리 (BUG-80).
+
+        EXIT success: 실제 포지션이 거래소에서 청산됨 → _pending_exits 스냅샷 삭제.
+        ENTRY success: _pending_exits에 해당 심볼 없음 → no-op.
+        """
+        self._exiting_symbols.discard(symbol)
+        if symbol in self._pending_exits:
+            self._pending_exits.pop(symbol)
+            logger.debug("ff.pending_exits_cleared_on_success symbol=%s", symbol)
+
     async def _open_positions_monitor(self) -> None:
         """60초마다 _open_positions 점검 — max_hold_seconds 초과 또는 spread 수렴 시 exit TradeRequest 생성."""
         import asyncio as _asyncio
-        try:
-            while self._is_active:
+        while self._is_active:
+            try:
                 await _asyncio.sleep(60)
-                now = time.time()
-                for sym, pos in list(self._open_positions.items()):
+            except _asyncio.CancelledError:
+                return
+            now = time.time()
+            for sym, pos in list(self._open_positions.items()):
+                try:
                     age_s = now - pos["entry_time"]
 
                     # Spread-reversion exit from monitor (uses last stored spread from on_signal)
                     _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.5
                     last_spread = pos.get("last_spread_bps")
                     if last_spread is not None and last_spread <= _exit_threshold_bps:
+                        if sym in self._exiting_symbols:
+                            continue  # BUG-CRITICAL: on_signal() already claimed this exit
+                        self._exiting_symbols.add(sym)
                         logger.info(
                             "ff.spread_exit_monitor symbol=%s last_spread_bps=%.2f exit_threshold_bps=%.2f age_s=%.0f — 스프레드 수렴 청산",
                             sym, last_spread, _exit_threshold_bps, age_s,
@@ -218,6 +239,9 @@ class FuturesFuturesStrategy(BaseStrategy):
                         continue
 
                     if age_s > self.config.max_hold_seconds:
+                        if sym in self._exiting_symbols:
+                            continue  # BUG-CRITICAL: on_signal() already claimed this exit
+                        self._exiting_symbols.add(sym)
                         logger.warning(
                             "ff.stale_position symbol=%s age_s=%.0f max_hold_s=%.0f "
                             "— exit TradeRequest 생성",
@@ -254,10 +278,8 @@ class FuturesFuturesStrategy(BaseStrategy):
                         self._pending_exits[sym] = dict(pos)
                         # 중복 emit 방지: 모니터에서 즉시 제거
                         self._open_positions.pop(sym, None)
-        except _asyncio.CancelledError:
-            pass
-        except Exception:
-            logger.exception("ff.monitor_unexpected_error — monitor task exiting; positions may not be auto-exited")
+                except Exception:
+                    logger.exception("ff.monitor_symbol_error symbol=%s — skipping this symbol", sym)
 
     def pop_exit_requests(self) -> list:
         """pending exit TradeRequests를 반환하고 목록 초기화."""
@@ -354,6 +376,10 @@ class FuturesFuturesStrategy(BaseStrategy):
                 if _at_exit and _at_exit > 0:
                     _exit_threshold_bps = float(_at_exit)
             if _current_spread_bps is not None and _current_spread_bps <= _exit_threshold_bps:
+                # BUG-CRITICAL: guard against duplicate exit if monitor already queued this symbol
+                if _sym in self._exiting_symbols:
+                    return None
+                self._exiting_symbols.add(_sym)
                 logger.info(
                     "ff.spread_exit symbol=%s spread_bps=%.2f exit_threshold_bps=%.2f age_s=%.0f — 스프레드 수렴 청산",
                     _sym, _current_spread_bps, _exit_threshold_bps, age_s,
@@ -391,6 +417,10 @@ class FuturesFuturesStrategy(BaseStrategy):
 
             # --- Time-based exit (SAFETY fallback) ---
             if self.config.max_hold_seconds > 0 and age_s > self.config.max_hold_seconds:
+                # BUG-CRITICAL: guard against duplicate exit if monitor already queued this symbol
+                if _sym in self._exiting_symbols:
+                    return None
+                self._exiting_symbols.add(_sym)
                 logger.info(
                     "ff.time_exit symbol=%s age_s=%.0f max_hold_s=%.0f — closing position",
                     _sym, age_s, self.config.max_hold_seconds,
@@ -450,6 +480,9 @@ class FuturesFuturesStrategy(BaseStrategy):
 
         # US-260: static min_spread is the ENTRY FLOOR; adaptive p95 is OUTLIER CAP
         # (p95 as entry threshold blocks 95% of normal signals — use as upper bound instead)
+        if float(signal.spread_pct) <= 0:
+            self._metrics.signals_filtered += 1
+            return None
         _spread_bps = float(signal.spread_pct) * 10000
         min_spread_bps_effective = self.config.min_spread_bps
         if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:

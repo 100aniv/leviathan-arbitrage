@@ -26,6 +26,7 @@
 | §8.25 운영 안정성 | v43 | BUG-78~79 | futures_margin_low 알림, reconcile_amount_mismatch false alarm 수정 |
 | §8.26 체결 품질 | v44 | BUG-80 | reconcile_overfill 감지 추가, 리뷰어 if/elif 검증 완료 |
 | §8.27 포지션 대조 + 마진 | v45 | BUG-81~83 | reconcile 헤지모드 레그 합산, 마진 폴백 우회 수정, reconciler 윈도우 통일 |
+| §8.28 이중 청산 방지 + 수수료 | v46 | BUG-CRITICAL-1~2, BUG-84~85 | FF/SF 이중 exit 방지, reconciler false alarm, Bitget Futures fee 수정 |
 
 ---
 
@@ -1466,3 +1467,70 @@ DB 쿼리(10분)에서 해당 체결 없음 → exchange fill이 DB에 없는 �
 | reconciler 쿼리 윈도우 | 600s (TTL 1200s와 불일치) | **1200s (TTL와 일치, false alarm 제거)** |
 | ff_ts_filter 로그 필드 | ex_a←→ex_b 교환 | **정상 필드 순서** |
 | trade_reconciler 주석 | ±5초 (코드 30초와 불일치) | **±30초 (코드와 일치)** |
+
+---
+
+## §8.28 이중 청산 방지 + 수수료 수정 — v46 (2026-04-12)
+
+### BUG-CRITICAL-1: FF 이중 exit 방출 race — _exiting_symbols 가드 추가
+
+**파일**: `engine/src/strategies/futures_futures.py`
+
+**원인**: `_open_positions_monitor` (60초 주기 백그라운드 태스크)와 `on_signal()` (신호 수신마다 호출) 모두 독립적으로 `_open_positions`를 검사하고 exit TradeRequest를 생성.
+모니터가 `_open_positions`에서 심볼을 팝(pop)하기 전에 `on_signal()`이 동일 심볼에서 exit 조건을 감지하면 두 경로 모두 exit 요청 발행 → 동일 포지션에 대한 중복 청산 주문 → 의도치 않은 방향성 포지션(롱 또는 숏) 생성 + 자금 손실.
+
+**수정**:
+- `self._exiting_symbols: set[str] = set()` 추가 (`__init__`)
+- `_open_positions_monitor` spread/time exit: `if sym in self._exiting_symbols: continue` 가드 + `self._exiting_symbols.add(sym)`
+- `on_signal()` spread/time exit: `if _sym in self._exiting_symbols: return None` 가드 + `self._exiting_symbols.add(_sym)`
+- `on_execution_success` / `on_execution_rollback`: `self._exiting_symbols.discard(symbol)` 정리
+**상태**: ✅ 완료
+
+### BUG-CRITICAL-2: SF _pending_timeout_requests 이중 drain — 인라인 pop(0) 제거
+
+**파일**: `engine/src/strategies/spot_futures.py` (lines ~109-110, ~154-155)
+
+**원인**: `on_signal()` 내부에서 `_pending_timeout_requests.pop(0)`로 직접 drain.
+`pop_exit_requests()` 도 동일 리스트를 `list() + clear()`로 드레인.
+두 소비자가 같은 리스트를 처리 → 같은 timeout close가 두 번 실행 → spot 매도 레그가 한 번 성공 후 두 번째 호출 시 신규 spot 매수 진입.
+
+**수정**: `on_signal()`에서 inline drain 코드 2곳 제거.
+`pop_exit_requests()`가 유일한 소비자가 됨. 테스트 업데이트 (`test_holding_timeout_expired`).
+**상태**: ✅ 완료
+
+### BUG-84: Reconciler fetch_failed_exchanges 무시 — false alarm
+
+**파일**: `engine/src/execution/reconciler.py` (line ~103)
+
+**원인**: exchange REST fetch 실패 시 `fetch_failed_exchanges` 목록에 추가됨 (BUG-01).
+그러나 "engine has position, exchange has none" 루프에서 해당 거래소의 포지션도 계속 검사.
+fetch 실패한 거래소의 모든 포지션이 false discrepancy 알림 → Telegram 스팸 + kill-switch 오작동 가능.
+
+**수정**:
+```python
+eng_exchange_id = key.split(":")[0]
+if eng_exchange_id in fetch_failed_exchanges:
+    continue  # can't validate against failed exchange
+```
+**상태**: ✅ 완료
+
+### BUG-85: Bitget Futures 수수료 하드코딩 0.10% (실제: taker 0.06%)
+
+**파일**: `engine/src/infra/exchange/native_bitget.py` (`_rest_get_fee_rate`)
+
+**원인**: `FeeRate(maker=Decimal("0.001"), taker=Decimal("0.001"))` 하드코딩.
+Bitget Futures USDT-M VIP0 실제 수수료: maker 0.02%, taker 0.06%.
+Taker 기준 0.10% vs 0.06% = 66% 과대 산정.
+→ 실제로는 수익성이 있는 FF 신호가 "비수익"으로 필터링됨 = 신호 생성 억제.
+
+**수정**: `if self._market_type == "futures"` 분기 추가 → maker=0.0002, taker=0.0006
+**상태**: ✅ 완료
+
+### v46 변경사항 요약
+
+| 항목 | v45 이전 | v46 |
+|------|---------|-----|
+| FF 이중 exit 방지 | 없음 | **_exiting_symbols 가드 (monitor + on_signal 모두)** |
+| SF timeout close 이중 drain | on_signal() + pop_exit_requests() 양쪽 | **pop_exit_requests() 단독 소비** |
+| Reconciler fetch 실패 포지션 | false alarm 발생 | **fetch_failed 거래소 skip** |
+| Bitget Futures taker fee | 0.10% (하드코딩) | **0.06% (USDT-M VIP0 실제값)** |

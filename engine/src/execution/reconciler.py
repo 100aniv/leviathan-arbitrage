@@ -101,6 +101,11 @@ class PositionReconciler:
 
         # Check: positions engine tracks that exchange doesn't have
         for key, eng_pos in engine_positions.items():
+            # BUG-84: skip positions from failed exchanges — can't validate and would
+            # generate false "engine has position, exchange has none" discrepancy alerts
+            eng_exchange_id = key.split(":")[0]
+            if eng_exchange_id in fetch_failed_exchanges:
+                continue
             if key not in exchange_positions:
                 if abs(eng_pos.size) > self._size_tolerance:
                     msg = (

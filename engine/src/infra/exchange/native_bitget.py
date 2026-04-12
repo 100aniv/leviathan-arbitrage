@@ -397,11 +397,13 @@ class NativeBitgetAdapter(NativeAdapter):
         fill_qty = order.amount
 
         # BUG-61: Bitget place-order response omits fill price/qty for MARKET orders.
-        # Poll /api/v2/mix/order/detail up to 3 times to get actual avgPrice + baseVolume.
+        # Poll /api/v2/mix/order/detail up to 5 times to get actual avgPrice + baseVolume.
+        # BUG-37: Increased from 3→5 attempts at 0.3s (was 0.2s) to handle slower fills.
+        # Also accept "partially_filled" status to capture priceAvg before full fill confirmed.
         import asyncio as _asyncio
         if self._market_type == "futures" and _is_market and trade_id:
-            for _attempt in range(3):
-                await _asyncio.sleep(0.2)
+            for _attempt in range(5):
+                await _asyncio.sleep(0.3)
                 try:
                     _detail = await self._request(
                         "GET", "/api/v2/mix/order/detail",
@@ -413,7 +415,8 @@ class NativeBitgetAdapter(NativeAdapter):
                         signed=True,
                     )
                     _d = _detail.get("data", {})
-                    if _d.get("status") == "filled":
+                    _status = _d.get("status", "")
+                    if _status in ("filled", "partially_filled"):
                         _avg = _d.get("priceAvg") or _d.get("price")
                         _vol = _d.get("baseVolume") or _d.get("size")
                         if _avg and Decimal(str(_avg)) > 0:
@@ -421,10 +424,11 @@ class NativeBitgetAdapter(NativeAdapter):
                         if _vol and Decimal(str(_vol)) > 0:
                             fill_qty = Decimal(str(_vol))
                         logger.debug(
-                            "bitget_futures_fill_polled symbol=%s orderId=%s attempt=%d price=%s qty=%s",
-                            order.symbol, trade_id, _attempt + 1, fill_price, fill_qty,
+                            "bitget_futures_fill_polled symbol=%s orderId=%s attempt=%d status=%s price=%s qty=%s",
+                            order.symbol, trade_id, _attempt + 1, _status, fill_price, fill_qty,
                         )
-                        break
+                        if _status == "filled":
+                            break  # stop polling on full fill; keep polling partial
                 except Exception as _pe:
                     logger.debug("bitget_futures_poll_failed orderId=%s: %s", trade_id, _pe)
 
@@ -576,6 +580,15 @@ class NativeBitgetAdapter(NativeAdapter):
             return []
 
     async def _rest_get_fee_rate(self, symbol: str) -> FeeRate:
+        # BUG-85: Bitget Futures USDT-M VIP0: maker=0.02%, taker=0.06% (not spot 0.10%)
+        # Source: SSOT math-models.md §4.2
+        if self._market_type == "futures":
+            return FeeRate(
+                maker=Decimal("0.0002"),
+                taker=Decimal("0.0006"),
+                symbol=symbol,
+                exchange_id=self.exchange_id,
+            )
         return FeeRate(
             maker=Decimal("0.001"),
             taker=Decimal("0.001"),
@@ -598,7 +611,7 @@ class NativeBitgetAdapter(NativeAdapter):
             return []
         params: dict = {
             "productType": "USDT-FUTURES",
-            "limit": str(min(limit, 100)),
+            "limit": str(min(limit, 500)),  # Bitget v2 supports up to 500 per page
             "symbol": _normalize_symbol(symbol).upper(),
         }
         if start_time_ms:
@@ -638,7 +651,7 @@ class NativeBitgetAdapter(NativeAdapter):
                     "symbol": str(d.get("symbol", "")),
                     "order_id": str(d.get("orderId", "")),
                     "trade_id": str(d.get("tradeId", "")),
-                    "side": str(d.get("side", "")).lower(),
+                    "side": str(d.get("side") or d.get("tradeSide") or "").lower(),
                     "qty": _sf(d.get("baseVolume") or d.get("qty")),
                     "price": _sf(d.get("price")),
                     "realized_pnl": _sf(d.get("profit") or d.get("realizedPnl")),

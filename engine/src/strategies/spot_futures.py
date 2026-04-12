@@ -105,10 +105,8 @@ class SpotFuturesStrategy(BaseStrategy):
 
         # US-271: Expire stale positions by max_holding_hours — close BOTH legs
         if self._holding_timeout_enabled:
-            # Return any previously queued timeout closes (multi-position drain)
-            if self._pending_timeout_requests:
-                return self._pending_timeout_requests.pop(0)
-
+            # BUG-CRITICAL: do NOT drain _pending_timeout_requests inline here.
+            # pop_exit_requests() is the sole consumer — dual-drain causes duplicate exits.
             now = time.monotonic()
             max_hold_s = self.config.max_holding_hours * 3600.0
             expired = [
@@ -153,8 +151,7 @@ class SpotFuturesStrategy(BaseStrategy):
                     confidence=0.0,
                     metadata={"reason": "holding_timeout"},
                 ))
-            if self._pending_timeout_requests:
-                return self._pending_timeout_requests.pop(0)
+            # pop_exit_requests() is the sole consumer of _pending_timeout_requests
 
         # US-254: Regime check — block new entries in CRISIS mode
         if self._regime_detector is not None:
@@ -385,3 +382,17 @@ class SpotFuturesStrategy(BaseStrategy):
             # Entry request rolled back → no position on exchange
             logger.info("sf.position_cleared_on_rollback symbol=%s", resolved)
             self._open_positions.pop(resolved, None)
+
+    def on_execution_success(self, symbol: str) -> None:
+        """성공적 실행 완료 시 _pending_close_symbols + _open_positions 정리 (BUG-80 SpotFutures).
+
+        Exit success: position closed on exchange → clear both tracking sets.
+        Entry success: _pending_close_symbols에 없으므로 no-op.
+
+        on_fill()이 leg_type 메타데이터 없이 호출되는 경우를 대비한 안전망.
+        """
+        resolved = self._resolve_spot_symbol(symbol) or symbol
+        if resolved in self._pending_close_symbols:
+            self._pending_close_symbols.discard(resolved)
+            self._open_positions.pop(resolved, None)
+            logger.debug("sf.pending_close_cleared_on_success symbol=%s", resolved)

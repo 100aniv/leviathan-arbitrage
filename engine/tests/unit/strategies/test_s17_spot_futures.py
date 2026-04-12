@@ -105,11 +105,15 @@ async def test_holding_timeout_expired():
     )
 
     signal = _make_signal(basis_bps=30.0)
-    result = await strategy.on_signal(signal)
+    await strategy.on_signal(signal)  # queues close in _pending_timeout_requests
 
-    assert result is not None
+    # BUG-CRITICAL fix: on_signal() no longer returns timeout close inline.
+    # pop_exit_requests() is the sole consumer — prevents duplicate exits.
+    exits = strategy.pop_exit_requests()
+    assert len(exits) == 1, f"Expected 1 exit request, got {len(exits)}"
+    result = exits[0]
     assert result.metadata.get("reason") == "holding_timeout"
-    # CRITICAL-1 fix: both spot + futures legs must be closed
+    # Both spot + futures legs must be closed
     assert len(result.legs) == 2
     leg_types = {leg.metadata.get("leg_type") for leg in result.legs}
     assert "timeout_close_spot" in leg_types
