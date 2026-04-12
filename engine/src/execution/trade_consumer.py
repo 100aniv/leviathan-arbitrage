@@ -187,17 +187,19 @@ class TradeRequestConsumer:
                 )
 
                 for raw_msg in messages:
-                    await self._process_message(raw_msg)
-                    # BUG-65: ack after successful processing to clear PEL
-                    # If _process_message raises, outer except prevents ack (allowing PEL retry)
-                    raw_msg_id = raw_msg.get("id") if isinstance(raw_msg, dict) else None
-                    if raw_msg_id:
-                        try:
-                            await self._event_bus.ack_message(
-                                TRADE_REQUEST_STREAM, CONSUMER_GROUP, raw_msg_id
-                            )
-                        except Exception:
-                            logger.warning("trade_consumer.ack_failed msg_id=%s — PEL may grow", raw_msg_id)
+                    should_ack = await self._process_message(raw_msg)
+                    # BUG-65: ack only when _process_message returns True.
+                    # Kill switch → False (message stays in PEL, retried when engine resumes).
+                    # Deserialization failure / risk rejection / success → True (ack).
+                    if should_ack:
+                        raw_msg_id = raw_msg.get("id") if isinstance(raw_msg, dict) else None
+                        if raw_msg_id:
+                            try:
+                                await self._event_bus.ack_message(
+                                    TRADE_REQUEST_STREAM, CONSUMER_GROUP, raw_msg_id
+                                )
+                            except Exception:
+                                logger.warning("trade_consumer.ack_failed msg_id=%s — PEL may grow", raw_msg_id)
 
             except asyncio.CancelledError:
                 break
@@ -206,12 +208,15 @@ class TradeRequestConsumer:
                 logger.exception("TradeRequestConsumer: unexpected error in consume loop")
                 await asyncio.sleep(_POLL_INTERVAL_MS / 1000.0)
 
-    async def _process_message(self, raw_msg: dict[str, Any]) -> None:
-        """Process a single trade request message.
+    async def _process_message(self, raw_msg: dict[str, Any]) -> bool:
+        """Process a single trade request message. Returns True if the message should be acked.
 
         BUG-65 fix: handles raw Redis stream format {"id": ..., "fields": {...}}
         from the production consume loop. Also accepts plain dict format for
         backwards compatibility with tests and direct callers.
+
+        Returns False only for kill-switch (message should stay in PEL for retry).
+        All other outcomes (deserialization failure, risk rejection, success) return True.
         """
         import json as _json
 
@@ -236,7 +241,7 @@ class TradeRequestConsumer:
             logger.exception(
                 "TradeRequestConsumer: failed to deserialize TradeRequest"
             )
-            return
+            return True  # 영구 실패 — 재시도 불필요, ack
 
         self.processed_count += 1
 
@@ -264,7 +269,7 @@ class TradeRequestConsumer:
                     trade_request.strategy_id,
                     now - self._recent_trades[trade_key],
                 )
-                return
+                return True  # 의도적 차단 — ack
             self._recent_trades[trade_key] = now
 
         # Check kill switch before each trade
@@ -273,7 +278,7 @@ class TradeRequestConsumer:
                 "TradeRequestConsumer: engine halted, skipping trade_request strategy=%s",
                 trade_request.strategy_id,
             )
-            return
+            return False  # 킬 스위치 — PEL 유지, 엔진 재개 시 재처리
 
         # Risk check
         try:
@@ -284,7 +289,7 @@ class TradeRequestConsumer:
                 "TradeRequestConsumer: risk check raised exception for strategy=%s",
                 trade_request.strategy_id,
             )
-            return
+            return True  # 리스크 체크 예외 — ack (retry해도 동일 결과)
 
         if not approved:
             self.risk_rejected_count += 1
@@ -293,7 +298,7 @@ class TradeRequestConsumer:
                 trade_request.strategy_id,
                 reason,
             )
-            return
+            return True  # 의도적 거부 — ack
 
         # PHOENIX: Filter trades where any leg notional < min (config-driven)
         # Prevents imbalanced positions from per-adapter min_notional boosts.
@@ -310,7 +315,7 @@ class TradeRequestConsumer:
                 len(_small_legs),
                 float(max((l.size * l.price for l in _small_legs if l.price), default=Decimal("0"))),
             )
-            return
+            return True  # min_notional 필터 — ack
 
         # Convert legs to orders
         legs = trade_request.legs
@@ -320,7 +325,7 @@ class TradeRequestConsumer:
                 "TradeRequestConsumer: trade_request has fewer than 2 legs strategy=%s",
                 trade_request.strategy_id,
             )
-            return
+            return True  # 잘못된 요청 — ack
 
         orders = [_leg_to_order(leg, trade_request.strategy_id) for leg in legs]
 
@@ -341,6 +346,7 @@ class TradeRequestConsumer:
                 logger.exception(
                     "TradeRequestConsumer: on_result callback raised exception"
                 )
+        return True  # 실행 완료 (성공/실패 무관) — ack
 
     async def _execute(
         self, trade_request: TradeRequest, orders: list[Order]
