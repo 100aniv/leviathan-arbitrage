@@ -93,7 +93,11 @@
     "searchTrades": "심볼, 거래소 검색",
     "tcaReport": "TCA 리포트 PDF 받기",
     "noData": "데이터 없음",
-    "noDataDesc": "선택한 기간에 거래 내역이 없습니다"
+    "noDataDesc": "선택한 기간에 거래 내역이 없습니다",
+    "totalPnl": "총 PnL",
+    "totalPnlDesc": "세션 시작 이후 실현 손익",
+    "totalPnlTooltip": "Paper/Shadow 모드 세션 시작 이후 누적 실현 손익 합계입니다.",
+    "byStrategyEmpty": "이 기간에 전략별 거래 데이터가 없습니다"
   },
 
   "safety": {

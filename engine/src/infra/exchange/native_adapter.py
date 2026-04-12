@@ -249,7 +249,7 @@ class NativeAdapter(abc.ABC):
             return await self._rest_get_balances()
         except Exception as e:
             self._health.record_error()
-            logger.error("Get balances error %s: %s", self.exchange_id, e)
+            logger.error("Get balances error %s: %r", self.exchange_id, e)
             raise
 
     async def get_positions(self) -> list[Position]:
@@ -258,7 +258,7 @@ class NativeAdapter(abc.ABC):
             return await self._rest_get_positions()
         except Exception as e:
             self._health.record_error()
-            logger.error("Get positions error %s: %s", self.exchange_id, e)
+            logger.error("Get positions error %s: %r", self.exchange_id, e)
             return []
 
     async def get_fee_rate(self, symbol: str) -> FeeRate:

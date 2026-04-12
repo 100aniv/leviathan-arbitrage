@@ -90,16 +90,14 @@ export function PnLChart({ wsPnl }: PnLChartProps = {}) {
 
   if (error) {
     return (
-      <div className="bg-terminal-surface border border-terminal-border p-4">
-        <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle block mb-4">
-          PnL Curve
-        </span>
+      <div className="card">
+        <span className="card-header block">PNL 추이</span>
         <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <p className="text-xs font-mono text-loss">연결에 실패했어요</p>
+          <p className="text-small text-loss">연결에 실패했어요</p>
           <button
             onClick={() => mutate()}
             aria-label="PnL 차트 다시 불러오기"
-            className="text-[10px] font-mono border border-terminal-border px-3 py-1 text-terminal-subtle hover:text-terminal-text transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="text-small border border-border px-3 py-1 text-text-tertiary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
           >
             다시 시도
           </button>
@@ -109,10 +107,10 @@ export function PnLChart({ wsPnl }: PnLChartProps = {}) {
   }
 
   return (
-    <div className="bg-terminal-surface border border-terminal-border p-4">
+    <div className="card">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">
-          PnL Curve
+        <span className="card-header mb-0">
+          PNL 추이
         </span>
         {!isLoading && (
           <span className="text-[9px] font-mono text-profit animate-pulse">● LIVE</span>
@@ -124,18 +122,18 @@ export function PnLChart({ wsPnl }: PnLChartProps = {}) {
         <div className="grid grid-cols-3 gap-2 mb-4">
           {(
             [
-              { label: 'Total',      value: latest.total,      color: COLORS.total },
-              { label: 'Realized',   value: latest.realized,   color: COLORS.realized },
-              { label: 'Unrealized', value: latest.unrealized, color: COLORS.unrealized },
+              { label: '합산',      value: latest.total,      color: COLORS.total },
+              { label: '실현',   value: latest.realized,   color: COLORS.realized },
+              { label: '미실현', value: latest.unrealized, color: COLORS.unrealized },
             ] as const
           ).map(({ label, value, color }) => (
-            <div key={label} className="bg-terminal-bg border border-terminal-border p-2">
-              <div className="text-[10px] font-mono text-terminal-subtle uppercase tracking-wider mb-1" style={{ color }}>
+            <div key={label} className="bg-bg-base border border-border rounded-[10px] p-2.5">
+              <div className="text-small font-medium uppercase tracking-wider mb-1" style={{ color }}>
                 {label}
               </div>
               <div
-                className="text-sm font-mono tabular-nums font-semibold"
-                style={{ color: value >= 0 ? '#059669' : '#DC2626' }}
+                className="text-body font-semibold tabular-nums"
+                style={{ color: value >= 0 ? '#149E61' : '#E5484D' }}
               >
                 {fmt(value)}
               </div>
@@ -147,16 +145,16 @@ export function PnLChart({ wsPnl }: PnLChartProps = {}) {
       {/* Chart */}
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={history} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border, #DEDEE5)" vertical={false} />
           <XAxis
             dataKey="time"
-            tick={{ fill: '#6B7280', fontSize: 9, fontFamily: 'monospace' }}
+            tick={{ fill: 'var(--color-text-tertiary, #9497A9)', fontSize: 10 }}
             tickLine={false}
-            axisLine={{ stroke: '#E5E7EB' }}
+            axisLine={{ stroke: 'var(--color-border, #DEDEE5)' }}
             interval="preserveStartEnd"
           />
           <YAxis
-            tick={{ fill: '#6B7280', fontSize: 9, fontFamily: 'monospace' }}
+            tick={{ fill: 'var(--color-text-tertiary, #9497A9)', fontSize: 10 }}
             tickLine={false}
             axisLine={false}
             tickFormatter={v => `$${v}`}
@@ -164,27 +162,26 @@ export function PnLChart({ wsPnl }: PnLChartProps = {}) {
           />
           <Tooltip
             contentStyle={{
-              background: '#FFFFFF',
-              border: '1px solid #E5E7EB',
-              borderRadius: 0,
-              fontFamily: 'monospace',
-              fontSize: 11,
+              background: 'var(--color-bg-elevated, #FFFFFF)',
+              border: '1px solid var(--color-border, #DEDEE5)',
+              borderRadius: 8,
+              fontSize: 12,
             }}
-            labelStyle={{ color: '#6B7280', fontSize: 10 }}
+            labelStyle={{ color: 'var(--color-text-secondary, #686B82)', fontSize: 11 }}
             formatter={(value: number | undefined, name: string | undefined) => [value != null ? fmt(value) : '—', name ?? '']}
           />
-          <Line type="monotone" dataKey="total"      stroke={COLORS.total}      dot={false} strokeWidth={1.5} isAnimationActive={false} />
-          <Line type="monotone" dataKey="realized"   stroke={COLORS.realized}   dot={false} strokeWidth={1}   isAnimationActive={false} />
-          <Line type="monotone" dataKey="unrealized" stroke={COLORS.unrealized} dot={false} strokeWidth={1}   isAnimationActive={false} />
+          <Line type="monotone" dataKey="total"      name="합산"   stroke={COLORS.total}      dot={false} strokeWidth={1.5} isAnimationActive={false} />
+          <Line type="monotone" dataKey="realized"   name="실현"   stroke={COLORS.realized}   dot={false} strokeWidth={1}   isAnimationActive={false} />
+          <Line type="monotone" dataKey="unrealized" name="미실현" stroke={COLORS.unrealized} dot={false} strokeWidth={1}   isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
 
       {/* Legend */}
       <div className="flex items-center gap-4 mt-2">
-        {(Object.entries(COLORS) as [string, string][]).map(([key, color]) => (
-          <div key={key} className="flex items-center gap-1">
+        {([['total', '합산', COLORS.total], ['realized', '실현', COLORS.realized], ['unrealized', '미실현', COLORS.unrealized]] as const).map(([, label, color]) => (
+          <div key={label} className="flex items-center gap-1">
             <div className="w-4 h-0.5" style={{ background: color }} />
-            <span className="text-[10px] font-mono text-terminal-subtle capitalize">{key}</span>
+            <span className="text-small text-text-tertiary">{label}</span>
           </div>
         ))}
       </div>

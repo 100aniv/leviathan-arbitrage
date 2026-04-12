@@ -192,3 +192,57 @@ class TestRollbackCost:
         for _ in range(10):
             calc.record_trade(TradeOutcome(rolled_back=False))
         assert calc.rollback_probability() == Decimal("0")
+
+
+class TestEstimateFuturesCost:
+    """BUG-CRITICAL: estimate_futures_cost must include BOTH entry AND exit fees (round-trip)."""
+
+    def _calc_no_rollback(self):
+        import os
+        os.environ["DISABLE_ROLLBACK_COST"] = "1"
+        calc = CostCalculator(FeeModel(), CEXOrderbookSlippage())
+        return calc
+
+    def test_round_trip_includes_exit_fees(self):
+        """Entry + exit = 4 legs total. Fee must be 2x entry-only fee.
+
+        binance_futures VIP0 taker = 0.05%, bitget_futures VIP0 taker = 0.06%
+        entry: 0.05 + 0.06 = 0.11  → $0.11 on $100 notional
+        exit:  0.05 + 0.06 = 0.11  → $0.11 on $100 notional
+        total: $0.22
+        """
+        calc = self._calc_no_rollback()
+        notional = Decimal("100")  # $100 notional
+        cost = calc.estimate_futures_cost(
+            "binance_futures", "bitget_futures", notional, notional
+        )
+        assert cost == Decimal("0.2200"), f"Expected 0.2200, got {cost}"
+
+    def test_cost_is_double_entry_only(self):
+        """Round-trip cost must be exactly 2x a one-way entry cost."""
+        calc = self._calc_no_rollback()
+        notional = Decimal("50")
+        cost = calc.estimate_futures_cost(
+            "binance_futures", "bitget_futures", notional, notional
+        )
+        fee_model = FeeModel()
+        entry_only = (
+            fee_model.taker_fee("binance_futures", notional)
+            + fee_model.taker_fee("bitget_futures", notional)
+        )
+        assert cost == entry_only * 2, f"Round-trip {cost} != 2 * entry {entry_only}"
+
+    def test_min_spread_25bps_covers_22bps_cost(self):
+        """At $100 notional, 25bps spread > 22bps round-trip cost → net positive.
+
+        binance_futures+bitget_futures round-trip = 22bps (0.05%+0.06% × 2).
+        futures_min_spread_bps=25 gives 3bps buffer.
+        """
+        calc = self._calc_no_rollback()
+        notional = Decimal("100")
+        spread_bps = Decimal("25")
+        gross_profit = notional * spread_bps / Decimal("10000")  # $0.25
+        cost = calc.estimate_futures_cost(
+            "binance_futures", "bitget_futures", notional, notional
+        )
+        assert gross_profit > cost, f"Spread profit {gross_profit} must exceed cost {cost}"

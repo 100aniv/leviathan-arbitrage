@@ -399,7 +399,7 @@ class RealDataSignalProducer:
 
                 # US-238: Backwardation path — spot > futures → sell spot, buy futures
                 if float(spot_bid) > float(fut_ask):
-                    _sf_basis_bps_back = (float(spot_bid) - float(fut_ask)) / float(fut_ask) * 10000
+                    _sf_basis_bps_back = (float(spot_bid) - float(fut_ask)) / float(spot_ask) * 10000
                     _sf_min_bps = get_settings().operational.spot_futures_min_basis_bps
                     if _sf_basis_bps_back < _sf_min_bps:
                         continue

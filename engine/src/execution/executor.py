@@ -281,11 +281,22 @@ class AtomicExecutor:
                 effective_id = order_id or order.order_id
                 if effective_id:
                     # Pass symbol for native adapters that require it (Binance)
+                    # BUG-110: cancel_order swallows exceptions and returns False.
+                    # Check return value — False means cancel failed (e.g. 43001 = order not found).
+                    # Order may have been filled and archived; return False so caller can escalate.
                     try:
-                        await adapter.cancel_order(effective_id, symbol=order.symbol)
+                        _cancel_ok = await adapter.cancel_order(effective_id, symbol=order.symbol)
                     except TypeError:
-                        # Fallback for adapters that don't accept symbol kwarg
-                        await adapter.cancel_order(effective_id)
+                        _cancel_ok = await adapter.cancel_order(effective_id)
+                    if not _cancel_ok:
+                        logger.warning(
+                            "rollback_cancel_failed exchange=%s order_id=%s symbol=%s — "
+                            "order may be filled/archived; position verification required",
+                            exchange_id, effective_id, order.symbol,
+                        )
+                        if order.order_id:
+                            self._rollback_attempted[order.order_id] = "failed"
+                        return False, f"cancel_returned_false:{effective_id}"
                 # else: order was never submitted — nothing to cancel
             if order.order_id:
                 # BUG-03: prune to prevent unbounded growth (cap at 5000 entries).
@@ -339,7 +350,8 @@ class AtomicExecutor:
 
         # RC-SAME-1b: DeduplicationGate — Bug 26 fix
         # BUG-32: differentiate entry vs exit so close orders aren't blocked by recent entry
-        _is_close = any(
+        # BUG-75 alignment: use all() so mixed-leg trades are treated as entries (same as cross-exchange)
+        _is_close = all(
             o.metadata.get("reduceOnly") for o in [leg1_order, leg2_order]
         )
         _dedup_key = f"{strategy_id}:{leg1_order.symbol}:{'close' if _is_close else 'open'}"
@@ -961,6 +973,14 @@ class AtomicExecutor:
                                 "leg1_timeout_rollback_failed HALT_SET=%s exchange=%s strategy=%s",
                                 should_halt, ex_a_id, strategy_id,
                             )
+                            # HIGH-2: return ROLLBACK_FAILED so live.py does NOT clear position
+                            # tracking and allow re-entry into a stranded position.
+                            return ExecutionResult(
+                                status=ExecutionStatus.ROLLBACK_FAILED,
+                                legs=[LegResult(order=leg1_order, error="timeout+rollback_failed")],
+                                error=f"Leg 1 timeout + rollback failed: {rb_reason2}",
+                                strategy_id=strategy_id,
+                            )
                 return ExecutionResult(
                     status=ExecutionStatus.ROLLED_BACK,
                     legs=[LegResult(order=leg1_order, error="timeout")],
@@ -968,7 +988,51 @@ class AtomicExecutor:
                     strategy_id=strategy_id,
                 )
             except Exception as exc:
+                # HIGH-2: mirror timeout handler — attempt cancel before returning ROLLED_BACK.
+                # The HTTP request may have reached exchange A before the exception
+                # (ConnectionReset, socket drop after send). Without a cancel attempt,
+                # the order could be filled on exchange A but live.py sees ROLLED_BACK
+                # → on_execution_rollback clears position tracking → stranded position.
+                # NOTE: margin + lock release is handled by the enclosing finally block.
                 logger.error("leg1_failed exchange=%s error=%s strategy=%s", ex_a_id, exc, strategy_id)
+                # HIGH-2/CRITICAL: mirror timeout handler — skip opposing unwind for exit legs.
+                # If the HTTP request reached exchange A before the exception and the order filled
+                # (close order), calling _rollback_order(filled=True) would reopen the position.
+                _is_exit_leg = bool(leg1_order.metadata.get("reduceOnly"))
+                _rb_ok, _rb_reason = await self._rollback_order(ex_a_id, leg1_order, filled=False)
+                if not _rb_ok:
+                    if _is_exit_leg:
+                        logger.info(
+                            "leg1_exception_exit_cancel_failed_assuming_filled exchange=%s symbol=%s "
+                            "— exit likely succeeded, no unwind",
+                            ex_a_id, leg1_order.symbol,
+                        )
+                    else:
+                        # Mirror timeout handler: try filled=True, then ROLLBACK_FAILED if both fail
+                        _rb_ok2, _rb_reason2 = await self._rollback_order(
+                            ex_a_id, leg1_order, filled=True
+                        )
+                        if not _rb_ok2:
+                            should_halt = self._stranded_tracker.register(
+                                exchange_id=ex_a_id,
+                                symbol=leg1_order.symbol,
+                                side=str(leg1_order.side),
+                                size=float(leg1_order.amount),
+                                value_usd=float(leg1_order.amount * (leg1_order.price or Decimal("0"))),
+                                reason=f"leg1_exception_rollback_failed:{_rb_reason2}",
+                            )
+                            if should_halt:
+                                halt_local()
+                            logger.critical(
+                                "leg1_exception_rollback_failed HALT_SET=%s exchange=%s strategy=%s",
+                                should_halt, ex_a_id, strategy_id,
+                            )
+                            return ExecutionResult(
+                                status=ExecutionStatus.ROLLBACK_FAILED,
+                                legs=[LegResult(order=leg1_order, error="exception+rollback_failed")],
+                                error=f"Leg 1 exception + rollback failed: {_rb_reason2}",
+                                strategy_id=strategy_id,
+                            )
                 return ExecutionResult(
                     status=ExecutionStatus.ROLLED_BACK,
                     legs=[LegResult(order=leg1_order, error=str(exc))],
@@ -1059,15 +1123,19 @@ class AtomicExecutor:
                 )
 
             # ── PHASE RECONCILIATION (step 13 — async, non-blocking) ──────
-            reconcile_task = asyncio.ensure_future(
-                self._post_execution_reconcile(
-                    ex_a_id, ex_b_id, strategy_id,
-                    leg1_result=leg1_result,
-                    leg2_result=leg2_result,
-                    delay_s=self._config.post_reconcile_delay_s,
+            # BUG-114: Skip position reconcile for exit (reduceOnly) orders.
+            # After a successful exit, position IS expected to be 0 → reconcile_mismatch
+            # false alarm. For ghost exits (22002), position was never opened → also 0.
+            if not _is_close:
+                reconcile_task = asyncio.create_task(
+                    self._post_execution_reconcile(
+                        ex_a_id, ex_b_id, strategy_id,
+                        leg1_result=leg1_result,
+                        leg2_result=leg2_result,
+                        delay_s=self._config.post_reconcile_delay_s,
+                    )
                 )
-            )
-            reconcile_task.add_done_callback(self._reconcile_done_callback)
+                reconcile_task.add_done_callback(self._reconcile_done_callback)
 
             # Bug 13-A: cross-exchange = 2-leg sequential
             _elapsed_ms = (asyncio.get_running_loop().time() - _t0) * 1000
@@ -1122,6 +1190,21 @@ class AtomicExecutor:
         # Executing leg2 unwind first reduces directional exposure faster.
         _leg2_halt = False  # deferred halt signal from leg2 rollback failure
         leg2_filled = leg2_result.trade is not None and leg2_result.filled_amount > 0
+        # HIGH-4/BUG-85: leg2 timeout → trade=None, leg2_filled=False → rollback block skipped.
+        # asyncio.wait_for cancels the Python coroutine but the HTTP request may already be on
+        # the wire → order could be pending/filled on exchange B → unhedged single-leg position.
+        # Fix: attempt cancel for any leg2 error with no confirmed fill (filled=False is harmless
+        # — cancel on non-existent order returns benign -2011/40762).
+        if not leg2_filled and leg2_result.error:
+            ex_b_id_err = leg2_result.order.exchange_id if leg2_result.order else None
+            if ex_b_id_err:
+                logger.warning(
+                    "cross_exchange_leg2_error_cancel exchange=%s symbol=%s error=%s — cancel attempt",
+                    ex_b_id_err,
+                    leg2_result.order.symbol if leg2_result.order else "?",
+                    leg2_result.error,
+                )
+                await self._rollback_order(ex_b_id_err, leg2_result.order, filled=False)
         if leg2_filled:
             ex_b_id = leg2_result.order.exchange_id
             leg2_trade_order_id = leg2_result.trade.order_id if leg2_result.trade else None

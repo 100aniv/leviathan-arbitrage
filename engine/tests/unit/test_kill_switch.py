@@ -273,13 +273,13 @@ class TestKillSwitchDuplicateTrigger:
         ks = KillSwitch(redis_client=None, exchanges=[])
         await ks.trigger()
         assert is_halted()
-        ks.reset()
+        await ks.reset()
         assert not is_halted()
 
     async def test_reset_allows_retriggering(self):
         ks = KillSwitch(redis_client=None, exchanges=[])
         await ks.trigger()
-        ks.reset()
+        await ks.reset()
         event = await ks.trigger()
         assert is_halted()
         assert "Already triggered" not in event.errors

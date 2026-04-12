@@ -10,6 +10,7 @@ Tests the LiveMode orchestrator with mock executor, verifying:
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -465,3 +466,69 @@ class TestExecutorRouting:
         assert key1 == key2
         assert "BTC/USDT" in key1
         assert "binance" in key1
+
+
+# ---------------------------------------------------------------------------
+# Test: Symbol cooldown (all-legs coverage)
+# ---------------------------------------------------------------------------
+
+
+class TestSymbolCooldown:
+    """Regression tests for per-symbol cooldown covering all legs.
+
+    BUG fix: old code only checked legs[0].symbol. For spot_futures strategy
+    the two legs have DIFFERENT symbols (spot vs futures notation), so a
+    stranded futures leg symbol in cooldown would not block re-entry.
+    """
+
+    @pytest.mark.asyncio
+    async def test_cooldown_on_legs1_blocks_trade(self, make_live_mode, mock_executor):
+        """legs[1] symbol in cooldown must block trade (spot_futures two-symbol regression)."""
+        lm = make_live_mode()
+        lm._running = True
+        lm._symbol_cooldown_s = 60.0
+        tr = TradeRequest(
+            strategy_id="spot_futures_v1",
+            legs=[
+                TradeLeg(
+                    exchange_id="binance",
+                    symbol="BTC/USDT",
+                    side=OrderSide.BUY,
+                    size=Decimal("0.01"),
+                    price=Decimal("50000"),
+                    order_type=OrderType.MARKET,
+                ),
+                TradeLeg(
+                    exchange_id="binance",
+                    symbol="BTC/USDT:USDT",
+                    side=OrderSide.SELL,
+                    size=Decimal("0.01"),
+                    price=Decimal("50100"),
+                    order_type=OrderType.MARKET,
+                ),
+            ],
+            expected_profit_usdt=Decimal("1.0"),
+        )
+        # Only the SECOND leg symbol is in cooldown — old code would miss this
+        lm._symbol_last_trade["BTC/USDT:USDT"] = time.monotonic()
+
+        await lm._execute_trade_request(tr)
+
+        # Trade must be blocked — executor should not be called
+        mock_executor.execute_same_exchange.assert_not_awaited()
+        mock_executor.execute_cross_exchange.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_empty_legs_not_classified_as_exit(self, make_live_mode, mock_executor):
+        """Empty legs must not be vacuously classified as exit (all([]) == True guard)."""
+        lm = make_live_mode()
+        lm._running = True
+        tr = TradeRequest(
+            strategy_id="test_v1",
+            legs=[],
+            expected_profit_usdt=Decimal("1.0"),
+        )
+        # Should not raise and executor should not be called (no legs = no route)
+        await lm._execute_trade_request(tr)
+        mock_executor.execute_same_exchange.assert_not_awaited()
+        mock_executor.execute_cross_exchange.assert_not_awaited()

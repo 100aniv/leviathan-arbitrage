@@ -57,7 +57,8 @@ P(rollback): 30-trade 롤링 윈도우, cold-start 5%
 | Binance | 0.10% | 0.10% | |
 | Bybit | 0.10% | 0.10% | Spot VIP0 |
 | OKX | 0.08% | 0.10% | |
-| Bitget | 0.10% | 0.10% | |
+| Bitget | 0.10% | 0.10% | Spot VIP0 |
+| Bitget Futures | 0.02% | 0.06% | USDT-M VIP0 (BUG-20 수정) |
 | Upbit | 0.05% | 0.139% | KRW 마켓 |
 | Bithumb | 0.25% | 0.25% | KRW 마켓 |
 | Coinone | 0.02% | 0.02% | API 할인 적용 (기본 0.20%) |

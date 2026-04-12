@@ -58,6 +58,14 @@ class NativeBitgetAdapter(NativeAdapter):
         # hedge_mode: BOTH open and close orders require posSide.
         # one_way_mode: no posSide, reduceOnly=True is sufficient for closes.
         self._pos_mode: str = "one_way"
+        # BUG-107: margin mode for USDT-FUTURES orders. Detected at connect() via
+        # /api/v2/mix/account/accounts (same endpoint as posMode). Default "crossed"
+        # (USDT-M cross-margin is the Bitget default). Can be overridden via config
+        # key "execution.bitget_futures_margin_mode" for accounts using isolated mode.
+        from src.core.config_loader import get_config as _gc
+        self._margin_mode: str = _gc("execution.bitget_futures_margin_mode", default="crossed")
+        # BUG-104: map internal UUID order_id → Bitget's numeric orderId for cancel
+        self._exchange_order_id_map: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -86,9 +94,17 @@ class NativeBitgetAdapter(NativeAdapter):
             if data:
                 raw_mode = data[0].get("posMode", "one_way_mode")
                 self._pos_mode = "hedge" if "hedge" in raw_mode.lower() else "one_way"
+                # BUG-107: also detect marginMode from same endpoint.
+                # Only override if config hasn't explicitly set it (default="crossed").
+                from src.core.config_loader import get_config as _gc2
+                _cfg_margin = _gc2("execution.bitget_futures_margin_mode", default=None)
+                if _cfg_margin is None:
+                    raw_margin = data[0].get("marginMode", "crossed")
+                    if raw_margin and raw_margin.lower() in ("crossed", "isolated"):
+                        self._margin_mode = raw_margin.lower()
                 logger.info(
-                    "bitget_pos_mode_detected exchange=%s mode=%s (raw=%s)",
-                    self.exchange_id, self._pos_mode, raw_mode,
+                    "bitget_pos_mode_detected exchange=%s pos_mode=%s margin_mode=%s (raw_pos=%s)",
+                    self.exchange_id, self._pos_mode, self._margin_mode, raw_mode,
                 )
         except Exception as exc:
             logger.warning(
@@ -304,13 +320,19 @@ class NativeBitgetAdapter(NativeAdapter):
             body: dict[str, Any] = {
                 "symbol": sym,
                 "productType": "USDT-FUTURES",
-                "marginMode": "isolated",
+                # BUG-107: marginMode detected at connect() via _fetch_pos_mode.
+                # Default "crossed"; configurable via "execution.bitget_futures_margin_mode".
+                "marginMode": self._margin_mode,
                 "marginCoin": "USDT",
                 "size": str(qty),
                 "side": side,
                 "tradeSide": "close" if order.metadata.get("reduceOnly") or order.metadata.get("tradeSide") == "close" else "open",
                 "orderType": "market" if _is_market else "limit",
-                "force": "ioc" if _is_market else "gtc",
+                # BUG-103: Bitget Futures does NOT support force:ioc for market orders.
+                # Sending force:ioc with orderType:market causes Bitget to accept the order
+                # (returns orderId) but immediately cancel it with 0 fill.
+                # Market orders always fill at best available price — use gtc.
+                "force": "gtc",
             }
             # Bug 31: hedge mode requires posSide for BOTH open and close orders.
             # one-way mode: no posSide — reduceOnly (tradeSide=close) is sufficient.
@@ -329,6 +351,82 @@ class NativeBitgetAdapter(NativeAdapter):
                 body["price"] = self._quantize_price(order.symbol, order.price)
             if order.client_order_id:
                 body["clientOid"] = order.client_order_id
+
+            # BUG-NEW: Bitget place-order with tradeSide=close returns 22002 even when
+            # position exists. Use /close-positions endpoint for all close orders instead.
+            if body.get("tradeSide") == "close":
+                _hold_side = "long" if side == "sell" else "short"
+                _close_body = {
+                    "symbol": sym,
+                    "productType": "USDT-FUTURES",
+                    "holdSide": _hold_side,
+                }
+                try:
+                    _close_resp = await self._request(
+                        "POST", "/api/v2/mix/order/close-positions",
+                        data=_close_body, signed=True,
+                    )
+                    _success = (_close_resp.get("data") or {}).get("successList", [])
+                    _order_id = str(_success[0].get("orderId", "")) if _success else f"close-{sym}"
+                    logger.info(
+                        "bitget_futures_close_positions_ok symbol=%s holdSide=%s orderId=%s",
+                        order.symbol, _hold_side, _order_id,
+                    )
+                    # Retrieve actual fill price for PnL accounting.
+                    # close-positions is a market order so order.price=0; query fill history.
+                    _close_fill_price = Decimal("0")
+                    if _order_id and not _order_id.startswith("close-"):
+                        import asyncio as _asyncio_cp
+                        for _cp_attempt in range(3):
+                            if _cp_attempt > 0:
+                                await _asyncio_cp.sleep(0.3)
+                            try:
+                                _cp_fills_resp = await self._request(
+                                    "GET", "/api/v2/mix/order/fills",
+                                    params={"symbol": sym, "productType": "USDT-FUTURES", "orderId": _order_id},
+                                    signed=True,
+                                )
+                                _cp_fills = _cp_fills_resp.get("data") or {}
+                                if isinstance(_cp_fills, dict):
+                                    _cp_fills = _cp_fills.get("fillList") or _cp_fills.get("list") or []
+                                if isinstance(_cp_fills, list) and _cp_fills:
+                                    _cp_qty = Decimal("0")
+                                    _cp_wprice = Decimal("0")
+                                    for _cpf in _cp_fills:
+                                        _q = Decimal(str(_cpf.get("baseVolume") or _cpf.get("size") or _cpf.get("qty") or "0"))
+                                        _p = Decimal(str(_cpf.get("price") or _cpf.get("priceAvg") or "0"))
+                                        _cp_qty += _q
+                                        _cp_wprice += _q * _p
+                                    if _cp_qty > 0:
+                                        _close_fill_price = _cp_wprice / _cp_qty
+                                        logger.info(
+                                            "bitget_futures_close_fill_price_recovered symbol=%s orderId=%s price=%s",
+                                            order.symbol, _order_id, _close_fill_price,
+                                        )
+                                        break
+                            except Exception as _cpfe:
+                                logger.debug("bitget_futures_close_fill_query_failed attempt=%d: %s", _cp_attempt + 1, _cpfe)
+                    return self._build_trade(
+                        order,
+                        trade_id=_order_id,
+                        price=_close_fill_price if _close_fill_price > 0 else (order.price or Decimal("0")),
+                        amount=order.amount,
+                    )
+                except Exception as _close_exc:
+                    _close_str = str(_close_exc)
+                    if "22002" in _close_str:
+                        logger.warning(
+                            "bitget_futures_ghost_position_cleared symbol=%s 22002 (close-positions) — treating as success",
+                            order.symbol,
+                        )
+                        return self._build_trade(
+                            order,
+                            trade_id=f"ghost-cleared-{order.order_id}",
+                            price=order.price or Decimal("0"),
+                            amount=order.amount,
+                        )
+                    raise
+
             try:
                 resp = await self._request("POST", "/api/v2/mix/order/place-order", data=body, signed=True)
             except Exception as _exc:
@@ -391,16 +489,62 @@ class NativeBitgetAdapter(NativeAdapter):
             if order.client_order_id:
                 body["clientOid"] = order.client_order_id
             resp = await self._request("POST", "/api/v2/spot/trade/place-order", data=body, signed=True)
-        rd = resp.get("data", {})
+        rd = resp.get("data", {}) or {}
         trade_id = str(rd.get("orderId", ""))
+        # BUG-108: validate Bitget soft-error responses.
+        # Bitget returns HTTP 200 with error codes in body (e.g. {"code":"40012","data":{}}).
+        # Without this check, failed orders appear as success (empty trade_id, fill_qty=0),
+        # executor calls on_execution_success(), position is removed from tracking,
+        # but the exchange never received the order → position permanently stranded.
+        _resp_code = resp.get("code", "")
+        if _resp_code and _resp_code != "00000":
+            _is_close = body.get("tradeSide") == "close" or (order.metadata or {}).get("reduceOnly")
+            # 22002 = "No position to close" — ghost position already gone, treat as success
+            if _resp_code == "22002" and _is_close:
+                logger.warning(
+                    "bitget_futures_ghost_position_cleared symbol=%s 22002(soft) — treating as success",
+                    order.symbol,
+                )
+                return self._build_trade(
+                    order,
+                    trade_id=f"ghost-cleared-{order.order_id}",
+                    price=order.price or Decimal("0"),
+                    amount=order.amount,
+                )
+            raise RuntimeError(
+                f"bitget_place_order_failed code={_resp_code} "
+                f"msg={resp.get('msg', '')} symbol={order.symbol} "
+                f"tradeSide={body.get('tradeSide', '?')}"
+            )
+        logger.debug(
+            "bitget_place_order_resp symbol=%s tradeSide=%s size=%s orderId=%s resp_code=%s",
+            order.symbol, body.get("tradeSide", "?"), body.get("size", "?"),
+            trade_id, resp.get("code", "?"),
+        )
+        # BUG-104: store UUID→exchange orderId mapping so rollback can cancel correctly.
+        # order.order_id is our internal UUID; trade_id is Bitget's numeric orderId.
+        # _rest_cancel_order resolves UUID → exchange orderId before calling cancel API.
+        if order.order_id and trade_id:
+            self._exchange_order_id_map[order.order_id] = trade_id
+            if len(self._exchange_order_id_map) > 2000:
+                # prune oldest 500 to avoid unbounded growth
+                for _k in list(self._exchange_order_id_map.keys())[:500]:
+                    del self._exchange_order_id_map[_k]
         fill_price = order.price or Decimal("0")
-        fill_qty = order.amount
+        # BUG-93: fill_qty default depends on market type AND order type:
+        # - Futures MARKET: default 0 → polling block may update it; 0 on poll failure → rollback
+        # - Futures LIMIT:  default 0 → limit may not have filled (no polling block runs)
+        # - Spot MARKET:    default order.amount → market fills at intended size (no polling block)
+        # - Spot LIMIT:     default 0 → limit may not have filled (no polling block runs)
+        _order_is_market = order.order_type == OrderType.MARKET
+        fill_qty = order.amount if (self._market_type != "futures" and _order_is_market) else Decimal("0")
 
         # BUG-61: Bitget place-order response omits fill price/qty for MARKET orders.
         # Poll /api/v2/mix/order/detail up to 5 times to get actual avgPrice + baseVolume.
         # BUG-37: Increased from 3→5 attempts at 0.3s (was 0.2s) to handle slower fills.
         # Also accept "partially_filled" status to capture priceAvg before full fill confirmed.
         import asyncio as _asyncio
+        _order_not_in_active = False  # BUG-105: set True when 43001 received
         if self._market_type == "futures" and _is_market and trade_id:
             for _attempt in range(5):
                 await _asyncio.sleep(0.3)
@@ -430,7 +574,127 @@ class NativeBitgetAdapter(NativeAdapter):
                         if _status == "filled":
                             break  # stop polling on full fill; keep polling partial
                 except Exception as _pe:
+                    _pe_str = str(_pe)
+                    if "43001" in _pe_str:
+                        # BUG-105: 43001 = "order does not exist in active orders" — market order
+                        # filled immediately and was archived before polling started.
+                        # Fall back to fill history endpoint to recover actual qty/price.
+                        _order_not_in_active = True
+                        logger.debug("bitget_futures_order_archived orderId=%s — using fill history", trade_id)
+                        break  # no point retrying order/detail; switch to fill history below
                     logger.debug("bitget_futures_poll_failed orderId=%s: %s", trade_id, _pe)
+
+        # BUG-113: polling ended (5 attempts) without fill detection AND no 43001 received.
+        # Bitget MARKET orders sometimes return status="init"/"new" for several seconds even after fill.
+        # Force fill history fallback so we don't misclassify a filled order as "not filled".
+        if (
+            self._market_type == "futures"
+            and _is_market
+            and trade_id
+            and fill_qty == Decimal("0")
+            and not _order_not_in_active
+        ):
+            _order_not_in_active = True
+            logger.info(
+                "bitget_futures_poll_timeout_forcing_history orderId=%s symbol=%s — "
+                "5 polls returned non-filled status; switching to fill history",
+                trade_id, order.symbol,
+            )
+
+        # BUG-105 fallback: query /api/v2/mix/order/fills to recover fill data for archived orders.
+        # BUG-105b: retry up to 3x with 0.5s backoff — fills may not be indexed immediately.
+        # BUG-105b: use `or {}` instead of `.get("data", {})` — data key may map to None.
+        # BUG-112: increased to 8x1.5s (12s total) — Bitget fill indexing delay observed to be >1.5s,
+        # causing market orders that DID fill to appear as "not filled" → ghost LONG positions.
+        if _order_not_in_active and fill_qty == Decimal("0") and trade_id:
+            for _fill_attempt in range(8):
+                if _fill_attempt > 0:
+                    await _asyncio.sleep(1.5)
+                try:
+                    _fills_resp = await self._request(
+                        "GET", "/api/v2/mix/order/fills",
+                        params={
+                            "symbol": sym,
+                            "productType": "USDT-FUTURES",
+                            "orderId": trade_id,
+                        },
+                        signed=True,
+                    )
+                    _fills = _fills_resp.get("data") or {}
+                    if isinstance(_fills, dict):
+                        _fills = _fills.get("fillList") or _fills.get("list") or []
+                    if isinstance(_fills, list) and _fills:
+                        _total_qty = Decimal("0")
+                        _weighted_price = Decimal("0")
+                        for _f in _fills:
+                            _fq = Decimal(str(_f.get("baseVolume") or _f.get("size") or _f.get("qty") or "0"))
+                            _fp = Decimal(str(_f.get("price") or _f.get("priceAvg") or "0"))
+                            _total_qty += _fq
+                            _weighted_price += _fq * _fp
+                        if _total_qty > 0:
+                            fill_qty = _total_qty
+                            fill_price = _weighted_price / _total_qty
+                            logger.info(
+                                "bitget_futures_fill_recovered orderId=%s symbol=%s qty=%s price=%s attempt=%d",
+                                trade_id, order.symbol, fill_qty, fill_price, _fill_attempt + 1,
+                            )
+                            break
+                    else:
+                        logger.debug(
+                            "bitget_futures_fill_history_empty orderId=%s attempt=%d — retrying",
+                            trade_id, _fill_attempt + 1,
+                        )
+                except Exception as _fe:
+                    # BUG-105b: continue to retry on transient errors (network/timeout);
+                    # a permanent error (auth/param) will also fail on retries and exhaust naturally.
+                    logger.warning("bitget_futures_fill_history_failed orderId=%s attempt=%d: %s", trade_id, _fill_attempt + 1, _fe)
+                    continue
+
+            # BUG-112: time-based fallback — if orderId filter returned empty, query recent fills
+            # by time window and match by orderId (orderId-indexed query may be delayed).
+            if fill_qty == Decimal("0") and trade_id:
+                import time as _time
+                try:
+                    _ts_from = str(int((_time.time() - 300) * 1000))  # last 5 minutes
+                    _ts_to = str(int(_time.time() * 1000))
+                    _fb_resp = await self._request(
+                        "GET", "/api/v2/mix/order/fills",
+                        params={
+                            "symbol": sym,
+                            "productType": "USDT-FUTURES",
+                            "startTime": _ts_from,
+                            "endTime": _ts_to,
+                        },
+                        signed=True,
+                    )
+                    _fb_data = _fb_resp.get("data") or {}
+                    if isinstance(_fb_data, dict):
+                        _fb_data = _fb_data.get("fillList") or _fb_data.get("list") or []
+                    if isinstance(_fb_data, list):
+                        # CRITICAL-1: aggregate ALL partial fills for this orderId (mirror lines 551-560)
+                        _tb_total_qty = Decimal("0")
+                        _tb_weighted_price = Decimal("0")
+                        for _f in _fb_data:
+                            if str(_f.get("orderId", "")) == trade_id:
+                                _fq = Decimal(str(_f.get("baseVolume") or _f.get("size") or _f.get("qty") or "0"))
+                                _fp = Decimal(str(_f.get("price") or _f.get("priceAvg") or "0"))
+                                _tb_total_qty += _fq
+                                _tb_weighted_price += _fq * _fp
+                        if _tb_total_qty > 0:
+                            fill_qty = _tb_total_qty
+                            fill_price = _tb_weighted_price / _tb_total_qty
+                            logger.info(
+                                "bitget_futures_fill_recovered_time_query orderId=%s symbol=%s qty=%s price=%s",
+                                trade_id, order.symbol, fill_qty, fill_price,
+                            )
+                    if fill_qty == Decimal("0"):
+                        logger.warning(
+                            "bitget_futures_fill_confirmed_empty orderId=%s symbol=%s — "
+                            "order genuinely not filled (async-cancelled by Bitget risk engine)",
+                            trade_id, order.symbol,
+                        )
+                except Exception as _tbe:
+                    logger.warning("bitget_futures_fill_time_fallback_failed orderId=%s: %s", trade_id, _tbe)
 
         return self._build_trade(
             order,
@@ -468,7 +732,12 @@ class NativeBitgetAdapter(NativeAdapter):
         )
 
     async def _rest_cancel_order(self, order_id: str, symbol: str | None) -> bool:
-        body: dict[str, Any] = {"orderId": order_id}
+        # BUG-104: resolve internal UUID → Bitget's numeric orderId.
+        # Rollback passes order.order_id (UUID); Bitget's cancel API requires its own numeric orderId.
+        # Use .get() (not .pop()) so the mapping survives a non-success response —
+        # retry paths would otherwise fall back to raw UUID and get error 40017 again.
+        resolved_id = self._exchange_order_id_map.get(order_id, order_id)
+        body: dict[str, Any] = {"orderId": resolved_id}
         if symbol:
             body["symbol"] = _normalize_symbol(symbol)
         if self._market_type == "futures":
@@ -483,10 +752,12 @@ class NativeBitgetAdapter(NativeAdapter):
             )
         code = resp.get("code", "")
         if code == "00000":
+            self._exchange_order_id_map.pop(order_id, None)  # clean up on confirmed success
             return True
         # BUG-04: 40762=order not found, 43011=already completed → desired outcome, return True
         if code in ("40762", "43011", "40783"):
             logger.info("bitget_cancel_benign code=%s — order already gone, treating as success", code)
+            self._exchange_order_id_map.pop(order_id, None)  # clean up — order is gone
             return True
         return False
 

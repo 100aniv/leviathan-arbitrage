@@ -246,7 +246,13 @@ class TradeRequestConsumer:
         self.processed_count += 1
 
         # Position collision check: block duplicate (symbol, exchange_pair) within 10s window
-        if trade_request.legs:
+        # BUG-94: skip collision check for exit orders (reduceOnly) — close must not be
+        # blocked by a recent open for the same pair within the 10s window.
+        # bool() guard: all([]) returns True (Python gotcha) — explicit non-empty check first.
+        _is_exit_request = bool(trade_request.legs) and all(
+            leg.metadata.get("reduceOnly") for leg in trade_request.legs
+        )
+        if trade_request.legs and not _is_exit_request:
             trade_key = (
                 frozenset(leg.symbol for leg in trade_request.legs),
                 frozenset(leg.exchange_id for leg in trade_request.legs),

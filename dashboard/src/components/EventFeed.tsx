@@ -26,25 +26,25 @@ export function EventFeed() {
     <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">Events</span>
+        <span className="text-xs font-mono uppercase tracking-[0.2em] text-terminal-subtle">이벤트</span>
         <Link href="/alerts" className="text-[10px] font-mono text-terminal-subtle hover:text-accent transition-colors">
-          View all →
+          전체 보기 →
         </Link>
       </div>
 
       {error ? (
         <div className="flex flex-col items-center gap-2 py-6">
-          <p className="text-xs font-mono text-loss">Failed to load events</p>
+          <p className="text-xs font-mono text-loss">이벤트를 불러오지 못했어요</p>
           <button
             onClick={() => mutate()}
             aria-label="이벤트 다시 불러오기"
             className="text-[10px] font-mono border border-terminal-border px-3 py-1 text-terminal-subtle hover:text-terminal-text transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Retry
+            다시 시도
           </button>
         </div>
       ) : sorted.length === 0 ? (
-        <p className="text-xs font-mono text-terminal-subtle text-center py-6">No recent events</p>
+        <p className="text-xs font-mono text-terminal-subtle text-center py-6">최근 이벤트 없음</p>
       ) : (
         <div className="max-h-[300px] overflow-y-auto space-y-0.5">
           {sorted.map(alert => (

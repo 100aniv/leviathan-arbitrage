@@ -41,6 +41,7 @@ class StrategyMetrics(BaseModel):
     fills_received: int = 0
     total_realized_pnl_usdt: Decimal = Decimal("0")
     signals_filtered: int = 0  # below threshold or risk rejected
+    rollback_no_state_count: int = 0  # rollback arrived after on_fill already cleared snapshot
 
 
 @runtime_checkable

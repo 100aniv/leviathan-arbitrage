@@ -98,6 +98,7 @@ class TradeReconciler:
                     WHERE mode = 'live'
                       AND ts >= to_timestamp($1)
                       AND (buy_exchange = $2 OR sell_exchange = $2)
+                      AND (reconciliation_status IS NULL OR reconciliation_status != 'matched')
                     """,
                     since_ts, exchange_id,
                 )
@@ -189,6 +190,7 @@ class TradeReconciler:
                 WHERE mode = 'live'
                   AND ts >= to_timestamp($1)
                   AND ($2 = '' OR buy_exchange = $2 OR sell_exchange = $2)
+                  AND (reconciliation_status IS NULL OR reconciliation_status != 'matched')
                 ORDER BY ts ASC
                 LIMIT 500
                 """,

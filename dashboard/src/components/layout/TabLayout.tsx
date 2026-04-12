@@ -56,7 +56,7 @@ export function TabLayout({ children }: TabLayoutProps) {
               LEVIATHAN
             </span>
             <span className="hidden sm:block text-xs text-text-tertiary font-medium shrink-0">
-              XXX STUDIO
+              트레이딩
             </span>
           </Link>
           {/* 연결 상태 뱃지 */}

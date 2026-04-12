@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.core.models import OrderSide, Signal
+from src.core.models import OrderSide, Signal, Trade
 from src.strategies.base import CostCalculator
 from src.strategies.futures_futures import FuturesFuturesConfig, FuturesFuturesStrategy
 
@@ -23,12 +23,15 @@ def make_signal(
     buy_price: Decimal = Decimal("50000"),
     sell_price: Decimal = Decimal("50100"),
     volume: Decimal = Decimal("0.5"),
-    margin_available: Decimal | None = None,
+    # BUG-115: default to ample margin so tests that don't focus on margin
+    # behaviour still pass after the margin_available <= 0 → block guard.
+    margin_available: Decimal = Decimal("100000"),
     book_age_ms: float = 0,
 ) -> Signal:
-    metadata: dict = {"book_age_ms": book_age_ms}  # US-273: stale guard requires this field
-    if margin_available is not None:
-        metadata["margin_available"] = str(margin_available)
+    metadata: dict = {
+        "book_age_ms": book_age_ms,  # US-273: stale guard requires this field
+        "margin_available": str(margin_available),
+    }
     return Signal(
         strategy_id="futures_futures_cross_v1",
         symbol="BTC/USDT:USDT",
@@ -140,6 +143,53 @@ async def test_margin_check_passes_with_sufficient_margin():
 
 
 @pytest.mark.asyncio
+async def test_margin_zero_blocks_trade_bug115():
+    """BUG-115: margin_available=0 must block trade instead of skipping margin check.
+
+    Prior to fix: margin_available=0 caused the entire margin check block to be
+    skipped → uncapped position size → Binance -2019 "Margin is insufficient".
+    After fix: margin_available <= 0 returns None immediately.
+    """
+    config = FuturesFuturesConfig(min_spread_bps=Decimal("8"), max_leverage=2, max_notional_usd=None)
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator(Decimal("1")), config)
+    await strategy.start()
+    signal = make_signal(volume=Decimal("0.5"), margin_available=Decimal("0"))
+    result = await strategy.on_signal(signal)
+    assert result is None
+    assert strategy.metrics.signals_filtered >= 1
+
+
+@pytest.mark.asyncio
+async def test_bug116_pending_exits_counted_toward_limit():
+    """BUG-116: symbols in _pending_exits must count against max_concurrent_positions.
+
+    The _open_positions_monitor removes a symbol from _open_positions before the exit
+    actually executes (10s drain delay).  Without counting _pending_exits, _cur_positions
+    drops and a new entry is allowed while the exit is still in-flight → Binance -2019.
+    """
+    config = FuturesFuturesConfig(
+        min_spread_bps=Decimal("8"),
+        max_concurrent_positions=1,
+        max_notional_usd=None,
+    )
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator(Decimal("1")), config)
+    await strategy.start()
+
+    # Simulate: monitor queued exit → symbol moved from _open_positions to _pending_exits
+    strategy._pending_exits["BTC/USDT:USDT"] = {
+        "buy_ex": "binance_futures",
+        "sell_ex": "bybit_futures",
+        "size": Decimal("0.01"),
+        "entry_time": 0.0,
+    }
+
+    # A new signal for a different symbol should be BLOCKED (slot occupied by pending exit)
+    result = await strategy.on_signal(make_signal())
+    assert result is None
+    assert strategy.metrics.signals_filtered >= 1
+
+
+@pytest.mark.asyncio
 async def test_high_cost_no_trade():
     """When costs exceed gross profit, return None."""
     strategy = FuturesFuturesStrategy(
@@ -159,3 +209,196 @@ async def test_inactive_strategy_returns_none():
     signal = make_signal()
     result = await strategy.on_signal(signal)
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# BUG-80: on_execution_success clears _pending_exits snapshot
+# ---------------------------------------------------------------------------
+
+def test_on_execution_success_clears_pending_exits():
+    """Successful exit must remove the snapshot from _pending_exits (BUG-80)."""
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    snapshot = {"entry_time": 1000.0, "buy_ex": "binance_futures", "sell_ex": "bitget_futures", "size": Decimal("1")}
+    strategy._pending_exits["BTC/USDT"] = snapshot
+
+    strategy.on_execution_success("BTC/USDT")
+
+    assert "BTC/USDT" not in strategy._pending_exits
+
+
+def test_on_execution_success_noop_for_entry_orders():
+    """on_execution_success for a symbol not in _pending_exits must not raise."""
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    # Should not raise even if symbol was an entry (not in _pending_exits)
+    strategy.on_execution_success("ETH/USDT")
+    assert strategy._pending_exits == {}
+
+
+def test_on_execution_success_does_not_restore_to_open_positions():
+    """Successful exit must NOT restore position — only rollback should restore."""
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    snapshot = {"entry_time": 1000.0, "buy_ex": "binance_futures", "sell_ex": "bitget_futures", "size": Decimal("1")}
+    strategy._pending_exits["SOL/USDT"] = snapshot
+
+    strategy.on_execution_success("SOL/USDT")
+
+    assert "SOL/USDT" not in strategy._open_positions
+    assert "SOL/USDT" not in strategy._pending_exits
+
+
+# ---------------------------------------------------------------------------
+# BUG-79: on_execution_rollback restores from _pending_exits (regression guard)
+# ---------------------------------------------------------------------------
+
+def test_on_execution_rollback_exit_restores_position():
+    """Exit rollback must restore position snapshot from _pending_exits (BUG-79 regression guard)."""
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    snapshot = {"entry_time": 1000.0, "buy_ex": "binance_futures", "sell_ex": "bitget_futures", "size": Decimal("1")}
+    strategy._pending_exits["BTC/USDT"] = snapshot
+
+    strategy.on_execution_rollback("BTC/USDT")
+
+    assert "BTC/USDT" in strategy._open_positions
+    assert strategy._open_positions["BTC/USDT"] == snapshot
+    assert "BTC/USDT" not in strategy._pending_exits
+
+
+def test_on_execution_rollback_entry_clears_open_positions():
+    """Entry rollback must clear from _open_positions (not restore from _pending_exits)."""
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    strategy._open_positions["ETH/USDT"] = {"entry_time": 1000.0}
+
+    strategy.on_execution_rollback("ETH/USDT")
+
+    assert "ETH/USDT" not in strategy._open_positions
+    assert "ETH/USDT" not in strategy._pending_exits
+
+
+def test_success_then_rollback_does_not_ghost_restore():
+    """After successful exit, a spurious rollback on the same symbol must not restore a ghost position (BUG-80 stale snapshot risk)."""
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    snapshot = {"entry_time": 1000.0, "buy_ex": "binance_futures", "sell_ex": "bitget_futures", "size": Decimal("1")}
+    strategy._pending_exits["BTC/USDT"] = snapshot
+
+    # First exit succeeds → clears _pending_exits
+    strategy.on_execution_success("BTC/USDT")
+    assert "BTC/USDT" not in strategy._pending_exits
+
+    # Spurious late rollback notification (e.g., network retry edge case) → no ghost restore
+    strategy.on_execution_rollback("BTC/USDT")
+    assert "BTC/USDT" not in strategy._open_positions
+
+
+def test_rollback_no_state_emits_warning(caplog):
+    """BUG-116 HIGH: rollback for symbol not in _pending_exits or _open_positions must emit
+    ff.rollback_no_state warning (on_fill may have already cleaned up the snapshot)."""
+    import logging
+
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    # Neither _open_positions nor _pending_exits contains this symbol
+    with caplog.at_level(logging.WARNING, logger="src.strategies.futures_futures"):
+        strategy.on_execution_rollback("GHOST/USDT:USDT")
+    assert any("ff.rollback_no_state" in r.message for r in caplog.records)
+    assert "GHOST/USDT:USDT" not in strategy._open_positions
+    assert "GHOST/USDT:USDT" not in strategy._pending_exits
+    assert strategy._metrics.rollback_no_state_count == 1
+
+
+@pytest.mark.asyncio
+async def test_on_fill_then_rollback_no_ghost_restore(caplog):
+    """on_fill이 먼저 _pending_exits 정리 후 rollback 도착 시 ghost restore 없음 (BUG-116 시퀀스 테스트).
+
+    실제 on_fill() 메서드를 호출해 leg_type="futures_close" 경로를 실행한 뒤
+    on_execution_rollback을 호출한다.
+    """
+    import logging
+
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    snapshot = {
+        "entry_time": 1000.0,
+        "buy_ex": "binance_futures",
+        "sell_ex": "bitget_futures",
+        "size": Decimal("1"),
+    }
+    strategy._pending_exits["BTC/USDT"] = snapshot
+    strategy._exiting_symbols.add("BTC/USDT")
+
+    # 실제 on_fill() 호출 — leg_type="futures_close" → _pending_exits에서 제거
+    fill = Trade(
+        trade_id="fill-001",
+        exchange_id="binance_futures",
+        symbol="BTC/USDT",
+        side=OrderSide.SELL,
+        price=Decimal("50000"),
+        amount=Decimal("1"),
+        metadata={"leg_type": "futures_close"},
+    )
+    await strategy.on_fill(fill)
+
+    # on_fill 후 _pending_exits + _exiting_symbols 비어있어야 함
+    assert "BTC/USDT" not in strategy._pending_exits
+    assert "BTC/USDT" not in strategy._exiting_symbols
+
+    # 그 후 rollback 도착 → rollback_no_state 경고, ghost restore 없음
+    with caplog.at_level(logging.WARNING, logger="src.strategies.futures_futures"):
+        strategy.on_execution_rollback("BTC/USDT")
+
+    assert any("ff.rollback_no_state" in r.message for r in caplog.records)
+    assert "BTC/USDT" not in strategy._open_positions
+    assert "BTC/USDT" not in strategy._pending_exits
+    assert strategy._metrics.rollback_no_state_count == 1
+
+
+@pytest.mark.asyncio
+async def test_negative_margin_blocks_trade():
+    """margin_available < 0 (exchange API error) must be blocked same as == 0 (BUG-115 guard)."""
+    config = FuturesFuturesConfig(min_spread_bps=Decimal("8"), max_leverage=2, max_notional_usd=None)
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator(Decimal("1")), config)
+    await strategy.start()
+    signal = make_signal(volume=Decimal("0.5"), margin_available=Decimal("-5"))
+    result = await strategy.on_signal(signal)
+    assert result is None
+    assert strategy.metrics.signals_filtered >= 1
+
+
+def test_rollback_no_state_threshold_emits_critical(caplog):
+    """rollback_no_state_count >= 3 → ff.rollback_no_state_threshold CRITICAL 로그."""
+    import logging
+
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    # 3회 연속 rollback_no_state → 3번째에서 CRITICAL 로그 발생
+    with caplog.at_level(logging.DEBUG, logger="src.strategies.futures_futures"):
+        for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT"]:
+            strategy.on_execution_rollback(sym)
+
+    assert strategy._metrics.rollback_no_state_count == 3
+    critical_msgs = [r for r in caplog.records if r.levelno == logging.CRITICAL]
+    assert any("ff.rollback_no_state_threshold" in r.message for r in critical_msgs), \
+        "3번째 rollback_no_state 시 CRITICAL 로그 없음"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_positions_cap_blocks_fourth_entry():
+    """max_concurrent_positions=3 → 3개 열린 뒤 4번째 심볼 entry 차단."""
+    config = FuturesFuturesConfig(
+        min_spread_bps=Decimal("8"),
+        max_concurrent_positions=3,
+        max_notional_usd=None,
+    )
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator(Decimal("1")), config)
+    await strategy.start()
+
+    # 3개 포지션 이미 열린 상태 시뮬레이션
+    for sym in ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT"]:
+        strategy._open_positions[sym] = {
+            "buy_ex": "binance_futures",
+            "sell_ex": "bitget_futures",
+            "size": Decimal("0.01"),
+            "entry_time": 0.0,
+        }
+
+    # 4번째 심볼 (BNB) 신호 → 차단되어야 함
+    signal = make_signal()  # default symbol = BTC/USDT:USDT, but already open → also blocked
+    result = await strategy.on_signal(signal)
+    assert result is None
+    assert strategy.metrics.signals_filtered >= 1

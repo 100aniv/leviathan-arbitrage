@@ -1783,3 +1783,57 @@ else:
 
 ### 테스트 결과
 - executor/strategies/binance 관련 726 passed, 0 failed
+
+---
+
+## §8.40 Bitget V2 체결 파이프라인 3개 버그 — v58~v70 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| BUG-103 | HIGH | native_bitget.py | Bitget V2 선물 market order에 `force` 파라미터 누락 → API 거부 | `"force": "gtc"` 추가 |
+| BUG-104 | HIGH | native_bitget.py | `_rest_cancel_order`에서 `_exchange_order_id_map.pop()` → cancel 실패 시 UUID 매핑 소실 → 이후 cancel에서 올바른 orderId 조회 불가 | `.pop()` → `.get()` 교체, 성공/43011/40762 확인 후에만 `.pop()` |
+| BUG-105 | HIGH | native_bitget.py | Bitget `/api/v2/mix/order/detail` → 43001 ("order does not exist in active orders") — 즉시 체결된 market order는 active에서 빠짐 → fill qty=0 반환 → 오롤백 | 43001 캐치 후 `/api/v2/mix/order/fills?orderId=...` fallback으로 실체결 복구 |
+| CRITICAL-5 | CRITICAL | executor.py | leg1 일반 예외 핸들러에서 `_is_exit_leg` 가드 누락 — reduceOnly close 주문 cancel 실패 시 `filled=True` rollback → 반대 방향 주문(BUY) 발행 → 청산 직후 포지션 재진입 | `_is_exit_leg = bool(leg1_order.metadata.get("reduceOnly"))` 가드 추가 |
+| MEDIUM-15 | MEDIUM | live.py | `_build_collision_key` — `all()` on empty iterable = True → 빈 legs를 close로 오분류 | `bool(trade_request.legs) and all(...)` 로 교체 |
+
+### 카나리 상태
+- v70b 기동, min_spread 16bps, Binance/Bitget Futures 활성
+- COMP/ALT/BLUR: Bitget 43001 + fills empty → qty=0 → rollback 반복
+
+---
+
+## §8.41 BUG-105b/106 fills 재시도 + symbol NameError — v71 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| BUG-105b | HIGH | native_bitget.py | fills fallback: `_fills_resp.get("data", {})` — data 키가 None일 때 None 반환 → isinstance(None, dict) False → 빈 fills → 복구 실패. 또한 fills가 즉시 인덱싱 안 될 수 있음 (타이밍) | `.get("data") or {}` 로 교체 + 3회 재시도(0.5s 백오프) |
+| BUG-106 | HIGH | live.py | `_execute_trade_request` 라인 1142: `symbol` 변수 미정의 (`NameError`) — 코드가 `_rb_syms` set으로 리팩터링됐으나 하단 cooldown set 코드에서 여전히 `symbol` 참조 | `trade_request.legs[0].symbol` 으로 교체, None 가드 추가 |
+
+### 테스트 결과
+- 98 passed, 0 failed (executor + live 핵심 경로 포함)
+
+
+---
+
+## §8.42 BUG-107 marginMode:isolated 무음 주문 취소 — v72 (2026-04-12)
+
+### 수정 버그
+
+| # | 심각도 | 파일 | 버그 | 수정 |
+|---|--------|------|------|------|
+| BUG-107 | CRITICAL | native_bitget.py | `marginMode: "isolated"` 로 USDT-FUTURES 주문 발행 시 Bitget이 orderId 반환 후 즉시 무음 취소 (account가 cross-margin 모드) → 43001 on poll + fills empty + position size=0 | `"isolated"` → `"crossed"` 교체 + place-order 응답 DEBUG 로그 추가 |
+
+### 근거
+- v70b~v71: COMP/ALT/ANKR 주문 모두 orderId 수신 후 `43001` + 빈 fills + `stale size=0`
+- ALT: 5회 시도 모두 qty=0, BUG-105b 재시도 3x도 빈 fills → 주문이 실제로 체결되지 않음 확인
+- Bitget USDT-M 계정 기본값 = cross-margin (crossed). `isolated` 파라미터 → 심볼별 isolated 마진 미할당 → 즉시 취소
+
+### 테스트 결과
+- 222 passed, 0 failed (execution + lifecycle 핵심 경로)
+
+### 카나리 상태
+- v72 기동 예정 (min_spread 16bps, futures_futures_v1 단독 활성)

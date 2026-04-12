@@ -11,92 +11,89 @@
     "_note": "Real-data WFE results from TimescaleDB.",
     "cross_exchange": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 3 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 13 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "triangular": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "spot_futures": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 3 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "funding_rate": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 3 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 13 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "statistical_arb": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 0 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     },
     "futures_futures": {
       "status": "INSUFFICIENT_DATA",
-      "error": "Only 27 hourly rows available; need at least 72 (3 days)",
+      "error": "Only 8 hourly rows available; need at least 72 (3 days)",
       "data_type": "real_timescaledb"
     }
   },
   "cross_exchange": {
     "min_spread_bps": 5.0,
+    "status": "READY",
     "wfe": 1.2,
-    "data_type": "synthetic_gbm",
-    "status": "DISABLED_PHASE2"
+    "data_type": "synthetic_gbm"
   },
   "spot_futures": {
-    "min_spread_bps": 12.390907613382176,
+    "min_spread_bps": 16.521210151176234,
+    "max_position_size": 50,
     "entry_threshold": 0.0013620427453799166,
     "exit_threshold": 0.0001866435336362988,
     "stop_loss_pct": 0.005070404564592744,
-    "status": "DISABLED_PHASE2",
+    "status": "READY",
     "wfe": 7.578432709803439,
-    "data_type": "synthetic_gbm",
-    "_phase2_note": "original: READY. Disabled for Phase 2 Step 2-1 (FR+FF only). Re-enable in Step 2-3."
+    "data_type": "synthetic_gbm"
   },
   "funding_rate": {
-    "min_funding_rate_bps": 6.551847778278454,
+    "min_funding_rate_bps": 8.735797037704605,
     "max_position_size_usdt": 5002.251410101575,
     "entry_threshold": 0.00011715937392307068,
     "exit_threshold": 0.0032931446587915556,
     "stop_loss_pct": 0.016645099172000764,
     "status": "READY",
     "wfe": 10.464224768228176,
-    "data_type": "synthetic_gbm",
-    "enable_ou_filter": false
+    "data_type": "synthetic_gbm"
   },
   "futures_futures": {
-    "min_spread_bps": 15.0,
+    "min_spread_bps": 47.50987042361101,
+    "max_position_size": 50,
     "entry_threshold": 0.00025557303057935484,
     "exit_threshold": 6.82596457666553e-05,
     "stop_loss_pct": 0.00501931310745825,
     "status": "READY",
     "wfe": 5.926861262589432,
-    "data_type": "real_calibrated",
-    "_note": "2026-04-09: synthetic_gbm 47.51\u219215 recalibrated from 5H live market (10-57bps observed). BUG-20 2026-04-11: 20\u219215bps (Bitget fee corrected 0.10\u21920.06%, actual fee=11bps Binance5+Bitget6, 4bps buffer preserved) BUG-72 2026-04-12: max_concurrent_positions=4 prevents -2019 margin exhaustion",
-    "max_concurrent_positions": 4
+    "data_type": "synthetic_gbm"
   },
   "triangular": {
-    "min_spread_bps": 2.0,
+    "min_spread_bps": 15.0,
+    "max_position_size": 50,
     "entry_threshold": 0.0005221298701815954,
     "exit_threshold": 9.601259624268907e-05,
     "stop_loss_pct": 0.0055080901917418075,
-    "status": "DISABLED_PHASE2",
+    "status": "READY",
     "wfe": 6.571801936599799,
-    "data_type": "synthetic_gbm",
-    "_phase2_note": "original: READY. Disabled for Phase 2 Step 2-1 (FR+FF only). Re-enable in Step 2-3."
+    "data_type": "synthetic_gbm"
   },
   "statistical_arb": {
-    "status": "DISABLED",
+    "status": "READY",
     "wfe": 0.0,
     "max_position_size_usdt": 37,
     "entry_threshold": 0.000188,
     "exit_threshold": 0.00089,
     "stop_loss_pct": 0.005,
-    "_note": "SIT-3 P3: DISABLED\u2192READY. z=2.5\u21922.0, cooldown=300\u2192120, min_history=120\u219260. 24H Shadow \ud6c4 WFE \uc7ac\ud3c9\uac00.",
-    "z_threshold": 2.0
+    "_note": "SIT-3 P3: DISABLED\u2192READY. z=2.5\u21922.0, cooldown=300\u2192120, min_history=120\u219260. 24H Shadow \ud6c4 WFE \uc7ac\ud3c9\uac00."
   },
   "cex_dex": {
     "status": "MONITOR",
@@ -121,6 +118,6 @@
     "best_values": {
       "cross_exchange": 1.2
     },
-    "timestamp": "2026-04-12T15:10:36.295702+00:00"
+    "timestamp": "2026-04-04T03:56:32.868733+00:00"
   }
 }

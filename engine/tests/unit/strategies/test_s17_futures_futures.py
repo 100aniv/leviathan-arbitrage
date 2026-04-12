@@ -22,8 +22,12 @@ def _make_signal(
     spread_pct: Decimal = Decimal("0.005"),
     funding_diff_bps: float = 0.0,
     book_age_ms: float | None = 100.0,
+    margin_available: Decimal = Decimal("100000"),
 ) -> Signal:
-    metadata: dict = {}
+    metadata: dict = {
+        # BUG-115: always inject margin_available so the guard doesn't block test signals
+        "margin_available": str(margin_available),
+    }
     if book_age_ms is not None:
         metadata["book_age_ms"] = book_age_ms
     if funding_diff_bps:

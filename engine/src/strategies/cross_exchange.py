@@ -121,11 +121,6 @@ class CrossExchangeStrategy(BaseStrategy):
                 self._metrics.signals_filtered += 1
                 return None
 
-        # US-260: Feed spread to adaptive threshold tracker (data collection only)
-        _spread_bps = float(signal.spread_pct) * 10000
-        if self._adaptive_threshold is not None:
-            self._adaptive_threshold.update(_spread_bps)
-
         # Spread threshold: use static min_spread_bps only.
         # Adaptive threshold disabled for cross_exchange — arbitrage should trade
         # every profitable opportunity, not just top 5% (95th percentile = mean-reversion logic).
@@ -152,6 +147,13 @@ class CrossExchangeStrategy(BaseStrategy):
                     self.config.max_spread_bps,
                 )
                 return None
+
+        # US-260: Feed spread to adaptive threshold tracker after quality filters.
+        # BUG-39: update() must run AFTER min_spread and max_spread filters to prevent
+        # sub-threshold noise and anomalous outliers from contaminating the distribution.
+        _spread_bps = float(signal.spread_pct) * 10000
+        if self._adaptive_threshold is not None:
+            self._adaptive_threshold.update(_spread_bps)
 
         # US-235: Reject signals where available liquidity (volume * price) is too thin
         if self.config.min_book_depth_usd > Decimal("0"):

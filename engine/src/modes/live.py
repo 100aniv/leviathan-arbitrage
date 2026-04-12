@@ -457,44 +457,133 @@ class LiveMode(BaseMode):
             if not isinstance(_preflight_adapters, dict):
                 _preflight_adapters = {}
             _futures_adapters = {k: v for k, v in _preflight_adapters.items() if "futures" in k}
-            _stranded: list[str] = []
-            for _eid, _adapter in _futures_adapters.items():
-                try:
-                    _positions = await _adapter.get_positions()
-                    _open_pos = [p for p in _positions if p.size != 0]
-                    for p in _open_pos:
-                        _stranded.append(f"{_eid}:{p.symbol}:{p.size}")
-                except Exception as _exc:
-                    logger.warning("preflight_position_check_failed exchange=%s error=%s", _eid, _exc)
 
-                # Bitget: raw API check to catch stale total=0 positions (Bug 28)
-                if "bitget" in _eid and hasattr(_adapter, "_request"):
+            # BUG-111: Bitget REST API has >30s stale-data delay after position close.
+            # 5× retries × 20s = 100s total. First attempt: auto-close stale positions.
+            # Only ABORT if stale positions persist through all retries.
+            _PREFLIGHT_RETRIES = 5
+            _PREFLIGHT_DELAY_S = 20
+            for _pf_attempt in range(_PREFLIGHT_RETRIES):
+                if _pf_attempt > 0:
+                    logger.info("preflight_retry attempt=%d/%d — waiting %ds for exchange API to settle",
+                                _pf_attempt + 1, _PREFLIGHT_RETRIES, _PREFLIGHT_DELAY_S)
+                    # MEDIUM-2: check kill-switch each second rather than one big sleep
+                    for _wait_s in range(_PREFLIGHT_DELAY_S):
+                        await asyncio.sleep(1)
+                        if (self._kill_switch is not None
+                                and hasattr(self._kill_switch, "is_halted")
+                                and self._kill_switch.is_halted()):
+                            raise LiveGateFailed("HALT raised during preflight wait — aborting startup")
+                _stranded: list[str] = []
+                for _eid, _adapter in _futures_adapters.items():
                     try:
-                        _raw_resp = await _adapter._request(
-                            "GET", "/api/v2/mix/position/all-position",
-                            params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
-                            signed=True,
-                        )
-                        for _item in (_raw_resp.get("data") or []):
-                            _hold_side = _item.get("holdSide", "")
-                            _raw_sym = _item.get("symbol", "")
-                            _total = float(_item.get("total", 0) or 0)
-                            _available = float(_item.get("available", 0) or 0)
-                            if _hold_side and _raw_sym and (_total != 0 or _available != 0):
-                                _label = f"{_eid}:{_raw_sym}:stale(hold={_hold_side},total={_total})"
-                                if not any(_raw_sym in s for s in _stranded):
-                                    _stranded.append(_label)
-                                    logger.warning(
-                                        "preflight_bitget_stale_position detected symbol=%s holdSide=%s total=%s",
-                                        _raw_sym, _hold_side, _total,
-                                    )
+                        _positions = await _adapter.get_positions()
+                        _open_pos = [p for p in _positions if p.size != 0]
+                        for p in _open_pos:
+                            _stranded.append(f"{_eid}:{p.symbol}:{p.size}")
                     except Exception as _exc:
-                        logger.warning("preflight_bitget_raw_check_failed error=%s", _exc)
+                        logger.warning("preflight_position_check_failed exchange=%s error=%s", _eid, _exc)
 
-            if _stranded:
-                _msg = f"pre-existing positions detected: {_stranded}. Run close_positions.py --execute first."
-                logger.critical("live_preflight_ABORT %s", _msg)
-                raise LiveGateFailed(_msg)
+                    # Bitget: raw API check to catch stale total=0 positions (Bug 28)
+                    if "bitget" in _eid and hasattr(_adapter, "_request"):
+                        try:
+                            _raw_resp = await _adapter._request(
+                                "GET", "/api/v2/mix/position/all-position",
+                                params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
+                                signed=True,
+                            )
+                            for _item in (_raw_resp.get("data") or []):
+                                _hold_side = _item.get("holdSide", "")
+                                _raw_sym = _item.get("symbol", "")
+                                _total = float(_item.get("total", 0) or 0)
+                                _available = float(_item.get("available", 0) or 0)
+                                if _hold_side and _raw_sym and (_total != 0 or _available != 0):
+                                    _label = f"{_eid}:{_raw_sym}:stale(hold={_hold_side},total={_total})"
+                                    if not any(_raw_sym in s for s in _stranded):
+                                        _stranded.append(_label)
+                                        logger.warning(
+                                            "preflight_bitget_stale_position detected symbol=%s holdSide=%s total=%s",
+                                            _raw_sym, _hold_side, _total,
+                                        )
+                        except Exception as _exc:
+                            logger.warning("preflight_bitget_raw_check_failed error=%s", _exc)
+
+                if _stranded:
+                    _is_last = (_pf_attempt == _PREFLIGHT_RETRIES - 1)
+                    if _is_last:
+                        _msg = f"pre-existing positions detected: {_stranded}. Run close_positions.py --execute first."
+                        logger.critical("live_preflight_ABORT %s", _msg)
+                        raise LiveGateFailed(_msg)
+                    # Not last attempt: log and try auto-close on first occurrence
+                    logger.warning(
+                        "preflight_stale_positions_found attempt=%d/%d: %s — auto-close 시도 후 재확인",
+                        _pf_attempt + 1, _PREFLIGHT_RETRIES, _stranded,
+                    )
+                    if _pf_attempt == 0:
+                        # First detection: attempt to close stale positions via adapters
+                        for _eid, _adapter in _futures_adapters.items():
+                            if "bitget" in _eid and hasattr(_adapter, "_request"):
+                                # BUG-115: Bitget requires POST body (data=) + per-symbol call.
+                                # Bulk close via params= always returns 400172.
+                                try:
+                                    _raw_close = await _adapter._request(
+                                        "GET", "/api/v2/mix/position/all-position",
+                                        params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
+                                        signed=True,
+                                    )
+                                    for _pos_item in (_raw_close.get("data") or []):
+                                        _ps = _pos_item.get("symbol", "")
+                                        _ph = _pos_item.get("holdSide", "")
+                                        _pt = float(_pos_item.get("total", 0) or 0)
+                                        if _ps and _ph and _pt > 0:
+                                            try:
+                                                await asyncio.sleep(0.5)  # Bitget rate limit: 2 req/s
+                                                await _adapter._request(
+                                                    "POST", "/api/v2/mix/order/close-positions",
+                                                    data={"symbol": _ps, "productType": "USDT-FUTURES", "holdSide": _ph},
+                                                    signed=True,
+                                                )
+                                                logger.info(
+                                                    "preflight_bitget_auto_close exchange=%s symbol=%s holdSide=%s size=%s",
+                                                    _eid, _ps, _ph, _pt,
+                                                )
+                                            except Exception as _pce:
+                                                logger.warning(
+                                                    "preflight_bitget_per_sym_close_failed exchange=%s sym=%s err=%s",
+                                                    _eid, _ps, _pce,
+                                                )
+                                except Exception as _ce:
+                                    logger.warning("preflight_auto_close_error exchange=%s err=%s", _eid, _ce)
+                            elif "binance" in _eid and hasattr(_adapter, "_signed_request"):
+                                # MEDIUM-3: Binance has no bulk-close API — close each position individually
+                                try:
+                                    _bin_pos = await _adapter.get_positions()
+                                    for _p in _bin_pos:
+                                        if _p.size != 0:
+                                            _sym_norm = _p.symbol.replace("/", "").upper()
+                                            _close_side = "SELL" if _p.size > 0 else "BUY"
+                                            # Use g-format: removes trailing zeros, keeps precision
+                                            _qty_str = f"{abs(float(_p.size)):.8g}"
+                                            await asyncio.sleep(0.2)  # Binance rate-limit parity with Bitget guard
+                                            await _adapter._signed_request("POST", "/fapi/v1/order", params={
+                                                "symbol": _sym_norm,
+                                                "side": _close_side,
+                                                "type": "MARKET",
+                                                "quantity": _qty_str,
+                                                "reduceOnly": "true",
+                                            })
+                                            logger.info(
+                                                "preflight_binance_auto_close exchange=%s symbol=%s side=%s size=%s",
+                                                _eid, _p.symbol, _close_side, _p.size,
+                                            )
+                                except Exception as _ce:
+                                    logger.warning("preflight_auto_close_error exchange=%s err=%s", _eid, _ce)
+                    continue
+                # All clean on this attempt — exit preflight loop
+                logger.info("preflight_clean attempt=%d/%d exchanges=%s",
+                            _pf_attempt + 1, _PREFLIGHT_RETRIES, list(_futures_adapters.keys()))
+                break  # No stale positions — no need to wait for further retries
+
             logger.info("live_preflight.positions_clean exchanges=%s", list(_futures_adapters.keys()))
 
         self._running = True
@@ -832,17 +921,22 @@ class LiveMode(BaseMode):
                 if signal.sell_exchange else Decimal("0")
             )
             # BUG-82: Both exchanges need margin (BUY long + SELL short).
-            # If either side is unknown (not yet cached), skip margin injection entirely
-            # rather than using only one side — avoids bypassing sell-side margin guard.
-            if buy_margin > 0 and sell_margin > 0:
+            # BUG-115: Always inject margin_available (even "0") so futures_futures.py
+            # can BLOCK the trade when either side has no margin/is not cached yet.
+            # Previously, skipping injection → strategy skipped margin check → uncapped
+            # position size → Binance -2019 "Margin is insufficient".
+            if signal.sell_exchange:
                 effective_margin = min(buy_margin, sell_margin)
-                signal.metadata["margin_available"] = str(effective_margin)
-            elif buy_margin > 0 and not signal.sell_exchange:
+            else:
                 # Spot-only signal with no sell-side margin requirement
-                signal.metadata["margin_available"] = str(buy_margin)
+                effective_margin = buy_margin
+            signal.metadata["margin_available"] = str(effective_margin)
 
+        trade_requests: list = []
+        _routing_succeeded = False
         try:
             trade_requests = await self._strategy_manager.route_signal(signal)
+            _routing_succeeded = True
             for request in trade_requests:
                 await self._execute_trade_request(request)
 
@@ -862,8 +956,11 @@ class LiveMode(BaseMode):
                 "live_mode.strategy_routing_failed strategy=%s error=%s",
                 signal.strategy_id, exc,
             )
-            # Fallback: execute signal directly (prevent signal loss)
-            await self._execute_direct_signal(signal)
+            # HIGH-2: only fallback if route_signal() itself failed (routing_succeeded=False).
+            # If routing succeeded but execution loop raised, requests were already dispatched —
+            # calling _execute_direct_signal would create a duplicate trade.
+            if not _routing_succeeded:
+                await self._execute_direct_signal(signal)
 
     # -----------------------------------------------------------------------
     # Trade execution (DI executor — Paper or Atomic)
@@ -882,16 +979,21 @@ class LiveMode(BaseMode):
 
         # --- Strategy filter allowlist ---
         if self._strategy_filter is not None and sid not in self._strategy_filter:
-            logger.info("live_mode.strategy_filtered strategy=%s", sid)
-            self._notify_pre_exec_rollback(trade_request, sid)
-            return
+            # MEDIUM-1: exit/close orders must bypass strategy filter — stuck positions
+            # must always be closeable regardless of filter state (same pattern as cooldown).
+            _is_exit_filter = self._is_reduceonly_request(trade_request)
+            if not _is_exit_filter:
+                logger.info("live_mode.strategy_filtered strategy=%s", sid)
+                self._notify_pre_exec_rollback(trade_request, sid)
+                return
+            logger.debug("live_mode.strategy_filter_bypassed_exit strategy=%s", sid)
 
         # --- Strategy loss cooldown (US-164) ---
         if sid in self._strategy_disable_until:
             if time.monotonic() < self._strategy_disable_until[sid]:
                 # CRITICAL: exit/close orders bypass cooldown — stuck positions must
                 # be closeable regardless of loss cooldown state. Only block new entries.
-                _is_exit_req = bool(trade_request.legs) and all(leg.metadata.get("reduceOnly") for leg in trade_request.legs)
+                _is_exit_req = self._is_reduceonly_request(trade_request)
                 if not _is_exit_req:
                     logger.debug("live_mode.strategy_cooldown strategy=%s", sid)
                     self._notify_pre_exec_rollback(trade_request, sid)
@@ -992,7 +1094,9 @@ class LiveMode(BaseMode):
         # FIX: check ALL leg symbols — spot_futures has different symbols per leg
         # (legs[0]=spot, legs[1]=futures); only checking legs[0] left futures leg
         # unprotected after ROLLBACK_FAILED cooldown was set on both legs.
-        _is_close_req = any(leg.metadata.get("reduceOnly") for leg in trade_request.legs)
+        # HIGH-1: use all() (consistent with trade_consumer + line 894). any() would
+        # bypass cooldown for mixed orders where only one leg is reduceOnly.
+        _is_close_req = self._is_reduceonly_request(trade_request)
         _sym_keys = [l.symbol for l in trade_request.legs if l.symbol]
         if _sym_keys and not _is_close_req:
             _now = time.monotonic()
@@ -1015,7 +1119,8 @@ class LiveMode(BaseMode):
             # in flight and has already moved the position to _pending_exits.
             # Calling _notify_pre_exec_rollback would erroneously restore the position
             # from _pending_exits → thrash loop. Only notify rollback for entry orders.
-            _is_close_req = any(leg.metadata.get("reduceOnly") for leg in trade_request.legs)
+            # HIGH-1: use all() consistent with line 894 and trade_consumer.
+            _is_close_req = self._is_reduceonly_request(trade_request)
             if _is_close_req:
                 logger.warning("live_mode.dedup_blocked_close key=%s — first exit still in flight", collision_key)
             else:
@@ -1100,24 +1205,52 @@ class LiveMode(BaseMode):
                                 "live_mode.rollback_failed_cooldown_set symbols=%s cooldown_s=%.0f",
                                 _rf_symbols, self._symbol_cooldown_s,
                             )
+                    # HIGH-1: ROLLBACK_FAILED on EXIT order → restore _pending_exits snapshot.
+                    # BUG-84 prohibition applies to ENTRY only (stranded entry = don't re-enter).
+                    # Exit ROLLBACK_FAILED = partial exchange close failed, but internal tracking
+                    # already moved pos to _pending_exits/_open_positions cleared. Must restore.
+                    if exec_result.status == ExecutionStatus.ROLLBACK_FAILED:
+                        _is_exit_rf = self._is_reduceonly_request(trade_request)
+                        if _is_exit_rf and self._strategy_manager is not None:
+                            _strat_rf = self._strategy_manager.get_strategy(sid)
+                            # Only call for strategies with _pending_exits tracking (futures_futures).
+                            # spot_futures/_funding_rate docstrings say "ROLLBACK_FAILED: do not call"
+                            # and lack _pending_exits, so calling on them violates the contract.
+                            if _strat_rf is not None and hasattr(_strat_rf, "_pending_exits") and hasattr(_strat_rf, "on_execution_rollback"):
+                                for _rf_sym_ex in {l.symbol for l in trade_request.legs if l.symbol}:
+                                    try:
+                                        _strat_rf.on_execution_rollback(_rf_sym_ex)
+                                        logger.warning(
+                                            "live_mode.exit_rollback_failed_pending_restored "
+                                            "symbol=%s — stranded! verify exchange positions.",
+                                            _rf_sym_ex,
+                                        )
+                                    except Exception as _ex_rb_err:
+                                        logger.error(
+                                            "live_mode.exit_rollback_restore_error symbol=%s err=%s",
+                                            _rf_sym_ex, _ex_rb_err,
+                                        )
                     # BUG-2 fix: notify strategy on successful rollback so it clears
                     # _open_positions and allows re-entry (prevents 30min lockout)
                     # BUG-31: also clear on REJECTED (no orders placed, pre-validation failed)
-                    # BUG-84: ROLLBACK_FAILED must NOT notify — a stranded position exists and
-                    # clearing _open_positions would let the strategy re-enter the same symbol,
-                    # creating a duplicate position. strategies document "ROLLBACK_FAILED: do not call".
+                    # BUG-84: ROLLBACK_FAILED must NOT notify for ENTRY — a stranded entry position
+                    # exists and clearing _open_positions would allow duplicate re-entry.
                     if exec_result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.REJECTED):
-                        symbol = trade_request.legs[0].symbol if trade_request.legs else None
-                        if symbol and self._strategy_manager is not None:
+                        # HIGH-3: iterate ALL leg symbols, not just legs[0].
+                        # For cross-exchange arb legs can have different symbols (e.g. spot_futures).
+                        # Clearing only legs[0] leaves legs[1] locked in _open_positions for 30min.
+                        _rb_syms = {leg.symbol for leg in trade_request.legs if leg.symbol}
+                        if _rb_syms and self._strategy_manager is not None:
                             _strat = self._strategy_manager.get_strategy(sid)
                             if _strat is not None and hasattr(_strat, "on_execution_rollback"):
-                                try:
-                                    _strat.on_execution_rollback(symbol)
-                                except Exception as _rb_err:
-                                    logger.warning(
-                                        "live_mode.rollback_notify_failed strategy=%s symbol=%s err=%s",
-                                        sid, symbol, _rb_err,
-                                    )
+                                for _rb_sym in _rb_syms:
+                                    try:
+                                        _strat.on_execution_rollback(_rb_sym)
+                                    except Exception as _rb_err:
+                                        logger.warning(
+                                            "live_mode.rollback_notify_failed strategy=%s symbol=%s err=%s",
+                                            sid, _rb_sym, _rb_err,
+                                        )
                         # HIGH: post-rollback re-entry race prevention.
                         # After ROLLED_BACK, the exchange is processing an unwind order.
                         # Reset per-symbol cooldown so the strategy cannot re-enter
@@ -1126,12 +1259,14 @@ class LiveMode(BaseMode):
                         # Asymmetry note: ROLLED_BACK uses legs[0].symbol only (unwind is
                         # a single-leg cancel/reverse on the filled leg). ROLLBACK_FAILED
                         # (above) covers ALL legs because both legs may be stranded.
-                        if exec_result.status == ExecutionStatus.ROLLED_BACK and symbol:
-                            self._symbol_last_trade[symbol] = time.monotonic()
-                            logger.debug(
-                                "live_mode.rollback_cooldown_set symbol=%s cooldown_s=%.0f",
-                                symbol, self._symbol_cooldown_s,
-                            )
+                        if exec_result.status == ExecutionStatus.ROLLED_BACK and trade_request.legs:
+                            _rb_sym0 = trade_request.legs[0].symbol
+                            if _rb_sym0:
+                                self._symbol_last_trade[_rb_sym0] = time.monotonic()
+                                logger.debug(
+                                    "live_mode.rollback_cooldown_set symbol=%s cooldown_s=%.0f",
+                                    _rb_sym0, self._symbol_cooldown_s,
+                                )
                     strat_stats.rejections += 1
                     return
 
@@ -1320,7 +1455,7 @@ class LiveMode(BaseMode):
                     side=OrderSide.BUY,
                     size=signal.volume or Decimal("0.001"),
                     price=signal.buy_price,
-                    order_type=OrderType.LIMIT,
+                    order_type=OrderType.MARKET,
                 ),
                 TradeLeg(
                     exchange_id=signal.sell_exchange,
@@ -1328,7 +1463,7 @@ class LiveMode(BaseMode):
                     side=OrderSide.SELL,
                     size=signal.volume or Decimal("0.001"),
                     price=signal.sell_price,
-                    order_type=OrderType.LIMIT,
+                    order_type=OrderType.MARKET,
                 ),
             ]
             request = TradeRequest(
@@ -1345,14 +1480,25 @@ class LiveMode(BaseMode):
     # Executor routing helpers
     # -----------------------------------------------------------------------
 
+    @staticmethod
+    def _is_reduceonly_request(trade_request: TradeRequest) -> bool:
+        """Return True if all legs are reduceOnly (exit/close order).
+
+        Used to bypass strategy_filter, cooldown, and dedup restrictions
+        that must not block position-close orders.
+        """
+        return bool(trade_request.legs) and all(
+            leg.metadata.get("reduceOnly") for leg in trade_request.legs
+        )
+
     def _legs_to_orders(self, trade_request: TradeRequest) -> list[Order]:
         """Convert TradeRequest legs to Order objects."""
         orders = []
         for leg in trade_request.legs:
             price = leg.price or Decimal("0")
             if price <= 0:
-                logger.warning(
-                    "live_mode.leg_missing_price exchange=%s symbol=%s",
+                logger.debug(
+                    "live_mode.leg_market_order exchange=%s symbol=%s (price=None → market order, expected)",
                     leg.exchange_id, leg.symbol,
                 )
             orders.append(Order(
@@ -1454,7 +1600,10 @@ class LiveMode(BaseMode):
         """
         symbols = sorted({leg.symbol for leg in trade_request.legs})
         exchanges = sorted({leg.exchange_id for leg in trade_request.legs})
-        _is_close = any(leg.metadata.get("reduceOnly") for leg in trade_request.legs)
+        # BUG-75/HIGH-1: use all() consistent with executor.py — a mixed-leg trade
+        # with only one reduceOnly leg must not be misclassified as close.
+        # Guard bool(legs): all() on empty iterable returns True (misclassifies as close).
+        _is_close = self._is_reduceonly_request(trade_request)
         suffix = ":close" if _is_close else ":open"
         return f"{','.join(symbols)}|{','.join(exchanges)}{suffix}"
 
@@ -1525,7 +1674,8 @@ class LiveMode(BaseMode):
                 fill_amount = Decimal(str(trade.amount))
                 fill_fee = Decimal(str(getattr(trade, 'fee', 0)))
                 notional = fill_price * fill_amount
-                side = getattr(leg_result, 'side', None) or getattr(trade, 'side', None)
+                # MEDIUM-2: LegResult has no .side attr (BUG-67). Use .order.side instead.
+                side = getattr(getattr(leg_result, 'order', None), 'side', None) or getattr(trade, 'side', None)
                 side_str = str(side).upper() if side else ""
 
                 if "SELL" in side_str:
@@ -1791,10 +1941,16 @@ class LiveMode(BaseMode):
         main.py._strategy_exit_poll_loop is gated to skip Live/Paper mode to avoid
         dual-drain race conditions.
         """
+        _dedup_clean_counter = 0
         try:
             while self._running:
-                await asyncio.sleep(60.0)
-                await self._dedup_gate.cleanup_stale()
+                # MEDIUM-3: drain exit requests every 10s (was 60s — max 120s latency).
+                # Dedup gate cleanup still runs every 60s (6 × 10s cycles).
+                await asyncio.sleep(10.0)
+                _dedup_clean_counter += 1
+                if _dedup_clean_counter >= 6:
+                    await self._dedup_gate.cleanup_stale()
+                    _dedup_clean_counter = 0
                 # Drain settlement/holding-timeout exit requests from strategies
                 if self._strategy_manager is not None:
                     for _sid in self._strategy_manager.list_strategies():
@@ -1844,7 +2000,7 @@ class LiveMode(BaseMode):
                                 if _margin_f < 5.0:
                                     logger.warning(
                                         "live_mode.futures_margin_low ex=%s margin=%.2f "
-                                        "— futures_futures trades blocked until balance >= $5",
+                                        "— low free margin (< $5); trades may be margin-constrained",
                                         ex_id, _margin_f,
                                     )
                                 else:

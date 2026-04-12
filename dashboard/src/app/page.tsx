@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { PieChart, Pie, Cell, Tooltip as PieTooltip, ResponsiveContainer as PieResponsive } from 'recharts';
 import clsx from 'clsx';
 import { PnLChart }    from '@/components/PnLChart';
 import { EventFeed }   from '@/components/EventFeed';
@@ -23,33 +24,54 @@ import type {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STRATEGY_NAMES: Record<string, string> = {
-  funding_rate_arb:  'Funding Rate',
-  spot_futures_basis:'Spot-Futures',
-  futures_futures:   'Futures-Futures',
-  statistical_arb:   'Statistical Arb',
-  triangular:        'Triangular',
-  cross_exchange_spot:'Cross Exchange',
-  cex_dex_hybrid:    'CEX-DEX',
+  funding_rate_arb:    '펀딩비 수익',
+  funding_rate_arb_v1: '펀딩비 수익',
+  spot_futures_basis:  '현물-선물 차익',
+  spot_futures_v1:     '현물-선물 차익',
+  futures_futures:     '선물-선물 차익',
+  futures_futures_v1:  '선물-선물 차익',
+  statistical_arb:     '통계적 차익',
+  statistical_arb_v1:  '통계적 차익',
+  triangular:          '삼각 차익',
+  triangular_v1:       '삼각 차익',
+  cross_exchange_spot: '교차 거래소 차익',
+  cross_exchange_v1:   '교차 거래소 차익',
+  cex_dex_hybrid:      'CEX-DEX 차익',
+  cex_dex_v1:          'CEX-DEX 차익',
 };
 
 const STRATEGY_ABBR: Record<string, string> = {
-  funding_rate_arb:  'FR',
-  spot_futures_basis:'SF',
-  futures_futures:   'FF',
-  statistical_arb:   'SA',
-  triangular:        'TRI',
-  cross_exchange_spot:'CE',
-  cex_dex_hybrid:    'CD',
+  funding_rate_arb:      'FR',
+  funding_rate_arb_v1:   'FR',
+  spot_futures_basis:    'SF',
+  spot_futures_v1:       'SF',
+  futures_futures:       'FF',
+  futures_futures_v1:    'FF',
+  statistical_arb:       'SA',
+  statistical_arb_v1:    'SA',
+  triangular:            'TRI',
+  triangular_v1:         'TRI',
+  cross_exchange_spot:   'CE',
+  cross_exchange_v1:     'CE',
+  cex_dex_hybrid:        'CD',
+  cex_dex_v1:            'CD',
 };
 
 const STRATEGY_COLORS: Record<string, string> = {
-  funding_rate_arb:  'bg-blue-500/20 text-blue-300',
-  spot_futures_basis:'bg-teal-500/20 text-teal-300',
-  futures_futures:   'bg-purple-500/20 text-purple-300',
-  statistical_arb:   'bg-orange-500/20 text-orange-300',
-  triangular:        'bg-pink-500/20 text-pink-300',
-  cross_exchange_spot:'bg-accent/20 text-accent',
-  cex_dex_hybrid:    'bg-yellow-500/20 text-yellow-300',
+  funding_rate_arb:    'bg-info/10 text-info',
+  funding_rate_arb_v1: 'bg-info/10 text-info',
+  spot_futures_basis:  'bg-success/10 text-success',
+  spot_futures_v1:     'bg-success/10 text-success',
+  futures_futures:     'bg-brand-subtle text-brand',
+  futures_futures_v1:  'bg-brand-subtle text-brand',
+  statistical_arb:     'bg-warning/10 text-warning',
+  statistical_arb_v1:  'bg-warning/10 text-warning',
+  triangular:          'bg-danger/10 text-danger',
+  triangular_v1:       'bg-danger/10 text-danger',
+  cross_exchange_spot: 'bg-brand-subtle text-brand',
+  cross_exchange_v1:   'bg-brand-subtle text-brand',
+  cex_dex_hybrid:      'bg-warning/10 text-warning',
+  cex_dex_v1:          'bg-warning/10 text-warning',
 };
 
 const EXCHANGE_SHORT: Record<string, string> = {
@@ -61,62 +83,138 @@ const EXCHANGE_SHORT: Record<string, string> = {
 
 function shortEx(id: string) { return EXCHANGE_SHORT[id] ?? id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); }
 
-// ─── Exchange Connection Status Bar ──────────────────────────────────────────
+type ExchangeGroup = { key: string; label: string; spotId: string; futId: string | null };
 
-function ExchangeStatusBar({ exchanges }: { exchanges: Record<string, ExchangeStatus> | null }) {
-  if (!exchanges) return null;
+const INTL_GROUPS: ExchangeGroup[] = [
+  { key: 'binance', label: 'Binance', spotId: 'binance',  futId: 'binance_futures' },
+  { key: 'bybit',   label: 'Bybit',   spotId: 'bybit',    futId: 'bybit_futures' },
+  { key: 'okx',     label: 'OKX',     spotId: 'okx',      futId: 'okx_futures' },
+  { key: 'bitget',  label: 'Bitget',  spotId: 'bitget',   futId: 'bitget_futures' },
+  { key: 'mexc',    label: 'MEXC',    spotId: 'mexc',     futId: null },
+  { key: 'gateio',  label: 'Gate.io', spotId: 'gateio',   futId: null },
+];
+const KRW_GROUPS: ExchangeGroup[] = [
+  { key: 'upbit',   label: 'Upbit',   spotId: 'upbit',   futId: null },
+  { key: 'bithumb', label: 'Bithumb', spotId: 'bithumb', futId: null },
+  { key: 'coinone', label: 'Coinone', spotId: 'coinone', futId: null },
+];
 
-  const items = Object.entries(exchanges).filter(([, s]) => s.connected);
-  const total = Object.keys(exchanges).length;
-
-  const latencyColor = (ms: number) =>
-    ms < 100 ? 'text-profit' : ms < 500 ? 'text-warn' : 'text-loss';
-
-  const fmtBalance = (ex: ExchangeStatus) => {
-    const b = ex.balance ?? {};
-    const usdt = b['USDT'] ?? b['usdt'] ?? 0;
-    const krw  = b['KRW']  ?? b['krw']  ?? 0;
-    if (krw > 0) return `₩${(krw/1000).toFixed(0)}K`;
-    if (usdt > 0) return `$${usdt.toFixed(0)}`;
-    return null;
-  };
+function ExchangeGroupCard({
+  group, exchangeStatus, livePositions,
+}: {
+  group: { key: string; label: string; spotId: string; futId: string | null };
+  exchangeStatus: Record<string, ExchangeStatus> | null;
+  livePositions: LivePositionsResponse | null | undefined;
+}) {
+  const spotStatus    = exchangeStatus?.[group.spotId];
+  const futStatus     = group.futId ? exchangeStatus?.[group.futId] : null;
+  const spotBal       = livePositions?.exchanges.find(e => e.exchange_id === group.spotId)?.balance_usdt ?? 0;
+  const futBal        = group.futId ? (livePositions?.exchanges.find(e => e.exchange_id === group.futId)?.balance_usdt ?? 0) : null;
+  const spotConn      = spotStatus?.connected ?? false;
+  const futConn       = futStatus?.connected ?? false;
+  // count futures as active even if not in exchangeStatus (has a live balance from engine)
+  const futActive     = futConn || ((futBal ?? 0) > 0);
+  const anyActive     = spotConn || futActive;
+  // exchange has API keys configured if it appears in exchangeStatus
+  // note: futStatus=null means no futId (not unconfigured) — must check group.futId explicitly
+  const isConfigured  = spotStatus !== undefined || (group.futId !== null && futStatus !== undefined);
+  const fmtBal        = (b: number) => b > 0 ? `$${b.toFixed(1)}` : '$0';
 
   return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-3">
-        <div className="card-header mb-0">거래소 연결 상태</div>
-        <span className={clsx('text-[10px] font-mono font-semibold',
-          items.length > 0 ? 'text-profit' : 'text-loss',
-        )}>
-          {items.length}/{total} 연결됨
+    <div className={clsx(
+      'bg-bg-surface border rounded-[10px] px-2.5 py-2 transition-opacity',
+      anyActive ? 'border-border' : isConfigured ? 'border-border/40 opacity-60' : 'border-border/20 opacity-40',
+    )}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className={clsx('text-[11px] font-bold leading-none', anyActive ? 'text-text-primary' : 'text-text-tertiary')}>
+          {group.label}
         </span>
+        <div className="flex items-center gap-0.5">
+          <span className={clsx('w-1.5 h-1.5 rounded-full',
+            spotConn ? 'bg-success' : isConfigured ? 'bg-text-tertiary/30' : 'bg-text-tertiary/10',
+          )} title={spotConn ? '현물 연결' : isConfigured ? '현물 대기' : '미설정'} />
+          {group.futId && <span className={clsx('w-1.5 h-1.5 rounded-full',
+            futActive ? 'bg-success' : isConfigured ? 'bg-text-tertiary/30' : 'bg-text-tertiary/10',
+          )} title={futActive ? '선물 연결' : isConfigured ? '선물 대기' : '미설정'} />}
+        </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {Object.entries(exchanges).map(([id, s]) => {
-          const bal = fmtBalance(s);
-          return (
-            <div key={id} className={clsx(
-              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-mono transition-colors',
-              s.connected
-                ? 'border-profit/20 bg-profit/5'
-                : 'border-terminal-border/30 bg-terminal-muted/30 opacity-50',
+      {!isConfigured ? (
+        <div className="text-[9px] font-mono text-text-tertiary/50 mt-1">미설정</div>
+      ) : (
+        <div className="space-y-1">
+          <div>
+            <div className="text-[10px] text-text-tertiary mb-0.5 uppercase tracking-wide">현물</div>
+            <div className={clsx('text-[13px] font-semibold tabular-nums leading-none',
+              spotBal > 0 ? 'text-text-primary' : 'text-text-tertiary/50',
             )}>
-              <div className={clsx('w-1.5 h-1.5 rounded-full shrink-0',
-                s.connected ? 'bg-profit' : 'bg-terminal-subtle/40',
-              )} />
-              <span className="text-terminal-text font-semibold">{shortEx(id)}</span>
-              {s.connected && (
-                <>
-                  <span className={clsx('tabular-nums', latencyColor(s.latency_ms))}>
-                    {s.latency_ms}ms
-                  </span>
-                  {bal && <span className="text-terminal-subtle">{bal}</span>}
-                </>
-              )}
+              {fmtBal(spotBal)}
             </div>
-          );
-        })}
-      </div>
+          </div>
+          {group.futId && (
+            <div className="pt-1 border-t border-border/20">
+              <div className="text-[10px] text-text-tertiary mb-0.5 uppercase tracking-wide">선물</div>
+              <div className={clsx('text-[13px] font-semibold tabular-nums leading-none',
+                (futBal ?? 0) > 0 ? 'text-text-primary' : 'text-text-tertiary/50',
+              )}>
+                {fmtBal(futBal ?? 0)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Exchange Pie Chart ───────────────────────────────────────────────────────
+
+const PIE_COLORS = ['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+
+function ExchangePieChart({ livePositions }: { livePositions: LivePositionsResponse | null | undefined }) {
+  const allGroups = [...INTL_GROUPS, ...KRW_GROUPS];
+  const data = allGroups
+    .map(g => {
+      const spotBal = livePositions?.exchanges.find(e => e.exchange_id === g.spotId)?.balance_usdt ?? 0;
+      const futBal  = g.futId ? (livePositions?.exchanges.find(e => e.exchange_id === g.futId)?.balance_usdt ?? 0) : 0;
+      return { name: g.label, value: spotBal + futBal };
+    })
+    .filter(d => d.value > 0);
+
+  const total = data.reduce((s, d) => s + d.value, 0);
+
+  return (
+    <div className="card h-full">
+      <div className="text-[9px] font-mono text-text-tertiary uppercase tracking-widest mb-1">자산 분포</div>
+      {data.length === 0 ? (
+        <div className="flex items-center justify-center h-16 text-[10px] font-mono text-text-tertiary">잔고 없음</div>
+      ) : (
+        <>
+          <PieResponsive width="100%" height={110}>
+            <PieChart>
+              <Pie data={data} cx="50%" cy="50%" innerRadius={28} outerRadius={48} dataKey="value" paddingAngle={2}>
+                {data.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+              </Pie>
+              <PieTooltip
+                contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, fontFamily: 'monospace', fontSize: 10 }}
+                formatter={(v: number | undefined) => [`${v != null ? `$${v.toFixed(2)}` : '—'}`]}
+              />
+            </PieChart>
+          </PieResponsive>
+          <div className="space-y-0.5 mt-1">
+            {data.map((d, i) => (
+              <div key={d.name} className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1 min-w-0">
+                  <div className="w-1.5 h-1.5 rounded-sm flex-shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  <span className="text-[9px] font-mono text-text-secondary truncate">{d.name}</span>
+                </div>
+                <span className="text-[9px] font-mono tabular-nums text-text-primary flex-shrink-0">
+                  {total > 0 ? `${((d.value / total) * 100).toFixed(0)}%` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -133,18 +231,18 @@ function KpiCard({
         <div className="h-8 skeleton rounded mt-1" />
       ) : (
         <div className={clsx(
-          'text-2xl font-mono font-bold tabular-nums leading-tight mt-1',
+          'text-2xl font-bold tabular-nums leading-tight mt-0.5 font-display',
           up === true  ? 'text-profit' :
-          up === false ? 'text-loss'   : 'text-terminal-text',
+          up === false ? 'text-loss'   : 'text-text-primary',
         )}>
           {value}
         </div>
       )}
       {sub && (
         <div className={clsx(
-          'text-[10px] font-mono mt-1',
+          'text-small mt-1',
           up === true  ? 'text-profit' :
-          up === false ? 'text-loss'   : 'text-terminal-subtle',
+          up === false ? 'text-loss'   : 'text-text-tertiary',
         )}>
           {sub}
         </div>
@@ -162,15 +260,15 @@ function RiskStatusPanel({ risk, wsKill }: { risk: RiskMetrics | null | undefine
   const dailyLoss  = (risk as Record<string, unknown>)?.daily_loss_pct as number | undefined ?? 0;
 
   const checks = [
-    { name: 'Kill Switch',     value: killActive ? 'ON' : 'OFF',  ok: !killActive,          limit: null },
-    { name: 'Circuit Breaker', value: cbState,                     ok: cbState === 'CLOSED', limit: null },
-    { name: 'Max Drawdown',    value: `${mdd.toFixed(1)}%`,        ok: mdd < 5,              limit: '5%' },
-    { name: 'Daily Loss',      value: dailyLoss > 0 ? `${dailyLoss.toFixed(1)}%` : '0%', ok: dailyLoss < 3, limit: '3%' },
-    { name: 'Net Exposure',    value: '—',                         ok: true,                 limit: null },
+    { name: '킬스위치',    value: killActive ? 'ON' : 'OFF',  ok: !killActive,          limit: null },
+    { name: '서킷브레이커', value: cbState,                     ok: cbState === 'CLOSED', limit: null },
+    { name: '최대 낙폭',   value: `${mdd.toFixed(1)}%`,        ok: mdd < 5,              limit: '5%' },
+    { name: '일일 손실',   value: dailyLoss > 0 ? `${dailyLoss.toFixed(1)}%` : '0%', ok: dailyLoss < 3, limit: '3%' },
+    { name: '순 익스포저', value: '—',                         ok: true,                 limit: null },
   ];
 
   return (
-    <div className="card h-full">
+    <div className="card">
       <div className="card-header">리스크 상태</div>
       <div className="space-y-2.5 mt-1">
         {checks.map(c => (
@@ -181,6 +279,21 @@ function RiskStatusPanel({ risk, wsKill }: { risk: RiskMetrics | null | undefine
               {c.value}
             </span>
             {c.limit && <span className="text-[9px] font-mono text-terminal-subtle/60">/ {c.limit}</span>}
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 pt-3 border-t border-border/50 space-y-1.5">
+        <div className="text-[9px] font-mono text-text-tertiary uppercase tracking-widest mb-1.5">시스템</div>
+        {[
+          { label: 'CB 쿨다운', value: '300s' },
+          { label: '리스크 체크', value: '11 / 11' },
+          { label: 'CB 상태', value: cbState === 'CLOSED' ? '정상' : cbState, ok: cbState === 'CLOSED' },
+        ].map(({ label, value, ok }) => (
+          <div key={label} className="flex items-center justify-between">
+            <span className="text-[10px] font-mono text-text-secondary">{label}</span>
+            <span className={clsx('text-[10px] font-mono tabular-nums', ok === false ? 'text-loss' : 'text-text-primary')}>
+              {value}
+            </span>
           </div>
         ))}
       </div>
@@ -215,7 +328,7 @@ function StrategyPerformancePanel({
   return (
     <div className="card">
       <div className="card-header">전략 성과</div>
-      <div className="space-y-2 mt-1">
+      <div className={clsx('mt-1', rows.length >= 4 ? 'grid grid-cols-1 xl:grid-cols-2 gap-2' : 'space-y-2')}>
         {rows.length > 0 ? rows.map(r => (
           <div key={r.id} className={clsx(
             'flex items-center gap-3 px-3 py-2.5 rounded-md border transition-colors',
@@ -229,8 +342,8 @@ function StrategyPerformancePanel({
             <div className="flex-1 min-w-0">
               <div className="text-[11px] font-mono font-semibold text-terminal-text truncate">{r.name}</div>
               <div className="flex gap-2 mt-0.5">
-                <span className="text-[9px] font-mono text-terminal-subtle">{r.trades} trades</span>
-                <span className="text-[9px] font-mono text-terminal-subtle">WR {r.wr.toFixed(0)}%</span>
+                <span className="text-[9px] font-mono text-terminal-subtle">{r.trades}건</span>
+                <span className="text-[9px] font-mono text-terminal-subtle">승률 {r.wr.toFixed(0)}%</span>
               </div>
             </div>
             <div className="text-right shrink-0 w-20">
@@ -259,6 +372,11 @@ function StrategyPerformancePanel({
 
 // ─── Spread Heatmap Panel ─────────────────────────────────────────────────────
 
+const HEATMAP_EXCHANGE_FULL: Record<string, string> = {
+  BN: 'Binance', BNF: 'Binance Futures', UP: 'Upbit',
+  BH: 'Bithumb', CO: 'Coinone', BG: 'Bitget',
+};
+
 function SpreadHeatmapPanel({ spreadMatrix }: { spreadMatrix: Record<string, Record<string, number>> | null }) {
   const exchanges = ['BN', 'BNF', 'UP', 'BH', 'CO', 'BG'];
   const symbols   = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
@@ -277,7 +395,7 @@ function SpreadHeatmapPanel({ spreadMatrix }: { spreadMatrix: Record<string, Rec
           ))}
           {exchanges.map(ex => (
             <>
-              <div key={`l-${ex}`} className="text-[8px] font-mono text-terminal-subtle flex items-center leading-none py-0.5">{ex}</div>
+              <div key={`l-${ex}`} className="text-[8px] font-mono text-terminal-subtle flex items-center leading-none py-0.5" title={HEATMAP_EXCHANGE_FULL[ex]}>{ex}</div>
               {symbols.map(s => {
                 const val = spreadMatrix?.[ex]?.[s] ?? null;
                 const isPos = val !== null ? val > 0 : null;
@@ -285,9 +403,9 @@ function SpreadHeatmapPanel({ spreadMatrix }: { spreadMatrix: Record<string, Rec
                   <div key={`${ex}-${s}`}
                     className="rounded flex items-center justify-center h-[22px]"
                     style={{
-                      background: val === null ? 'rgba(0,0,0,0.03)' :
-                        isPos ? `rgba(0,200,150,${Math.min(Math.abs(val) / 30 * 0.4, 0.4)})` :
-                                `rgba(255,71,87,${Math.min(Math.abs(val) / 30 * 0.3, 0.3)})`,
+                      background: val === null ? 'rgba(0,0,0,0.02)' :
+                        isPos ? `rgba(20,158,97,${Math.min(Math.abs(val) / 30 * 0.4, 0.4)})` :
+                                `rgba(229,72,77,${Math.min(Math.abs(val) / 30 * 0.3, 0.3)})`,
                     }}
                   >
                     <span className={clsx('text-[8px] font-mono',
@@ -398,12 +516,14 @@ function RecentFillsPanel({ trades, loading }: { trades: Trade[]; loading: boole
                 </span>
                 {/* Symbol */}
                 <span className="text-[11px] font-mono text-terminal-text font-semibold w-24 shrink-0">{t.symbol}</span>
-                {/* Side */}
-                <span className={clsx('text-[10px] font-mono font-semibold shrink-0 w-12',
-                  t.side === 'LONG' || t.side === 'BUY' ? 'text-profit' : 'text-loss',
-                )}>
-                  {t.side}
-                </span>
+                {/* Side — only show recognized values */}
+                {(t.side === 'LONG' || t.side === 'SHORT' || t.side === 'BUY' || t.side === 'SELL') && (
+                  <span className={clsx('text-[10px] font-mono font-semibold shrink-0 w-12',
+                    t.side === 'LONG' || t.side === 'BUY' ? 'text-profit' : 'text-loss',
+                  )}>
+                    {t.side === 'LONG' ? '매수' : t.side === 'SHORT' ? '매도' : t.side === 'BUY' ? '매수' : '매도'}
+                  </span>
+                )}
                 {/* Route */}
                 <span className="text-[10px] font-mono text-terminal-subtle flex-1 truncate">
                   {shortEx(t.buy_exchange)} → {shortEx(t.sell_exchange)}
@@ -625,7 +745,7 @@ export default function OverviewPage() {
   const isBacktest   = (data?.mode ?? 'paper').toLowerCase() === 'backtest';
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-screen-xl mx-auto space-y-4 px-4 md:px-6 py-4 pb-24 md:pb-6">
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
@@ -644,7 +764,7 @@ export default function OverviewPage() {
       {isBacktest ? <BacktestView /> : (<>
 
       {/* ── Row 1: 4 KPI Cards ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <KpiCard
           label="총 자산"
           value={totalAssets > 0
@@ -677,87 +797,53 @@ export default function OverviewPage() {
         />
       </div>
 
-      {/* ── Row 1.5: Exchange Balance Swipe Cards ───────────────────────── */}
-      {exchangeStatus && (
-        <div>
-          <p className="text-small font-medium text-text-secondary mb-2">거래소별 잔고</p>
-          {/* scroll-snap 컨테이너 — 오른쪽 페이드로 "더 있다" 힌트 */}
-          <div className="relative">
-            <div
-              className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory scroll-smooth"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              {Object.entries(exchangeStatus).map(([id, s]) => {
-                const b = s.balance ?? {};
-                const usdt = b['USDT'] ?? b['usdt'] ?? 0;
-                const krw  = b['KRW']  ?? b['krw']  ?? 0;
-                const balStr = krw > 0
-                  ? `₩${krw.toLocaleString('ko-KR')}`
-                  : usdt > 0
-                  ? `$${usdt.toFixed(2)}`
-                  : null;
-                return (
-                  <div
-                    key={id}
-                    className="w-36 h-24 shrink-0 snap-start flex flex-col justify-between bg-bg-surface border border-border rounded-[14px] p-3 transition-shadow hover:shadow-md"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-caption font-bold text-text-primary truncate flex-1 mr-1">
-                        {shortEx(id)}
-                      </span>
-                      <span className={clsx('w-2 h-2 rounded-full shrink-0 transition-colors', s.connected ? 'bg-success' : 'bg-danger')} />
-                    </div>
-                    <div>
-                      {balStr ? (
-                        <p className="text-body font-bold tabular-nums text-text-primary leading-tight">{balStr}</p>
-                      ) : (
-                        <p className="text-small text-text-tertiary">잔고 없음</p>
-                      )}
-                      <p className={clsx('text-small mt-0.5', s.connected ? 'text-success' : 'text-danger')}>
-                        {s.connected
-                          ? s.latency_ms != null ? `${s.latency_ms}ms` : '연결됨'
-                          : '연결 끊김'}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-              {/* 스크롤 끝 여백 */}
-              <div className="w-4 shrink-0" aria-hidden />
+      {/* ── Row 1.5: Exchange Balance (grouped: 해외/국내) + Pie ──────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_168px] gap-4">
+        <div className="space-y-2">
+          <div>
+            <div className="text-small font-medium text-text-tertiary uppercase tracking-widest mb-2">해외 거래소</div>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {INTL_GROUPS.map(g => (
+                <ExchangeGroupCard key={g.key} group={g} exchangeStatus={exchangeStatus ?? null} livePositions={livePositions} />
+              ))}
             </div>
-            {/* 오른쪽 페이드 힌트 — 더 카드가 있다는 시각적 신호 */}
-            <div
-              className="pointer-events-none absolute right-0 top-0 bottom-2 w-12 bg-gradient-to-l from-bg-base to-transparent"
-              aria-hidden
-            />
+          </div>
+          <div>
+            <div className="text-small font-medium text-text-tertiary uppercase tracking-widest mb-2">국내 거래소</div>
+            <div className="grid grid-cols-3 gap-2">
+              {KRW_GROUPS.map(g => (
+                <ExchangeGroupCard key={g.key} group={g} exchangeStatus={exchangeStatus ?? null} livePositions={livePositions} />
+              ))}
+            </div>
           </div>
         </div>
-      )}
+        <div className="hidden lg:block self-start">
+          <ExchangePieChart livePositions={livePositions} />
+        </div>
+      </div>
 
-      {/* ── Row 2: PnL Curve (2/3) + Risk Status (1/3) ──────────────────── */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-2">
+      {/* ── Row 2: PnL Curve (2/3) | Risk + Strategy stacked (1/3) ──────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
           <PnLChart wsPnl={
             shadow?.total_pnl
               ? { total: shadow.total_pnl, realized: shadow.total_pnl, unrealized: 0 }
               : (data?.pnl ?? null)
           } />
         </div>
-        <RiskStatusPanel risk={riskMetrics} wsKill={data?.kill_switch ?? false} />
-      </div>
-
-      {/* ── Row 3: Strategy Performance (1/2) + Spread Heatmap (1/2) ────── */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <StrategyPerformancePanel
-          strategies={strategyList as Strategy[]}
-          breakdown={breakdown}
-        />
-        <SpreadHeatmapPanel spreadMatrix={spreadMatrix} />
+        <div className="space-y-4">
+          <RiskStatusPanel risk={riskMetrics} wsKill={data?.kill_switch ?? false} />
+          <StrategyPerformancePanel
+            strategies={strategyList as Strategy[]}
+            breakdown={breakdown}
+          />
+          {spreadMatrix && <SpreadHeatmapPanel spreadMatrix={spreadMatrix} />}
+        </div>
       </div>
 
       {/* ── Row 4: Recent Fills (2/3) + Active Positions (1/3) ──────────── */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
           <RecentFillsPanel trades={recentTrades ?? []} loading={tradesLoading && !recentTrades} />
         </div>
         {/* Live exchange positions > WebSocket engine positions */}
@@ -807,8 +893,7 @@ export default function OverviewPage() {
         )}
       </div>
 
-      {/* ── Row 5: Exchange Connection Status ───────────────────────────── */}
-      <ExchangeStatusBar exchanges={exchangeStatus ?? null} />
+      {/* Row 5: Exchange Connection Status — removed (duplicates top exchange cards) */}
 
       {/* ── Row 6: Event Feed ────────────────────────────────────────────── */}
       <EventFeed />

@@ -196,6 +196,51 @@ async def update_mode(request: Request, body: ModeUpdate) -> JSONResponse:
 
 _STRATEGY_PARAMS_PATH = Path(__file__).parents[4] / "config" / "strategy_params.json"
 
+# HIGH-2: whitelist of mutable params per strategy with (min, max, type) constraints.
+# Prevents arbitrary key injection that could set min_spread_bps=0 or pollute the JSON.
+_MUTABLE_PARAMS: dict[str, dict[str, tuple]] = {
+    "__all__": {
+        "min_spread_bps": (0.0, 1000.0, (int, float)),
+        "entry_threshold": (0.0, 1.0, (int, float)),
+        "exit_threshold": (0.0, 1.0, (int, float)),
+        "stop_loss_pct": (0.0, 0.5, (int, float)),
+        "wfe": (0.0, 100.0, (int, float)),
+    },
+    "futures_futures": {
+        "max_concurrent_positions": (1, 10, int),
+        "min_spread_bps": (1.0, 1000.0, (int, float)),  # tighter floor for safety
+    },
+    "funding_rate": {
+        "min_funding_rate_bps": (0.0, 500.0, (int, float)),
+        "max_position_size_usdt": (1.0, 50000.0, (int, float)),
+        "enable_ou_filter": (None, None, bool),
+    },
+    "spot_futures": {
+        "max_position_size_usdt": (1.0, 50000.0, (int, float)),
+    },
+    "statistical_arb": {
+        "z_threshold": (0.5, 10.0, (int, float)),
+        "max_position_size_usdt": (1.0, 50000.0, (int, float)),
+    },
+}
+
+
+def _validate_strategy_params(strategy_id: str, params: dict[str, Any]) -> None:
+    """Raise HTTPException(400) if params contain unknown keys or out-of-range values."""
+    allowed = {**_MUTABLE_PARAMS.get("__all__", {}), **_MUTABLE_PARAMS.get(strategy_id, {})}
+    for key, value in params.items():
+        if key.startswith("_") or key in ("status", "data_type"):
+            raise HTTPException(status_code=400, detail=f"Parameter '{key}' is read-only")
+        if key not in allowed:
+            raise HTTPException(status_code=400, detail=f"Unknown parameter '{key}' for strategy '{strategy_id}'")
+        lo, hi, expected_type = allowed[key]
+        if not isinstance(value, expected_type):
+            raise HTTPException(status_code=400, detail=f"Parameter '{key}' must be {expected_type.__name__ if hasattr(expected_type, '__name__') else expected_type}")
+        if lo is not None and value < lo:
+            raise HTTPException(status_code=400, detail=f"Parameter '{key}'={value} below minimum {lo}")
+        if hi is not None and value > hi:
+            raise HTTPException(status_code=400, detail=f"Parameter '{key}'={value} above maximum {hi}")
+
 
 class StrategyParamUpdate(BaseModel):
     strategy_id: str
@@ -209,6 +254,9 @@ async def update_strategy_params(request: Request, body: StrategyParamUpdate) ->
     Updates config/strategy_params.json and notifies the running engine.
     """
     ctx = request.app.state.engine_context
+
+    # HIGH-2: validate before touching disk
+    _validate_strategy_params(body.strategy_id, body.params)
 
     # Load current params
     try:

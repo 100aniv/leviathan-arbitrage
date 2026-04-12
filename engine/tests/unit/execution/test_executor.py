@@ -145,8 +145,9 @@ def test_execution_result_rolled_back() -> None:
 @pytest.mark.asyncio
 async def test_same_exchange_success(executor: AtomicExecutor, exchange_a: MagicMock) -> None:
     """Both legs on same exchange succeed in parallel."""
-    leg1 = make_order("binance", OrderSide.BUY)
-    leg2 = make_order("binance", OrderSide.SELL)
+    # Use small amounts ($50 total) to stay within default $100k per-exchange budget
+    leg1 = make_order("binance", OrderSide.BUY, amount=Decimal("0.001"))
+    leg2 = make_order("binance", OrderSide.SELL, amount=Decimal("0.001"))
     result = await executor.execute_same_exchange(
         exchange_id="binance",
         leg1_order=leg1,
@@ -177,9 +178,9 @@ async def test_same_exchange_partial_above_threshold(
     executor: AtomicExecutor, exchange_a: MagicMock
 ) -> None:
     """Partial fill >80% is accepted."""
-    exchange_a.place_order = AsyncMock(return_value=make_trade(amount=Decimal("0.85")))
-    leg1 = make_order("binance", OrderSide.BUY, amount=Decimal("1.0"))
-    leg2 = make_order("binance", OrderSide.SELL, amount=Decimal("1.0"))
+    exchange_a.place_order = AsyncMock(return_value=make_trade(amount=Decimal("0.00085")))
+    leg1 = make_order("binance", OrderSide.BUY, amount=Decimal("0.001"))
+    leg2 = make_order("binance", OrderSide.SELL, amount=Decimal("0.001"))
     result = await executor.execute_same_exchange(
         exchange_id="binance",
         leg1_order=leg1,
@@ -194,9 +195,9 @@ async def test_same_exchange_partial_below_threshold_rollback(
     executor: AtomicExecutor, exchange_a: MagicMock
 ) -> None:
     """Partial fill ≤80% triggers cancel+rollback."""
-    exchange_a.place_order = AsyncMock(return_value=make_trade(amount=Decimal("0.5")))
-    leg1 = make_order("binance", OrderSide.BUY, amount=Decimal("1.0"))
-    leg2 = make_order("binance", OrderSide.SELL, amount=Decimal("1.0"))
+    exchange_a.place_order = AsyncMock(return_value=make_trade(amount=Decimal("0.0005")))
+    leg1 = make_order("binance", OrderSide.BUY, amount=Decimal("0.001"))
+    leg2 = make_order("binance", OrderSide.SELL, amount=Decimal("0.001"))
     result = await executor.execute_same_exchange(
         exchange_id="binance",
         leg1_order=leg1,
@@ -212,8 +213,8 @@ async def test_same_exchange_leg_failure_rollback(
 ) -> None:
     """Exception on any leg triggers rollback."""
     exchange_a.place_order = AsyncMock(side_effect=Exception("exchange error"))
-    leg1 = make_order("binance", OrderSide.BUY)
-    leg2 = make_order("binance", OrderSide.SELL)
+    leg1 = make_order("binance", OrderSide.BUY, amount=Decimal("0.001"))
+    leg2 = make_order("binance", OrderSide.SELL, amount=Decimal("0.001"))
     result = await executor.execute_same_exchange(
         exchange_id="binance",
         leg1_order=leg1,
@@ -651,7 +652,8 @@ async def test_rollback_order_filled_places_market_unwind(
     executor: AtomicExecutor, exchange_a: MagicMock
 ) -> None:
     """_rollback_order(filled=True) places opposing MARKET order, not cancel."""
-    unwind_trade = make_trade("binance", side=OrderSide.SELL)
+    # Return Trade with amount=1.8 to simulate a fully-filled unwind (BUG-83: must match unwind_qty)
+    unwind_trade = make_trade("binance", side=OrderSide.SELL, amount=Decimal("1.8"))
     exchange_a.place_order = AsyncMock(return_value=unwind_trade)
 
     order = make_order("binance", OrderSide.BUY, amount=Decimal("2.5"))
@@ -674,18 +676,38 @@ async def test_rollback_order_filled_places_market_unwind(
 
 
 @pytest.mark.asyncio
+async def test_rollback_partial_fill_returns_false_and_registers_stranded(
+    executor: AtomicExecutor, exchange_a: MagicMock
+) -> None:
+    """BUG-83: if unwind fills < 95% of requested, rollback returns False and registers stranded."""
+    # Unwind trade only fills 1.0 out of 1.8 requested → partial fill
+    partial_trade = make_trade("binance", side=OrderSide.SELL, amount=Decimal("1.0"))
+    exchange_a.place_order = AsyncMock(return_value=partial_trade)
+
+    order = make_order("binance", OrderSide.BUY, amount=Decimal("2.5"))
+    result = await executor._rollback_order(
+        "binance", order, filled=True, filled_amount=Decimal("1.8")
+    )
+
+    ok, msg = result
+    assert ok is False, "Partial fill must return False (unhedged exposure)"
+    assert "rollback_partial_fill" in msg
+    assert "1.0" in msg  # filled amount shown in message
+
+
+@pytest.mark.asyncio
 async def test_same_exchange_filled_leg_uses_unwind_rollback(
     executor: AtomicExecutor, exchange_a: MagicMock
 ) -> None:
     """Same-exchange rollback detects filled legs and uses opposing market order."""
-    leg1_trade = make_trade("binance", side=OrderSide.BUY, amount=Decimal("1.0"))
+    leg1_trade = make_trade("binance", side=OrderSide.BUY, amount=Decimal("0.001"))
     # leg2 fails — triggers rollback of filled leg1
     exchange_a.place_order = AsyncMock(
         side_effect=[leg1_trade, RuntimeError("leg2 rejected"), leg1_trade]
     )
 
-    leg1 = make_order("binance", OrderSide.BUY)
-    leg2 = make_order("binance", OrderSide.SELL)
+    leg1 = make_order("binance", OrderSide.BUY, amount=Decimal("0.001"))
+    leg2 = make_order("binance", OrderSide.SELL, amount=Decimal("0.001"))
 
     result = await executor.execute_same_exchange(
         exchange_id="binance",

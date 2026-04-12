@@ -22,13 +22,21 @@ import ko from "@/i18n/ko.json";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STRATEGY_KO: Record<string, string> = {
-  funding_rate_arb: "펀딩레이트",
-  cross_exchange_spot: "크로스익스체인지",
-  futures_futures: "선물선물",
-  spot_futures_basis: "현선물",
-  statistical_arb: "통계차익",
-  triangular: "삼각차익",
-  cex_dex_hybrid: "CEX-DEX",
+  funding_rate_arb:       "펀딩비 수익",
+  funding_rate_arb_v1:    "펀딩비 수익",
+  cross_exchange_spot:    "교차 거래소 차익",
+  cross_exchange_spot_v1: "교차 거래소 차익",
+  cross_exchange_v1:      "교차 거래소 차익",
+  futures_futures:        "선물-선물 차익",
+  futures_futures_v1:     "선물-선물 차익",
+  spot_futures_basis:     "현물-선물 차익",
+  spot_futures_v1:        "현물-선물 차익",
+  statistical_arb:        "통계적 차익",
+  statistical_arb_v1:     "통계적 차익",
+  triangular:             "삼각 차익",
+  triangular_v1:          "삼각 차익",
+  cex_dex_hybrid:         "CEX-DEX 차익",
+  cex_dex_v1:             "CEX-DEX 차익",
 };
 
 const EXCHANGE_DISPLAY: Record<string, string> = {
@@ -512,7 +520,7 @@ export default function ManagePage() {
   }
 
   return (
-    <div className="p-4 max-w-5xl mx-auto pb-24 space-y-6">
+    <div className="max-w-screen-xl mx-auto px-4 md:px-6 py-4 pb-24 space-y-6">
       <h1 className="text-heading font-bold text-text-primary">{ko.nav.manage}</h1>
 
       {/* Mode Toggle */}

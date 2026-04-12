@@ -216,10 +216,11 @@ class TestComputeMDD:
         result = WalkForwardAnalyzer._compute_mdd([100.0, -80.0, 40.0])
         assert abs(result - 0.80) < 1e-9, f"Expected 0.80, got {result}"
 
-    def test_mdd_zero_when_only_losses_no_prior_peak(self) -> None:
-        """When cumulative never exceeds zero, peak=0, MDD=0 (no fractional dd)."""
+    def test_mdd_one_when_only_losses_no_prior_peak(self) -> None:
+        """BUG-96: When cumulative never exceeds zero, peak=0, MDD=1.0 (pure loss → 100% dd).
+        Ensures pure-loss strategies always fail the MDD gate (old behavior was MDD=0 → false pass)."""
         result = WalkForwardAnalyzer._compute_mdd([-1.0, -2.0, -3.0])
-        assert result == 0.0
+        assert result == 1.0
 
     def test_mdd_single_loss_after_gain(self) -> None:
         """Single PnL gain then single loss: dd = loss/gain."""

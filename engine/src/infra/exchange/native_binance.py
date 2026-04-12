@@ -209,10 +209,29 @@ class BinanceNativeAdapter(NativeAdapter):
                             if f["filterType"] == "LOT_SIZE":
                                 self._step_sizes[binance_sym] = Decimal(str(f["stepSize"]))
             except Exception as exc:
-                # BUG-71: raise so executor rejects the trade rather than proceeding
-                # with a wrong 0.001 default that silently recreates the lot-size mismatch.
-                logger.warning("lot_size_fetch_failed symbol=%s: %s — re-raising for executor rejection", symbol, exc)
-                raise
+                exc_str = str(exc)
+                # Hard-reject only for "Invalid symbol" API errors (symbol truly doesn't exist).
+                # Transient errors (timeout → empty str, network blip) fall through to safe default
+                # rather than blocking valid trades indefinitely.
+                if exc_str and ("Invalid symbol" in exc_str or "-1121" in exc_str):
+                    logger.warning(
+                        "lot_size_invalid_symbol symbol=%s — re-raising for executor rejection", symbol
+                    )
+                    raise
+                _default = Decimal("0.001")
+                self._step_sizes[binance_sym] = _default
+                logger.warning(
+                    "lot_size_fetch_transient_err symbol=%s err=%s — using fallback default=%s",
+                    symbol, exc_str or type(exc).__name__, _default,
+                )
+            # If fetch succeeded but LOT_SIZE filter not found in response, use safe default.
+            if binance_sym not in self._step_sizes:
+                _default = Decimal("0.001")
+                self._step_sizes[binance_sym] = _default
+                logger.warning(
+                    "lot_size_filter_not_found symbol=%s — using fallback default=%s",
+                    symbol, _default,
+                )
         return self._step_sizes[binance_sym]
 
     async def _get_spot_lot_step(self, symbol: str) -> Decimal:
@@ -463,7 +482,11 @@ class BinanceNativeAdapter(NativeAdapter):
                 path,
                 params={"symbol": _symbol_to_binance(symbol)},
             )
-            return len(raw) if isinstance(raw, list) else 0
+            # MEDIUM-5: Binance DELETE /allOpenOrders returns a dict ({"code":200,"msg":"..."}),
+            # not a list. Return list length if list, else 1 if non-empty dict (success).
+            if isinstance(raw, list):
+                return len(raw)
+            return 1 if raw else 0
         # symbol=None: 전체 취소 — 열린 주문 조회 후 심볼별 DELETE
         if self._market_type != "futures":
             raise ValueError("Binance spot cancel_all_orders requires symbol")

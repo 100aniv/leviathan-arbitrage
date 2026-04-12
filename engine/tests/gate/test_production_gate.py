@@ -187,14 +187,14 @@ class TestProductionGate_PG2_AutoRecovery:
         assert is_halted(), "PG-2 FAIL: Halt flag not set after trigger"
 
         # Phase 2: Reset (simulates post-reconciliation resume)
-        ks.reset()
+        await ks.reset()
         assert not is_halted(), "PG-2 FAIL: Halt flag still set after reset"
 
         # Phase 3: Can trigger again after reset
         event2 = await ks.trigger()
         assert is_halted()
         assert "Already triggered" not in event2.errors
-        ks.reset()
+        await ks.reset()
 
     async def test_auto_recovery_100pct_rate(self, mock_exchanges):
         """
@@ -307,7 +307,7 @@ class TestProductionGate_PG3_KillSwitchUnder1ms:
             f"PG-3 FAIL: In-process halt took {elapsed_ms:.4f}ms. "
             f"Must be < 1ms for production Tier 1 requirement."
         )
-        ks.reset()
+        await ks.reset()
 
     async def test_kill_switch_tier1_full_sequence_under_10ms(self):
         """
@@ -321,7 +321,7 @@ class TestProductionGate_PG3_KillSwitchUnder1ms:
         assert event.tier1_latency_ms < 10.0, (
             f"PG-3 FAIL: Tier 1 full sequence {event.tier1_latency_ms:.3f}ms > 10ms"
         )
-        ks.reset()
+        await ks.reset()
 
 
 # ============================================================
@@ -516,4 +516,4 @@ class TestProductionGate_PG5_AuditTrail:
         assert "cancelled_orders" in event_dict
         assert "closed_positions" in event_dict
 
-        ks.reset()
+        await ks.reset()

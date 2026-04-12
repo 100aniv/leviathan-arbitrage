@@ -273,6 +273,9 @@ class TestRestPlaceOrder:
 
     @pytest.mark.asyncio
     async def test_trade_amount_matches_order(self, adapter):
+        # BUG-93: LIMIT order response has no fill data → fill_qty defaults to 0 (not order.amount).
+        # A LIMIT order is submitted but not yet filled at placement time.
+        # Returning order.amount was phantom-fill behavior; 0 is the correct unfilled state.
         mock_resp = {"code": "00000", "data": {"orderId": "ORD-003"}}
         adapter._http = MagicMock()
         adapter._http.request = AsyncMock(return_value=MagicMock(
@@ -282,7 +285,8 @@ class TestRestPlaceOrder:
 
         order = _make_order(amount=Decimal("0.05"))
         trade = await adapter._rest_place_order(order)
-        assert trade.amount == Decimal("0.05")
+        # LIMIT order → no immediate fill, executor sees 0 and routes correctly via rollback/cancel
+        assert trade.amount == Decimal("0")
 
 
 # ---------------------------------------------------------------------------

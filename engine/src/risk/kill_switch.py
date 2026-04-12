@@ -117,7 +117,7 @@ class KillSwitchTarget(Protocol):
 
     Separate from ExchangeAdapter to avoid protocol signature conflicts.
     ExchangeAdapter.cancel_all_orders(symbol) -> int  (normal trading)
-    KillSwitchTarget.cancel_all_orders(timeout_ms) -> list[str]  (emergency)
+    KillSwitchTarget.emergency_cancel_all(timeout_ms) -> list[str]  (emergency — BUG-97 fix)
 
     Adapters should implement BOTH protocols.
     """
@@ -125,8 +125,8 @@ class KillSwitchTarget(Protocol):
     @property
     def exchange_id(self) -> str: ...
 
-    async def cancel_all_orders(self, timeout_ms: int = 2000) -> list[str]:
-        """Cancel all pending orders. Returns list of cancelled order IDs."""
+    async def emergency_cancel_all(self, timeout_ms: int = 2000) -> list[str]:
+        """Emergency cancel all pending orders. Returns list of cancelled order IDs."""
         ...
 
     async def close_all_positions(self, timeout_ms: int = 3000) -> list[str]:
@@ -368,10 +368,13 @@ class KillSwitch:
             closed=len(event.closed_positions),
         )
 
-    def reset(self) -> None:
+    async def reset(self) -> None:
         """
         Reset kill switch state. Only after full reconciliation.
         Clears both in-process flag and triggered state.
+        Must be called from async context — acquires self._lock to prevent
+        race with in-flight Tier 2/3 cancellation/close tasks.
         """
-        clear_halt()
-        self._triggered = False
+        async with self._lock:
+            clear_halt()
+            self._triggered = False

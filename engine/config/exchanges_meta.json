@@ -1,0 +1,261 @@
+{
+  "_comment": "거래소별 메타데이터 — 대시보드 UI, 백테스트 설정, Paper 실행 설정에서 참조",
+  "_updated": "2026-04-03",
+  "exchanges": {
+    "binance": {
+      "name": "Binance",
+      "tier": 1,
+      "market_type": "spot",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": true,
+        "data_type": "ohlcv",
+        "precision": "standard",
+        "ohlcv_from": "2017-08-01",
+        "orderbook_from": null,
+        "download_url": "https://data.binance.vision",
+        "note": "OHLCV 2017~현재, 공개 다운로드"
+      }
+    },
+    "binance_futures": {
+      "name": "Binance Futures",
+      "tier": 1,
+      "market_type": "futures",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": true,
+        "data_type": "ohlcv",
+        "precision": "standard",
+        "ohlcv_from": "2019-09-01",
+        "orderbook_from": null,
+        "download_url": "https://data.binance.vision",
+        "note": "OHLCV 2019~현재, 공개 다운로드"
+      }
+    },
+    "bybit": {
+      "name": "Bybit",
+      "tier": 1,
+      "market_type": "spot",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": true,
+        "data_type": "ohlcv",
+        "precision": "standard",
+        "ohlcv_from": "2019-01-01",
+        "orderbook_from": null,
+        "download_url": null,
+        "note": "OHLCV 2019~현재, REST API"
+      }
+    },
+    "bybit_futures": {
+      "name": "Bybit Futures",
+      "tier": 1,
+      "market_type": "futures",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": true,
+        "data_type": "ohlcv",
+        "precision": "standard",
+        "ohlcv_from": "2019-01-01",
+        "orderbook_from": null,
+        "download_url": null,
+        "note": "OHLCV 2019~현재, REST API"
+      }
+    },
+    "okx": {
+      "name": "OKX",
+      "tier": 1,
+      "market_type": "spot",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": true,
+        "data_type": "orderbook",
+        "precision": "high",
+        "ohlcv_from": "2021-09-01",
+        "orderbook_from": "2021-09-01",
+        "download_url": "https://www.okx.com/historical-data",
+        "note": "오더북+OHLCV 2021.9~현재, 공개 다운로드"
+      }
+    },
+    "okx_futures": {
+      "name": "OKX Futures",
+      "tier": 1,
+      "market_type": "futures",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": true,
+        "data_type": "orderbook",
+        "precision": "high",
+        "ohlcv_from": "2021-09-01",
+        "orderbook_from": "2021-09-01",
+        "download_url": "https://www.okx.com/historical-data",
+        "note": "오더북+OHLCV 2021.9~현재, 공개 다운로드"
+      }
+    },
+    "bitget": {
+      "name": "Bitget",
+      "tier": 2,
+      "market_type": "spot",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": true,
+        "data_type": "ohlcv",
+        "precision": "standard",
+        "ohlcv_from": "2020-01-01",
+        "orderbook_from": null,
+        "download_url": null,
+        "note": "OHLCV 상장일~현재, REST API"
+      }
+    },
+    "upbit": {
+      "name": "Upbit",
+      "tier": 2,
+      "market_type": "spot",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": true,
+      "backtest": {
+        "capable": true,
+        "data_type": "ohlcv",
+        "precision": "standard",
+        "ohlcv_from": "2017-10-01",
+        "orderbook_from": null,
+        "download_url": null,
+        "note": "OHLCV 상장일~현재, REST API (200개/요청 제한)"
+      }
+    },
+    "bithumb": {
+      "name": "Bithumb",
+      "tier": 2,
+      "market_type": "spot",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": true,
+      "backtest": {
+        "capable": true,
+        "data_type": "ohlcv",
+        "precision": "standard",
+        "ohlcv_from": "2014-01-01",
+        "orderbook_from": null,
+        "download_url": null,
+        "note": "OHLCV 상장일~현재, REST API. stale data 주의"
+      }
+    },
+    "coinone": {
+      "name": "Coinone",
+      "tier": 2,
+      "market_type": "spot",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": true,
+      "backtest": {
+        "capable": true,
+        "data_type": "ohlcv",
+        "precision": "standard",
+        "ohlcv_from": "2014-01-01",
+        "orderbook_from": null,
+        "download_url": null,
+        "note": "OHLCV 상장일~현재, REST API"
+      }
+    },
+    "mexc": {
+      "name": "MEXC",
+      "tier": 4,
+      "market_type": "spot",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": true,
+        "data_type": "ohlcv",
+        "precision": "standard",
+        "ohlcv_from": "2023-01-01",
+        "orderbook_from": null,
+        "download_url": null,
+        "note": "OHLCV 2023.1~현재, REST API"
+      }
+    },
+    "gateio": {
+      "name": "Gate.io",
+      "tier": 4,
+      "market_type": "spot",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": true,
+        "data_type": "orderbook",
+        "precision": "high",
+        "ohlcv_from": "2018-01-01",
+        "orderbook_from": "2021-01-01",
+        "download_url": "https://www.gate.io/developer/historical_quotes",
+        "note": "오더북+OHLCV, 공개 다운로드"
+      }
+    },
+    "bingx": {
+      "name": "BingX",
+      "tier": 4,
+      "market_type": "spot",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": true,
+        "data_type": "ohlcv",
+        "precision": "standard",
+        "ohlcv_from": "2020-01-01",
+        "orderbook_from": null,
+        "download_url": null,
+        "note": "OHLCV 상장일~현재, REST API"
+      }
+    },
+    "lbank": {
+      "name": "LBank",
+      "tier": 4,
+      "market_type": "spot",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": true,
+        "data_type": "ohlcv",
+        "precision": "standard",
+        "ohlcv_from": "2017-01-01",
+        "orderbook_from": null,
+        "download_url": null,
+        "note": "OHLCV 상장일~현재, REST API. 기간 실제 검증 필요"
+      }
+    },
+    "orangex": {
+      "name": "OrangeX",
+      "tier": 4,
+      "market_type": "futures",
+      "ws_public": true,
+      "paper_capable": true,
+      "krw_market": false,
+      "backtest": {
+        "capable": false,
+        "data_type": "none",
+        "precision": null,
+        "ohlcv_from": null,
+        "orderbook_from": null,
+        "download_url": null,
+        "note": "히스토리컬 데이터 범위 불명확. Paper 테스트만 권장"
+      }
+    }
+  }
+}

@@ -578,28 +578,29 @@ class ComplianceChecker:
                 recommendation="Implement src/risk/kill_switch.py with halt_local()",
             ))
 
-        # 2b. Tier 2 Availability: cancel_all_orders method on KillSwitchTarget
+        # 2b. Tier 2 Availability: emergency_cancel_all method on KillSwitchTarget
+        # BUG-97: Protocol was updated from cancel_all_orders → emergency_cancel_all
         if ok_ks and ks_mod is not None:
             ks_target = getattr(ks_mod, "KillSwitchTarget", None)
             if ks_target is not None:
-                # Check protocol defines cancel_all_orders
-                has_cancel = "cancel_all_orders" in dir(ks_target) or hasattr(ks_target, "cancel_all_orders")
+                # Check protocol defines emergency_cancel_all (BUG-97 rename)
+                has_cancel = "emergency_cancel_all" in dir(ks_target) or hasattr(ks_target, "emergency_cancel_all")
                 if has_cancel:
                     items.append(ComplianceItem(
                         category="kill_switch",
                         name="Tier2-Availability",
                         status=ComplianceStatus.PASS,
-                        description="KillSwitchTarget protocol defines cancel_all_orders method",
-                        detail="cancel_all_orders present in KillSwitchTarget protocol",
+                        description="KillSwitchTarget protocol defines emergency_cancel_all method",
+                        detail="emergency_cancel_all present in KillSwitchTarget protocol",
                     ))
                 else:
                     items.append(ComplianceItem(
                         category="kill_switch",
                         name="Tier2-Availability",
                         status=ComplianceStatus.FAIL,
-                        description="KillSwitchTarget protocol defines cancel_all_orders method",
-                        detail="cancel_all_orders NOT in KillSwitchTarget",
-                        recommendation="Add cancel_all_orders(timeout_ms: int) -> list[str] to KillSwitchTarget",
+                        description="KillSwitchTarget protocol defines emergency_cancel_all method",
+                        detail="emergency_cancel_all NOT in KillSwitchTarget",
+                        recommendation="Add emergency_cancel_all(timeout_ms: int) -> list[str] to KillSwitchTarget",
                     ))
             else:
                 items.append(ComplianceItem(

@@ -415,9 +415,13 @@ class RiskGuardian:
             if active > 0 and halted >= active:
                 import asyncio as _asyncio
                 try:
-                    _asyncio.ensure_future(
-                        self._cb.trigger_manual("per_strategy_all_halted")
-                    )
+                    # BUG-95: use get_running_loop().create_task() — guaranteed to schedule
+                    # on the current event loop; ensure_future() can silently fail in some contexts.
+                    # Guard: self._cb may be None if global CB is disabled.
+                    if self._cb is not None and hasattr(self._cb, "trigger_manual"):
+                        _asyncio.get_running_loop().create_task(
+                            self._cb.trigger_manual("per_strategy_all_halted")
+                        )
                 except RuntimeError:
                     logger.error(
                         "risk_check_12_global_cb_trigger_failed — no event loop; "

@@ -125,16 +125,16 @@ body {
 @layer components {
   /* ── 카드 (라이트 테마) ── */
   .card {
-    @apply bg-bg-surface border border-border rounded-[16px] p-4;
+    @apply bg-bg-surface border border-border rounded-[14px] p-3;
     box-shadow: var(--shadow-card);
     transition: box-shadow 200ms ease, transform 200ms ease;
   }
   .card:hover {
     transform: translateY(-1px);
-    box-shadow: 0 8px 32px rgba(113, 50, 245, 0.08);
+    box-shadow: 0 6px 24px rgba(113, 50, 245, 0.07);
   }
   .card-header {
-    @apply text-caption font-medium text-text-secondary uppercase tracking-widest mb-3;
+    @apply text-small font-medium text-text-secondary uppercase tracking-widest mb-2;
   }
   .stat-value {
     @apply text-2xl font-semibold tabular-nums text-text-primary;

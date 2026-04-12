@@ -15,6 +15,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+# rollback_no_state 누적 횟수가 이 임계값 이상이면 CRITICAL 로그 발생 (운영자 조치 요망)
+_ROLLBACK_NO_STATE_ALERT_THRESHOLD = 3
+
 from pydantic import BaseModel, Field
 
 from src.core.exchanges import KRW_EXCHANGES
@@ -90,6 +93,7 @@ class FuturesFuturesStrategy(BaseStrategy):
                 excluded_symbols=list(get_config("strategy_filters.futures_excluded_symbols", default=[])),
                 max_hold_seconds=float(get_config("strategy_filters.futures_max_hold_seconds", default=1800)),
                 max_concurrent_positions=int(get_config("strategy_filters.futures_max_concurrent_positions", default=4)),
+                max_position_size=Decimal(str(get_config("strategy_filters.futures_max_position_size_usdt", default=50))),
             )
         self.config = config
         self._margin_tracker: Any | None = None  # injected by live.py
@@ -170,6 +174,26 @@ class FuturesFuturesStrategy(BaseStrategy):
             # Entry order rolled back → position was never actually opened → clear tracking
             logger.info("ff.position_cleared_on_rollback symbol=%s", symbol)
             self._open_positions.pop(symbol, None)
+        else:
+            # BUG-116 HIGH: on_fill already cleared _pending_exits before this rollback fired.
+            # Position snapshot is gone — we cannot restore it here.
+            # NOTE: If on_fill fired first it means the exchange FILLED the exit order, so
+            # the position is likely NOT stranded — this warning is conservative.
+            # If on_fill did NOT fire, the position may truly be stranded; operator must
+            # verify via StrandedPositionTracker or manual exchange check.
+            self._metrics.rollback_no_state_count += 1
+            logger.warning(
+                "ff.rollback_no_state symbol=%s — on_fill may have cleared _pending_exits "
+                "before rollback fired; position may be stranded on exchange",
+                symbol,
+            )
+            if self._metrics.rollback_no_state_count >= _ROLLBACK_NO_STATE_ALERT_THRESHOLD:
+                logger.critical(
+                    "ff.rollback_no_state_threshold strategy=%s count=%d — "
+                    "repeated timing race detected; verify via StrandedPositionTracker",
+                    self._strategy_id,
+                    self._metrics.rollback_no_state_count,
+                )
 
     def on_execution_success(self, symbol: str) -> None:
         """성공적 실행 완료 시 _pending_exits 정리 (BUG-80).
@@ -190,7 +214,7 @@ class FuturesFuturesStrategy(BaseStrategy):
                 await _asyncio.sleep(60)
             except _asyncio.CancelledError:
                 return
-            now = time.time()
+            now = time.monotonic()
             for sym, pos in list(self._open_positions.items()):
                 try:
                     age_s = now - pos["entry_time"]
@@ -350,7 +374,11 @@ class FuturesFuturesStrategy(BaseStrategy):
         # BUG-72: Enforce max concurrent positions limit to prevent Binance -2019 margin exhaustion.
         # With ~$12 per trade at 5x leverage, each position uses ~$2.5 margin.
         # Reject new entries once the limit is reached (existing positions stay open until exit).
-        _cur_positions = len(self._open_positions) + len(self._pending_entry_symbols)
+        # BUG-116: also count _pending_exits — monitor removes symbol from _open_positions before
+        # the exit actually executes on the exchange.  Without counting pending_exits, the strategy
+        # thinks slots are free and allows new entries while exits are still in-flight, exhausting
+        # Binance margin → -2019 "Margin is insufficient".
+        _cur_positions = len(self._open_positions) + len(self._pending_entry_symbols) + len(self._pending_exits)
         if _cur_positions >= self.config.max_concurrent_positions:
             self._metrics.signals_filtered += 1
             logger.debug(
@@ -370,7 +398,7 @@ class FuturesFuturesStrategy(BaseStrategy):
             return None
         if _sym and _sym in self._open_positions:
             pos = self._open_positions[_sym]
-            age_s = time.time() - pos["entry_time"]
+            age_s = time.monotonic() - pos["entry_time"]
             _current_spread_bps = float(signal.spread_pct) * 10000 if signal.spread_pct else None
 
             # --- Spread-reversion exit (PRIMARY exit) ---
@@ -555,50 +583,51 @@ class FuturesFuturesStrategy(BaseStrategy):
 
         # Check margin safety: required margin must not exceed available * (1 - safety_pct)
         margin_available = Decimal(str(signal.metadata.get("margin_available", "0")))
-        required_margin = Decimal("0")  # initialized here; set inside if-block below
-        if margin_available > Decimal("0"):
-            required_margin = (signal.buy_price * size) / Decimal(str(self.config.max_leverage))
-            max_allowed_margin = margin_available * (Decimal("1") - self.config.margin_safety_pct)
-            if required_margin > max_allowed_margin:
-                self._metrics.signals_filtered += 1
-                logger.info(
-                    "strategy.rejected strategy=futures_futures reason=margin_insufficient symbol=%s "
-                    "required=%.2f max_allowed=%.2f",
-                    signal.symbol, float(required_margin), float(max_allowed_margin),
-                )
-                return None  # SAFE: _pending_entry_symbols.add() not yet called
+        # BUG-115: when margin_available == 0 (not yet cached OR either exchange has 0 free
+        # margin), block the trade entirely.  Previously the if-block was skipped → no size
+        # cap → oversized entry → Binance -2019 "Margin is insufficient".
+        if margin_available <= Decimal("0"):
+            self._metrics.signals_filtered += 1
+            logger.debug(
+                "strategy.rejected strategy=futures_futures reason=margin_not_cached symbol=%s",
+                signal.symbol,
+            )
+            return None
+        required_margin = (signal.buy_price * size) / Decimal(str(self.config.max_leverage))
+        max_allowed_margin = margin_available * (Decimal("1") - self.config.margin_safety_pct)
+        if required_margin > max_allowed_margin:
+            self._metrics.signals_filtered += 1
+            logger.info(
+                "strategy.rejected strategy=futures_futures reason=margin_insufficient symbol=%s "
+                "required=%.2f max_allowed=%.2f",
+                signal.symbol, float(required_margin), float(max_allowed_margin),
+            )
+            return None  # SAFE: _pending_entry_symbols.add() not yet called
 
         # Race guard: claim symbol before first await.
         # try/finally guarantees discard on ALL exit paths including unhandled exceptions
-        # from check_and_reserve or cost calculators (MAJOR-1 fix — complete exception coverage).
+        # from cost calculators (MAJOR-1 fix — complete exception coverage).
         if _sym:
             self._pending_entry_symbols.add(_sym)
         try:
-            # Bug 29: MarginTracker — check in-flight reservations to prevent margin exhaustion
-            if margin_available > Decimal("0") and self._margin_tracker is not None:
-                ok = await self._margin_tracker.check_and_reserve(
-                    exchange_id=signal.buy_exchange,
-                    required_usd=required_margin,
-                    available_usd=margin_available,
-                )
-                if not ok:
-                    self._metrics.signals_filtered += 1
-                    logger.info(
-                        "strategy.rejected strategy=futures_futures reason=margin_tracker_blocked symbol=%s",
-                        signal.symbol,
-                    )
-                    return None  # finally: discard
+            # BUG-101: removed strategy-level check_and_reserve — AtomicExecutor already does
+            # check_and_reserve + release in its finally block. Strategy-level reservation was
+            # never released → double-reservation → in_flight=$13.80 after 5 trades → all blocked.
+            # The executor's margin check (executor.py line ~783) is the authoritative gate.
 
             buy_notional = signal.buy_price * size
             sell_notional = signal.sell_price * size
             # BUG-14 fix: use estimate_futures_cost — single rollback, no network cost
             # (futures P&L settled in USDT; prior 2×estimate_cost doubled rollback $0.25×2=$0.50)
             if hasattr(self._cost_calculator, "estimate_futures_cost"):
+                # entry_only=True: 신호 생성 시점에서는 진입 수수료만 판단.
+                # 청산 수수료(exit fee)는 실제 청산 시 발생하며 signal gate에서 이중 계산 방지.
                 total_cost = self._cost_calculator.estimate_futures_cost(
                     buy_exchange=signal.buy_exchange,
                     sell_exchange=signal.sell_exchange,
                     buy_notional=buy_notional,
                     sell_notional=sell_notional,
+                    entry_only=True,
                 )
             else:
                 # Fallback for stub: fees only via estimate_cost (no network, no rollback)
@@ -642,10 +671,20 @@ class FuturesFuturesStrategy(BaseStrategy):
                     "buy_ex": _to_futures_exchange(signal.buy_exchange),
                     "sell_ex": _to_futures_exchange(signal.sell_exchange),
                     "size": size,
-                    "entry_time": time.time(),
+                    "entry_time": time.monotonic(),
                 }
 
             self._metrics.trade_requests_generated += 1
+            logger.info(
+                "strategy.accepted strategy=futures_futures symbol=%s "
+                "buy_ex=%s sell_ex=%s net_profit=%.6f gross=%.6f size=%s",
+                signal.symbol,
+                signal.buy_exchange,
+                signal.sell_exchange,
+                float(net_profit),
+                float(gross_profit),
+                size,
+            )
             return TradeRequest(
                 strategy_id=self.strategy_id,
                 legs=[

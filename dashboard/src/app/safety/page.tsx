@@ -8,9 +8,9 @@ import ko from "@/i18n/ko.json";
 
 const SAFETY_PAGES = [
   { href: "/safety/positions",  icon: MapPin,    label: "활성 포지션",    desc: "좀비 포지션 전수조사 + 수동 청산" },
-  { href: "/safety/latency",    icon: Activity,  label: "지연시간 측정",   desc: "Bug 13 측정 결과 라이브 차트" },
+  { href: "/safety/latency",    icon: Activity,  label: "지연시간 측정",   desc: "13항목 지연시간 라이브 차트" },
   { href: "/safety/canary",     icon: Radio,     label: "카나리 진행",    desc: "Phase 2 FSM 종료조건 체크리스트" },
-  { href: "/safety/heartbeat",  icon: Heart,     label: "하트비트 상태",   desc: "Dead Man's Switch + 수동 halt" },
+  { href: "/safety/heartbeat",  icon: Heart,     label: "하트비트 상태",   desc: "데드맨 스위치 + 수동 정지" },
 ];
 
 // TODO Step 6: /api/safety/* 백엔드 라우터 연동
@@ -21,7 +21,7 @@ async function handleEmergencyStop(password: string) {
 
 export default function SafetyPage() {
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="max-w-screen-xl mx-auto px-4 md:px-6 py-4 pb-24 space-y-6">
       <div className="flex items-center gap-3 mb-2">
         <ShieldCheck size={24} className="text-brand" aria-hidden />
         <h1 className="text-heading font-bold text-text-primary">{ko.nav.safety}</h1>

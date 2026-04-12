@@ -257,6 +257,10 @@ class WalkForwardAnalyzer:
                 peak = cumulative
             if peak > 0:
                 dd = (peak - cumulative) / peak
+            elif cumulative < 0:
+                # BUG-96: never had positive equity — loss from zero is 100% drawdown.
+                # Report 1.0 so pure-loss strategies always fail the MDD gate.
+                dd = 1.0
             else:
                 dd = 0.0
             if dd > max_dd:

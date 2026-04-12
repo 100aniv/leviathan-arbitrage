@@ -1160,11 +1160,15 @@ class Engine:
         # Use a fixed notional matching default_notional_usd ($100) so exchange minimums are met.
         _ff_max_pos = Decimal(str(_get_config("strategy_filters.futures_futures_max_position_usd", default=100)))
         ff_config = FuturesFuturesConfig(
-            min_spread_bps=Decimal(str(ff_p.get("min_spread_bps", 8))),
+            # engine.json strategy_filters.futures_min_spread_bps is the SOLE source of truth.
+            # strategy_params.json min_spread_bps is WFO calibration data and must NOT override
+            # the manually-set safety floor in engine.json (BUG: ff_p.get("min_spread_bps") was 15,
+            # silently overriding engine.json=25).
+            min_spread_bps=Decimal(str(_get_config("strategy_filters.futures_min_spread_bps", default=8))),
             max_position_size=_ff_max_pos,
             min_book_depth_usd=_book_depth_usd,
             excluded_symbols=list(_ff_excluded),
-            adaptive_static_entry_bps=Decimal(str(_get_config("strategy_filters.futures_adaptive_static_entry_bps", default=ff_p.get("min_spread_bps", 50)))),
+            adaptive_static_entry_bps=Decimal(str(_get_config("strategy_filters.futures_adaptive_static_entry_bps", default=50))),
         ) if ff_p.get("status") in ("READY", "MONITOR") else None
 
         tri_p = tuned.get("triangular", {})
@@ -1305,16 +1309,39 @@ class Engine:
                 _max_dd_pct = Decimal("0.50")  # fallback: 50% (permissive for alpha testing)
             # Amendment 7: wire max_net_exposure_per_asset from trading.json
             _max_net_exp = Decimal(str(_risk_cfg.get("max_net_exposure_per_asset", 0)))
+            # BUG-100: max_single_trade_pct must match the largest per-strategy trade cap.
+            # futures_futures_max_position_usd=12, capital=120 → 10%.
+            # Default 5% (=$6) blocks all FF trades of $12 notional.
+            # BUG-102: add 5% tolerance buffer — float division (size=max_pos/price) causes
+            # notional to exceed limit by $0.04 (e.g. 12.04 > 12.00) → guardian rejects profitable trades.
+            # Guardian is a safety net; 5% tolerance still blocks truly oversized trades.
+            # Read engine.json directly (this method has no access to _init_strategies() locals).
+            from src.core.config import load_engine_config as _load_ecfg
+            from src.core.config_loader import get_config as _gc_risk
+            _ecfg_r = _load_ecfg()
+            _cap_cfg_r = _ecfg_r.get("capital", {})
+            _tier_r = _cap_cfg_r.get("tier", "alpha")
+            _cap_usd_r = Decimal(str(
+                _cap_cfg_r.get("tiers", {}).get(_tier_r, {}).get("initial_usd", 70)
+            ))
+            _ff_max_r = Decimal(str(_gc_risk(
+                "strategy_filters.futures_futures_max_position_usd", default=12
+            )))
+            _max_single_trade_pct = (
+                (_ff_max_r / _cap_usd_r) * Decimal("1.05") if _cap_usd_r > 0 else Decimal("0.11")
+            )
             self._risk_guardian = RiskGuardian(
                 circuit_breaker=self._circuit_breaker,
                 max_position_pct=_max_pos_pct,
                 max_drawdown_pct=_max_dd_pct,
                 max_net_exposure_per_asset=_max_net_exp,
+                max_single_trade_pct=_max_single_trade_pct,
             )
             logger.info(
                 "RiskGuardian initialized with 9 pre-trade checks, max_position_pct=%.1f%% "
-                "max_net_exposure_per_asset=%s",
+                "max_single_trade_pct=%.1f%% max_net_exposure_per_asset=%s",
                 float(_max_pos_pct) * 100,
+                float(_max_single_trade_pct) * 100,
                 _max_net_exp,
             )
         except Exception as exc:
