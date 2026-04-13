@@ -54,6 +54,7 @@ class FundingRateStrategy(BaseStrategy):
     """
 
     STRATEGY_TYPE = "funding_rate_arb"
+    _SETTLEMENT_COOLDOWN_S: float = 120.0  # BUG-77: cooldown + pending timeout (keep in sync)
 
     def __init__(
         self,
@@ -80,12 +81,12 @@ class FundingRateStrategy(BaseStrategy):
         # BUG-74: Settlement exit queue — populated by _check_settlement_release, drained in on_signal
         self._pending_exit_requests: list[TradeRequest] = []
         # Issue#4: positions moved here during settlement so they can be restored on failed exit.
-        # Cleared automatically 90s after routing (market orders settle within seconds;
-        # 90s is conservative enough to detect genuine failures).
+        # Cleared automatically after _SETTLEMENT_COOLDOWN_S after routing (market orders settle
+        # within seconds; 120s is conservative enough to detect genuine failures).
         self._pending_settlement_positions: dict[str, Any] = {}  # symbol → pos dict
         self._settlement_routed_at: float = 0.0  # monotonic timestamp when exits were routed
-        # BUG-77: Settlement cooldown — block ALL new entries for 120s after settlement fires.
-        # Prevents race condition where 90s timeout clears pending_settlement guard,
+        # BUG-77: Settlement cooldown — block ALL new entries after settlement fires.
+        # Prevents race condition where timeout clears pending_settlement guard,
         # allowing new entries on symbols whose exits haven't confirmed yet.
         self._settlement_cooldown_until: float = 0.0  # monotonic timestamp
 
@@ -147,8 +148,8 @@ class FundingRateStrategy(BaseStrategy):
                     # Duplicate guard still blocks new entries since symbol is absent from _open_positions.
                     self._pending_settlement_positions[symbol] = pos
             self._open_positions.clear()
-            # BUG-77: Block all new entries for 120s after settlement
-            self._settlement_cooldown_until = time.monotonic() + 120.0
+            # BUG-77: Block all new entries after settlement
+            self._settlement_cooldown_until = time.monotonic() + self._SETTLEMENT_COOLDOWN_S
 
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1
@@ -170,7 +171,7 @@ class FundingRateStrategy(BaseStrategy):
         self._check_settlement_release()
         # BUG-74: Drain settlement exit queue — return one exit TradeRequest per call
         if self._pending_exit_requests:
-            self._settlement_routed_at = time.monotonic()  # mark routing time for 90s timeout
+            self._settlement_routed_at = time.monotonic()  # mark routing time for pending timeout
             return self._pending_exit_requests.pop(0)
 
         # BUG-77: Settlement cooldown — block ALL new entries while exits are being processed
@@ -399,17 +400,18 @@ class FundingRateStrategy(BaseStrategy):
         Called by _strategy_exit_poll_loop in main.py every 60s so that
         settlement exits are routed even when no new signal arrives.
 
-        Issue#4 fix: _pending_settlement_positions retains position data until 90s after
-        routing. Market orders settle in < 2s; 90s is generous. After 90s, if positions
-        are still in _pending_settlement_positions, they were likely filled successfully —
-        clear them. If fills genuinely failed, Telegram kill-switch or /closepositions handles it.
+        Issue#4 fix: _pending_settlement_positions retains position data until
+        _SETTLEMENT_COOLDOWN_S after routing. Market orders settle in < 2s; 120s is
+        generous. After timeout, if positions are still in _pending_settlement_positions,
+        they were likely filled successfully — clear them. If fills genuinely failed,
+        Telegram kill-switch or /closepositions handles it.
         """
         if self._pending_exit_requests:
             # Exits are queued — record routing timestamp and return them
             self._settlement_routed_at = time.monotonic()
         elif self._pending_settlement_positions:
             elapsed = time.monotonic() - self._settlement_routed_at
-            if self._settlement_routed_at > 0 and elapsed > 120:
+            if self._settlement_routed_at > 0 and elapsed > self._SETTLEMENT_COOLDOWN_S:
                 logger.info(
                     "fr.settlement_confirmed_by_timeout symbols=%s elapsed=%.0fs",
                     list(self._pending_settlement_positions.keys()), elapsed,
@@ -443,3 +445,5 @@ class FundingRateStrategy(BaseStrategy):
             )
             self._pending_settlement_positions.pop(symbol, None)
             self._settlement_routed_at = 0.0
+        # NOTE: _settlement_cooldown_until is NOT cleared on rollback — intentional.
+        # If settlement exits are failing, blocking new entries is the safe default.

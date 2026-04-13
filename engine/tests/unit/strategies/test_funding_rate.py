@@ -171,3 +171,69 @@ async def test_inactive_strategy_returns_none():
     signal = make_signal()
     result = await strategy.on_signal(signal)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_bug77_settlement_cooldown_blocks_new_entries():
+    """BUG-77: After settlement fires, new entries are blocked for _SETTLEMENT_COOLDOWN_S."""
+    import time
+    from unittest.mock import patch
+
+    config = FundingRateConfig(
+        min_funding_diff_bps=Decimal("5"),
+        settlement_window_minutes=0,  # disable window filter
+    )
+    strategy = FundingRateStrategy("fr_arb", make_calculator(Decimal("0.1")), config)
+    await strategy.start()
+
+    # 1. Open a position first
+    sig1 = make_signal(funding_rate_sell=Decimal("0.003"), funding_rate_buy=Decimal("-0.001"))
+    result = await strategy.on_signal(sig1)
+    assert result is not None, "First entry should succeed"
+
+    # 2. Trigger settlement release
+    base_time = time.monotonic()
+    with patch("time.monotonic", return_value=base_time):
+        strategy._last_settlement_hour = -1  # force trigger
+        # Simulate settlement hour
+        from datetime import datetime as dt, timezone as tz
+        with patch("src.strategies.funding_rate.datetime") as mock_dt:
+            mock_dt.now.return_value = dt(2026, 4, 13, 8, 0, 0, tzinfo=tz.utc)
+            mock_dt.side_effect = lambda *a, **kw: dt(*a, **kw)
+            strategy._check_settlement_release()
+
+    assert len(strategy._pending_settlement_positions) > 0, "Positions moved to pending"
+    assert strategy._settlement_cooldown_until > 0, "Cooldown should be set"
+
+    # 3. During cooldown: new signal should be BLOCKED
+    with patch("time.monotonic", return_value=base_time + 60):  # 60s into cooldown
+        sig2 = make_signal(
+            funding_rate_sell=Decimal("0.003"),
+            funding_rate_buy=Decimal("-0.001"),
+        )
+        sig2 = Signal(
+            strategy_id="fr_arb",
+            symbol="ETH/USDT:USDT",  # different symbol
+            buy_exchange="bybit",
+            sell_exchange="binance",
+            buy_price=Decimal("3000"),
+            sell_price=Decimal("3001"),
+            spread_pct=Decimal("0.0003"),
+            confidence=0.85,
+            volume=Decimal("1"),
+            timestamp=dt(2026, 4, 13, 8, 1, 0, tzinfo=tz.utc),
+            metadata={
+                "funding_rate_sell": "0.003",
+                "funding_rate_buy": "-0.001",
+            },
+        )
+        # Drain any pending exit requests first
+        strategy._pending_exit_requests.clear()
+        result = await strategy.on_signal(sig2)
+        assert result is None, "Should be blocked by settlement cooldown"
+
+    # 4. After cooldown expires: new signal should be ACCEPTED
+    with patch("time.monotonic", return_value=base_time + 130):  # 130s > 120s cooldown
+        strategy._pending_settlement_positions.clear()  # simulate confirmed settlement
+        result = await strategy.on_signal(sig2)
+        assert result is not None, "Should accept after cooldown expires"
