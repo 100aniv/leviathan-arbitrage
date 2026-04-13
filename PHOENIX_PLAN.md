@@ -17,7 +17,8 @@
 | 3 | 풀 통합 72H + 튜너 | ⏳ 대기 |
 
 **현재**: Phase 2 Step 2-2 — FF(27bps) + FR(6.55bps) 동시 운영  
-**PID**: 44772 | **버전**: v94 | **시작**: 2026-04-13 12:42 KST
+**PID**: TBD | **버전**: v95 | **시작**: 2026-04-13 ~17:30 KST  
+**v94 종료**: 17:08 KST (BUG-77 settlement race condition → SIGTERM)
 
 ---
 
@@ -150,6 +151,7 @@ min_trade_notional_usd: $5
 | BUG-74 | live.py:1115 | margin_guard 없음 → Binance margin < $3 시 신규 ENTRY 허용 | FR 0G/USDT -2019 retry loop 185+회 | **P1 → 수정완료** (live.py:1115-1129, 9 unit tests PASS) |
 | BUG-75 | futures_futures.py:94 | `max_hold_seconds` config 캐시 이슈 → 1800s 사용 (engine.json=300) | FF 포지션 30분 보유, 5분 의도 → 마진 고갈 (4포지션 동시 보유) | **P1** (v95 재시작 시 자동 해결) |
 | BUG-76 | futures_futures.py:406,224 | 적응형 exit_threshold (p50) > min_spread_bps (27bps) → 진입 즉시 손절 청산 | FF 모든 포지션 진입 즉시 exit → 수수료 손실 반복 | **P0 → 수정완료** (2026-04-13, static 4.05bps 고정) |
+| BUG-77 | funding_rate.py:101-145 | settlement race condition: 90s timeout이 pending_settlement 클리어 → 미청산 심볼 재진입 허용 → 포지션 적층 | Binance 7 + Bitget 5 중복 포지션 (v94) | **P0 → 수정완료** (120s cooldown 추가) |
 | WS reconnect | binance/binance_futures | "no close frame" 간헐적 발생 (10회/12분) | 자동 재연결, 운영 영향 없음 | P2 |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
@@ -250,12 +252,13 @@ WS Orderbook → SignalGenerator + RealSignalProducer
 ### v95 재시작 (UTC 08:00 = KST 17:00 FR 결산 후)
 1. UTC 08:00 도달 → FR `_check_settlement_release()` 자동 4포지션 청산
 2. FR 청산 확인 (`settlement_exit` 로그 4건) 후 v94 graceful shutdown (SIGTERM)
-3. v95 시작 — 3버그 픽스 자동 활성:
-   - BUG-74: margin guard ($3 미만 차단)
-   - BUG-75: max_hold_seconds=300 (config 재로드)
-   - BUG-76: static exit (4.05bps) — 즉시청산 방지
-4. v95 목표: FF spread_exit 진짜 3회 (4.05bps 이하 수렴 시), FR 결산 3회
-- **완료 조건**: crash=0 + KS=0 + FR결산 3회 + FF spread_exit 3회 + PnL≥0
+3. v95 시작 — FF+FR 동시, 3버그 픽스 자동 활성
+
+### v95+ 운영 원칙 (대기 시간 최소화)
+- **버그 발견 즉시**: close_positions.py --execute → SIGTERM → fix → 재시작
+- **FR 결산 대기 금지**: 결산 주기(8H)를 재시작 조건으로 쓰지 않음
+- **빠른 반복**: vN 종료 → git commit+push → vN+1 시작 (결산 무관)
+- **완료 조건**: crash=0 + KS=0 + FF spread_exit 3회 + FR 결산 1회 이상 + PnL≥0
 
 ### 운영 프롬프트 (자율 모드)
 ```

@@ -84,6 +84,10 @@ class FundingRateStrategy(BaseStrategy):
         # 90s is conservative enough to detect genuine failures).
         self._pending_settlement_positions: dict[str, Any] = {}  # symbol → pos dict
         self._settlement_routed_at: float = 0.0  # monotonic timestamp when exits were routed
+        # BUG-77: Settlement cooldown — block ALL new entries for 120s after settlement fires.
+        # Prevents race condition where 90s timeout clears pending_settlement guard,
+        # allowing new entries on symbols whose exits haven't confirmed yet.
+        self._settlement_cooldown_until: float = 0.0  # monotonic timestamp
 
     def _minutes_to_next_settlement(self, now_utc: datetime | None = None) -> float:
         """Return minutes until next funding settlement (UTC 00/08/16).
@@ -143,6 +147,8 @@ class FundingRateStrategy(BaseStrategy):
                     # Duplicate guard still blocks new entries since symbol is absent from _open_positions.
                     self._pending_settlement_positions[symbol] = pos
             self._open_positions.clear()
+            # BUG-77: Block all new entries for 120s after settlement
+            self._settlement_cooldown_until = time.monotonic() + 120.0
 
     async def on_signal(self, signal: Signal) -> Optional[TradeRequest]:
         self._metrics.signals_received += 1
@@ -166,6 +172,16 @@ class FundingRateStrategy(BaseStrategy):
         if self._pending_exit_requests:
             self._settlement_routed_at = time.monotonic()  # mark routing time for 90s timeout
             return self._pending_exit_requests.pop(0)
+
+        # BUG-77: Settlement cooldown — block ALL new entries while exits are being processed
+        if time.monotonic() < self._settlement_cooldown_until:
+            self._metrics.signals_filtered += 1
+            logger.info(
+                "funding_rate.settlement_cooldown sym=%s remaining=%.0fs",
+                signal.symbol,
+                self._settlement_cooldown_until - time.monotonic(),
+            )
+            return None
 
         # US-239: Settlement timing filter — only enter within window before settlement
         # Disabled when settlement_window_minutes == 0 (e.g., test mode)
@@ -393,7 +409,7 @@ class FundingRateStrategy(BaseStrategy):
             self._settlement_routed_at = time.monotonic()
         elif self._pending_settlement_positions:
             elapsed = time.monotonic() - self._settlement_routed_at
-            if self._settlement_routed_at > 0 and elapsed > 90:
+            if self._settlement_routed_at > 0 and elapsed > 120:
                 logger.info(
                     "fr.settlement_confirmed_by_timeout symbols=%s elapsed=%.0fs",
                     list(self._pending_settlement_positions.keys()), elapsed,
