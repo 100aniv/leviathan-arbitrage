@@ -17,7 +17,7 @@
 | 3 | 풀 통합 72H + 튜너 | ⏳ 대기 |
 
 **현재**: Phase 2 Step 2-2 — FF(27bps) + FR(6.55bps) 동시 운영  
-**PID**: 39440 | **버전**: v95 | **시작**: 2026-04-13 17:42 KST  
+**PID**: 48773 | **버전**: v96 | **시작**: 2026-04-14 01:06 KST  
 **v94 종료**: 17:08 KST (BUG-77 settlement race condition → SIGTERM)
 
 ---
@@ -152,6 +152,7 @@ min_trade_notional_usd: $5
 | BUG-75 | futures_futures.py:94 | `max_hold_seconds` config 캐시 이슈 → 1800s 사용 (engine.json=300) | FF 포지션 30분 보유, 5분 의도 → 마진 고갈 (4포지션 동시 보유) | **P1** (v95 재시작 시 자동 해결) |
 | BUG-76 | futures_futures.py:406,224 | 적응형 exit_threshold (p50) > min_spread_bps (27bps) → 진입 즉시 손절 청산 | FF 모든 포지션 진입 즉시 exit → 수수료 손실 반복 | **P0 → 수정완료** (2026-04-13, static 4.05bps 고정) |
 | BUG-77 | funding_rate.py:101-145 | settlement race condition: 90s timeout이 pending_settlement 클리어 → 미청산 심볼 재진입 허용 → 포지션 적층 | Binance 7 + Bitget 5 중복 포지션 (v94) | **P0 → 수정완료** (120s cooldown 추가) |
+| BUG-78 | live.py:1130 | margin guard rollback → duplicate_guard 통과 → retry loop (JTO 12+x) | 거래소 주문 미전송 (noisy only) | **P2 → 수정완료** (rollback 제거, v96 적용) |
 | WS reconnect | binance/binance_futures | "no close frame" 간헐적 발생 (10회/12분) | 자동 재연결, 운영 영향 없음 | P2 |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
@@ -244,8 +245,9 @@ WS Orderbook → SignalGenerator + RealSignalProducer
 - **PID**: 39440 | **FF+FR 동시 활성**
 - **FR**: ID/USDT 1건 체결 ($0.09), 0G/USDT 시도 → BUG-74 margin guard 차단 ($2.55 < $3.00)
 - **FF**: 27bps 미달 정상 대기 (시장 10.47bps)
-- **1H 결과**: ERROR=0, Trades=3(ID체결+0G/JTO margin차단), WARN=30+(margin_low), crash=0, KS=0
-- **BUG-75 검증**: FF holding_timeout 발동 (max_hold_seconds=300 정상 적용)
+- **v95 결과 (7H)**: ERR=90(-2019 margin), Trades=41, FR 4포지션 보유→결산, crash=0, KS=0
+- **v95 검증**: BUG-74 ✅ BUG-75 ✅ BUG-76 ✅ **BUG-77 결산 cooldown 실전 확인** ✅
+- **v96 (현재)**: BUG-78 margin no-rollback 포함, 리뷰어 수정 포함
 - **수정 반영**: BUG-73(27bps), BUG-74(margin guard), BUG-75(300s), BUG-76(4.05bps), BUG-77(120s cooldown)
 - **다음 검증**: UTC 16:00 (KST 01:00) FR 결산 → BUG-77 cooldown 실전 테스트
 
