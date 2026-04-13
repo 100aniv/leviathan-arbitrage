@@ -56,7 +56,15 @@
     "cross_exchange_min_book_depth_usd": 1,
     "funding_zscore_threshold": -1,
     "funding_min_diff_bps": 2.0,
-    "enable_stale_guard": false
+    "enable_stale_guard": false,
+    "stat_arb_z_threshold": 2.0,
+    "stat_arb_cooldown_s": 120,
+    "stat_arb_min_history": 60,
+    "cross_exchange_max_spread_bps": 100,
+    "funding_convergence_weight": 0.3,
+    "enable_funding_convergence": true,
+    "enable_latency_budget": false,
+    "triangular_max_latency_ms": 500
   },
 
   "risk": {
@@ -115,23 +123,6 @@
     "_comment": "See config/strategy_params.json for per-strategy tuning"
   },
 
-  "funding_rate": {
-    "zscore_threshold": -1,
-    "ou_min_halflife_s": 60,
-    "min_diff_bps": 2
-  },
-
-  "statistical_arb": {
-    "z_threshold": 2.0,
-    "cooldown_s": 120,
-    "min_history": 60
-  },
-
-  "book_depth": {
-    "cross_exchange_min_usd": 1,
-    "futures_min_usd": 1
-  },
-
   "tuner": { "data_source": "timescaledb" },
 
   "db": {
@@ -150,13 +141,6 @@
     "grafana_admin_user": "admin",
     "engine_url": "http://engine:8000",
     "monitor_interval_sec": 300
-  },
-
-  "exchanges_testnet": {
-    "binance": false,
-    "okx": false,
-    "bybit": false,
-    "bitget": false
   },
 
   "cors": {

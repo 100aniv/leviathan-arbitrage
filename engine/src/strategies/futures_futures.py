@@ -83,17 +83,17 @@ class FuturesFuturesStrategy(BaseStrategy):
             from src.core.config_loader import get_config
             _at_bps_raw = get_config("strategy_filters.futures_adaptive_static_entry_bps", default=None)
             config = FuturesFuturesConfig(
-                min_spread_bps=Decimal(str(get_config("strategy_filters.futures_min_spread_bps", default=15))),
-                min_book_depth_usd=Decimal(str(get_config("strategy_filters.futures_min_book_depth_usd", default=500))),
+                min_spread_bps=Decimal(str(get_config("strategy_filters.futures_min_spread_bps", default=27))),
+                min_book_depth_usd=Decimal(str(get_config("strategy_filters.futures_min_book_depth_usd", default=1))),
                 funding_convergence_weight=Decimal(str(get_config("strategy_filters.funding_convergence_weight", default=0.3))),
                 enable_funding_convergence=get_config("strategy_filters.enable_funding_convergence", default=True),
-                max_book_age_seconds=float(get_config("strategy_filters.futures_max_book_age_s", default=5.0)),
+                max_book_age_seconds=float(get_config("strategy_filters.futures_max_book_age_s", default=30)),
                 enable_stale_guard=get_config("strategy_filters.enable_stale_guard", default=False),
                 adaptive_static_entry_bps=Decimal(str(_at_bps_raw)) if _at_bps_raw is not None else None,
                 excluded_symbols=list(get_config("strategy_filters.futures_excluded_symbols", default=[])),
-                max_hold_seconds=float(get_config("strategy_filters.futures_max_hold_seconds", default=1800)),
+                max_hold_seconds=float(get_config("strategy_filters.futures_max_hold_seconds", default=300)),
                 max_concurrent_positions=int(get_config("strategy_filters.futures_max_concurrent_positions", default=4)),
-                max_position_size=Decimal(str(get_config("strategy_filters.futures_max_position_size_usdt", default=50))),
+                max_position_size=Decimal(str(get_config("strategy_filters.futures_max_position_size_usdt", default=20))),
             )
         self.config = config
         self._margin_tracker: Any | None = None  # injected by live.py

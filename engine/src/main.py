@@ -1144,7 +1144,7 @@ class Engine:
         # Build strategy configs from tuned params + dynamic capital sizing
         from src.core.config_loader import get_config
         sf_p = tuned.get("spot_futures", {})
-        _sf_max_hold_s = get_config("strategy_filters.spot_futures_max_hold_seconds", default=28800)
+        _sf_max_hold_s = get_config("strategy_filters.spot_futures_max_hold_seconds", default=1800)
         sf_config = SpotFuturesConfig(
             min_basis_bps=Decimal(str(sf_p.get("min_basis_bps", 15))),
             max_position_size=_strategy_max_pos("spot_futures"),
@@ -1173,7 +1173,7 @@ class Engine:
         _ff_excluded = _get_config("strategy_filters.futures_excluded_symbols", default=[])
         # BUG-27: FF max_position_size must NOT use percentage-based _max_pos_usd.
         # Use fixed notional BUT capped by allocation_pct (BUG-79).
-        _ff_fixed = Decimal(str(_get_config("strategy_filters.futures_futures_max_position_usd", default=100)))
+        _ff_fixed = Decimal(str(_get_config("strategy_filters.futures_futures_max_position_usd", default=12)))
         _ff_alloc_cap = _strategy_max_pos("futures_futures")
         _ff_max_pos = min(_ff_fixed, _ff_alloc_cap) if _ff_alloc_cap > 0 else _ff_fixed
         ff_config = FuturesFuturesConfig(
@@ -1181,7 +1181,7 @@ class Engine:
             # strategy_params.json min_spread_bps is WFO calibration data and must NOT override
             # the manually-set safety floor in engine.json (BUG: ff_p.get("min_spread_bps") was 15,
             # silently overriding engine.json=25).
-            min_spread_bps=Decimal(str(_get_config("strategy_filters.futures_min_spread_bps", default=8))),
+            min_spread_bps=Decimal(str(_get_config("strategy_filters.futures_min_spread_bps", default=27))),
             max_position_size=_ff_max_pos,
             min_book_depth_usd=_book_depth_usd,
             excluded_symbols=list(_ff_excluded),
@@ -1313,7 +1313,11 @@ class Engine:
 
         try:
             from src.risk.guardian import RiskGuardian
-            _risk_cfg = (load_trading_config() or {}).get("risk", {})
+            # BUG-A: Merge risk config from both sources (engine.json overrides trading.json)
+            from src.core.config import load_engine_config as _lec_risk
+            _risk_cfg_base = (load_trading_config() or {}).get("risk", {})
+            _risk_cfg_override = _lec_risk().get("risk", {})
+            _risk_cfg = {**_risk_cfg_base, **_risk_cfg_override}
             _use_pct = _risk_cfg.get("use_percentage", False)
             if _use_pct and "max_position_pct" in _risk_cfg:
                 _max_pos_pct = Decimal(str(_risk_cfg["max_position_pct"])) / Decimal("100")
