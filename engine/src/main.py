@@ -1120,9 +1120,25 @@ class Engine:
         _book_depth_usd = max(Decimal("1"), _capital_usd * Decimal("0.01"))  # 1% of capital, min $1
 
         _max_pos_usd = _capital_usd * _base_pos_pct  # capital × base_position_pct (config 기반)
+        # BUG-79: Wire allocation_pct → per-strategy capital cap.
+        # Each strategy gets (capital × allocation_pct/100) as its max total exposure.
+        # Per-trade size = min(base_position_pct of total, strategy_capital_cap).
+        _reserve_pct = Decimal(str(_cap_cfg.get("reserve_pct", 20))) / Decimal("100")
+        _usable_capital = _capital_usd * (Decimal("1") - _reserve_pct)
+
+        def _strategy_max_pos(strategy_key: str) -> Decimal:
+            """Per-strategy position size from allocation_pct."""
+            alloc = _strategy_allocs.get(strategy_key, {})
+            alloc_pct = Decimal(str(alloc.get("allocation_pct", 25))) / Decimal("100")
+            strategy_cap = _usable_capital * alloc_pct  # strategy's total capital
+            # Per-trade: min of global per_trade or strategy capital
+            return min(_max_pos_usd, strategy_cap)
+
         logger.info(
-            "Strategy sizing: capital=$%.0f tier=%s per_trade_pct=%.1f%% max_pos_usd=$%.2f",
-            _capital_usd, _tier, float(_base_pos_pct * 100), float(_max_pos_usd),
+            "Strategy sizing: capital=$%.0f usable=$%.0f (reserve=%.0f%%) tier=%s per_trade=$%.2f "
+            "allocs={%s}",
+            _capital_usd, _usable_capital, float(_reserve_pct * 100), _tier, float(_max_pos_usd),
+            ", ".join(f"{k}:{v.get('allocation_pct')}%" for k, v in _strategy_allocs.items()),
         )
 
         # Build strategy configs from tuned params + dynamic capital sizing
@@ -1131,7 +1147,7 @@ class Engine:
         _sf_max_hold_s = get_config("strategy_filters.spot_futures_max_hold_seconds", default=28800)
         sf_config = SpotFuturesConfig(
             min_basis_bps=Decimal(str(sf_p.get("min_basis_bps", 15))),
-            max_position_size=_max_pos_usd,
+            max_position_size=_strategy_max_pos("spot_futures"),
             max_holding_hours=_sf_max_hold_s / 3600.0,
         ) if sf_p.get("status") in ("READY", "MONITOR") else None
 
@@ -1141,14 +1157,14 @@ class Engine:
         # With capital=$120 and per_trade_pct=5%: _max_pos_usd=$6 > $5 → OK.
         fr_config = FundingRateConfig(
             min_funding_diff_bps=Decimal(str(fr_p.get("min_funding_diff_bps", 5))),
-            max_position_size=_max_pos_usd,
+            max_position_size=_strategy_max_pos("funding_rate"),
             enable_ou_filter=fr_p.get("enable_ou_filter", True),
         ) if fr_p.get("status") in ("READY", "MONITOR") else None
 
         ce_p = tuned.get("cross_exchange", {})
         ce_config = CrossExchangeConfig(
             min_spread_bps=Decimal(str(ce_p.get("min_spread_bps", 10))),
-            max_position_size=_max_pos_usd,
+            max_position_size=_strategy_max_pos("cross_exchange"),
             min_book_depth_usd=_book_depth_usd,
         ) if ce_p.get("status") in ("READY", "MONITOR") else None
 
@@ -1156,9 +1172,10 @@ class Engine:
         from src.core.config_loader import get_config as _get_config
         _ff_excluded = _get_config("strategy_filters.futures_excluded_symbols", default=[])
         # BUG-27: FF max_position_size must NOT use percentage-based _max_pos_usd.
-        # _max_pos_usd = $120 × 5% = $6 → BTCUSDT at $80k → size=0.000075 BTC < Binance min 0.001 BTC.
-        # Use a fixed notional matching default_notional_usd ($100) so exchange minimums are met.
-        _ff_max_pos = Decimal(str(_get_config("strategy_filters.futures_futures_max_position_usd", default=100)))
+        # Use fixed notional BUT capped by allocation_pct (BUG-79).
+        _ff_fixed = Decimal(str(_get_config("strategy_filters.futures_futures_max_position_usd", default=100)))
+        _ff_alloc_cap = _strategy_max_pos("futures_futures")
+        _ff_max_pos = min(_ff_fixed, _ff_alloc_cap) if _ff_alloc_cap > 0 else _ff_fixed
         ff_config = FuturesFuturesConfig(
             # engine.json strategy_filters.futures_min_spread_bps is the SOLE source of truth.
             # strategy_params.json min_spread_bps is WFO calibration data and must NOT override
