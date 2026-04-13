@@ -1,0 +1,14 @@
+{
+  "session_id": "paper_24h_20260403",
+  "start_time": "2026-04-03T13:18:17Z",
+  "start_time_kst": "2026-04-03T22:18:17+09:00",
+  "expected_end_kst": "2026-04-04T22:18:17+09:00",
+  "engine_pid": 24278,
+  "exchanges": ["binance","bybit","okx","bitget","mexc","gateio","upbit","bithumb","coinone","binance_futures","bybit_futures","okx_futures","bitget_futures"],
+  "collector_count": 13,
+  "log_file": "engine/logs/paper_24h_20260403_2219.log",
+  "us_targets": ["US-372", "US-332", "US-373"],
+  "mode": "paper",
+  "data_mode": "shadow",
+  "status": "running"
+}

@@ -1,0 +1,9 @@
+{"t":0,"agent":"ad7a4e5","agent_type":"verifier","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a39313b","agent_type":"code-reviewer","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"oh-my-claudecode:autopilot"}
+{"t":0,"agent":"ad7a4e5","agent_type":"verifier","event":"agent_stop","success":true,"duration_ms":126194}
+{"t":0,"agent":"a39313b","agent_type":"code-reviewer","event":"agent_stop","success":true,"duration_ms":195050}
+{"t":0,"agent":"aa4c6de","agent_type":"executor","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a6778d0","agent_type":"executor","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a6778d0","agent_type":"executor","event":"agent_stop","success":true,"duration_ms":186442}
+{"t":0,"agent":"aa4c6de","agent_type":"executor","event":"agent_stop","success":true,"duration_ms":1032294}

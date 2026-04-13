@@ -1,0 +1,7 @@
+{"t":0,"agent":"a43e005","agent_type":"executor","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"system","event":"keyword_detected","keyword":"ultrathink"}
+{"t":0,"agent":"aa524e7","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"a098df3","agent_type":"scientist","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a098df3","agent_type":"scientist","event":"agent_stop","success":true,"duration_ms":89666}
+{"t":0,"agent":"ac96bf6","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"a322219","agent_type":"unknown","event":"agent_stop","success":true}

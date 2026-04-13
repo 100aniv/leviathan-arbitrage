@@ -1,0 +1,9 @@
+{
+  "active": true,
+  "started_at": "2026-04-02T22:42:39.625Z",
+  "original_prompt": "왜 이런일이 발생하는거지? 워크플로우 문제인건가? 워크플로우삭제하고 그냥 랄프로 시키면 이런무제 발생 안하나ㅏ? 뭐가 문제야?? 아 옵션A로 가야지. 저 계획 몇시간동안 만든건데. 모든 케이스찾느라 얼마나 오래 걸렸는데. 가짜파일들과 잘못된 passes:\"ture 롤백하고. 뭘로 수행하면 되니 leviathan으로하니?",
+  "session_id": "cde1fa47-e2a9-4dd5-9863-a30ba177ecec",
+  "project_path": "/Users/100aniv/Development/arbitrage_OMC/engine",
+  "reinforcement_count": 0,
+  "last_checked_at": "2026-04-02T22:42:39.625Z"
+}

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1775122166635,
+  "lastScanned": 1775973830280,
   "projectRoot": "/Users/100aniv/Development/arbitrage_OMC/engine",
   "techStack": {
     "languages": [
@@ -50,7 +50,10 @@
       "src",
       "tests"
     ],
-    "gitBranches": null
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
   },
   "customNotes": [],
   "directoryMap": {
@@ -58,7 +61,7 @@
       "path": "alembic",
       "purpose": null,
       "fileCount": 2,
-      "lastAccessed": 1775122166620,
+      "lastAccessed": 1775973830256,
       "keyFiles": [
         "__init__.py",
         "env.py"
@@ -67,21 +70,21 @@
     "config": {
       "path": "config",
       "purpose": "Configuration files",
-      "fileCount": 6,
-      "lastAccessed": 1775122166620,
+      "fileCount": 9,
+      "lastAccessed": 1775973830257,
       "keyFiles": [
+        "backtest_batches.json",
         "engine.json",
+        "exchanges_meta.json",
         "shadow_mode.json",
-        "strategy_activation.json",
-        "strategy_params.json",
-        "testnet.env.example"
+        "strategy_activation.json"
       ]
     },
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 4,
-      "lastAccessed": 1775122166620,
+      "lastAccessed": 1775973830258,
       "keyFiles": [
         "COMPLIANCE_REPORT.md",
         "QUICKSTART.md",
@@ -92,28 +95,28 @@
     "logs": {
       "path": "logs",
       "purpose": null,
-      "fileCount": 9,
-      "lastAccessed": 1775122166620,
+      "fileCount": 170,
+      "lastAccessed": 1775973830258,
       "keyFiles": [
-        "shadow_1h_20260308_012420.log",
-        "shadow_1h_2bps_20260308_022804.log",
-        "shadow_2bps_cd2_20260308_021654.log",
-        "shadow_3bps_20260308_020346.log",
-        "shadow_5bps_20260308_015955.log"
+        "canary_20260412_141411.log",
+        "canary_20260412_142159.log",
+        "canary_r32_20260412_032911.log",
+        "canary_r32_v2.log",
+        "canary_r32b_20260412_033411.log"
       ]
     },
     "models": {
       "path": "models",
       "purpose": "Data models",
       "fileCount": 1,
-      "lastAccessed": 1775122166620,
+      "lastAccessed": 1775973830259,
       "keyFiles": []
     },
     "reports": {
       "path": "reports",
       "purpose": null,
       "fileCount": 28,
-      "lastAccessed": 1775122166621,
+      "lastAccessed": 1775973830259,
       "keyFiles": [
         "backtest_generic.json",
         "backtest_strategies_1_4.json",
@@ -126,7 +129,7 @@
       "path": "rust_core",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1775122166621,
+      "lastAccessed": 1775973830259,
       "keyFiles": [
         "Cargo.lock",
         "Cargo.toml",
@@ -136,19 +139,21 @@
     "scripts": {
       "path": "scripts",
       "purpose": "Build/utility scripts",
-      "fileCount": 3,
-      "lastAccessed": 1775122166621,
+      "fileCount": 19,
+      "lastAccessed": 1775973830259,
       "keyFiles": [
         "__init__.py",
-        "run_shadow.py",
-        "shadow_stability_test.py"
+        "adapter_smoke_test.py",
+        "check_positions.py",
+        "close_positions.py",
+        "download_historical.py"
       ]
     },
     "src": {
       "path": "src",
       "purpose": "Source code",
       "fileCount": 3,
-      "lastAccessed": 1775122166621,
+      "lastAccessed": 1775973830260,
       "keyFiles": [
         "__init__.py",
         "bot_gateway.py",
@@ -159,7 +164,7 @@
       "path": "tests",
       "purpose": "Test files",
       "fileCount": 35,
-      "lastAccessed": 1775122166621,
+      "lastAccessed": 1775973830260,
       "keyFiles": [
         "__init__.py",
         "conftest.py",
@@ -168,11 +173,20 @@
         "test_auto_tuning_pipeline.py"
       ]
     },
+    "docs/data": {
+      "path": "docs/data",
+      "purpose": "Data files",
+      "fileCount": 1,
+      "lastAccessed": 1775973830260,
+      "keyFiles": [
+        "kbt_api_limitations.md"
+      ]
+    },
     "rust_core/src": {
       "path": "rust_core/src",
       "purpose": "Source code",
       "fileCount": 4,
-      "lastAccessed": 1775122166622,
+      "lastAccessed": 1775973830261,
       "keyFiles": [
         "kill_switch.rs",
         "lib.rs",
@@ -183,7 +197,7 @@
       "path": "src/api",
       "purpose": "API routes",
       "fileCount": 5,
-      "lastAccessed": 1775122166622,
+      "lastAccessed": 1775973830261,
       "keyFiles": [
         "__init__.py",
         "auth.py",
@@ -194,7 +208,7 @@
       "path": "tests/fixtures",
       "purpose": "Test fixtures",
       "fileCount": 1,
-      "lastAccessed": 1775122166622,
+      "lastAccessed": 1775973830261,
       "keyFiles": [
         "__init__.py"
       ]
@@ -203,303 +217,249 @@
   "hotPaths": [
     {
       "path": "src/modes/live.py",
-      "accessCount": 26,
-      "lastAccessed": 1775149324831,
+      "accessCount": 207,
+      "lastAccessed": 1776038245298,
       "type": "file"
     },
     {
-      "path": "src/api/routes/backtest.py",
-      "accessCount": 15,
-      "lastAccessed": 1775149553559,
+      "path": "src/strategies/futures_futures.py",
+      "accessCount": 150,
+      "lastAccessed": 1776038201672,
       "type": "file"
     },
     {
-      "path": "src/modes/backtest.py",
-      "accessCount": 14,
-      "lastAccessed": 1775143527059,
-      "type": "directory"
-    },
-    {
-      "path": "src/api/routes/paper.py",
-      "accessCount": 14,
-      "lastAccessed": 1775150083352,
+      "path": "src/infra/exchange/native_bitget.py",
+      "accessCount": 109,
+      "lastAccessed": 1776001948884,
       "type": "file"
     },
     {
-      "path": "src/modes/live_gate.py",
-      "accessCount": 12,
-      "lastAccessed": 1775149320347,
+      "path": "src/execution/executor.py",
+      "accessCount": 99,
+      "lastAccessed": 1776002055497,
       "type": "file"
     },
     {
-      "path": "tests/unit/test_paper_api.py",
-      "accessCount": 12,
-      "lastAccessed": 1775150119661,
+      "path": "tests/unit/strategies/test_futures_futures.py",
+      "accessCount": 41,
+      "lastAccessed": 1775998663253,
+      "type": "file"
+    },
+    {
+      "path": "src/infra/exchange/native_binance.py",
+      "accessCount": 19,
+      "lastAccessed": 1775990318789,
       "type": "file"
     },
     {
       "path": "src",
-      "accessCount": 9,
-      "lastAccessed": 1775149534559,
+      "accessCount": 19,
+      "lastAccessed": 1776038226468,
       "type": "directory"
     },
     {
       "path": "config/engine.json",
-      "accessCount": 7,
-      "lastAccessed": 1775149533729,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_live_mode.py",
-      "accessCount": 6,
-      "lastAccessed": 1775142966435,
-      "type": "file"
-    },
-    {
-      "path": "src/core/config.py",
-      "accessCount": 6,
-      "lastAccessed": 1775149274444,
-      "type": "directory"
-    },
-    {
-      "path": "",
-      "accessCount": 6,
-      "lastAccessed": 1775149350857,
-      "type": "directory"
-    },
-    {
-      "path": "src/infra/notion_reporter.py",
-      "accessCount": 6,
-      "lastAccessed": 1775149539155,
-      "type": "file"
-    },
-    {
-      "path": "src/infra/exchange/__init__.py",
-      "accessCount": 5,
-      "lastAccessed": 1775124540752,
-      "type": "directory"
-    },
-    {
-      "path": "tests/unit/test_env_sync.py",
-      "accessCount": 5,
-      "lastAccessed": 1775139795115,
-      "type": "file"
-    },
-    {
-      "path": "src/infra/approval_gate.py",
-      "accessCount": 5,
-      "lastAccessed": 1775149309563,
-      "type": "file"
-    },
-    {
-      "path": "tests/unit/test_live_first_trade.py",
-      "accessCount": 4,
-      "lastAccessed": 1775145809226,
-      "type": "file"
-    },
-    {
-      "path": "src/core/live_gate_continuous.py",
-      "accessCount": 3,
-      "lastAccessed": 1775140852236,
-      "type": "file"
-    },
-    {
-      "path": "src/risk/kill_switch.py",
-      "accessCount": 3,
-      "lastAccessed": 1775145458214,
-      "type": "file"
-    },
-    {
-      "path": "tests/unit/test_parallel_config.py",
-      "accessCount": 3,
-      "lastAccessed": 1775145929940,
-      "type": "file"
-    },
-    {
-      "path": "tests/unit/test_s15_verification.py",
-      "accessCount": 3,
-      "lastAccessed": 1775146243176,
-      "type": "file"
-    },
-    {
-      "path": "src/api/server.py",
-      "accessCount": 3,
-      "lastAccessed": 1775149307768,
-      "type": "file"
-    },
-    {
-      "path": "src/infra/db/market_recorder.py",
-      "accessCount": 3,
-      "lastAccessed": 1775149344344,
-      "type": "directory"
-    },
-    {
-      "path": "src/infra/exchange/native_bitget.py",
-      "accessCount": 2,
-      "lastAccessed": 1775124473438,
-      "type": "file"
-    },
-    {
-      "path": "src/tuning/evaluator.py",
-      "accessCount": 2,
-      "lastAccessed": 1775139485426,
-      "type": "file"
-    },
-    {
-      "path": "tests/unit/test_preflight.py",
-      "accessCount": 2,
-      "lastAccessed": 1775140171640,
-      "type": "file"
-    },
-    {
-      "path": "src/core/capital_allocator.py",
-      "accessCount": 2,
-      "lastAccessed": 1775140817884,
-      "type": "file"
-    },
-    {
-      "path": "config/strategy_activation.json",
-      "accessCount": 2,
-      "lastAccessed": 1775140843123,
-      "type": "file"
-    },
-    {
-      "path": "src/modes/shadow.py",
-      "accessCount": 2,
-      "lastAccessed": 1775144480592,
-      "type": "directory"
-    },
-    {
-      "path": "src/strategies/base.py",
-      "accessCount": 2,
-      "lastAccessed": 1775145510856,
-      "type": "directory"
-    },
-    {
-      "path": "tests/unit/infra/test_notion_reporter.py",
-      "accessCount": 2,
-      "lastAccessed": 1775146012166,
-      "type": "file"
-    },
-    {
-      "path": "config/backtest_batches.json",
-      "accessCount": 2,
-      "lastAccessed": 1775149543806,
-      "type": "file"
-    },
-    {
-      "path": "tests/unit/test_live_record_execution.py",
-      "accessCount": 1,
-      "lastAccessed": 1775123975429,
+      "accessCount": 18,
+      "lastAccessed": 1776038204444,
       "type": "file"
     },
     {
       "path": "src/infra/exchange/native_adapter.py",
-      "accessCount": 1,
-      "lastAccessed": 1775124472145,
-      "type": "file"
-    },
-    {
-      "path": "src/infra/exchange/native_mexc.py",
-      "accessCount": 1,
-      "lastAccessed": 1775124486264,
-      "type": "file"
-    },
-    {
-      "path": "src/infra/exchange/native_gateio.py",
-      "accessCount": 1,
-      "lastAccessed": 1775124497225,
-      "type": "file"
-    },
-    {
-      "path": "src/infra/exchange/native_bingx.py",
-      "accessCount": 1,
-      "lastAccessed": 1775124498223,
-      "type": "file"
-    },
-    {
-      "path": "src/infra/exchange/native_lbank.py",
-      "accessCount": 1,
-      "lastAccessed": 1775124503186,
-      "type": "file"
-    },
-    {
-      "path": "src/infra/exchange/native_orangex.py",
-      "accessCount": 1,
-      "lastAccessed": 1775124508459,
-      "type": "file"
-    },
-    {
-      "path": "src/infra/db/ohlcv_downloader.py",
-      "accessCount": 1,
-      "lastAccessed": 1775124528194,
-      "type": "file"
-    },
-    {
-      "path": "tests/unit/core/test_config_env_path.py",
-      "accessCount": 1,
-      "lastAccessed": 1775139427378,
-      "type": "file"
-    },
-    {
-      "path": "tests/unit/test_walk_forward_mode_filter.py",
-      "accessCount": 1,
-      "lastAccessed": 1775139427542,
-      "type": "file"
-    },
-    {
-      "path": "src/risk",
-      "accessCount": 1,
-      "lastAccessed": 1775145433692,
+      "accessCount": 15,
+      "lastAccessed": 1776016413916,
       "type": "directory"
     },
     {
-      "path": "tests/unit/test_livegate_preflight.py",
-      "accessCount": 1,
-      "lastAccessed": 1775145721679,
-      "type": "file"
-    },
-    {
-      "path": "src/infra/__init__.py",
-      "accessCount": 1,
-      "lastAccessed": 1775145944574,
-      "type": "file"
-    },
-    {
-      "path": "src/api/auth.py",
-      "accessCount": 1,
-      "lastAccessed": 1775149256363,
-      "type": "file"
-    },
-    {
-      "path": "src/api/routes",
-      "accessCount": 1,
-      "lastAccessed": 1775149266779,
+      "path": "tests",
+      "accessCount": 14,
+      "lastAccessed": 1775998678217,
       "type": "directory"
     },
     {
-      "path": "src/modes/base.py",
-      "accessCount": 1,
-      "lastAccessed": 1775149270975,
+      "path": "src/strategies/base.py",
+      "accessCount": 10,
+      "lastAccessed": 1775998367391,
+      "type": "directory"
+    },
+    {
+      "path": "src/core/real_signal_producer.py",
+      "accessCount": 9,
+      "lastAccessed": 1776038213684,
       "type": "file"
     },
     {
-      "path": "src/modes/paper.py",
-      "accessCount": 1,
-      "lastAccessed": 1775149271027,
+      "path": "src/strategies/spot_futures.py",
+      "accessCount": 8,
+      "lastAccessed": 1775998111034,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 8,
+      "lastAccessed": 1776038224876,
+      "type": "directory"
+    },
+    {
+      "path": "src/friction/cost_calculator.py",
+      "accessCount": 7,
+      "lastAccessed": 1775986996671,
+      "type": "file"
+    },
+    {
+      "path": "src/infra/exchange",
+      "accessCount": 7,
+      "lastAccessed": 1775987846286,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/close_positions.py",
+      "accessCount": 7,
+      "lastAccessed": 1776001899109,
+      "type": "file"
+    },
+    {
+      "path": "src/strategies/funding_rate.py",
+      "accessCount": 6,
+      "lastAccessed": 1776038234088,
+      "type": "file"
+    },
+    {
+      "path": "src/execution",
+      "accessCount": 5,
+      "lastAccessed": 1775996161921,
+      "type": "directory"
+    },
+    {
+      "path": "src/core/models.py",
+      "accessCount": 5,
+      "lastAccessed": 1775998341172,
+      "type": "directory"
+    },
+    {
+      "path": "tests/unit/strategies/test_s17_futures_futures.py",
+      "accessCount": 4,
+      "lastAccessed": 1775997168637,
+      "type": "file"
+    },
+    {
+      "path": "src/execution/trade_reconciler.py",
+      "accessCount": 4,
+      "lastAccessed": 1776000548523,
+      "type": "file"
+    },
+    {
+      "path": "config/trading.json",
+      "accessCount": 3,
+      "lastAccessed": 1775984837788,
+      "type": "file"
+    },
+    {
+      "path": "config",
+      "accessCount": 3,
+      "lastAccessed": 1775989510264,
+      "type": "directory"
+    },
+    {
+      "path": "src/strategies",
+      "accessCount": 3,
+      "lastAccessed": 1775998630497,
+      "type": "directory"
+    },
+    {
+      "path": "src/core",
+      "accessCount": 2,
+      "lastAccessed": 1775987838359,
+      "type": "directory"
+    },
+    {
+      "path": "src/execution/stranded.py",
+      "accessCount": 2,
+      "lastAccessed": 1775998081204,
+      "type": "file"
+    },
+    {
+      "path": "src/main.py",
+      "accessCount": 2,
+      "lastAccessed": 1775998102784,
       "type": "file"
     },
     {
       "path": "src/api",
-      "accessCount": 1,
-      "lastAccessed": 1775149297181,
+      "accessCount": 2,
+      "lastAccessed": 1775998113621,
       "type": "directory"
     },
     {
-      "path": "src/analysis/walk_forward.py",
-      "accessCount": 1,
-      "lastAccessed": 1775149322017,
+      "path": "config/strategy_params.json",
+      "accessCount": 2,
+      "lastAccessed": 1776038179551,
+      "type": "file"
+    },
+    {
+      "path": "src/friction",
+      "accessCount": 2,
+      "lastAccessed": 1776038237640,
       "type": "directory"
+    },
+    {
+      "path": "tests/test_live_mode.py",
+      "accessCount": 1,
+      "lastAccessed": 1775976092674,
+      "type": "file"
+    },
+    {
+      "path": "src/core/signal.py",
+      "accessCount": 1,
+      "lastAccessed": 1775982045773,
+      "type": "directory"
+    },
+    {
+      "path": "src/risk/kill_switch.py",
+      "accessCount": 1,
+      "lastAccessed": 1775987823528,
+      "type": "file"
+    },
+    {
+      "path": "src/execution/trade_consumer.py",
+      "accessCount": 1,
+      "lastAccessed": 1775988584119,
+      "type": "directory"
+    },
+    {
+      "path": "src/execution/reconciler.py",
+      "accessCount": 1,
+      "lastAccessed": 1775992044043,
+      "type": "file"
+    },
+    {
+      "path": "src/modes/shadow.py",
+      "accessCount": 1,
+      "lastAccessed": 1775993150540,
+      "type": "directory"
+    },
+    {
+      "path": "src/api/routes/strategies.py",
+      "accessCount": 1,
+      "lastAccessed": 1775998123849,
+      "type": "file"
+    },
+    {
+      "path": "src/api/routes/trading.py",
+      "accessCount": 1,
+      "lastAccessed": 1775998124833,
+      "type": "file"
+    },
+    {
+      "path": "config/strategy_activation.json",
+      "accessCount": 1,
+      "lastAccessed": 1776038192800,
+      "type": "file"
+    },
+    {
+      "path": "src/friction/fee_model.py",
+      "accessCount": 1,
+      "lastAccessed": 1776038244068,
+      "type": "file"
     }
   ],
   "userDirectives": []

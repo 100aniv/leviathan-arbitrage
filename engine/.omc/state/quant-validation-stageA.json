@@ -1,0 +1,139 @@
+{
+  "phase": "J",
+  "gate": "QUANT_GATE",
+  "timestamp": "2026-04-01T12:00:00Z",
+  "verdict": "CONDITIONAL_PASS",
+  "summary": "3/4 items PASS, 1 item FAIL (Sharpe sqrt mismatch). Phase J PLAN may proceed to Stage B with MUST FIX #6 mandatory.",
+  "items": {
+    "1_parameter_ranges": {
+      "verdict": "PASS_WITH_NOTE",
+      "details": {
+        "sharpe_tiered": "PLAN Tiered (FAIL<1.0, CONDITIONAL 1.0-1.5, PASS>1.5) is compatible with SSOT 4.5. SSOT defines the formula only, not thresholds. LiveGate uses SHARPE_GATE=2.5 in walk_forward.py:53 for live eligibility. Phase J backtest thresholds are appropriately lower for historical validation vs live gate.",
+        "mdd_threshold": "PLAN MDD<10% is looser than SSOT 4.6 formula but consistent. LiveGate uses MDD_GATE=0.05 (5%) in walk_forward.py:54. PLAN acknowledges CONDITIONAL 5-10%, PASS<5%. Acceptable for backtest validation stage.",
+        "wfa_rolling_window": "WalkForwardAnalyzer defaults to days=7, window_hours=1 (walk_forward.py:83). With 1H Shadow data, 7 days yields 168 hourly windows -- statistically meaningful (>=30 samples). PLAN US-357 requires 1H+ Shadow run which is minimum viable; recommend extending to 24H+ for robust WFA."
+      }
+    },
+    "2_double_counting": {
+      "verdict": "PASS",
+      "details": {
+        "backtest_slippage_model": "backtest.py does NOT import or use CEXOrderbookSlippage or BookWalkSlippage. _execute_paper_trade() at line 277 uses only FeeModel for cost deduction -- no slippage model applied at execution layer. This is acceptable for backtest because the replay feeds historical orderbooks through SignalGenerator which applies CEXOrderbookSlippage as pre-filter (same as paper/live).",
+        "powerlaw_k_zero": "config.py:416 confirms powerlaw_slippage_k default=0.0. shadow.py:466-467 documents k=0 rationale. PowerLawSlippage class exists in shadow.py:77 but with k=0 produces zero impact (impact = 0.0 * size^gamma = 0). No double counting.",
+        "ssot_4_4_compliance": "SSOT 4.4 defines two-layer architecture: (1) CEXOrderbookSlippage as pre-filter in SignalGenerator, (2) BookWalkSlippage (US-060) as execution simulation. BacktestMode routes through SignalGenerator (line 255: on_orderbook_update) so layer 1 is active. Layer 2 (BookWalkSlippage) is NOT applied in backtest._execute_paper_trade -- this means backtest PnL is OPTIMISTIC (no execution slippage). PLAN US-356 should note this gap but it is not a blocking issue for Phase J validation."
+      }
+    },
+    "3_pnl_impact": {
+      "verdict": "PASS_WITH_NOTE",
+      "details": {
+        "wfa_data_source": "WalkForwardAnalyzer (walk_forward.py:103-107) queries execution_log table exclusively: 'SELECT ts, net_pnl, ... FROM execution_log WHERE strategy_id = $1'. No mixing with orderbook_snapshots. PLAN correctly states WFA is execution_log-based (line 111, section 5 diagram line 334).",
+        "backtest_data_source": "BacktestMode._load_snapshots() queries orderbook_snapshots (line 184-186). These are separate: orderbook_snapshots feeds replay, execution_log stores results for WFA. No confusion.",
+        "funding_rate_carry": "CRITICAL NOTE: BacktestMode has ZERO funding_rate/carry trade logic. grep confirms no mention of funding_rate, carry_trade, or carry_income in backtest.py. The PLAN does not address how funding_rate strategy's carry income will be simulated in backtest replay. funding_rate is a carry strategy -- instantaneous PnL from spread alone underestimates true profitability. PLAN US-353 should document expected behavior: funding_rate backtest results will show ONLY spread-based PnL, not accumulated carry income. This is a known limitation, not a blocking defect.",
+        "must_fix_8_execution_log": "PLAN US-351 AC #8 correctly requires execution_log INSERT with mode='backtest'. Current backtest.py _execute_paper_trade() does NOT write to execution_log. Without this fix, WFA will have zero data from backtest runs. This is already identified as MUST FIX."
+      }
+    },
+    "4_formula_consistency": {
+      "verdict": "FAIL",
+      "details": {
+        "sharpe_sqrt_mismatch": {
+          "severity": "HIGH",
+          "ssot_spec": "SSOT 4.5: Sharpe = (mu - rf) / sigma * sqrt(8760), periods_per_year=8760 (1-hour windows)",
+          "code_inconsistencies": [
+            {
+              "file": "engine/src/modes/backtest.py:349",
+              "value": "sqrt(525600)",
+              "assumption": "1-minute intervals",
+              "status": "VIOLATES SSOT 4.5"
+            },
+            {
+              "file": "engine/src/tuning/backtest.py:202,208",
+              "value": "sqrt(252)",
+              "assumption": "daily intervals (stock market convention)",
+              "status": "VIOLATES SSOT 4.5"
+            },
+            {
+              "file": "engine/src/tuning/strategy_backtest.py:708,714",
+              "value": "sqrt(252)",
+              "assumption": "daily intervals (stock market convention)",
+              "status": "VIOLATES SSOT 4.5"
+            },
+            {
+              "file": "engine/src/analysis/walk_forward.py:226,240",
+              "value": "sqrt(periods_per_year) with default 8760",
+              "assumption": "hourly intervals (crypto 24/7)",
+              "status": "COMPLIANT with SSOT 4.5"
+            },
+            {
+              "file": "engine/src/core/metrics_collector.py:296,306",
+              "value": "sqrt(8760) default",
+              "assumption": "hourly intervals",
+              "status": "COMPLIANT with SSOT 4.5"
+            },
+            {
+              "file": "engine/src/analysis/ml_backtest.py:198",
+              "value": "mean/std (NO annualization)",
+              "assumption": "raw per-trade Sharpe",
+              "status": "NON-ANNUALIZED -- incomparable to SSOT 4.5"
+            }
+          ],
+          "plan_awareness": "PLAN US-356 AC #6 correctly identifies this: 'Sharpe annualization 통일: backtest.py, walk_forward.py, ml_backtest.py 전부 sqrt(8760)'. This is already a MUST FIX item in the PLAN.",
+          "blocking": "PLAN correctly identifies the fix. The FAIL verdict here confirms the code currently violates SSOT 4.5 and MUST be fixed in US-356 before Phase J completion."
+        },
+        "mdd_edge_case": {
+          "severity": "LOW",
+          "ssot_spec": "SSOT 4.6: MDD = max_t { (Peak_t - CumPnL_t) / Peak_t }",
+          "findings": [
+            {
+              "file": "backtest.py:333",
+              "code": "if self._result.peak_pnl > 0: mdd_pct = max_drawdown / peak_pnl",
+              "edge_case": "peak_pnl <= 0 (all-losing backtest) produces mdd_pct=0. Acceptable -- no false positive."
+            },
+            {
+              "file": "walk_forward.py:257",
+              "code": "dd = (peak - cumulative) / peak if peak > 0 else 0.0",
+              "edge_case": "peak <= 0 returns 0.0. Consistent with backtest.py. No division-by-zero risk."
+            },
+            {
+              "file": "tuning/backtest.py:215",
+              "code": "denom = np.where(peak != 0.0, peak, 1e-10)",
+              "edge_case": "Uses epsilon denominator -- slightly different from others but prevents division by zero. Acceptable."
+            }
+          ],
+          "verdict_detail": "MDD formula implementations are safe for peak<=0 edge case. All return 0 or near-0 when no profit peak exists. Consistent with SSOT 4.6 intent."
+        }
+      }
+    }
+  },
+  "blocking_issues": [
+    {
+      "id": "MUST_FIX_6",
+      "location": "engine/src/modes/backtest.py:349",
+      "current": "np.sqrt(525600) -- assumes 1-minute intervals",
+      "required": "np.sqrt(8760) -- SSOT 4.5 mandates hourly intervals",
+      "impact": "Sharpe inflated by factor of sqrt(525600/8760) = sqrt(60) ~ 7.75x. A true Sharpe of 1.0 would be reported as 7.75.",
+      "plan_ref": "US-356 AC #6 already identifies this fix"
+    },
+    {
+      "id": "MUST_FIX_6_EXT",
+      "location": "engine/src/tuning/backtest.py:202, engine/src/tuning/strategy_backtest.py:708",
+      "current": "np.sqrt(252) -- stock market convention (252 trading days)",
+      "required": "np.sqrt(8760) -- SSOT 4.5 mandates hourly crypto intervals",
+      "impact": "Sharpe underestimated by factor of sqrt(252/8760) ~ 0.17x vs SSOT baseline",
+      "plan_ref": "US-356 AC #6 scope should explicitly include tuning/*.py files"
+    },
+    {
+      "id": "MUST_FIX_6_ML",
+      "location": "engine/src/analysis/ml_backtest.py:198",
+      "current": "Raw mean/std without annualization",
+      "required": "Annualized with sqrt(8760) or clearly labeled as non-annualized",
+      "impact": "ML A/B Sharpe comparison invalid if baseline uses annualized and ML uses raw",
+      "plan_ref": "US-356 AC #6 scope should explicitly include ml_backtest.py"
+    }
+  ],
+  "non_blocking_notes": [
+    "BacktestMode does not apply BookWalkSlippage -- PnL is optimistic (no execution slippage). Acceptable for Phase J initial validation.",
+    "funding_rate carry income not simulated in backtest replay. Expected: funding_rate backtest shows spread-only PnL. Document this limitation.",
+    "WFA with 1H Shadow data gives 168 windows (7d). Statistically adequate but recommend 24H+ for production validation.",
+    "ml_backtest.py BacktestResult name collision correctly addressed in US-355 (rename to MLBacktestResult).",
+    "SQL schema bug (bids/asks vs bids_json/asks_json, timestamp vs ts) correctly identified in PLAN CRITICAL #1 and US-351."
+  ],
+  "final_verdict": "CONDITIONAL_PASS -- Phase J PLAN may proceed to Stage B. MUST FIX #6 (Sharpe sqrt unification to 8760) is mandatory before Phase J completion. The PLAN already identifies this requirement in US-356 AC #6. Recommend expanding US-356 scope to explicitly list tuning/backtest.py, tuning/strategy_backtest.py, and analysis/ml_backtest.py as affected files."
+}

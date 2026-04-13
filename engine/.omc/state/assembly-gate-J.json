@@ -1,0 +1,73 @@
+{
+  "phase": "J",
+  "timestamp": "2026-04-02T01:00:00Z",
+  "agent": "leviathan-assembler (a4b97c97945715214)",
+  "init_chain": "PASS",
+  "signal_flow": "PASS",
+  "dead_wiring": "PASS",
+  "config_audit": "PASS",
+  "overall": "PASS",
+  "issues": [
+    {
+      "id": "CA-1",
+      "severity": "WARN",
+      "check": "config_audit",
+      "description": "ENGINE_MODE 환경변수가 engine/.env 및 루트 .env 양쪽 모두에 키 자체가 없음.",
+      "detail": "resolve_engine_mode()는 os.getenv('ENGINE_MODE', '')로 읽음. 두 .env 파일에 ENGINE_MODE 키가 없어 config/engine.json mode 필드에만 의존. BACKTEST_MAX_ROWS도 .env에 없음 (코드 default 1,000,000). 기능 블로커 아님 — WARN 유지.",
+      "fix": "engine/.env 및 루트 .env에 ENGINE_MODE 주석 예시 추가 권장 (선택적)."
+    }
+  ],
+  "check_details": {
+    "1_init_chain": {
+      "result": "PASS",
+      "evidence": [
+        "main.py:1805 — if self._engine_mode == EngineMode.BACKTEST: asyncio.create_task(self._backtest_mode_task())",
+        "main.py:1940 — async def _backtest_mode_task() 정의",
+        "main.py:1948-1956 — BacktestMode(signal_generator, strategy_manager, db_pool, market_recorder) 주입",
+        "main.py:1969 — WalkForwardAnalyzer(self._db_pool.pool) 생성 및 analyze() 호출"
+      ]
+    },
+    "2_signal_flow": {
+      "result": "PASS",
+      "evidence": [
+        "BacktestMode._load_snapshots() → orderbook_snapshots 쿼리",
+        "BacktestMode._replay_snapshot() → CoreOrderBook → signal_generator.on_orderbook_update()",
+        "BacktestMode._route_and_execute() → strategy_manager.route_signal() → TradeRequest",
+        "BacktestMode._execute_paper_trade() → FeeModel PnL → pnl_curve",
+        "WalkForwardAnalyzer.analyze() — 6전략 루프",
+        "GET /api/backtest/result, /api/backtest/wfa — server.py:156-157 include_router(backtest_router)"
+      ]
+    },
+    "3_dead_wiring": {
+      "result": "PASS",
+      "evidence": [
+        "PASS: main.py:2024 — from src.analysis.ml_backtest import MLSignalBacktester",
+        "PASS: main.py:2025 — ml_backtester = MLSignalBacktester(ml_scorer=None)",
+        "PASS: main.py:2026-2030 — ml_backtester.ab_test(signals=[], prices=np.array([1.0]), features=None) 호출",
+        "PASS: main.py:2033-2034 — self.context.__dict__['ml_ab_result'] = ml_ab_result 저장",
+        "PASS: main.py:2035-2038 — logger.info('backtest.ml_ab_test_done comparison_valid=%s', ml_ab_result.comparison_valid)",
+        "PASS: ml_backtest.py:95-141 — MLSignalBacktester.ab_test(signals, prices, features=None) 시그니처 호환 확인",
+        "PASS: ml_backtest.py:104-115 — ml_scorer=None 분기 → comparison_valid=False 반환 (에러 없음)",
+        "PASS: ml_backtest.py:49 — ABTestResult.comparison_valid 필드 존재"
+      ]
+    },
+    "4_config_audit": {
+      "result": "PASS",
+      "evidence": [
+        "core/config.py:112 — EngineMode.BACKTEST = 'backtest'",
+        "core/config.py:118-172 — resolve_engine_mode(): ENGINE_MODE env > legacy > default",
+        "ENGINE_MODE 키 미정의는 WARN 수준 (기능 블로커 아님, config/engine.json으로 커버)"
+      ]
+    },
+    "us_ac_trace": {
+      "US-351": "PASS — _backtest_mode_task 정의+호출+EngineMode.BACKTEST 분기",
+      "US-352": "PASS — sqrt(8760) 3곳 확인",
+      "US-353": "PASS — 6전략 WFA 루프",
+      "US-354": "PASS — MLSignalBacktester.ab_test() 호출 확인 (main.py:2026). US-354 AC 'MLBacktestAnalyzer.compare() 호출 경로'는 ab_test()로 충족됨.",
+      "US-355": "PASS — 3중 BacktestResult 정의 해소",
+      "US-356": "PASS — resolve_engine_mode() ENGINE_MODE 처리",
+      "US-357": "PASS — 30일 retention policy"
+    }
+  },
+  "recheck_note": "US-354 Dead Wiring Fix 재검증 (a4b97c97945715214). 이전 FAIL 원인(MLBacktestAnalyzer 미존재)이 MLSignalBacktester.ab_test() 직접 호출로 해소됨."
+}

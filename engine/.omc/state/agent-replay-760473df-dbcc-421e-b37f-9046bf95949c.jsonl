@@ -1,0 +1,7 @@
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"oh-my-claudecode:ralph"}
+{"t":0,"agent":"acc8ec3","agent_type":"architect","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"acc8ec3","agent_type":"architect","event":"agent_stop","success":true,"duration_ms":340487}
+{"t":0,"agent":"a2d5eea","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"a0aab4b","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"aef0233","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"aef0233","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":98465}

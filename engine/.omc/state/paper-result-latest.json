@@ -1,0 +1,26 @@
+{
+  "session_id": "paper_24h_20260403_2219",
+  "start_time_utc": "2026-04-03T13:18:17Z",
+  "start_time_kst": "2026-04-03T22:18:17+09:00",
+  "expected_end_kst": "2026-04-04T22:18:17+09:00",
+  "engine_pid": 24278,
+  "log_file": "engine/logs/paper_24h_20260403_2219.log",
+  "exchanges_active": ["binance","bybit","okx","bitget","upbit","bithumb","coinone","binance_futures","bybit_futures","okx_futures","bitget_futures"],
+  "exchanges_blocked": ["mexc"],
+  "exchanges_no_data": ["gateio"],
+  "collector_count": 13,
+  "collector_writing": 11,
+  "strategies_active": ["triangular_v1","cross_exchange_v1","statistical_arb_v1","funding_rate_v1"],
+  "trades_15min": 887,
+  "crash_count": 0,
+  "mode": "paper",
+  "status": "running",
+  "pytest": "5454 passed, 12 skipped",
+  "us_targets": ["US-372","US-332","US-373"],
+  "milestones": {
+    "p01_2h": "2026-04-04T00:18:17+09:00",
+    "p02_p23_4h": "2026-04-04T02:18:17+09:00",
+    "us332_24h": "2026-04-04T22:18:17+09:00"
+  },
+  "notes": "MEXC geo-blocked (P-17,22,29 EXPECTED_FAIL). Gate.io connected but no data (P-21,30 EXPECTED_FAIL). bitget_futures newly operational."
+}

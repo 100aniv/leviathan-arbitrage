@@ -1,0 +1,239 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1775742226592,
+  "projectRoot": "/Users/100aniv/Development/arbitrage_OMC/dashboard",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "next",
+        "version": "14.2.35",
+        "category": "fullstack"
+      },
+      {
+        "name": "react",
+        "version": "18",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "18",
+        "category": "frontend"
+      },
+      {
+        "name": "jest",
+        "version": "29.7.0",
+        "category": "testing"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": "npm test",
+    "lintCommand": "npm run lint",
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "next dev",
+      "build": "next build",
+      "start": "next start",
+      "lint": "next lint",
+      "test": "jest",
+      "test:ci": "jest --ci"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": "type-based"
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "public",
+      "src"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 2,
+      "lastAccessed": 1775742226570,
+      "keyFiles": [
+        "logo.png"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 1,
+      "lastAccessed": 1775742226571,
+      "keyFiles": [
+        "middleware.ts"
+      ]
+    },
+    "src/__tests__": {
+      "path": "src/__tests__",
+      "purpose": "Test files",
+      "fileCount": 0,
+      "lastAccessed": 1775742226573,
+      "keyFiles": []
+    },
+    "src/app": {
+      "path": "src/app",
+      "purpose": "Application code",
+      "fileCount": 4,
+      "lastAccessed": 1775742226573,
+      "keyFiles": [
+        "favicon.ico",
+        "globals.css",
+        "layout.tsx"
+      ]
+    },
+    "src/components": {
+      "path": "src/components",
+      "purpose": "UI components",
+      "fileCount": 20,
+      "lastAccessed": 1775742226573,
+      "keyFiles": [
+        "EquityCurve.tsx",
+        "EventFeed.tsx",
+        "GlobalHeatmap.tsx"
+      ]
+    },
+    "src/config": {
+      "path": "src/config",
+      "purpose": "Configuration files",
+      "fileCount": 1,
+      "lastAccessed": 1775742226573,
+      "keyFiles": [
+        "strategy_params.json"
+      ]
+    },
+    "src/lib": {
+      "path": "src/lib",
+      "purpose": "Library code",
+      "fileCount": 3,
+      "lastAccessed": 1775742226574,
+      "keyFiles": [
+        "api.ts",
+        "redis.ts",
+        "websocket.ts"
+      ]
+    },
+    "src/models": {
+      "path": "src/models",
+      "purpose": "Data models",
+      "fileCount": 0,
+      "lastAccessed": 1775742226574,
+      "keyFiles": []
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "src/app/page.tsx",
+      "accessCount": 67,
+      "lastAccessed": 1775806695555,
+      "type": "file"
+    },
+    {
+      "path": "src",
+      "accessCount": 11,
+      "lastAccessed": 1775778376894,
+      "type": "directory"
+    },
+    {
+      "path": "src/components/PnLChart.tsx",
+      "accessCount": 11,
+      "lastAccessed": 1775805293011,
+      "type": "file"
+    },
+    {
+      "path": "src/app/insights/page.tsx",
+      "accessCount": 10,
+      "lastAccessed": 1775806678247,
+      "type": "file"
+    },
+    {
+      "path": "src/app/globals.css",
+      "accessCount": 6,
+      "lastAccessed": 1775805326636,
+      "type": "directory"
+    },
+    {
+      "path": "src/components/EventFeed.tsx",
+      "accessCount": 4,
+      "lastAccessed": 1775742604293,
+      "type": "file"
+    },
+    {
+      "path": "tailwind.config.ts",
+      "accessCount": 3,
+      "lastAccessed": 1775805199221,
+      "type": "file"
+    },
+    {
+      "path": "src/app/manage/page.tsx",
+      "accessCount": 3,
+      "lastAccessed": 1775805387987,
+      "type": "file"
+    },
+    {
+      "path": "src/components/layout/TabLayout.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1775742610207,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 1,
+      "lastAccessed": 1775742277007,
+      "type": "directory"
+    },
+    {
+      "path": "src/app/login/page.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1775742495575,
+      "type": "directory"
+    },
+    {
+      "path": "src/components/Sidebar.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1775742616845,
+      "type": "file"
+    },
+    {
+      "path": "src/hooks/useApi.ts",
+      "accessCount": 1,
+      "lastAccessed": 1775806028675,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

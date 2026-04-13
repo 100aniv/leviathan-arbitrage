@@ -1,0 +1,209 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1774681458593,
+  "projectRoot": "/Users/100aniv/Development/arbitrage_OMC",
+  "techStack": {
+    "languages": [
+      {
+        "name": "C/C++",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Makefile"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "make build",
+    "testCommand": "make test",
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "scripts"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "config": {
+      "path": "config",
+      "purpose": "Configuration files",
+      "fileCount": 1,
+      "lastAccessed": 1774681458566,
+      "keyFiles": [
+        "strategy_params.json"
+      ]
+    },
+    "dashboard": {
+      "path": "dashboard",
+      "purpose": null,
+      "fileCount": 17,
+      "lastAccessed": 1774681458569,
+      "keyFiles": [
+        "README.md",
+        "jest.config.ts",
+        "jest.setup.ts",
+        "next-env.d.ts",
+        "next.config.js"
+      ]
+    },
+    "docker": {
+      "path": "docker",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1774681458571,
+      "keyFiles": [
+        "dashboard.Dockerfile",
+        "engine.Dockerfile",
+        "init.sql"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 6,
+      "lastAccessed": 1774681458572,
+      "keyFiles": [
+        "QUANT_MANIFESTO.md",
+        "config_reference_ko.md",
+        "quick_start_ko.md",
+        "strategies_ko.md",
+        "user_guide_ko.md"
+      ]
+    },
+    "engine": {
+      "path": "engine",
+      "purpose": null,
+      "fileCount": 13,
+      "lastAccessed": 1774681458573,
+      "keyFiles": [
+        "=4.1",
+        "README.md",
+        "alembic.ini",
+        "coverage.xml",
+        "pyproject.toml"
+      ]
+    },
+    "infra": {
+      "path": "infra",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1774681458573,
+      "keyFiles": []
+    },
+    "models": {
+      "path": "models",
+      "purpose": "Data models",
+      "fileCount": 1,
+      "lastAccessed": 1774681458573,
+      "keyFiles": [
+        "versions.json"
+      ]
+    },
+    "reports": {
+      "path": "reports",
+      "purpose": null,
+      "fileCount": 8,
+      "lastAccessed": 1774681458574,
+      "keyFiles": [
+        "cross_validation_results.json",
+        "tune_cex_dex_final.json",
+        "tune_cross_exchange_final.json",
+        "tune_funding_rate_final.json",
+        "tune_futures_futures_final.json"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 5,
+      "lastAccessed": 1774681458575,
+      "keyFiles": [
+        "backup_db.sh",
+        "prod-up.sh",
+        "sit3_canary_runner.py",
+        "sync_env.sh",
+        "watchdog.sh"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "SSOT.md",
+      "accessCount": 6,
+      "lastAccessed": 1774685663356,
+      "type": "file"
+    },
+    {
+      "path": ".claude/CLAUDE.md",
+      "accessCount": 3,
+      "lastAccessed": 1774685727034,
+      "type": "directory"
+    },
+    {
+      "path": "engine/src/collectors/manager.py",
+      "accessCount": 3,
+      "lastAccessed": 1774685824106,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/friction/fee_model.py",
+      "accessCount": 3,
+      "lastAccessed": 1774685834217,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/modes/shadow.py",
+      "accessCount": 2,
+      "lastAccessed": 1774684894210,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/collectors/bitget_collector.py",
+      "accessCount": 2,
+      "lastAccessed": 1774685820660,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/collectors/base_collector.py",
+      "accessCount": 2,
+      "lastAccessed": 1774685821067,
+      "type": "file"
+    },
+    {
+      "path": "engine/.env",
+      "accessCount": 2,
+      "lastAccessed": 1774685828770,
+      "type": "file"
+    },
+    {
+      "path": "engine/docs/planning/SIT-3_WORKFLOW.md",
+      "accessCount": 1,
+      "lastAccessed": 1774681733769,
+      "type": "file"
+    },
+    {
+      "path": "engine/src/collectors/mexc_collector.py",
+      "accessCount": 1,
+      "lastAccessed": 1774685818127,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

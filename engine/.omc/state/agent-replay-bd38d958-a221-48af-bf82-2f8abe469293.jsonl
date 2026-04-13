@@ -1,0 +1,6 @@
+{"t":0,"agent":"a107401","agent_type":"leviathan-planner","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a107401","agent_type":"leviathan-planner","event":"agent_stop","success":true,"duration_ms":256839}
+{"t":0,"agent":"a107401","agent_type":"leviathan-planner","event":"agent_stop","success":true,"duration_ms":549389}
+{"t":0,"agent":"a107401","agent_type":"leviathan-planner","event":"agent_stop","success":true,"duration_ms":834250}
+{"t":0,"agent":"a107401","agent_type":"leviathan-planner","event":"agent_stop","success":true,"duration_ms":1105805}
+{"t":0,"agent":"a107401","agent_type":"leviathan-planner","event":"agent_stop","success":true,"duration_ms":1374677}
