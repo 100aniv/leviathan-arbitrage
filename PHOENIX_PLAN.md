@@ -17,7 +17,7 @@
 | 3 | 풀 통합 72H + 튜너 | ⏳ 대기 |
 
 **현재**: Phase 2 Step 2-2 — FF(27bps) + FR(6.55bps) 동시 운영  
-**PID**: 48773 | **버전**: v96 | **시작**: 2026-04-14 01:06 KST  
+**PID**: 67470 | **버전**: v97 | **시작**: 2026-04-14 08:52 KST  
 **v94 종료**: 17:08 KST (BUG-77 settlement race condition → SIGTERM)
 
 ---
@@ -247,7 +247,8 @@ WS Orderbook → SignalGenerator + RealSignalProducer
 - **FF**: 27bps 미달 정상 대기 (시장 10.47bps)
 - **v95 결과 (7H)**: ERR=90(-2019 margin), Trades=41, FR 4포지션 보유→결산, crash=0, KS=0
 - **v95 검증**: BUG-74 ✅ BUG-75 ✅ BUG-76 ✅ **BUG-77 결산 cooldown 실전 확인** ✅
-- **v96 (현재)**: BUG-78 margin no-rollback 포함, 리뷰어 수정 포함
+- **v97 (현재)**: BUG-74~80 + BUG-A + P0 config wiring 전수조사 수정 반영
+- **config 감사**: 4개 에이전트 병렬, ~100개 이슈 발견, P0 수정 완료
 - **수정 반영**: BUG-73(27bps), BUG-74(margin guard), BUG-75(300s), BUG-76(4.05bps), BUG-77(120s cooldown)
 - **다음 검증**: UTC 16:00 (KST 01:00) FR 결산 → BUG-77 cooldown 실전 테스트
 
