@@ -1117,6 +1117,11 @@ class LiveMode(BaseMode):
         # --- BUG-74: Margin guard — block new ENTRY trades on margin-exhausted futures exchanges ---
         # Prevents -2019 retry loops (e.g. FR 0G/USDT 185+ rollbacks when Binance margin < $1).
         # Reduce-only (exit) trades are exempt: they don't consume margin.
+        # BUG-78: Do NOT call _notify_pre_exec_rollback — that clears the strategy's
+        # _open_positions entry, allowing the same symbol to pass duplicate_guard and
+        # generate a new TradeRequest on the next signal (hot retry loop, JTO 12+x in v95).
+        # Instead, leave the phantom entry in _open_positions as a soft block.
+        # It will be cleaned at next settlement (_check_settlement_release clears all).
         if not _is_close_req:
             for _leg in trade_request.legs:
                 if _leg.exchange_id and "futures" in _leg.exchange_id:
@@ -1127,7 +1132,6 @@ class LiveMode(BaseMode):
                             _leg.exchange_id, _cached, self._MIN_MARGIN_ENTRY_USD,
                         )
                         self._stats.trades_margin_blocked += 1
-                        self._notify_pre_exec_rollback(trade_request, sid)
                         return
 
         # --- Collision detection (DeduplicationGate: atomic check-and-register) ---
