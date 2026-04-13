@@ -1605,7 +1605,9 @@ class LiveMode(BaseMode):
         # Guard bool(legs): all() on empty iterable returns True (misclassifies as close).
         _is_close = self._is_reduceonly_request(trade_request)
         suffix = ":close" if _is_close else ":open"
-        return f"{','.join(symbols)}|{','.join(exchanges)}{suffix}"
+        # Include strategy_id so FF/FR don't block each other for the same symbol
+        strategy = getattr(trade_request, "strategy_id", "")
+        return f"{strategy}:{','.join(symbols)}|{','.join(exchanges)}{suffix}"
 
     def _record_first_trade(self, trade_request: TradeRequest, pnl: float) -> None:
         """Save first live trade to .omc/state/live-first-trade.json — US-056."""

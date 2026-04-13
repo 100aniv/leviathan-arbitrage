@@ -22,7 +22,8 @@
     "bitget_futures"
   ],
   "active_strategies": [
-    "futures_futures_v1"
+    "futures_futures_v1",
+    "funding_rate_v1"
   ],
   "unverified_strategies": [],
   "disabled_strategies": [
@@ -30,8 +31,7 @@
     "spot_futures_v1",
     "latency_arb_v1",
     "cex_dex_v1",
-    "triangular_v1",
-    "funding_rate_v1"
+    "triangular_v1"
   ],
   "shadow_disabled_env": "funding_rate_v1,latency_arb_v1,cex_dex_v1,triangular_v1",
   "results": {

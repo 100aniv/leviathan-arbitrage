@@ -1,9 +1,9 @@
 {
   "_meta": {
-    "source": "S26 전략 리서치 기반 재설계 (2026-03-23)",
+    "source": "S26 \uc804\ub7b5 \ub9ac\uc11c\uce58 \uae30\ubc18 \uc7ac\uc124\uacc4 (2026-03-23)",
     "date": "2026-03-23",
     "data_type": "live_shadow",
-    "note": "S26: exa.ai 벤치마크 + TF SF FAIL 분석 기반. Shadow Live급(DEPTH_FRACTION=1.0). 업계 기준 min 50bps gross spread → net 수익.",
+    "note": "S26: exa.ai \ubca4\uce58\ub9c8\ud06c + TF SF FAIL \ubd84\uc11d \uae30\ubc18. Shadow Live\uae09(DEPTH_FRACTION=1.0). \uc5c5\uacc4 \uae30\uc900 min 50bps gross spread \u2192 net \uc218\uc775.",
     "real_wfe_path": "_real_wfe",
     "real_wfe_note": "Populated by ScheduledTuner when TUNER_DATA_SOURCE=timescaledb"
   },
@@ -75,7 +75,7 @@
     "status": "READY",
     "wfe": 5.926861262589432,
     "data_type": "real_calibrated",
-    "_note": "2026-04-09: synthetic_gbm 47.51→15 recalibrated from 5H live market (10-57bps observed). BUG-20 2026-04-11: 20→15bps (Bitget fee corrected 0.10→0.06%, actual fee=11bps Binance5+Bitget6, 4bps buffer preserved) BUG-72 2026-04-12: max_concurrent_positions=4 prevents -2019 margin exhaustion BUG-73 2026-04-13: 15→27bps (gate: entry_spread-exit_threshold>round_trip → 22+4.5=26.5bps, buffer→27)",
+    "_note": "2026-04-09: synthetic_gbm 47.51\u219215 recalibrated from 5H live market (10-57bps observed). BUG-20 2026-04-11: 20\u219215bps (Bitget fee corrected 0.10\u21920.06%, actual fee=11bps Binance5+Bitget6, 4bps buffer preserved) BUG-72 2026-04-12: max_concurrent_positions=4 prevents -2019 margin exhaustion BUG-73 2026-04-13: 15\u219227bps (gate: entry_spread-exit_threshold>round_trip \u2192 22+4.5=26.5bps, buffer\u219227)",
     "max_concurrent_positions": 4
   },
   "triangular": {
@@ -95,7 +95,7 @@
     "entry_threshold": 0.000188,
     "exit_threshold": 0.00089,
     "stop_loss_pct": 0.005,
-    "_note": "SIT-3 P3: DISABLED→READY. z=2.5→2.0, cooldown=300→120, min_history=120→60. 24H Shadow 후 WFE 재평가.",
+    "_note": "SIT-3 P3: DISABLED\u2192READY. z=2.5\u21922.0, cooldown=300\u2192120, min_history=120\u219260. 24H Shadow \ud6c4 WFE \uc7ac\ud3c9\uac00.",
     "z_threshold": 2.0
   },
   "cex_dex": {
@@ -116,11 +116,11 @@
     "exit_threshold": 0.0001,
     "stop_loss_pct": 0.005
   },
-  "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 통일, slippage_buffer 5bps 신규, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
+  "_s26_changelog": "min_spread_bps 0 (cross_exchange), book_depth $100, position $5000 \ud1b5\uc77c, slippage_buffer 5bps \uc2e0\uaddc, stat_arb DISABLED, SHADOW_DEPTH_FRACTION=1.0",
   "_tuner_meta": {
     "best_values": {
       "cross_exchange": 1.2
     },
-    "timestamp": "2026-04-13T00:04:30.857751+00:00"
+    "timestamp": "2026-04-13T03:52:50.736312+00:00"
   }
 }
