@@ -244,7 +244,8 @@ WS Orderbook → SignalGenerator + RealSignalProducer
 - **PID**: 39440 | **FF+FR 동시 활성**
 - **FR**: ID/USDT 1건 체결 ($0.09), 0G/USDT 시도 → BUG-74 margin guard 차단 ($2.55 < $3.00)
 - **FF**: 27bps 미달 정상 대기 (시장 10.47bps)
-- **30분 결과**: ERROR=0, Trades=2(1체결+1차단), WARN=30(margin_low), crash=0, KS=0
+- **1H 결과**: ERROR=0, Trades=3(ID체결+0G/JTO margin차단), WARN=30+(margin_low), crash=0, KS=0
+- **BUG-75 검증**: FF holding_timeout 발동 (max_hold_seconds=300 정상 적용)
 - **수정 반영**: BUG-73(27bps), BUG-74(margin guard), BUG-75(300s), BUG-76(4.05bps), BUG-77(120s cooldown)
 - **다음 검증**: UTC 16:00 (KST 01:00) FR 결산 → BUG-77 cooldown 실전 테스트
 
