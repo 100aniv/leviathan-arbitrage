@@ -1,7 +1,7 @@
 # PHOENIX v3 — 카나리 실행 계획 (단일 SSOT)
 
 > 400줄 이내. §1~6 = 영구 계획. §7 = 카나리 이력 요약 테이블.  
-> 최종 수정: 2026-04-13 (v94 BUG-73 수정 기준)
+> 최종 수정: 2026-04-13 (v94 BUG-76 수정 기준 — adaptive exit threshold)
 
 ---
 
@@ -37,7 +37,7 @@
 
 | 전략 | 완료 조건 | 현재 |
 |------|----------|------|
-| futures_futures | spread_exit 3회 + crash=0 + PnL≥0 | 배관 완료, 전략 대기중 (27bps 시장없음) |
+| futures_futures | spread_exit 3회 + crash=0 + PnL≥0 | spread_exit 0/3 (BUG-76 즉시청산 artifacts, v95에서 재검증) |
 | funding_rate | 결산 3회 (UTC 0/8/16) + PnL>0 | 배관 완료, 기회 대기중 (<2bps) |
 | spot_futures | 체결 5건 + PnL≥0 | Step 2-1.5 대기 |
 | cross_exchange | 체결 1건 + kimchi premium 확인 | Step 2-3 대기 |
@@ -130,9 +130,11 @@ min_trade_notional_usd: $5
 | v85~v91 | 2026-04-12 | FF | 12 | -$0.04 | min_spread 재조정 과정 |
 | v92 | 2026-04-13 | FF | 0 | $0.00 | min_spread=30bps → 시장없음 |
 | v93 | 2026-04-13 | FF | 193 | -$1.17 | **BUG-73**: 15bps → 22bps 수수료 미반영 |
-| **v94** | 2026-04-13~ | FF+FR | 1* | -$0.005* | **진행중** (*=AAVE reconcile) |
+| **v94** | 2026-04-13~ | FF+FR | 28 | -$0.12 | **진행중** |
 
-> v94: FF 27bps 게이트 정상 (시장 10-17bps → 0 신규체결), FR 기회 대기중
+> v94 (13:28 KST): FF fills=6 (COMP,CHZ,AAVE×2,ENA + AAVE시간청산), FR positions=3 (LA,MOVE,0G), crash=0, KillSwitch=0  
+> BUG-74 발견: margin guard 없어 0G/USDT FR retry loop 185회. BUG-75: max_hold=1800s (config 300 미반영)  
+> 다음: COMP/CHZ 13:32 타임아웃 → FR 결산 UTC 16:00 (1차)
 
 ---
 
@@ -141,15 +143,25 @@ min_trade_notional_usd: $5
 | ID | 파일 | 설명 | 영향 | 우선순위 |
 |----|------|------|------|---------|
 | BUG-73 | futures_futures.py:630 | gate `entry_only=True` → 입장비용만 계산, 퇴장비 미포함 | 구조적 손실 (15bps에서 -7bps) | **P0 → 수정완료** (27bps로 우회) |
-| collision_key | executor.py:~1595 | `_build_collision_key`에 `strategy_id` 없음 → 멀티전략 동일 심볼 충돌 | Step 2-2+ 에서 FF/FR 동시체결 시 중복 방지 실패 | **P1** (Step 2-2 전 수정 필요) |
-| spread_exit | futures_futures.py:406 | 조기청산 경로 미검증 | FF 포지션 만기 외 청산 경로 미확인 | P1 (시장 27bps+ 조건 필요) |
+| collision_key | live.py:~1595 | `_build_collision_key`에 `strategy_id` 없음 → 멀티전략 동일 심볼 충돌 | Step 2-2+ 에서 FF/FR 동시체결 시 중복 방지 실패 | **P1 → 수정완료** (v94, tests pass) |
+| spread_exit | futures_futures.py:406 | 조기청산 경로 미검증 | FF 포지션 만기 외 청산 경로 미확인 | **P1 → 0/3** (v94 exits = BUG-76 artifacts, v95 재검증 필요) |
+| BUG-74 | live.py | margin_guard 없음 → Binance margin < $3 시 신규 ENTRY 허용 | FR 0G/USDT -2019 retry loop 185+회 (30s cooldown만 있음) | **P1** (v95 전 수정) |
+| BUG-75 | futures_futures.py:94 | `max_hold_seconds` config 캐시 이슈 → 1800s 사용 (engine.json=300) | FF 포지션 30분 보유, 5분 의도 → 마진 고갈 (4포지션 동시 보유) | **P1** (v95 재시작 시 자동 해결) |
+| BUG-76 | futures_futures.py:406,224 | 적응형 exit_threshold (p50) > min_spread_bps (27bps) → 진입 즉시 손절 청산 | FF 모든 포지션 진입 즉시 exit → 수수료 손실 반복 | **P0 → 수정완료** (2026-04-13, static 4.05bps 고정) |
 | WS reconnect | binance/binance_futures | "no close frame" 간헐적 발생 (10회/12분) | 자동 재연결, 운영 영향 없음 | P2 |
 
-### collision_key 수정 방법 (구현 필요)
+### BUG-74 수정 방법 (v95 적용)
 ```python
-# executor.py _build_collision_key 에서
-# 현재: f"{symbol}:{sorted(exchanges)}"
-# 수정: f"{strategy_id}:{symbol}:{sorted(exchanges)}"
+# live.py _execute_trade_request에서 — symbol cooldown 체크 직후
+if not _is_close_req:
+    _MIN_MARGIN_ENTRY = 3.0
+    for leg in trade_request.legs:
+        if "futures" in leg.exchange_id:
+            _m = float(self._cached_margin.get(leg.exchange_id, float('inf')))
+            if _m < _MIN_MARGIN_ENTRY:
+                logger.warning("live_mode.entry_blocked_margin_low ex=%s margin=%.2f", leg.exchange_id, _m)
+                self._notify_pre_exec_rollback(trade_request, sid)
+                return
 ```
 
 ---
@@ -219,15 +231,23 @@ WS Orderbook → SignalGenerator + RealSignalProducer
 
 ## §8. 다음 실행 순서
 
-### 즉시 (v94 진행중)
-1. FR 결산 3회 대기 (UTC 16:00 2026-04-13 = 1차, 00:00 = 2차, 08:00 = 3차)
-2. collision_key 버그 수정 (`executor.py:~1595`) → 테스트 → v95에 반영
-3. FF spread_exit 경로 확인 (시장 27bps+ 기회 대기)
+### 즉시 (v94 진행중, 13:51 KST 기준)
+1. FR 결산 3회 대기: UTC 16:00 Apr13 (1차), 00:00 Apr14 (2차), 08:00 Apr14 (3차)
+2. collision_key: ✅ 수정완료 (v94 배포, 98 tests pass)
+3. FF spread_exit: 1/3 확인 (13:27 KST), 2회 더 필요
+4. BUG-74: ✅ 수정완료 (live.py:1115, 9 unit tests pass) — v95 재시작 시 활성
+5. BUG-75: v95 재시작 시 자동 해결 (max_hold_seconds=300 적용)
+6. BUG-76: ✅ 수정완료 (futures_futures.py:406,224 — adaptive p50 exit 제거, static 4.05bps 고정, 8 tests pass)
 
-### v95 (Step 2-2 완료 후)
-- collision_key 수정 포함
-- FR 결산 3회 달성 시 Step 2-2 완료 선언
-- **역방향**: Step 2-1.5 (FF + SF) 추가
+### v95 재시작 (UTC 08:00 = KST 17:00 FR 결산 후)
+1. UTC 08:00 도달 → FR `_check_settlement_release()` 자동 4포지션 청산
+2. FR 청산 확인 (`settlement_exit` 로그 4건) 후 v94 graceful shutdown (SIGTERM)
+3. v95 시작 — 3버그 픽스 자동 활성:
+   - BUG-74: margin guard ($3 미만 차단)
+   - BUG-75: max_hold_seconds=300 (config 재로드)
+   - BUG-76: static exit (4.05bps) — 즉시청산 방지
+4. v95 목표: FF spread_exit 진짜 3회 (4.05bps 이하 수렴 시), FR 결산 3회
+- **완료 조건**: crash=0 + KS=0 + FR결산 3회 + FF spread_exit 3회 + PnL≥0
 
 ### 운영 프롬프트 (자율 모드)
 ```

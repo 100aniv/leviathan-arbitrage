@@ -1112,6 +1112,22 @@ class LiveMode(BaseMode):
             for _sk in _sym_keys:
                 self._symbol_last_trade[_sk] = _now
 
+        # --- BUG-74: Margin guard — block new ENTRY trades on margin-exhausted futures exchanges ---
+        # Prevents -2019 retry loops (e.g. FR 0G/USDT 185+ rollbacks when Binance margin < $1).
+        # Reduce-only (exit) trades are exempt: they don't consume margin.
+        if not _is_close_req:
+            _MIN_MARGIN_ENTRY_USD = 3.0
+            for _leg in trade_request.legs:
+                if _leg.exchange_id and "futures" in _leg.exchange_id:
+                    _cached = float(self._cached_margin.get(_leg.exchange_id, float("inf")))
+                    if _cached < _MIN_MARGIN_ENTRY_USD:
+                        logger.warning(
+                            "live_mode.entry_blocked_margin_low ex=%s margin=%.2f < %.2f",
+                            _leg.exchange_id, _cached, _MIN_MARGIN_ENTRY_USD,
+                        )
+                        self._notify_pre_exec_rollback(trade_request, sid)
+                        return
+
         # --- Collision detection (DeduplicationGate: atomic check-and-register) ---
         collision_key = self._build_collision_key(trade_request)
         if not await self._dedup_gate.check_and_register(collision_key):

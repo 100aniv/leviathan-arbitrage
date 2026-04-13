@@ -220,12 +220,11 @@ class FuturesFuturesStrategy(BaseStrategy):
                     age_s = now - pos["entry_time"]
 
                     # Spread-reversion exit from monitor (uses last stored spread from on_signal)
-                    # Use adaptive threshold if ready — mirrors on_signal path (prevents divergence).
-                    _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.15  # near-zero: 30bps*0.15=4.5bps
-                    if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
-                        _, _at_exit_m = self._adaptive_threshold.thresholds
-                        if _at_exit_m and _at_exit_m > 0:
-                            _exit_threshold_bps = float(_at_exit_m)
+                    # BUG-76: Do NOT use adaptive p50 for exit — in elevated-spread regimes,
+                    # p50 of observed spreads (34-37bps) exceeds min_spread_bps (27bps),
+                    # causing every position to exit immediately at a loss.
+                    # Static near-zero exit (4.05bps) + time_exit (300s) are the correct exits.
+                    _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.15
                     last_spread = pos.get("last_spread_bps")
                     if last_spread is not None and last_spread <= _exit_threshold_bps:
                         if sym in self._exiting_symbols:
@@ -403,11 +402,11 @@ class FuturesFuturesStrategy(BaseStrategy):
 
             # --- Spread-reversion exit (PRIMARY exit) ---
             # Exit when spread closes back below exit threshold (profit locked in)
-            _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.15  # near-zero: 30bps*0.15=4.5bps
-            if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
-                _, _at_exit = self._adaptive_threshold.thresholds  # (p95_entry, p50_exit)
-                if _at_exit and _at_exit > 0:
-                    _exit_threshold_bps = float(_at_exit)
+            # BUG-76: Do NOT use adaptive p50 for exit — in elevated-spread regimes,
+            # p50 of observed spreads (34-37bps) exceeds min_spread_bps (27bps),
+            # causing every position to exit immediately at a loss.
+            # Static near-zero exit (4.05bps) + time_exit (300s) are the correct exits.
+            _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.15
             if _current_spread_bps is not None and _current_spread_bps <= _exit_threshold_bps:
                 # BUG-CRITICAL: guard against duplicate exit if monitor already queued this symbol
                 if _sym in self._exiting_symbols:
