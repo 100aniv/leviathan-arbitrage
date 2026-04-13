@@ -1347,12 +1347,34 @@ class Engine:
             _max_single_trade_pct = (
                 (_ff_max_r / _cap_usd_r) * Decimal("1.05") if _cap_usd_r > 0 else Decimal("0.11")
             )
+            # BUG-80: Wire ALL RiskGuardian params from config (was only 4 of 10)
+            from src.core.config_loader import get_config as _rg_gc
+            _rg_max_exposure = Decimal(str(
+                _rg_gc("risk.max_net_exposure_pct", default=30)
+            )) / Decimal("100")
+            _rg_max_rollback = Decimal(str(
+                _rg_gc("risk.max_rollback_threshold", default=0.02)
+            ))
+            _rg_max_concurrent = int(
+                _rg_gc("strategy_filters.futures_max_concurrent_positions", default=4)
+            )
+            _rg_warmup = float(_rg_gc("risk.warmup_seconds", default=120.0))
+            _rg_alloc_cfg = _load_ecfg().get("capital", {}).get("strategies", {})
+            _rg_alloc_pct = {
+                k: float(v.get("allocation_pct", 25))
+                for k, v in _rg_alloc_cfg.items()
+            }
             self._risk_guardian = RiskGuardian(
                 circuit_breaker=self._circuit_breaker,
                 max_position_pct=_max_pos_pct,
                 max_drawdown_pct=_max_dd_pct,
                 max_net_exposure_per_asset=_max_net_exp,
                 max_single_trade_pct=_max_single_trade_pct,
+                max_exposure_pct=_rg_max_exposure,
+                max_rollback_threshold=_rg_max_rollback,
+                max_concurrent_positions=_rg_max_concurrent,
+                warmup_seconds=_rg_warmup,
+                capital_allocation_pct=_rg_alloc_pct,
             )
             logger.info(
                 "RiskGuardian initialized with 9 pre-trade checks, max_position_pct=%.1f%% "

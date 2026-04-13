@@ -116,12 +116,9 @@ class RiskGuardian:
         self._max_rollback_threshold = max_rollback_threshold
         # Amendment 7: 0 = disabled (no correlation check)
         self._max_net_exposure_per_asset = max_net_exposure_per_asset
-        # US-154: max concurrent open positions (HIGH FIX: bounds validation)
-        try:
-            _mcp = int(_gc("execution.max_concurrent_trades", default=max_concurrent_positions))
-        except (ValueError, TypeError):
-            _mcp = max_concurrent_positions
-        self._max_concurrent_positions: int = max(1, min(_mcp, 1000))
+        # US-154: max concurrent open positions (BUG-80: use constructor param, not config override)
+        # Config source: strategy_filters.futures_max_concurrent_positions, wired in main.py
+        self._max_concurrent_positions: int = max(1, min(max_concurrent_positions, 1000))
         # US-196: per-strategy capital allocation limits
         self._capital_allocation_pct: dict[str, float] = capital_allocation_pct or {}
         # US-222/228: per-strategy circuit breaker (optional, set externally)
