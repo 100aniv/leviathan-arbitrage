@@ -46,7 +46,7 @@
     "spot_futures_max_hold_seconds": 1800,
     "futures_max_hold_seconds": 300,
     "futures_max_concurrent_positions": 4,
-    "futures_min_spread_bps": 30,
+    "futures_min_spread_bps": 27,
     "futures_max_position_size_usdt": 20,
     "futures_adaptive_static_entry_bps": 60,
     "futures_futures_max_position_usd": 12,
