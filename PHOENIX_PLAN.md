@@ -130,11 +130,13 @@ min_trade_notional_usd: $5
 | v85~v91 | 2026-04-12 | FF | 12 | -$0.04 | min_spread 재조정 과정 |
 | v92 | 2026-04-13 | FF | 0 | $0.00 | min_spread=30bps → 시장없음 |
 | v93 | 2026-04-13 | FF | 193 | -$1.17 | **BUG-73**: 15bps → 22bps 수수료 미반영 |
-| **v94** | 2026-04-13~ | FF+FR | 28 | -$0.12 | **진행중** |
+| **v94** | 2026-04-13~ | FF+FR | 316 | **-$0.84** | FF API 비활성화 (14:22 KST) — BUG-76 손실 차단, FR 결산 대기 |
 
-> v94 (13:28 KST): FF fills=6 (COMP,CHZ,AAVE×2,ENA + AAVE시간청산), FR positions=3 (LA,MOVE,0G), crash=0, KillSwitch=0  
-> BUG-74 발견: margin guard 없어 0G/USDT FR retry loop 185회. BUG-75: max_hold=1800s (config 300 미반영)  
-> 다음: COMP/CHZ 13:32 타임아웃 → FR 결산 UTC 16:00 (1차)
+> v94 (14:22 KST): FF fills=316 (BUG-76 즉시청산 루프), FR positions=4 (LA,MOVE,0G,ID), crash=0, KillSwitch=0  
+> **BUG-74 수정완료**: live.py margin guard (lines 1115-1129), 9 unit tests PASS  
+> **BUG-76 수정완료**: futures_futures.py static 4.05bps exit (lines 222,405), 8 unit tests PASS  
+> **FF API toggle**: 14:22 KST `/api/v1/strategies/futures_futures_v1/toggle` → enabled=false (BUG-76 손실 차단)  
+> **다음**: FR 결산 UTC 08:00 (KST 17:00) → v95 재시작 (BUG-74/75/76 모두 적용)
 
 ---
 
@@ -145,24 +147,29 @@ min_trade_notional_usd: $5
 | BUG-73 | futures_futures.py:630 | gate `entry_only=True` → 입장비용만 계산, 퇴장비 미포함 | 구조적 손실 (15bps에서 -7bps) | **P0 → 수정완료** (27bps로 우회) |
 | collision_key | live.py:~1595 | `_build_collision_key`에 `strategy_id` 없음 → 멀티전략 동일 심볼 충돌 | Step 2-2+ 에서 FF/FR 동시체결 시 중복 방지 실패 | **P1 → 수정완료** (v94, tests pass) |
 | spread_exit | futures_futures.py:406 | 조기청산 경로 미검증 | FF 포지션 만기 외 청산 경로 미확인 | **P1 → 0/3** (v94 exits = BUG-76 artifacts, v95 재검증 필요) |
-| BUG-74 | live.py | margin_guard 없음 → Binance margin < $3 시 신규 ENTRY 허용 | FR 0G/USDT -2019 retry loop 185+회 (30s cooldown만 있음) | **P1** (v95 전 수정) |
+| BUG-74 | live.py:1115 | margin_guard 없음 → Binance margin < $3 시 신규 ENTRY 허용 | FR 0G/USDT -2019 retry loop 185+회 | **P1 → 수정완료** (live.py:1115-1129, 9 unit tests PASS) |
 | BUG-75 | futures_futures.py:94 | `max_hold_seconds` config 캐시 이슈 → 1800s 사용 (engine.json=300) | FF 포지션 30분 보유, 5분 의도 → 마진 고갈 (4포지션 동시 보유) | **P1** (v95 재시작 시 자동 해결) |
 | BUG-76 | futures_futures.py:406,224 | 적응형 exit_threshold (p50) > min_spread_bps (27bps) → 진입 즉시 손절 청산 | FF 모든 포지션 진입 즉시 exit → 수수료 손실 반복 | **P0 → 수정완료** (2026-04-13, static 4.05bps 고정) |
 | WS reconnect | binance/binance_futures | "no close frame" 간헐적 발생 (10회/12분) | 자동 재연결, 운영 영향 없음 | P2 |
 
-### BUG-74 수정 방법 (v95 적용)
+### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
 ```python
-# live.py _execute_trade_request에서 — symbol cooldown 체크 직후
+# live.py:181 — 클래스 상수
+_MIN_MARGIN_ENTRY_USD: float = 3.0  # BUG-74
+
+# live.py:117 — LiveModeStats 카운터
+trades_margin_blocked: int = 0  # BUG-74
+
+# live.py:1118-1131 — 가드 블록 (if not _is_close_req 먼저, 마진 루프 다음)
 if not _is_close_req:
-    _MIN_MARGIN_ENTRY = 3.0
-    for leg in trade_request.legs:
-        if "futures" in leg.exchange_id:
-            _m = float(self._cached_margin.get(leg.exchange_id, float('inf')))
-            if _m < _MIN_MARGIN_ENTRY:
-                logger.warning("live_mode.entry_blocked_margin_low ex=%s margin=%.2f", leg.exchange_id, _m)
-                self._notify_pre_exec_rollback(trade_request, sid)
+    for _leg in trade_request.legs:
+        if _leg.exchange_id and "futures" in _leg.exchange_id:
+            _cached = float(self._cached_margin.get(_leg.exchange_id, float("inf")))
+            if _cached < self._MIN_MARGIN_ENTRY_USD:
+                self._stats.trades_margin_blocked += 1
                 return
 ```
+> 크리틱 검토 결과(2026-04-13): ACCEPT. 클래스상수/카운터/순서 모두 정확. 스타트업 60s 공백은 safe-side (inf 기본값). 추가 수정 불필요.
 
 ---
 
@@ -231,13 +238,14 @@ WS Orderbook → SignalGenerator + RealSignalProducer
 
 ## §8. 다음 실행 순서
 
-### 즉시 (v94 진행중, 13:51 KST 기준)
-1. FR 결산 3회 대기: UTC 16:00 Apr13 (1차), 00:00 Apr14 (2차), 08:00 Apr14 (3차)
-2. collision_key: ✅ 수정완료 (v94 배포, 98 tests pass)
-3. FF spread_exit: 1/3 확인 (13:27 KST), 2회 더 필요
-4. BUG-74: ✅ 수정완료 (live.py:1115, 9 unit tests pass) — v95 재시작 시 활성
-5. BUG-75: v95 재시작 시 자동 해결 (max_hold_seconds=300 적용)
-6. BUG-76: ✅ 수정완료 (futures_futures.py:406,224 — adaptive p50 exit 제거, static 4.05bps 고정, 8 tests pass)
+### 즉시 (v94 14:22 KST FF API 비활성화 — BUG-76 손실 차단)
+1. **v94 상태**: FF disabled via API (14:22 KST), FR 4포지션 (LA/MOVE/0G/ID) 대기중
+2. **UTC 08:00 (KST 17:00) FR 결산** → 4포지션 자동청산 → v95 재시작
+3. collision_key: ✅ 수정완료 (v94 배포, 98 tests pass)
+4. FF spread_exit: **0/3** (v94 all exits = BUG-76 artifacts, v95에서 재검증)
+5. BUG-74: ✅ 수정완료 (live.py:1115-1131, class const + trades_margin_blocked counter 포함, 9 unit tests pass, critic APPROVED)
+6. BUG-75: v95 재시작 시 자동 해결 (max_hold_seconds=300 적용)
+7. BUG-76: ✅ 수정완료 (futures_futures.py:222,405 — adaptive p50 exit 제거, static 4.05bps, 8 unit tests pass, critic APPROVED)
 
 ### v95 재시작 (UTC 08:00 = KST 17:00 FR 결산 후)
 1. UTC 08:00 도달 → FR `_check_settlement_release()` 자동 4포지션 청산

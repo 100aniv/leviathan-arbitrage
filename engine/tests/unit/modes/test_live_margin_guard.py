@@ -145,8 +145,10 @@ class TestMarginGuardSourcePresence:
             p = pathlib.Path(__file__).parent.parent.parent.parent / "src/modes/live.py"
             source = p.read_text()
 
+        # _MIN_MARGIN_ENTRY_USD is a class constant — look for its runtime usage
+        # (self._MIN_MARGIN_ENTRY_USD) which only appears inside the guard block.
         idx_close_check = source.find("if not _is_close_req")
-        idx_margin_loop = source.find("_MIN_MARGIN_ENTRY_USD")
+        idx_margin_loop = source.find("self._MIN_MARGIN_ENTRY_USD")
         assert idx_close_check < idx_margin_loop, (
             "Close-request exemption must appear before per-leg margin loop"
         )

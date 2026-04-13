@@ -114,6 +114,7 @@ class LiveModeStats:
     max_drawdown_pct: float = 0.0
     trades_rejected: int = 0
     trades_risk_blocked: int = 0
+    trades_margin_blocked: int = 0  # BUG-74: entry blocked due to low futures margin
     winning_pnl_sum: float = 0.0
     losing_pnl_sum: float = 0.0
     by_strategy: dict[str, PerStrategyStats] = field(default_factory=dict)
@@ -177,6 +178,7 @@ class LiveMode(BaseMode):
     """
 
     STRATEGY_ID = "live_arb_v1"
+    _MIN_MARGIN_ENTRY_USD: float = 3.0  # BUG-74: block new futures entries below this free margin
 
     def __init__(
         self,
@@ -1116,15 +1118,15 @@ class LiveMode(BaseMode):
         # Prevents -2019 retry loops (e.g. FR 0G/USDT 185+ rollbacks when Binance margin < $1).
         # Reduce-only (exit) trades are exempt: they don't consume margin.
         if not _is_close_req:
-            _MIN_MARGIN_ENTRY_USD = 3.0
             for _leg in trade_request.legs:
                 if _leg.exchange_id and "futures" in _leg.exchange_id:
                     _cached = float(self._cached_margin.get(_leg.exchange_id, float("inf")))
-                    if _cached < _MIN_MARGIN_ENTRY_USD:
+                    if _cached < self._MIN_MARGIN_ENTRY_USD:
                         logger.warning(
                             "live_mode.entry_blocked_margin_low ex=%s margin=%.2f < %.2f",
-                            _leg.exchange_id, _cached, _MIN_MARGIN_ENTRY_USD,
+                            _leg.exchange_id, _cached, self._MIN_MARGIN_ENTRY_USD,
                         )
+                        self._stats.trades_margin_blocked += 1
                         self._notify_pre_exec_rollback(trade_request, sid)
                         return
 

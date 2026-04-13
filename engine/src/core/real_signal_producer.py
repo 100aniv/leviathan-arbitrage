@@ -575,7 +575,8 @@ class RealDataSignalProducer:
                         if (_now1 - self._outlier_log_cooldown.get(_olk1, 0.0) > 300.0
                                 and _now1 - self._outlier_global_last_log > 5.0):
                             logger.warning(
-                                "real_signal_producer.futures_spread_outlier",
+                                "real_signal_producer.futures_spread_outlier sym=%s bps=%.1f buy=%s sell=%s",
+                                symbol, spread_bps, ex_b, ex_a,
                                 extra={
                                     "symbol": symbol,
                                     "buy_ex": ex_b,
@@ -649,7 +650,8 @@ class RealDataSignalProducer:
                         if (_now2 - self._outlier_log_cooldown.get(_olk2, 0.0) > 300.0
                                 and _now2 - self._outlier_global_last_log > 5.0):
                             logger.warning(
-                                "real_signal_producer.futures_spread_outlier",
+                                "real_signal_producer.futures_spread_outlier sym=%s bps=%.1f buy=%s sell=%s",
+                                symbol, spread_bps, ex_a, ex_b,
                                 extra={
                                     "symbol": symbol,
                                     "buy_ex": ex_a,
