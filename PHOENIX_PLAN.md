@@ -17,7 +17,7 @@
 | 3 | 풀 통합 72H + 튜너 | ⏳ 대기 |
 
 **현재**: Phase 2 Step 2-2 — FF(27bps) + FR(6.55bps) 동시 운영  
-**PID**: TBD | **버전**: v95 | **시작**: 2026-04-13 ~17:30 KST  
+**PID**: 39440 | **버전**: v95 | **시작**: 2026-04-13 17:42 KST  
 **v94 종료**: 17:08 KST (BUG-77 settlement race condition → SIGTERM)
 
 ---
@@ -240,19 +240,13 @@ WS Orderbook → SignalGenerator + RealSignalProducer
 
 ## §8. 다음 실행 순서
 
-### 즉시 (v94 14:22 KST FF API 비활성화 — BUG-76 손실 차단)
-1. **v94 상태**: FF disabled via API (14:22 KST), FR 4포지션 (LA/MOVE/0G/ID) 대기중
-2. **UTC 08:00 (KST 17:00) FR 결산** → 4포지션 자동청산 → v95 재시작
-3. collision_key: ✅ 수정완료 (v94 배포, 98 tests pass)
-4. FF spread_exit: **0/3** (v94 all exits = BUG-76 artifacts, v95에서 재검증)
-5. BUG-74: ✅ 수정완료 (live.py:1115-1131, class const + trades_margin_blocked counter 포함, 9 unit tests pass, critic APPROVED)
-6. BUG-75: v95 재시작 시 자동 해결 (max_hold_seconds=300 적용)
-7. BUG-76: ✅ 수정완료 (futures_futures.py:222,405 — adaptive p50 exit 제거, static 4.05bps, 8 unit tests pass, critic APPROVED)
-
-### v95 재시작 (UTC 08:00 = KST 17:00 FR 결산 후)
-1. UTC 08:00 도달 → FR `_check_settlement_release()` 자동 4포지션 청산
-2. FR 청산 확인 (`settlement_exit` 로그 4건) 후 v94 graceful shutdown (SIGTERM)
-3. v95 시작 — FF+FR 동시, 3버그 픽스 자동 활성
+### v95 실행 중 (2026-04-13 17:42 KST~)
+- **PID**: 39440 | **FF+FR 동시 활성**
+- **FR**: ID/USDT 1건 체결 ($0.09), 0G/USDT 시도 → BUG-74 margin guard 차단 ($2.55 < $3.00)
+- **FF**: 27bps 미달 정상 대기 (시장 10.47bps)
+- **30분 결과**: ERROR=0, Trades=2(1체결+1차단), WARN=30(margin_low), crash=0, KS=0
+- **수정 반영**: BUG-73(27bps), BUG-74(margin guard), BUG-75(300s), BUG-76(4.05bps), BUG-77(120s cooldown)
+- **다음 검증**: UTC 16:00 (KST 01:00) FR 결산 → BUG-77 cooldown 실전 테스트
 
 ### v95+ 운영 원칙 (대기 시간 최소화)
 - **버그 발견 즉시**: close_positions.py --execute → SIGTERM → fix → 재시작
