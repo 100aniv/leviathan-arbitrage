@@ -520,6 +520,7 @@ class NativeBitgetAdapter(NativeAdapter):
                 for _k in list(self._exchange_order_id_map.keys())[:500]:
                     del self._exchange_order_id_map[_k]
         fill_price = order.price or Decimal("0")
+        fill_fee = Decimal("0")  # BUG-C: initialized here, updated in poll/fill-history paths
         # BUG-93: fill_qty default depends on market type AND order type:
         # - Futures MARKET: default 0 → polling block may update it; 0 on poll failure → rollback
         # - Futures LIMIT:  default 0 → limit may not have filled (no polling block runs)
@@ -556,9 +557,15 @@ class NativeBitgetAdapter(NativeAdapter):
                             fill_price = Decimal(str(_avg))
                         if _vol and Decimal(str(_vol)) > 0:
                             fill_qty = Decimal(str(_vol))
+                        # BUG-C: Extract fee from poll response (was silently ignored)
+                        _fee_str = _d.get("fee") or _d.get("totalFee") or "0"
+                        try:
+                            fill_fee = abs(Decimal(str(_fee_str)))
+                        except Exception:
+                            fill_fee = Decimal("0")
                         logger.debug(
-                            "bitget_futures_fill_polled symbol=%s orderId=%s attempt=%d status=%s price=%s qty=%s",
-                            order.symbol, trade_id, _attempt + 1, _status, fill_price, fill_qty,
+                            "bitget_futures_fill_polled symbol=%s orderId=%s attempt=%d status=%s price=%s qty=%s fee=%s",
+                            order.symbol, trade_id, _attempt + 1, _status, fill_price, fill_qty, fill_fee,
                         )
                         if _status == "filled":
                             break  # stop polling on full fill; keep polling partial
@@ -615,14 +622,18 @@ class NativeBitgetAdapter(NativeAdapter):
                     if isinstance(_fills, list) and _fills:
                         _total_qty = Decimal("0")
                         _weighted_price = Decimal("0")
+                        _total_fee = Decimal("0")
                         for _f in _fills:
                             _fq = Decimal(str(_f.get("baseVolume") or _f.get("size") or _f.get("qty") or "0"))
                             _fp = Decimal(str(_f.get("price") or _f.get("priceAvg") or "0"))
+                            _ff = abs(Decimal(str(_f.get("fee") or _f.get("totalFee") or "0")))
                             _total_qty += _fq
                             _weighted_price += _fq * _fp
+                            _total_fee += _ff
                         if _total_qty > 0:
                             fill_qty = _total_qty
                             fill_price = _weighted_price / _total_qty
+                            fill_fee = _total_fee
                             logger.info(
                                 "bitget_futures_fill_recovered orderId=%s symbol=%s qty=%s price=%s attempt=%d",
                                 trade_id, order.symbol, fill_qty, fill_price, _fill_attempt + 1,
@@ -663,15 +674,19 @@ class NativeBitgetAdapter(NativeAdapter):
                         # CRITICAL-1: aggregate ALL partial fills for this orderId (mirror lines 551-560)
                         _tb_total_qty = Decimal("0")
                         _tb_weighted_price = Decimal("0")
+                        _tb_total_fee = Decimal("0")
                         for _f in _fb_data:
                             if str(_f.get("orderId", "")) == trade_id:
                                 _fq = Decimal(str(_f.get("baseVolume") or _f.get("size") or _f.get("qty") or "0"))
                                 _fp = Decimal(str(_f.get("price") or _f.get("priceAvg") or "0"))
+                                _ff = abs(Decimal(str(_f.get("fee") or _f.get("totalFee") or "0")))
                                 _tb_total_qty += _fq
                                 _tb_weighted_price += _fq * _fp
+                                _tb_total_fee += _ff
                         if _tb_total_qty > 0:
                             fill_qty = _tb_total_qty
                             fill_price = _tb_weighted_price / _tb_total_qty
+                            fill_fee = _tb_total_fee
                             logger.info(
                                 "bitget_futures_fill_recovered_time_query orderId=%s symbol=%s qty=%s price=%s",
                                 trade_id, order.symbol, fill_qty, fill_price,
@@ -690,6 +705,7 @@ class NativeBitgetAdapter(NativeAdapter):
             trade_id=trade_id,
             price=fill_price,
             amount=fill_qty,
+            fee=fill_fee,
         )
 
     async def place_ioc_limit(
