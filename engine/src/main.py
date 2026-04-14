@@ -1315,11 +1315,22 @@ class Engine:
                     except RuntimeError:
                         pass
 
+            from src.core.config_loader import get_config as _gc_cb
+            _cb_mdd = float(_gc_cb("risk.circuit_breaker_mdd_threshold", default=0.02))
+            _cb_loss = int(_gc_cb("risk.circuit_breaker_consecutive_loss_limit", default=5))
+            _cb_err = float(_gc_cb("risk.circuit_breaker_api_error_rate_threshold", default=0.20))
+            _cb_cool = float(_gc_cb("risk.circuit_breaker_cooldown_seconds", default=300.0))
+            _cb_half = int(_gc_cb("risk.circuit_breaker_half_open_test_count", default=3))
+
             self._circuit_breaker = CircuitBreaker(
-                consecutive_loss_limit=3,
+                mdd_threshold=_cb_mdd,
+                consecutive_loss_limit=_cb_loss,
+                api_error_rate_threshold=_cb_err,
+                cooldown_seconds=_cb_cool,
+                half_open_test_count=_cb_half,
                 on_state_change=cb_state_callback,
             )
-            logger.info("CircuitBreaker initialized")
+            logger.info("CircuitBreaker initialized", mdd=_cb_mdd, loss_limit=_cb_loss, cooldown=_cb_cool)
         except Exception as exc:
             logger.warning("CircuitBreaker init failed: %s", exc)
 

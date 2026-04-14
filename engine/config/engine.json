@@ -24,14 +24,11 @@
   },
 
   "api": {
-    "port": 8000,
-    "ws_port": 8001,
-    "workers": 4
+    "port": 8000
   },
 
   "exchanges": {
     "active": ["binance", "bitget", "upbit", "coinone", "bithumb", "binance_futures", "bitget_futures"],
-    "inactive_reserved": ["bybit", "okx", "mexc", "gateio", "bybit_futures", "okx_futures"],
     "symbols": ["auto"],
     "symbol_min_exchanges": 2,
     "symbol_exclusions_per_exchange": {
@@ -76,7 +73,11 @@
     "min_edge_bps": 0,
     "min_price_usd": 0.10,
     "max_rollback_threshold": 0.02,
-    "kill_switch_enabled": true
+    "circuit_breaker_mdd_threshold": 0.02,
+    "circuit_breaker_consecutive_loss_limit": 5,
+    "circuit_breaker_api_error_rate_threshold": 0.20,
+    "circuit_breaker_cooldown_seconds": 300.0,
+    "circuit_breaker_half_open_test_count": 3
   },
 
   "dynamic_risk": {
@@ -96,15 +97,11 @@
   "paper": {
     "_comment": "Paper mode: live WS data + SimExecutor",
     "depth_fraction": 1.0,
-    "max_trade_size_pct": 2.0,
-    "disabled_strategies": [],
-    "max_loss_per_trade_pct": 1.0,
-    "progressive_enabled": false
+    "disabled_strategies": []
   },
 
   "live": {
     "_comment": "Live mode (Phase I+): small capital = capital.tiers.alpha, full = production. Replaces shadow mode.",
-    "capital_pct": 5.0,
     "max_position_pct": 6.0,
     "max_daily_loss_pct": 5.0,
     "exchanges": ["binance", "bitget", "upbit", "coinone", "bithumb", "binance_futures", "bitget_futures"]
@@ -123,7 +120,7 @@
     "_comment": "See config/strategy_params.json for per-strategy tuning"
   },
 
-  "tuner": { "data_source": "timescaledb" },
+  "tuner": {},
 
   "db": {
     "host": "localhost",
@@ -138,7 +135,6 @@
 
   "monitoring": {
     "prometheus_port": 8000,
-    "grafana_admin_user": "admin",
     "engine_url": "http://engine:8000",
     "monitor_interval_sec": 300
   },
@@ -154,9 +150,7 @@
   },
 
   "slippage": {
-    "model": "cex_orderbook",
     "k_default": 1.0,
-    "powerlaw_k": 0.0,
     "conservative_multiplier": 1.5,
     "gamma": 0.5,
     "gamma_calibrated": false,
