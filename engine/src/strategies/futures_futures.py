@@ -619,14 +619,16 @@ class FuturesFuturesStrategy(BaseStrategy):
             # BUG-14 fix: use estimate_futures_cost — single rollback, no network cost
             # (futures P&L settled in USDT; prior 2×estimate_cost doubled rollback $0.25×2=$0.50)
             if hasattr(self._cost_calculator, "estimate_futures_cost"):
-                # entry_only=True: 신호 생성 시점에서는 진입 수수료만 판단.
-                # 청산 수수료(exit fee)는 실제 청산 시 발생하며 signal gate에서 이중 계산 방지.
+                # BUG-73/82: MUST use entry_only=False (round-trip cost).
+                # FF is convergence arb: entry (2 legs) + exit (2 legs) = 4-leg round trip.
+                # entry_only=True underestimates fees by 50% → accepts trades that lose money.
+                # The gate must check full round-trip to ensure profitability.
                 total_cost = self._cost_calculator.estimate_futures_cost(
                     buy_exchange=signal.buy_exchange,
                     sell_exchange=signal.sell_exchange,
                     buy_notional=buy_notional,
                     sell_notional=sell_notional,
-                    entry_only=True,
+                    entry_only=False,
                 )
             else:
                 # Fallback for stub: fees only via estimate_cost (no network, no rollback)
