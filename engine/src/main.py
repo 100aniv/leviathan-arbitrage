@@ -1332,7 +1332,7 @@ class Engine:
                 half_open_test_count=_cb_half,
                 on_state_change=cb_state_callback,
             )
-            logger.info("CircuitBreaker initialized", mdd=_cb_mdd, loss_limit=_cb_loss, cooldown=_cb_cool)
+            logger.info("CircuitBreaker initialized mdd=%.3f loss_limit=%d cooldown=%.0f", _cb_mdd, _cb_loss, _cb_cool)
         except Exception as exc:
             logger.warning("CircuitBreaker init failed: %s", exc)
 
