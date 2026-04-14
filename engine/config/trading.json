@@ -35,9 +35,7 @@
     "model": "cex_orderbook",
     "k_default": 1.0,
     "powerlaw_k": 0.0,
-    "conservative_multiplier": 1.5,
-    "gamma": 0.5,
-    "gamma_calibrated": false
+    "gamma": 0.5
   },
   "execution": {
     "leg_timeout_ms": 1000,
@@ -45,29 +43,11 @@
     "reconciliation_interval_s": 60,
     "recovery_reconciliation_interval_s": 60,
     "min_trade_notional_usd": 5,
-    "max_concurrent_trades": 2,
-    "symbol_cooldown_s": 30,
-    "default_futures_leverage": 5
-  },
-  "phase_gates": {
-    "phase": "alpha",
-    "alpha_capital_per_exchange": 70,
-    "beta_capital_per_exchange": 750
+    "max_concurrent_trades": 2
   },
   "symbol_discovery": {
     "mode": "auto",
     "min_exchanges": 3
-  },
-  "min_volume_usd": 10000,
-  "max_single_loss_usd": 50,
-  "capital_allocation_pct": {
-    "cross_exchange": 35,
-    "futures_futures": 20,
-    "statistical_arb": 15,
-    "funding_rate": 15,
-    "spot_futures": 5,
-    "triangular": 5,
-    "cex_dex": 5
   },
   "strategy_filters": {
     "funding_zscore_threshold": -1,
@@ -91,58 +71,5 @@
     ],
     "depth_fraction": 1.0,
     "max_trade_size": 100
-  },
-  "symbols": {
-    "mode": "auto",
-    "min_exchanges": 3,
-    "min_price_usd": 0.1
-  },
-  "strategy_exchange_requirements": {
-    "cross_exchange_v1": {
-      "min_exchanges": 2,
-      "required_types": [
-        "spot"
-      ],
-      "description": "거래소 간 가격 차이를 이용한 차익거래"
-    },
-    "spot_futures_v1": {
-      "min_exchanges": 1,
-      "required_types": [
-        "spot",
-        "futures"
-      ],
-      "same_exchange": true,
-      "description": "현물-선물 베이시스 차익거래"
-    },
-    "futures_futures_v1": {
-      "min_exchanges": 2,
-      "required_types": [
-        "futures"
-      ],
-      "description": "선물 간 가격 차이 차익거래"
-    },
-    "triangular_v1": {
-      "min_exchanges": 1,
-      "same_exchange": true,
-      "description": "동일 거래소 내 3자 순환 차익거래"
-    },
-    "funding_rate_v1": {
-      "min_exchanges": 1,
-      "required_types": [
-        "futures"
-      ],
-      "description": "펀딩레이트 캐리 트레이드"
-    },
-    "statistical_arb_v1": {
-      "min_exchanges": 1,
-      "description": "통계적 페어 트레이딩 (공적분 기반)"
-    },
-    "cex_dex_v1": {
-      "min_exchanges": 1,
-      "required_types": [
-        "dex"
-      ],
-      "description": "CEX-DEX 간 차익거래"
-    }
   }
 }

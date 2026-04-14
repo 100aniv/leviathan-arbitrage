@@ -476,7 +476,7 @@ class TradeTelegramBot(TelegramBotBase):
         from src.core.config_loader import get_config as _gc
         params: dict[str, str] = {
             "MIN_EDGE_BPS": str(_gc("risk.min_edge_bps", default=_gc("strategy_filters.min_edge_bps", default=5))),
-            "MDD_LIMIT": str(_gc("dynamic_risk.max_drawdown_pct", default=0.05)),
+            "MDD_LIMIT": str(_gc("risk.max_daily_loss_pct", default=50.0)),
             "MAX_POSITION_SIZE": str(_gc("risk.max_position_usd", default=1000)),
             "SLIPPAGE_GAMMA": str(_gc("slippage.gamma", default=0.5)),
             "ENGINE_ENV": str(_gc("env", default="dev")),

@@ -530,14 +530,14 @@ class NativeBitgetAdapter(NativeAdapter):
         fill_qty = order.amount if (self._market_type != "futures" and _order_is_market) else Decimal("0")
 
         # BUG-61: Bitget place-order response omits fill price/qty for MARKET orders.
-        # Poll /api/v2/mix/order/detail up to 5 times to get actual avgPrice + baseVolume.
-        # BUG-37: Increased from 3→5 attempts at 0.3s (was 0.2s) to handle slower fills.
-        # Also accept "partially_filled" status to capture priceAvg before full fill confirmed.
+        # Poll /api/v2/mix/order/detail up to 3 times to get actual avgPrice + baseVolume.
+        # BUG-37: Originally 3→5 attempts at 0.3s; reduced to 3×0.2s — MARKET fills are near-instant,
+        # polling is confirmation only. Fill-history fallback handles edge cases.
         import asyncio as _asyncio
         _order_not_in_active = False  # BUG-105: set True when 43001 received
         if self._market_type == "futures" and _is_market and trade_id:
-            for _attempt in range(5):
-                await _asyncio.sleep(0.3)
+            for _attempt in range(3):
+                await _asyncio.sleep(0.2)
                 try:
                     _detail = await self._request(
                         "GET", "/api/v2/mix/order/detail",

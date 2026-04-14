@@ -529,6 +529,53 @@ async def test_capital_lock_released_on_rollback(
 
 
 # ---------------------------------------------------------------------------
+# BUG-B: Edge evaporation — min_edge re-validation between legs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cross_exchange_edge_evaporation_rollback(
+    executor: AtomicExecutor, exchange_a: MagicMock, exchange_b: MagicMock
+) -> None:
+    """BUG-B: If spread evaporates after leg1 fill, leg1 is rolled back before leg2."""
+    # exchange_b orderbook shows unprofitable spread (best_bid < leg1 fill price)
+    exchange_b.get_orderbook_snapshot = AsyncMock(return_value=MagicMock(
+        best_ask=Decimal("50001"),
+        best_bid=Decimal("49999"),
+    ))
+    leg1 = make_order("binance", OrderSide.BUY)
+    leg2 = make_order("okx", OrderSide.SELL)
+    result = await executor.execute_cross_exchange(
+        leg1_order=leg1, leg2_order=leg2,
+        strategy_id="strat_1", min_edge=Decimal("0.001"),
+    )
+    assert result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.ROLLBACK_FAILED)
+    assert "Edge evaporated" in (result.error or "")
+    # leg2 must never have been submitted
+    exchange_b.place_order.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cross_exchange_edge_ok_proceeds(
+    executor: AtomicExecutor, exchange_a: MagicMock, exchange_b: MagicMock
+) -> None:
+    """BUG-B: If spread is still viable after leg1 fill, leg2 proceeds normally."""
+    # exchange_b orderbook shows profitable spread
+    exchange_b.get_orderbook_snapshot = AsyncMock(return_value=MagicMock(
+        best_ask=Decimal("50200"),
+        best_bid=Decimal("50100"),
+    ))
+    leg1 = make_order("binance", OrderSide.BUY)
+    leg2 = make_order("okx", OrderSide.SELL)
+    result = await executor.execute_cross_exchange(
+        leg1_order=leg1, leg2_order=leg2,
+        strategy_id="strat_1", min_edge=Decimal("0.001"),
+    )
+    assert result.status == ExecutionStatus.SUCCESS
+    exchange_b.place_order.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # _rollback_order — symbol propagation (newly fixed path)
 # ---------------------------------------------------------------------------
 

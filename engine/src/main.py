@@ -1428,10 +1428,12 @@ class Engine:
         # US-118: CorrelationMonitor → Guardian integration
         try:
             from src.risk.correlation_monitor import CorrelationMonitor
-            self._correlation_monitor = CorrelationMonitor(window=30, threshold=0.7)
+            _corr_window = int(_rg_gc("risk.correlation_window", default=30))
+            _corr_threshold = float(_rg_gc("risk.correlation_threshold", default=0.7))
+            self._correlation_monitor = CorrelationMonitor(window=_corr_window, threshold=_corr_threshold)
             if self._risk_guardian is not None:
                 self._risk_guardian.correlation_monitor = self._correlation_monitor
-            logger.info("CorrelationMonitor initialized (window=30, threshold=0.7)")
+            logger.info("CorrelationMonitor initialized (window=%d, threshold=%.1f)", _corr_window, _corr_threshold)
         except Exception as exc:
             logger.warning("CorrelationMonitor init failed (non-fatal): %s", exc)
 
@@ -1457,10 +1459,17 @@ class Engine:
         # SIT-3: FlashGuard — rapid price movement detection (5min window, 3% threshold)
         try:
             from src.risk.flash_guard import FlashGuard
-            self._flash_guard = FlashGuard()
+            _fg_threshold = float(_rg_gc("risk.flash_guard_threshold_pct", default=3.0))
+            _fg_window = int(_rg_gc("risk.flash_guard_window_s", default=300))
+            _fg_cooldown = int(_rg_gc("risk.flash_guard_cooldown_s", default=60))
+            self._flash_guard = FlashGuard(
+                threshold_pct=_fg_threshold,
+                window_seconds=_fg_window,
+                cooldown_seconds=_fg_cooldown,
+            )
             if self._risk_guardian is not None:
                 self._risk_guardian.flash_guard = self._flash_guard
-            logger.info("FlashGuard initialized (threshold=3%%, window=300s, cooldown=60s)")
+            logger.info("FlashGuard initialized (threshold=%.1f%%, window=%ds, cooldown=%ds)", _fg_threshold, _fg_window, _fg_cooldown)
         except Exception as exc:
             logger.warning("FlashGuard init failed (non-fatal): %s", exc)
 

@@ -70,7 +70,7 @@
     "use_percentage": true,
     "max_position_pct": 6.0,
     "max_daily_loss_pct": 50.0,
-    "max_net_exposure_pct": 10.0,
+    "max_net_exposure_per_asset": 5000,
     "min_edge_bps": 0,
     "min_price_usd": 0.10,
     "max_rollback_threshold": 0.02,
@@ -78,7 +78,12 @@
     "circuit_breaker_consecutive_loss_limit": 5,
     "circuit_breaker_api_error_rate_threshold": 0.20,
     "circuit_breaker_cooldown_seconds": 300.0,
-    "circuit_breaker_half_open_test_count": 3
+    "circuit_breaker_half_open_test_count": 3,
+    "correlation_window": 30,
+    "correlation_threshold": 0.7,
+    "flash_guard_threshold_pct": 3.0,
+    "flash_guard_window_s": 300,
+    "flash_guard_cooldown_s": 60
   },
 
   "dynamic_risk": {
@@ -92,7 +97,11 @@
     "default_futures_leverage": 5,
     "leg_timeout_ms": 15000,
     "max_concurrent_trades": 2,
-    "symbol_cooldown_s": 30
+    "symbol_cooldown_s": 30,
+    "exchange_min_notional": {
+      "binance_futures": 5,
+      "bitget_futures": 6
+    }
   },
 
   "paper": {

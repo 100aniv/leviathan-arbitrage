@@ -395,15 +395,16 @@ class BinanceNativeAdapter(NativeAdapter):
         trade_id = str(raw.get("orderId", ""))
 
         # PHOENIX: Binance Futures MARKET orders return status="NEW" executedQty="0" initially.
-        # Poll order status up to 3 times (200ms each) until status="FILLED".
+        # Poll order status up to 2 times (100ms each) until status="FILLED".
+        # MARKET orders fill instantly on futures; polling is confirmation only.
         if (
             self._market_type == "futures"
             and order.order_type == OrderType.MARKET
             and raw.get("status") in (_ORDER_STATUS_NEW, None)
             and trade_id
         ):
-            for _attempt in range(3):
-                await asyncio.sleep(0.2)
+            for _attempt in range(2):
+                await asyncio.sleep(0.1)
                 try:
                     _qp = {"symbol": _symbol_to_binance(order.symbol), "orderId": trade_id}
                     raw = await self._signed_request("GET", path, params=_qp)
