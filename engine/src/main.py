@@ -98,6 +98,13 @@ class Engine:
         self.context = context or EngineContext()
         self.state = EngineState()
         self._shutdown_event = asyncio.Event()
+        # BUG-83: engine.json exchanges.active is the SOLE source of truth for active exchanges.
+        # Pydantic default only has spot exchanges (missing futures). Load once, use everywhere.
+        try:
+            from src.core.config import load_engine_config as _lec_init
+            self._active_exchanges: list[str] = _lec_init().get("exchanges", {}).get("active", [])
+        except Exception:
+            self._active_exchanges = ["binance", "bitget", "binance_futures", "bitget_futures"]
 
         # Subsystem references (populated during init)
         self._settings: Settings | None = None
@@ -789,10 +796,7 @@ class Engine:
         use_native = (
             self._settings.trading.use_native_adapters if self._settings else False
         )
-        exchanges = (
-            self._settings.trading.active_exchanges if self._settings
-            else _get_fallback_exchanges()
-        )
+        exchanges = self._active_exchanges or _get_fallback_exchanges()
         if use_native:
             await self._init_native_exchanges(exchanges, sandbox=True)
         else:
@@ -808,11 +812,7 @@ class Engine:
         _mode_cfg = _engine_cfg.get(_em.value, {}) if _em is not None else {}
         _cfg_exchanges = _mode_cfg.get("exchanges")
 
-        exchanges = (
-            _cfg_exchanges
-            or (self._settings.trading.active_exchanges if self._settings
-                else _get_fallback_exchanges())
-        )
+        exchanges = _cfg_exchanges or self._active_exchanges or _get_fallback_exchanges()
 
         # Native adapters are the default for shadow/live (ccxt-free)
         await self._init_native_exchanges(exchanges, sandbox=False)
@@ -2621,7 +2621,7 @@ class Engine:
                 pass
 
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-        exchanges = self._settings.trading.active_exchanges if self._settings else _get_fallback_exchanges()
+        exchanges = self._active_exchanges or _get_fallback_exchanges()
 
         self._collector_manager = CollectorManager(
             symbols=symbols,
@@ -2673,10 +2673,7 @@ class Engine:
 
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
         # Phase H-2: use mode-specific exchanges from config/engine.json
-        exchanges = _mode_cfg.get("exchanges") or (
-            self._settings.trading.active_exchanges if self._settings
-            else ["binance", "bybit", "okx", "bitget"]
-        )
+        exchanges = _mode_cfg.get("exchanges") or self._active_exchanges or _get_fallback_exchanges()
 
         # Create MultiStrategySignalProducer
         self._multi_signal_producer = MultiStrategySignalProducer(
@@ -3022,7 +3019,7 @@ class Engine:
             from src.modes.paper import PaperMode
 
             symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-            exchanges = self._settings.trading.active_exchanges if self._settings else _get_fallback_exchanges()
+            exchanges = self._active_exchanges or _get_fallback_exchanges()
 
             # Create MultiStrategySignalProducer for 6 additional strategies
             from src.core.multi_signal import MultiStrategySignalProducer
@@ -3178,7 +3175,7 @@ class Engine:
         from src.modes.strategy_validation import StrategyValidationOrchestrator
 
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-        exchanges = self._settings.trading.active_exchanges if self._settings else _get_fallback_exchanges()
+        exchanges = self._active_exchanges or _get_fallback_exchanges()
 
         multi_signal_producer = MultiStrategySignalProducer(
             event_bus=self._event_bus,
@@ -3258,7 +3255,7 @@ class Engine:
         from src.modes.progressive_shadow import ProgressiveShadowOrchestrator
 
         symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-        exchanges = self._settings.trading.active_exchanges if self._settings else _get_fallback_exchanges()
+        exchanges = self._active_exchanges or _get_fallback_exchanges()
 
         # Create MultiStrategySignalProducer for 6 additional strategies
         from src.core.multi_signal import MultiStrategySignalProducer
