@@ -980,8 +980,10 @@ class Engine:
         try:
             from src.friction.slippage_feedback import SlippageFeedbackCollector
             _slippage_fb_collector = SlippageFeedbackCollector()
+            self._slippage_fb_collector = _slippage_fb_collector
             logger.info("SlippageFeedbackCollector initialized")
         except Exception as exc:
+            self._slippage_fb_collector = None
             logger.warning("SlippageFeedbackCollector init failed (non-fatal): %s", exc)
 
         self._signal_generator = SignalGenerator(
@@ -2712,6 +2714,7 @@ class Engine:
             portfolio_risk=getattr(self, "_portfolio_risk", None),
             execution_mode=execution_mode,
             tca_analyzer=getattr(self, "_tca_analyzer", None),
+            slippage_feedback_collector=getattr(self, "_slippage_fb_collector", None),
         )
 
         try:
