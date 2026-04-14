@@ -632,7 +632,19 @@ class Engine:
                 except Exception as exc:
                     logger.warning("PortfolioRiskManager init failed (non-fatal): %s", exc)
         except Exception as exc:
-            logger.warning("TimescaleDB init failed (non-fatal, paper mode ok): %s", exc)
+            # BUG-81: DB must be healthy in live mode — trade records are the ledger.
+            # Redis is volatile; without DB, position history is lost on restart.
+            from src.core.config import load_engine_config as _lec_db
+            _mode = _lec_db().get("mode", "paper")
+            if _mode == "live":
+                logger.critical(
+                    "TimescaleDB init FAILED in LIVE mode — aborting. "
+                    "Fix DB before running live. Error: %s", exc,
+                )
+                raise SystemExit(
+                    f"FATAL: Cannot run live mode without DB. Fix TimescaleDB. Error: {exc}"
+                ) from exc
+            logger.warning("TimescaleDB init failed (non-fatal in paper mode): %s", exc)
 
     def _init_telegram(self) -> None:
         """Initialize 3-Bot Telegram system (Trade/Infra/Dev) from environment variables.

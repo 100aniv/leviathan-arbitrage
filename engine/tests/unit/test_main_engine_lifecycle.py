@@ -200,12 +200,24 @@ class TestEngineInitDatabase:
 
     @pytest.mark.asyncio
     async def test_init_database_pool_failure_nonfatal(self):
+        """DB failure is non-fatal in paper mode (BUG-81: fatal in live)."""
         engine = _make_engine()
         with patch.dict(os.environ, {"DATABASE_URL": "postgresql://user:pass@localhost/db"}):
             with patch("src.infra.db.connection.DatabasePool", side_effect=Exception("db error")):
-                await engine._init_database()  # must not raise
+                with patch("src.core.config.load_engine_config", return_value={"mode": "paper"}):
+                    await engine._init_database()  # must not raise in paper
 
         assert engine._db_pool is None
+
+    @pytest.mark.asyncio
+    async def test_init_database_pool_failure_fatal_in_live(self):
+        """BUG-81: DB failure in live mode must abort — trade ledger required."""
+        engine = _make_engine()
+        with patch.dict(os.environ, {"DATABASE_URL": "postgresql://user:pass@localhost/db"}):
+            with patch("src.infra.db.connection.DatabasePool", side_effect=Exception("db error")):
+                with patch("src.core.config.load_engine_config", return_value={"mode": "live"}):
+                    with pytest.raises(SystemExit):
+                        await engine._init_database()
 
     @pytest.mark.asyncio
     async def test_init_database_no_url_uses_default(self):
