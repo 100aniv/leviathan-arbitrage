@@ -19,6 +19,7 @@ Check ordering:
 """
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -116,9 +117,10 @@ class RiskGuardian:
         self._max_rollback_threshold = max_rollback_threshold
         # Amendment 7: 0 = disabled (no correlation check)
         self._max_net_exposure_per_asset = max_net_exposure_per_asset
-        # US-154: max concurrent open positions (BUG-80: use constructor param, not config override)
-        # Config source: strategy_filters.futures_max_concurrent_positions, wired in main.py
-        self._max_concurrent_positions: int = max(1, min(max_concurrent_positions, 1000))
+        # US-154: max concurrent open positions (BUG-80: constructor param from config, env var override)
+        _env_mcp = os.environ.get("MAX_CONCURRENT_POSITIONS")
+        _mcp = int(_env_mcp) if _env_mcp else max_concurrent_positions
+        self._max_concurrent_positions: int = max(1, min(_mcp, 1000))
         # US-196: per-strategy capital allocation limits
         self._capital_allocation_pct: dict[str, float] = capital_allocation_pct or {}
         # US-222/228: per-strategy circuit breaker (optional, set externally)
