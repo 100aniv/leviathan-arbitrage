@@ -62,7 +62,8 @@
     "enable_funding_convergence": true,
     "enable_latency_budget": false,
     "triangular_max_latency_ms": 500,
-    "futures_min_edge_bps": 10
+    "futures_min_edge_bps": 10,
+    "max_market_impact_bps": 20
   },
 
   "risk": {
@@ -83,7 +84,9 @@
     "correlation_threshold": 0.7,
     "flash_guard_threshold_pct": 3.0,
     "flash_guard_window_s": 300,
-    "flash_guard_cooldown_s": 60
+    "flash_guard_cooldown_s": 60,
+    "max_cumulative_slippage_bps": 50,
+    "slippage_window_trades": 10
   },
 
   "dynamic_risk": {
@@ -98,6 +101,8 @@
     "leg_timeout_ms": 15000,
     "max_concurrent_trades": 2,
     "symbol_cooldown_s": 30,
+    "limit_fallback_spread_bps": 30,
+    "limit_fallback_timeout_ms": 5000,
     "exchange_min_notional": {
       "binance_futures": 5,
       "bitget_futures": 6
@@ -108,6 +113,10 @@
     "_comment": "Paper mode: live WS data + SimExecutor",
     "depth_fraction": 1.0,
     "disabled_strategies": []
+  },
+
+  "backtest": {
+    "latency_ms": 500
   },
 
   "live": {

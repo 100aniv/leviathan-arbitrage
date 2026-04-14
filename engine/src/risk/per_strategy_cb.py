@@ -226,6 +226,16 @@ class PerStrategyCB:
             if e.state in (CBState.ACTIVE, CBState.THROTTLED)
         )
 
+    def force_halt(self, strategy_id: str, reason: str = "") -> None:
+        """Force HALTED state for a strategy (external trigger, e.g. slippage limit)."""
+        entry = self._entry(strategy_id)
+        if entry.state not in (CBState.HALTED, CBState.SUSPENDED):
+            logger.warning(
+                "per_strategy_cb.force_halt strategy=%s reason=%s",
+                strategy_id, reason,
+            )
+            self._transition(strategy_id, entry, CBState.HALTED, time.monotonic())
+
     def all_states(self) -> dict[str, str]:
         """Return {strategy_id: state_name} for all tracked strategies."""
         return {sid: e.state.name for sid, e in self._strategies.items()}

@@ -121,6 +121,10 @@ class ExecutionConfig:
     post_reconcile_delay_s: float = float(_RECONCILIATION_INTERVAL_S)
     per_exchange_budget_usd: Decimal = Decimal("100000")  # BUG-33: per-exchange margin budget; override from engine.json in production
     health_threshold: float = _HEALTH_THRESHOLD
+    # Order splitting (VWAP-style): split large orders into chunks to reduce market impact
+    split_threshold_usd: Decimal = Decimal("50")
+    split_max_chunks: int = 3
+    split_delay_ms: int = 200
 
 
 class AtomicExecutor:
@@ -199,6 +203,100 @@ class AtomicExecutor:
         logger.debug("executor_timeout_ms_config timeout_ms=%s", self._config.timeout_ms)
         timeout_s = self._config.timeout_ms / 1000.0
         return await asyncio.wait_for(adapter.place_order(order), timeout=timeout_s)
+
+    async def _place_maybe_split(self, adapter: ExchangeAdapter, order: Order) -> Trade:
+        """Place order, splitting into VWAP chunks if notional exceeds threshold.
+
+        Below threshold (or no price): single order via _place_with_timeout.
+        Above threshold: split into N equal chunks submitted sequentially with
+        configurable delay.  Aggregates fills into a single Trade with VWAP price.
+        Stops on first chunk failure and returns partial fill result.
+        """
+        if order.price is None or order.price <= 0:
+            return await self._place_with_timeout(adapter, order)
+
+        notional = order.amount * order.price
+        if notional <= self._config.split_threshold_usd:
+            return await self._place_with_timeout(adapter, order)
+
+        n_chunks = min(
+            self._config.split_max_chunks,
+            max(1, int(notional / self._config.split_threshold_usd) + 1),
+        )
+        if n_chunks <= 1:
+            return await self._place_with_timeout(adapter, order)
+
+        step = Decimal("0")
+        try:
+            step = await adapter.get_lot_step(order.symbol)
+        except Exception:
+            pass
+
+        chunk_amount = order.amount / n_chunks
+        if step > 0:
+            chunk_amount = (chunk_amount // step) * step
+        if chunk_amount <= 0:
+            return await self._place_with_timeout(adapter, order)
+
+        delay_s = self._config.split_delay_ms / 1000.0
+        total_qty = Decimal("0")
+        total_cost = Decimal("0")
+        total_fee = Decimal("0")
+        last_trade: Trade | None = None
+        remaining = order.amount
+
+        for i in range(n_chunks):
+            qty = remaining if i == n_chunks - 1 else min(chunk_amount, remaining)
+            if step > 0:
+                qty = (qty // step) * step
+            if qty <= 0:
+                break
+
+            chunk_order = order.model_copy(update={
+                "amount": qty,
+                "order_id": f"{order.order_id or 'split'}-{i}",
+            })
+
+            try:
+                trade = await self._place_with_timeout(adapter, chunk_order)
+                total_qty += trade.amount
+                total_cost += trade.amount * trade.price
+                total_fee += trade.fee
+                remaining -= trade.amount
+                last_trade = trade
+            except Exception:
+                if last_trade is not None:
+                    logger.warning(
+                        "order_split_partial chunk=%d/%d filled_qty=%s symbol=%s",
+                        i, n_chunks, total_qty, order.symbol,
+                    )
+                    break
+                raise
+
+            if i < n_chunks - 1 and delay_s > 0:
+                await asyncio.sleep(delay_s)
+
+        if last_trade is None or total_qty <= 0:
+            return await self._place_with_timeout(adapter, order)
+
+        vwap_price = total_cost / total_qty
+        _async_log_info(
+            "order_split_complete chunks=%d total_qty=%s vwap=%s symbol=%s",
+            n_chunks, total_qty, vwap_price, order.symbol,
+        )
+        return Trade(
+            trade_id=f"split-{last_trade.trade_id}",
+            order_id=order.order_id,
+            exchange_id=order.exchange_id,
+            symbol=order.symbol,
+            side=order.side,
+            price=vwap_price,
+            amount=total_qty,
+            fee=total_fee,
+            fee_currency=last_trade.fee_currency,
+            timestamp=last_trade.timestamp,
+            metadata={"split_chunks": n_chunks, "vwap": True},
+        )
 
     async def _rollback_order(
         self, exchange_id: str, order: Order, order_id: str | None = None,
@@ -411,10 +509,10 @@ class AtomicExecutor:
                     error="Engine halted (pre-leg1 TOCTOU check)",
                     strategy_id=strategy_id,
                 )
-            # Submit both legs in parallel
+            # Submit both legs in parallel (split large orders into VWAP chunks)
             results = await asyncio.gather(
-                self._place_with_timeout(adapter, leg1_order),
-                self._place_with_timeout(adapter, leg2_order),
+                self._place_maybe_split(adapter, leg1_order),
+                self._place_maybe_split(adapter, leg2_order),
                 return_exceptions=True,
             )
 
@@ -568,7 +666,7 @@ class AtomicExecutor:
                 error_msg: str | None = None
                 trade: Trade | None = None
                 try:
-                    trade = await self._place_with_timeout(adapter, order)
+                    trade = await self._place_maybe_split(adapter, order)
                 except asyncio.TimeoutError:
                     error_msg = "timeout"
                     logger.error(
@@ -931,7 +1029,7 @@ class AtomicExecutor:
 
             # Step 8: Submit Leg 1 on Exchange A
             try:
-                leg1_trade = await self._place_with_timeout(adapter_a, leg1_order)
+                leg1_trade = await self._place_maybe_split(adapter_a, leg1_order)
                 leg1_result = LegResult(
                     order=leg1_order, trade=leg1_trade,
                     expected_price=leg1_order.price,
@@ -1149,7 +1247,7 @@ class AtomicExecutor:
 
             # Step 10: Submit Leg 2 on Exchange B
             try:
-                leg2_trade = await self._place_with_timeout(adapter_b, adjusted_leg2)
+                leg2_trade = await self._place_maybe_split(adapter_b, adjusted_leg2)
                 leg2_result = LegResult(
                     order=adjusted_leg2, trade=leg2_trade,
                     expected_price=adjusted_leg2.price,

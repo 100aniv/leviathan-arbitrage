@@ -251,6 +251,24 @@ class LiveMode(BaseMode):
             self._total_capital_usd = 120.0
             self._max_session_loss_usd = 6.0  # 5% of $120
 
+        # Slippage > Alpha auto-kill: track cumulative slippage per strategy
+        self._strategy_slippage_window: dict[str, deque] = {}
+        try:
+            from src.core.config_loader import get_config as _gc_slip
+            self._max_cumulative_slippage_bps: float = float(
+                _gc_slip("risk.max_cumulative_slippage_bps") or 50.0
+            )
+            self._slippage_window_trades: int = int(
+                _gc_slip("risk.slippage_window_trades") or 10
+            )
+            self._limit_fallback_spread_bps: float = float(
+                _gc_slip("execution.limit_fallback_spread_bps") or 30.0
+            )
+        except Exception:
+            self._max_cumulative_slippage_bps = 50.0
+            self._slippage_window_trades = 10
+            self._limit_fallback_spread_bps = 30.0
+
         # Orderbook store: symbol -> exchange_id -> OrderBook
         self._books: dict[str, dict[str, Any]] = {}
         self._orderbook_cls = get_orderbook_class()
@@ -1181,6 +1199,41 @@ class LiveMode(BaseMode):
                 self._notify_pre_exec_rollback(trade_request, sid)
                 return
 
+            # --- PRE-TRADE: BookWalk market impact check (live mode only) ---
+            # Walks the real L2 orderbook to estimate VWAP fill price before
+            # submitting a MARKET order. Rejects if estimated slippage exceeds
+            # max_market_impact_bps. Exit (reduceOnly) orders are exempt.
+            if self._execution_mode == "live" and not _is_close_req:
+                from src.core.config_loader import get_config as _gc_impact
+                _max_impact_bps = float(_gc_impact("strategy_filters.max_market_impact_bps", default=20))
+                _impact_rejected = False
+                for _ord in orders:
+                    _book = self._books.get(_ord.symbol, {}).get(_ord.exchange_id)
+                    if _book is None or not hasattr(_book, "vwap_walk") or not hasattr(_book, "best_bid"):
+                        continue  # no book data — let executor handle it
+                    _mid_bid = _book.best_bid()
+                    _mid_ask = _book.best_ask()
+                    if not _mid_bid or not _mid_ask or _mid_bid <= 0:
+                        continue
+                    _mid = (_mid_bid + _mid_ask) / Decimal("2")
+                    _walk_side = "buy" if _ord.side == OrderSide.BUY else "sell"
+                    _vwap, _filled = _book.vwap_walk(_walk_side, _ord.amount)
+                    if _filled <= 0 or _vwap <= 0:
+                        continue
+                    _impact_bps = float(abs(_vwap - _mid) / _mid * Decimal("10000"))
+                    if _impact_bps > _max_impact_bps:
+                        logger.warning(
+                            "live_mode.market_impact_rejected strategy=%s exchange=%s "
+                            "symbol=%s side=%s impact_bps=%.1f > max=%.1f vwap=%.6f mid=%.6f",
+                            sid, _ord.exchange_id, _ord.symbol, _walk_side,
+                            _impact_bps, _max_impact_bps, float(_vwap), float(_mid),
+                        )
+                        _impact_rejected = True
+                        break
+                if _impact_rejected:
+                    self._notify_pre_exec_rollback(trade_request, sid)
+                    return
+
             try:
                 exec_result = await self._route_to_executor(trade_request, orders)
             except Exception as _exec_exc:
@@ -1514,6 +1567,32 @@ class LiveMode(BaseMode):
                 _slippage_bps_est, (time.monotonic() - t0) * 1000,
             )
 
+            # Slippage > Alpha auto-kill: track cumulative slippage and halt strategy
+            if _slippage_bps_est > 0:
+                if sid not in self._strategy_slippage_window:
+                    self._strategy_slippage_window[sid] = deque(
+                        maxlen=self._slippage_window_trades,
+                    )
+                self._strategy_slippage_window[sid].append(_slippage_bps_est)
+                _cum_slip = sum(self._strategy_slippage_window[sid])
+                if _cum_slip > self._max_cumulative_slippage_bps:
+                    logger.critical(
+                        "live_mode.slippage_exceeds_alpha strategy=%s cumulative_bps=%.1f "
+                        "threshold=%.1f window=%d — HALTING STRATEGY",
+                        sid, _cum_slip, self._max_cumulative_slippage_bps,
+                        len(self._strategy_slippage_window[sid]),
+                    )
+                    if (
+                        self._risk_guardian is not None
+                        and hasattr(self._risk_guardian, "per_strategy_cb")
+                    ):
+                        _pscb = self._risk_guardian.per_strategy_cb
+                        if _pscb is not None and hasattr(_pscb, "force_halt"):
+                            _pscb.force_halt(
+                                sid,
+                                reason=f"cumulative_slippage_{_cum_slip:.1f}bps",
+                            )
+
             logger.info(
                 "live_mode.trade_executed strategy=%s pnl=%.4f total_pnl=%.2f mode=%s latency_ms=%.1f",
                 sid, float(pnl), self._stats.total_pnl,
@@ -1576,21 +1655,51 @@ class LiveMode(BaseMode):
         )
 
     def _legs_to_orders(self, trade_request: TradeRequest) -> list[Order]:
-        """Convert TradeRequest legs to Order objects."""
+        """Convert TradeRequest legs to Order objects.
+
+        Limit order fallback: when orderbook spread > limit_fallback_spread_bps,
+        convert MARKET orders to LIMIT at mid-price to avoid adverse fills.
+        """
         orders = []
         for leg in trade_request.legs:
             price = leg.price or Decimal("0")
+            otype = leg.order_type
             if price <= 0:
                 logger.debug(
                     "live_mode.leg_market_order exchange=%s symbol=%s (price=None → market order, expected)",
                     leg.exchange_id, leg.symbol,
                 )
+            # Limit order fallback: wide spread → LIMIT at mid-price
+            if otype == OrderType.MARKET and price > 0:
+                book = self._books.get(leg.symbol, {}).get(leg.exchange_id)
+                if book is not None:
+                    try:
+                        _bb = book.best_bid()
+                        _ba = book.best_ask()
+                        if _bb and _ba:
+                            _bid_d = Decimal(str(_bb))
+                            _ask_d = Decimal(str(_ba))
+                            if _bid_d > 0 and _ask_d > 0:
+                                _sp_bps = float((_ask_d - _bid_d) / _bid_d * 10000)
+                                if _sp_bps > self._limit_fallback_spread_bps:
+                                    mid = (_bid_d + _ask_d) / 2
+                                    otype = OrderType.LIMIT
+                                    price = mid
+                                    logger.info(
+                                        "live_mode.limit_fallback exchange=%s symbol=%s "
+                                        "spread_bps=%.1f > %.1f — LIMIT@%.6f",
+                                        leg.exchange_id, leg.symbol,
+                                        _sp_bps, self._limit_fallback_spread_bps,
+                                        float(mid),
+                                    )
+                    except Exception:
+                        pass  # orderbook API error — keep original MARKET
             orders.append(Order(
                 order_id=str(uuid.uuid4()),
                 exchange_id=leg.exchange_id,
                 symbol=leg.symbol,
                 side=leg.side,
-                order_type=leg.order_type,
+                order_type=otype,
                 price=price,
                 amount=leg.size,
                 metadata=leg.metadata or {},

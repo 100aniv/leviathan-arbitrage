@@ -101,6 +101,7 @@ def config() -> ExecutionConfig:
         timeout_ms=500,
         partial_fill_threshold=Decimal("0.8"),
         post_reconcile_delay_s=0.01,  # short for tests
+        split_threshold_usd=Decimal("999999999"),  # disable splitting for existing tests
     )
 
 

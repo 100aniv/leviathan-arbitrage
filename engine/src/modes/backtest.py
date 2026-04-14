@@ -133,6 +133,14 @@ class BacktestMode:
 
         self._pnl_returns: list[float] = []
 
+        # Backtest latency injection: delay signal execution by N ms
+        try:
+            from src.core.config_loader import get_config as _gc_bt
+            self._latency_ms: float = float(_gc_bt("backtest.latency_ms") or 0)
+        except Exception:
+            self._latency_ms = 0.0
+        self._pending_signals: list[tuple[float, Signal]] = []
+
     async def run(self) -> BacktestResult:
         """Execute the backtest: load data → replay → compute results."""
         t0 = time.monotonic()
@@ -195,6 +203,11 @@ class BacktestMode:
                     self._result.total_pnl, self._result.signals_generated,
                     self._result.trades_executed,
                 )
+
+        # Drain remaining pending signals (latency injection)
+        for _, sig in self._pending_signals:
+            await self._route_and_execute(sig)
+        self._pending_signals.clear()
 
         # Compute final metrics
         self._compute_metrics()
@@ -375,6 +388,16 @@ class BacktestMode:
         if not bids or not asks:
             return
 
+        # Backtest latency injection: process matured pending signals
+        if self._latency_ms > 0 and self._pending_signals:
+            current_ts = snap.get("timestamp", 0)
+            matured = [(ts, sig) for ts, sig in self._pending_signals if current_ts >= ts]
+            self._pending_signals = [
+                (ts, sig) for ts, sig in self._pending_signals if current_ts < ts
+            ]
+            for _, sig in matured:
+                await self._route_and_execute(sig)
+
         # Build CoreOrderBook
         core_book = self._orderbook_cls(symbol=symbol, exchange=exchange_id)
         core_book.apply_snapshot(
@@ -396,7 +419,11 @@ class BacktestMode:
                 )
                 if signal is not None:
                     self._result.signals_generated += 1
-                    await self._route_and_execute(signal)
+                    if self._latency_ms > 0:
+                        eligible_ts = snap.get("timestamp", 0) + self._latency_ms / 1000.0
+                        self._pending_signals.append((eligible_ts, signal))
+                    else:
+                        await self._route_and_execute(signal)
             except Exception as exc:
                 logger.debug("backtest.signal_error: %s", exc)
 
@@ -421,7 +448,11 @@ class BacktestMode:
                 )
                 for sig in signals:
                     self._result.signals_generated += 1
-                    await self._route_and_execute(sig)
+                    if self._latency_ms > 0:
+                        eligible_ts = snap.get("timestamp", 0) + self._latency_ms / 1000.0
+                        self._pending_signals.append((eligible_ts, sig))
+                    else:
+                        await self._route_and_execute(sig)
             except Exception as exc:
                 logger.debug("backtest.real_signal_error: %s", exc)
 
