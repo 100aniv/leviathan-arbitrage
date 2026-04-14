@@ -1620,9 +1620,15 @@ class LiveMode(BaseMode):
                 strategy_id=sid,
             )
         elif len(orders) == 2 and len(exchanges_involved) == 2:
-            # Cross-exchange
+            # Cross-exchange — edge check only for spread-arb strategies (FF).
+            # FR (funding_rate) is carry trade: profits from funding rate diff, not spread.
+            # Edge check would incorrectly block FR entries when spread is negative.
             from src.core.config_loader import get_config as _gc_edge
-            _min_edge = Decimal(str(_gc_edge("strategy_filters.futures_min_edge_bps", default=10))) / Decimal("10000")
+            _is_spread_arb = "futures_futures" in sid
+            _min_edge = (
+                Decimal(str(_gc_edge("strategy_filters.futures_min_edge_bps", default=10))) / Decimal("10000")
+                if _is_spread_arb else Decimal("0")
+            )
             return await self._executor.execute_cross_exchange(
                 leg1_order=orders[0],
                 leg2_order=orders[1],
