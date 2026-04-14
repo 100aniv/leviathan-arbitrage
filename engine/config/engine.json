@@ -30,7 +30,6 @@
   "exchanges": {
     "active": ["binance", "bitget", "upbit", "coinone", "bithumb", "binance_futures", "bitget_futures"],
     "symbols": ["auto"],
-    "symbol_min_exchanges": 2,
     "symbol_exclusions_per_exchange": {
       "coinone": ["BTC"],
       "binance_futures": ["BARD"],
@@ -101,6 +100,9 @@
     "leg_timeout_ms": 15000,
     "max_concurrent_trades": 2,
     "symbol_cooldown_s": 30,
+    "split_threshold_usd": 50,
+    "split_max_chunks": 3,
+    "split_delay_ms": 200,
     "limit_fallback_spread_bps": 30,
     "limit_fallback_timeout_ms": 5000,
     "exchange_min_notional": {
@@ -121,9 +123,7 @@
 
   "live": {
     "_comment": "Live mode (Phase I+): small capital = capital.tiers.alpha, full = production. Replaces shadow mode.",
-    "max_position_pct": 6.0,
-    "max_daily_loss_pct": 5.0,
-    "exchanges": ["binance", "bitget", "upbit", "coinone", "bithumb", "binance_futures", "bitget_futures"]
+    "max_daily_loss_pct": 5.0
   },
 
   "live_gate": {
@@ -154,7 +154,6 @@
 
   "monitoring": {
     "prometheus_port": 8000,
-    "engine_url": "http://engine:8000",
     "monitor_interval_sec": 300
   },
 
@@ -171,7 +170,6 @@
   "slippage": {
     "k_default": 1.0,
     "conservative_multiplier": 1.5,
-    "gamma": 0.5,
     "gamma_calibrated": false,
     "t0": 60.0
   },
