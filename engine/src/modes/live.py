@@ -2005,6 +2005,12 @@ class LiveMode(BaseMode):
                 try:
                     if self._funding_rate_collector is not None:
                         rates = await self._funding_rate_collector.poll_once()
+                        logger.info(
+                            "live_mode.fr_loop_poll rates_exchanges=%s rates_empty=%s rsp_is_none=%s",
+                            list(rates.keys()) if rates else "None",
+                            not bool(rates),
+                            rates is None,
+                        )
                         if self._real_signal_producer is not None and rates:
                             # Convert FundingRateEntry → float for RealDataSignalProducer
                             float_rates = {

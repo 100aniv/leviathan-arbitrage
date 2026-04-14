@@ -62,11 +62,31 @@ class BitgetCollector(BaseCollector):
     # BaseCollector interface
     # ------------------------------------------------------------------
 
+    _BATCH_SIZE = 30  # BUG-84: Bitget disconnects when many individual subscribes flood the WS
+
     def _ws_url(self) -> str:
         return self._WS_URL
 
+    def _subscribe_all_messages(self) -> list[dict] | None:
+        """BUG-84: Batch subscribe — Bitget V2 supports multiple args per message."""
+        messages = []
+        for i in range(0, len(self.symbols), self._BATCH_SIZE):
+            batch = self.symbols[i : i + self._BATCH_SIZE]
+            messages.append({
+                "op": "subscribe",
+                "args": [
+                    {
+                        "instType": self._INST_TYPE,
+                        "channel": self._CHANNEL,
+                        "instId": _normalize_symbol(sym),
+                    }
+                    for sym in batch
+                ],
+            })
+        return messages
+
     def _subscribe_message(self, symbol: str) -> str | dict:
-        """Build the Bitget V2 subscribe frame for one symbol."""
+        """Build the Bitget V2 subscribe frame for one symbol (fallback)."""
         return {
             "op": "subscribe",
             "args": [

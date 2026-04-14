@@ -1092,8 +1092,13 @@ class RealDataSignalProducer:
             for sym, rate in sym_rates.items():
                 symbol_rates.setdefault(sym, []).append((ex_id, rate))
 
+        _fr_pass_diff = 0
+        _fr_no_book = 0
+        _fr_low_diff = 0
+        _fr_single_ex = 0
         for symbol, rate_list in symbol_rates.items():
             if len(rate_list) < 2:
+                _fr_single_ex += 1
                 continue
 
             rate_list.sort(key=lambda x: x[1])
@@ -1107,12 +1112,15 @@ class RealDataSignalProducer:
             from src.core.config_loader import get_config
             _fr_min_diff = float(get_config("strategy_filters.funding_min_diff_bps", default=5)) / 10000
             if diff < _fr_min_diff:
+                _fr_low_diff += 1
                 continue
 
+            _fr_pass_diff += 1
             # Reference price from any available USDT spot book
             # BUG-01: exclude KRW exchanges (prices off by ~1400x vs USDT)
             sym_books = books.get(symbol, {})
             if not sym_books:
+                _fr_no_book += 1
                 continue
             ref_book = None
             for _ex_id, _book in sym_books.items():
@@ -1145,4 +1153,8 @@ class RealDataSignalProducer:
                 )
                 signals.append(signal)
 
+        logger.info(
+            "real_signal_producer.fr_arb_summary total_symbols=%d single_ex=%d low_diff=%d pass_diff=%d no_book=%d signals=%d",
+            len(symbol_rates), _fr_single_ex, _fr_low_diff, _fr_pass_diff, _fr_no_book, len(signals),
+        )
         return signals
