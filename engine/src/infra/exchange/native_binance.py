@@ -443,9 +443,33 @@ class BinanceNativeAdapter(NativeAdapter):
         fee = Decimal("0")
         fee_currency: str | None = None
         if raw.get("fills"):
-            fill = raw["fills"][0]
-            fee = Decimal(str(fill.get("commission", "0")))
-            fee_currency = fill.get("commissionAsset")
+            for _fill in raw["fills"]:
+                fee += Decimal(str(_fill.get("commission", "0")))
+            fee_currency = raw["fills"][0].get("commissionAsset")
+
+        # BUG-E: Polled futures orders (GET /fapi/v1/order) don't return fills array.
+        # Fetch actual fee from /fapi/v1/userTrades when fee is missing on filled orders.
+        if (
+            fee == Decimal("0")
+            and self._market_type == "futures"
+            and raw.get("status") == _ORDER_STATUS_FILLED
+            and trade_id
+        ):
+            try:
+                await self._rate_limiter.acquire("default")
+                _trades = await self._signed_request(
+                    "GET", "/fapi/v1/userTrades",
+                    params={"symbol": _symbol_to_binance(order.symbol), "orderId": trade_id, "limit": 10},
+                )
+                if isinstance(_trades, list) and _trades:
+                    fee = sum((Decimal(str(t.get("commission", "0"))) for t in _trades), Decimal("0"))
+                    fee_currency = _trades[0].get("commissionAsset")
+                    logger.debug(
+                        "futures_fee_from_userTrades orderId=%s fee=%s currency=%s fills=%d",
+                        trade_id, fee, fee_currency, len(_trades),
+                    )
+            except Exception as _fe:
+                logger.warning("futures_fee_fetch_failed orderId=%s: %s", trade_id, _fe)
 
         return self._build_trade(
             order=order,
