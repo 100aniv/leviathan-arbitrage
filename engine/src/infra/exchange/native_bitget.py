@@ -300,20 +300,9 @@ class NativeBitgetAdapter(NativeAdapter):
             # BUG-28: quantize qty to sizeMultiplier step (e.g. 0.001 BTC for BTCUSDT).
             # Without this, non-multiple sizes may be rejected by Bitget exchange.
             qty = self._quantize_futures_qty(order.symbol, qty)
-            # PHOENIX: Enforce Bitget Futures MIN_NOTIONAL — load from config
-            _ex_min = get_config("execution.exchange_min_notional.bitget_futures", default=6)
-            _MIN_NOTIONAL = Decimal(str(_ex_min))
-            if order.price and order.price > 0:
-                if qty * order.price < _MIN_NOTIONAL:
-                    # Bump to nearest step >= MIN_NOTIONAL
-                    _step = self._qty_step_sizes.get(order.symbol, Decimal("0.001"))
-                    import math as _math
-                    _lots = _math.ceil(float(_MIN_NOTIONAL / order.price) / float(_step))
-                    qty = Decimal(str(_lots)) * _step
-                    logger.debug(
-                        "bitget_futures_min_notional_adjusted symbol=%s qty=%s notional=%.2f",
-                        order.symbol, qty, float(qty * order.price),
-                    )
+            # BUG-82: MIN_NOTIONAL ceil bump removed — it desynchronizes cross-exchange
+            # leg quantities after executor lot_size_sync. The executor rejects
+            # sub-notional trades at executor.py:871 (BUG-71 check).
             # BUG-26: respect order.order_type — do NOT default to LIMIT just because price is set.
             # MARKET orders need "market"/"ioc" even when price is provided (used for margin checks).
             _is_market = order.order_type == OrderType.MARKET
