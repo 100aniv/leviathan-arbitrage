@@ -205,6 +205,7 @@ class LiveMode(BaseMode):
         strategy_filter: list[str] | None = None,
         execution_mode: str = "paper",  # "paper" | "live"
         tca_analyzer: Any | None = None,
+        slippage_feedback_collector: Any | None = None,
     ) -> None:
         self._signal_generator = signal_generator
         self._executor = executor
@@ -225,6 +226,7 @@ class LiveMode(BaseMode):
         self._portfolio_risk = portfolio_risk
         self._execution_mode = execution_mode
         self._tca_analyzer = tca_analyzer  # TCAAnalyzer (US-116) — injected from main.py
+        self._slippage_feedback_collector = slippage_feedback_collector  # US-283: SlippageFeedbackCollector
 
         self._symbols = symbols or ["BTC/USDT"]
         self._exchanges = exchanges or ["binance"]
@@ -1373,6 +1375,19 @@ class LiveMode(BaseMode):
             }
             self._stats.trade_history.append(trade_record)
 
+            # Estimate IS (implementation shortfall) in bps from fill prices vs expected
+            _slippage_bps_est: float = 0.0
+            if trade_request.legs:
+                _exp_buy = next((l.price for l in trade_request.legs if l.side == OrderSide.BUY and l.price), None)
+                _exp_sell = next((l.price for l in trade_request.legs if l.side == OrderSide.SELL and l.price), None)
+                _is_parts: list[float] = []
+                if _buy_fill_from_result and _buy_fill_price and _exp_buy and _exp_buy > 0:
+                    _is_parts.append(float(abs(_buy_fill_price - _exp_buy) / _exp_buy * 10000))
+                if _sell_fill_from_result and _sell_fill_price and _exp_sell and _exp_sell > 0:
+                    _is_parts.append(float(abs(_sell_fill_price - _exp_sell) / _exp_sell * 10000))
+                if _is_parts:
+                    _slippage_bps_est = sum(_is_parts)
+
             # Telegram alert for fills (send_fill_enhanced — shadow/paper와 동일 포맷)
             if self._telegram is not None:
                 try:
@@ -1389,7 +1404,7 @@ class LiveMode(BaseMode):
                         "pnl": float(pnl),
                         "spread_bps": _spread_bps_val,
                         "fee": float(_fee_total),
-                        "slippage_bps": 0.0,
+                        "slippage_bps": _slippage_bps_est,
                         "latency_ms": int((time.monotonic() - t0) * 1000),
                     })
                 except Exception:
@@ -1439,18 +1454,65 @@ class LiveMode(BaseMode):
                     )
                     # TCAAnalyzer: feed IS + latency data for real-time percentile tracking (US-116)
                     # Lives inside the try block so _expected_buy is guaranteed to be defined.
+                    _latency_ms = (time.monotonic() - t0) * 1000
+                    _signal_ts = trade_request.metadata.get("signal_ts", 0.0) if trade_request.metadata else 0.0
+                    _fill_ts = time.time()
                     if self._tca_analyzer is not None and _buy_fill_price and _expected_buy and _expected_buy > 0:
                         self._tca_analyzer.record_execution(
                             expected_price=float(_expected_buy),
                             fill_price=float(_buy_fill_price),
-                            latency_ms=(time.monotonic() - t0) * 1000,
+                            latency_ms=_latency_ms,
                             filled_ratio=1.0,
                             strategy_id=sid,
-                            signal_ts=trade_request.metadata.get("signal_ts", 0.0) if trade_request.metadata else 0.0,
-                            fill_ts=time.time(),
+                            signal_ts=_signal_ts,
+                            fill_ts=_fill_ts,
+                        )
+                    # Sell-side TCA recording (was missing — only buy side tracked)
+                    if self._tca_analyzer is not None and _sell_fill_price and _expected_sell and _expected_sell > 0:
+                        self._tca_analyzer.record_execution(
+                            expected_price=float(_expected_sell),
+                            fill_price=float(_sell_fill_price),
+                            latency_ms=_latency_ms,
+                            filled_ratio=1.0,
+                            strategy_id=sid,
+                            signal_ts=_signal_ts,
+                            fill_ts=_fill_ts,
                         )
                 except Exception as exc:
                     logger.debug("live_mode.record_execution_failed error=%s", exc)
+
+            # US-283: SlippageFeedbackCollector — record predicted vs actual slippage per leg
+            if self._slippage_feedback_collector is not None and trade_request.legs:
+                try:
+                    for _fb_leg in trade_request.legs:
+                        _fb_expected = float(_fb_leg.price) if _fb_leg.price else 0.0
+                        if _fb_leg.side == OrderSide.BUY and _buy_fill_from_result and _buy_fill_price and _fb_expected > 0:
+                            _pred_bps = 0.0  # predicted slippage (pre-trade estimate was 0 without feedback)
+                            _act_bps = abs(float(_buy_fill_price) - _fb_expected) / _fb_expected * 10000
+                            self._slippage_feedback_collector.record(
+                                exchange=_fb_leg.exchange_id, pair=_fb_leg.symbol,
+                                predicted_bps=_pred_bps, actual_bps=_act_bps,
+                            )
+                        elif _fb_leg.side == OrderSide.SELL and _sell_fill_from_result and _sell_fill_price and _fb_expected > 0:
+                            _pred_bps = 0.0
+                            _act_bps = abs(float(_sell_fill_price) - _fb_expected) / _fb_expected * 10000
+                            self._slippage_feedback_collector.record(
+                                exchange=_fb_leg.exchange_id, pair=_fb_leg.symbol,
+                                predicted_bps=_pred_bps, actual_bps=_act_bps,
+                            )
+                except Exception as _fb_exc:
+                    logger.debug("live_mode.slippage_feedback_failed error=%s", _fb_exc)
+
+            # TCA: expected vs actual PnL comparison — critical monitoring for profit leakage
+            _expected_profit = float(trade_request.expected_profit_usdt)
+            _actual_pnl = float(pnl)
+            _pnl_slippage_usd = _expected_profit - _actual_pnl
+            logger.info(
+                "live_mode.tca_pnl_compare strategy=%s expected=%.4f actual=%.4f "
+                "slippage_usd=%.4f slippage_bps=%.1f latency_ms=%.1f",
+                sid, _expected_profit, _actual_pnl, _pnl_slippage_usd,
+                _slippage_bps_est, (time.monotonic() - t0) * 1000,
+            )
 
             logger.info(
                 "live_mode.trade_executed strategy=%s pnl=%.4f total_pnl=%.2f mode=%s latency_ms=%.1f",
@@ -1559,11 +1621,13 @@ class LiveMode(BaseMode):
             )
         elif len(orders) == 2 and len(exchanges_involved) == 2:
             # Cross-exchange
+            from src.core.config_loader import get_config as _gc_edge
+            _min_edge = Decimal(str(_gc_edge("strategy_filters.futures_min_edge_bps", default=10))) / Decimal("10000")
             return await self._executor.execute_cross_exchange(
                 leg1_order=orders[0],
                 leg2_order=orders[1],
                 strategy_id=sid,
-                min_edge=Decimal("0"),
+                min_edge=_min_edge,
             )
         else:
             # Fallback: sequential single-leg execution

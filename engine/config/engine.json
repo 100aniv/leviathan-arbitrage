@@ -61,7 +61,8 @@
     "funding_convergence_weight": 0.3,
     "enable_funding_convergence": true,
     "enable_latency_budget": false,
-    "triangular_max_latency_ms": 500
+    "triangular_max_latency_ms": 500,
+    "futures_min_edge_bps": 10
   },
 
   "risk": {

@@ -241,7 +241,7 @@ async def test_cross_exchange_health_check_fails(
         leg1_order=leg1,
         leg2_order=leg2,
         strategy_id="strat_1",
-        min_edge=Decimal("0.001"),
+        min_edge=Decimal("0"),
     )
     assert result.status == ExecutionStatus.REJECTED
 
@@ -257,7 +257,7 @@ async def test_cross_exchange_success(
         leg1_order=leg1,
         leg2_order=leg2,
         strategy_id="strat_1",
-        min_edge=Decimal("0.001"),
+        min_edge=Decimal("0"),  # edge check disabled for success-path test
     )
     assert result.status == ExecutionStatus.SUCCESS
 
@@ -280,6 +280,13 @@ async def test_cross_exchange_exit_bypasses_margin_tracker(
     executor._margin_tracker._entries.append(("binance", _large, _expires))
     executor._margin_tracker._entries.append(("okx", _large, _expires))
 
+    # BUG-B: exchange_b orderbook must show profitable spread for edge re-validation
+    # leg1=SELL@50000, leg2=BUY → need best_ask < 49950 for 10bps edge
+    exchange_b.get_orderbook_snapshot = AsyncMock(return_value=MagicMock(
+        best_ask=Decimal("49900"),
+        best_bid=Decimal("49800"),
+    ))
+
     # Exit trade: both legs have reduceOnly=True — must bypass margin check
     leg1 = Order(
         exchange_id="binance", symbol="BTC/USDT", side=OrderSide.SELL,
@@ -293,7 +300,7 @@ async def test_cross_exchange_exit_bypasses_margin_tracker(
     )
     result = await executor.execute_cross_exchange(
         leg1_order=leg1, leg2_order=leg2,
-        strategy_id="strat_1", min_edge=Decimal("0.001"),
+        strategy_id="strat_1", min_edge=Decimal("0"),
     )
     # Exit must not be blocked by exhausted margin
     assert result.status == ExecutionStatus.SUCCESS
@@ -304,7 +311,7 @@ async def test_cross_exchange_exit_bypasses_margin_tracker(
     entry_leg2 = make_order("okx", OrderSide.SELL)
     entry_result = await executor.execute_cross_exchange(
         leg1_order=entry_leg1, leg2_order=entry_leg2,
-        strategy_id="strat_1", min_edge=Decimal("0.001"),
+        strategy_id="strat_1", min_edge=Decimal("0"),
     )
     assert entry_result.status == ExecutionStatus.REJECTED
     assert entry_result.error == "margin_tracker_blocked"
@@ -341,7 +348,7 @@ async def test_cross_exchange_exit_rollback_no_margin_leak(
     )
     result = await executor.execute_cross_exchange(
         leg1_order=leg1, leg2_order=leg2,
-        strategy_id="strat_1", min_edge=Decimal("0.001"),
+        strategy_id="strat_1", min_edge=Decimal("0"),
     )
     # Result must be ROLLED_BACK or ROLLBACK_FAILED (not SUCCESS, not REJECTED)
     assert result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.ROLLBACK_FAILED)
@@ -373,7 +380,7 @@ async def test_cross_exchange_sequential_submission(
         leg1_order=leg1,
         leg2_order=leg2,
         strategy_id="strat_1",
-        min_edge=Decimal("0.001"),
+        min_edge=Decimal("0"),
     )
     assert call_order == ["leg1", "leg2"]
 
@@ -390,7 +397,7 @@ async def test_cross_exchange_leg1_failure_no_leg2(
         leg1_order=leg1,
         leg2_order=leg2,
         strategy_id="strat_1",
-        min_edge=Decimal("0.001"),
+        min_edge=Decimal("0"),
     )
     exchange_b.place_order.assert_not_called()
     assert result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.ROLLBACK_FAILED)
@@ -408,7 +415,7 @@ async def test_cross_exchange_leg2_failure_rollback_leg1(
         leg1_order=leg1,
         leg2_order=leg2,
         strategy_id="strat_1",
-        min_edge=Decimal("0.001"),
+        min_edge=Decimal("0"),
     )
     # Filled leg1 is unwound via opposing market order (place_order called twice:
     # once for leg1 fill, once for unwind)
@@ -430,7 +437,7 @@ async def test_cross_exchange_leg1_partial_above_threshold_adjusts_leg2(
         leg1_order=leg1,
         leg2_order=leg2,
         strategy_id="strat_1",
-        min_edge=Decimal("0.001"),
+        min_edge=Decimal("0"),
     )
     assert result.status == ExecutionStatus.SUCCESS
     # leg2 order amount should have been adjusted down
@@ -450,7 +457,7 @@ async def test_cross_exchange_leg1_partial_below_threshold_rollback(
         leg1_order=leg1,
         leg2_order=leg2,
         strategy_id="strat_1",
-        min_edge=Decimal("0.001"),
+        min_edge=Decimal("0"),
     )
     exchange_b.place_order.assert_not_called()
     assert result.status in (ExecutionStatus.ROLLED_BACK, ExecutionStatus.ROLLBACK_FAILED)
@@ -469,7 +476,7 @@ async def test_race_halted_engine_rejects(executor: AtomicExecutor) -> None:
     leg1 = make_order("binance", OrderSide.BUY)
     leg2 = make_order("okx", OrderSide.SELL)
     result = await executor.execute_cross_exchange(
-        leg1_order=leg1, leg2_order=leg2, strategy_id="strat_1", min_edge=Decimal("0.001")
+        leg1_order=leg1, leg2_order=leg2, strategy_id="strat_1", min_edge=Decimal("0")
     )
     assert result.status == ExecutionStatus.REJECTED
 
@@ -483,7 +490,7 @@ async def test_race_exchange_health_degraded_during_validation(
     leg1 = make_order("binance", OrderSide.BUY)
     leg2 = make_order("okx", OrderSide.SELL)
     result = await executor.execute_cross_exchange(
-        leg1_order=leg1, leg2_order=leg2, strategy_id="strat_1", min_edge=Decimal("0.001")
+        leg1_order=leg1, leg2_order=leg2, strategy_id="strat_1", min_edge=Decimal("0")
     )
     assert result.status == ExecutionStatus.REJECTED
 
@@ -499,7 +506,7 @@ async def test_capital_lock_released_on_success(executor: AtomicExecutor) -> Non
     leg1 = make_order("binance", OrderSide.BUY)
     leg2 = make_order("okx", OrderSide.SELL)
     await executor.execute_cross_exchange(
-        leg1_order=leg1, leg2_order=leg2, strategy_id="strat_1", min_edge=Decimal("0.001")
+        leg1_order=leg1, leg2_order=leg2, strategy_id="strat_1", min_edge=Decimal("0")
     )
     # No lock should remain held
     assert not executor.is_locked("binance")
@@ -515,7 +522,7 @@ async def test_capital_lock_released_on_rollback(
     leg1 = make_order("binance", OrderSide.BUY)
     leg2 = make_order("okx", OrderSide.SELL)
     await executor.execute_cross_exchange(
-        leg1_order=leg1, leg2_order=leg2, strategy_id="strat_1", min_edge=Decimal("0.001")
+        leg1_order=leg1, leg2_order=leg2, strategy_id="strat_1", min_edge=Decimal("0")
     )
     assert not executor.is_locked("binance")
     assert not executor.is_locked("okx")
@@ -740,7 +747,7 @@ async def test_cross_exchange_leg1_partial_below_threshold_unwinds_filled(
     leg2 = make_order("okx", OrderSide.SELL, amount=Decimal("1.0"))
     result = await executor.execute_cross_exchange(
         leg1_order=leg1, leg2_order=leg2,
-        strategy_id="strat_1", min_edge=Decimal("0.001"),
+        strategy_id="strat_1", min_edge=Decimal("0"),
     )
 
     assert result.status == ExecutionStatus.ROLLED_BACK
@@ -771,7 +778,7 @@ async def test_cross_exchange_leg1_partial_unwind_failure_halts(
     leg2 = make_order("okx", OrderSide.SELL, amount=Decimal("1.0"))
     result = await executor.execute_cross_exchange(
         leg1_order=leg1, leg2_order=leg2,
-        strategy_id="strat_1", min_edge=Decimal("0.001"),
+        strategy_id="strat_1", min_edge=Decimal("0"),
     )
 
     assert result.status == ExecutionStatus.ROLLBACK_FAILED

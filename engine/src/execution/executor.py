@@ -1090,6 +1090,63 @@ class AtomicExecutor:
                     leg1_ratio, adjusted_leg2.amount
                 )
 
+            # Step 9b (BUG-B): Re-validate spread before leg2 submission.
+            # 2-4s may pass after leg1 fill — spread can evaporate.
+            if min_edge > Decimal("0") and leg1_result and leg1_result.fill_price and leg1_result.fill_price > 0:
+                try:
+                    _recheck_book = await adapter_b.get_orderbook_snapshot(adjusted_leg2.symbol, depth=5)
+                    if _recheck_book:
+                        # Determine current available price on leg2 side
+                        if adjusted_leg2.side == OrderSide.SELL:
+                            _leg2_price = _recheck_book.best_bid
+                        else:
+                            _leg2_price = _recheck_book.best_ask
+                        if _leg2_price and _leg2_price > 0:
+                            if adjusted_leg2.side == OrderSide.SELL:
+                                _current_spread = (_leg2_price - leg1_result.fill_price) / leg1_result.fill_price
+                            else:
+                                _current_spread = (leg1_result.fill_price - _leg2_price) / _leg2_price
+                            if _current_spread < min_edge:
+                                logger.warning(
+                                    "edge_evaporated symbol=%s current_spread=%.6f min_edge=%.6f "
+                                    "leg1_fill=%.4f leg2_price=%.4f — rolling back leg1",
+                                    adjusted_leg2.symbol, float(_current_spread), float(min_edge),
+                                    float(leg1_result.fill_price), float(_leg2_price),
+                                )
+                                _rb_ok, _rb_reason = await self._rollback_order(
+                                    ex_a_id, leg1_order, filled=True,
+                                    filled_amount=leg1_result.filled_amount,
+                                )
+                                if not _rb_ok:
+                                    should_halt = self._stranded_tracker.register(
+                                        exchange_id=ex_a_id,
+                                        symbol=leg1_order.symbol,
+                                        side=str(leg1_order.side),
+                                        size=float(leg1_order.amount),
+                                        value_usd=float(leg1_order.amount * (leg1_order.price or Decimal("0"))),
+                                        reason=f"edge_evaporated_rollback_failed:{_rb_reason}",
+                                    )
+                                    if should_halt:
+                                        halt_local()
+                                    return ExecutionResult(
+                                        status=ExecutionStatus.ROLLBACK_FAILED,
+                                        legs=[leg1_result],
+                                        error=f"Edge evaporated + rollback failed: {_rb_reason}",
+                                        strategy_id=strategy_id,
+                                    )
+                                return ExecutionResult(
+                                    status=ExecutionStatus.ROLLED_BACK,
+                                    legs=[leg1_result],
+                                    error=f"Edge evaporated: spread {float(_current_spread):.6f} < min_edge {float(min_edge):.6f}",
+                                    strategy_id=strategy_id,
+                                )
+                except Exception as _edge_exc:
+                    # Orderbook fetch failed — proceed with leg2 (conservative: don't block on optional check)
+                    logger.warning(
+                        "edge_recheck_failed symbol=%s err=%s — proceeding with leg2",
+                        adjusted_leg2.symbol, _edge_exc,
+                    )
+
             # Step 10: Submit Leg 2 on Exchange B
             try:
                 leg2_trade = await self._place_with_timeout(adapter_b, adjusted_leg2)
