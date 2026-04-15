@@ -84,8 +84,8 @@
     "flash_guard_threshold_pct": 3.0,
     "flash_guard_window_s": 300,
     "flash_guard_cooldown_s": 60,
-    "max_cumulative_slippage_bps": 50,
-    "slippage_window_trades": 10
+    "max_cumulative_slippage_bps": 100,
+    "slippage_window_trades": 20
   },
 
   "dynamic_risk": {
