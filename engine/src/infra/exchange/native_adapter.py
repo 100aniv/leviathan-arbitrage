@@ -399,9 +399,9 @@ class NativeAdapter(abc.ABC):
             # Binance benign codes: -4046/-4048 = already set, -4168 = Multi-Assets mode (no action needed)
             # -2011 = Unknown order (already filled/expired) — cancel is a no-op, not an error
             _binance_benign = any(c in _body_str for c in ("-4046", "-4048", "-4168", "-2011"))
-            # -2022 = ReduceOnly rejected — must still raise for BUG-43 ghost-cleared handler,
-            # but downgrade log from ERROR to WARNING (handled gracefully downstream)
-            _is_reduce_only_reject = "-2022" in _body_str
+            # -2022 (Binance) / 22002 (Bitget) = ReduceOnly/no position to close.
+            # Must still raise for ghost-cleared handler, but downgrade log to WARNING.
+            _is_reduce_only_reject = "-2022" in _body_str or "22002" in _body_str
             if _binance_benign:
                 logger.debug(
                     "http_error exchange=%s status=%s body=%s (benign — suppressed)",
