@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 load_dotenv()  # Load .env before any os.getenv() calls
 
 from src.api.server import EngineContext, create_app
-from src.core.config import ExecutionMode, Settings, get_settings, load_trading_config
+from src.core.config import ExecutionMode, Settings, get_settings
 
 _s = get_settings().operational  # module-level operational settings shortcut
 
@@ -421,10 +421,11 @@ class Engine:
             _setdefault("PAPER_MAX_LOSS_PER_TRADE_USD", cfg["max_single_loss_usd"])
 
     async def _init_config(self) -> None:
-        # Load non-sensitive config from trading.json; env vars (.env) take priority.
-        _tcfg = load_trading_config()
-        if _tcfg:
-            self._apply_trading_json_defaults(_tcfg)
+        # Load non-sensitive config from engine.json; env vars (.env) take priority.
+        from src.core.config import load_engine_config as _lec_cfg
+        _ecfg = _lec_cfg()
+        if _ecfg:
+            self._apply_trading_json_defaults(_ecfg)
 
         # Convert TRADING_SYMBOLS=auto to valid JSON before pydantic-settings parsing.
         # pydantic-settings tries json.loads() on list[str] fields; "auto" is not valid JSON.
@@ -451,8 +452,62 @@ class Engine:
             self.context.environment = "dev"
             self.context.execution_mode = "paper"
 
+        # Validate config consistency before proceeding
+        self._validate_config()
+
         # Auto-discover trading symbols from exchange APIs
         await self._resolve_symbols()
+
+    def _validate_config(self) -> None:
+        """Validate config consistency at startup. WARNING for non-fatal, SystemExit for fatal."""
+        from src.core.config import load_engine_config
+
+        ecfg = load_engine_config()
+        if not ecfg:
+            return  # No engine.json — nothing to validate
+
+        # 1. Mode consistency: engine.json vs env vars
+        engine_mode = ecfg.get("mode", "paper")
+        env_engine_mode = os.environ.get("ENGINE_MODE", "")
+        env_execution_mode = os.environ.get("EXECUTION_MODE", "")
+        if env_engine_mode and env_engine_mode != engine_mode:
+            logger.warning(
+                "CONFIG CONFLICT: ENGINE_MODE env='%s' differs from engine.json mode='%s' — engine.json wins",
+                env_engine_mode, engine_mode,
+            )
+        if env_execution_mode and env_execution_mode != engine_mode:
+            logger.warning(
+                "CONFIG CONFLICT: EXECUTION_MODE env='%s' differs from engine.json mode='%s' — engine.json wins",
+                env_execution_mode, engine_mode,
+            )
+
+        # 2. exchanges.active must not be empty (FATAL)
+        active_exchanges = ecfg.get("exchanges", {}).get("active", [])
+        if not active_exchanges:
+            logger.critical("FATAL: exchanges.active is empty in engine.json — cannot start without exchanges")
+            raise SystemExit(1)
+
+        # 3. Risk value ranges
+        risk = ecfg.get("risk", {})
+        for key, label in [("max_position_pct", "max_position_pct"), ("max_daily_loss_pct", "max_daily_loss_pct")]:
+            val = risk.get(key)
+            if val is not None and not (0 <= float(val) <= 100):
+                logger.warning(
+                    "CONFIG: risk.%s=%s is outside valid range [0, 100]", label, val,
+                )
+
+        # 4. Required sections exist
+        for section in ("strategy_filters", "execution", "risk"):
+            if section not in ecfg:
+                logger.warning("CONFIG: required section '%s' missing from engine.json", section)
+
+        # 5. Deprecated trading.json warning
+        import pathlib
+        _trading_json = pathlib.Path(__file__).parent.parent / "config" / "trading.json"
+        if _trading_json.exists():
+            logger.warning(
+                "CONFIG: trading.json detected — deprecated, migrate settings to engine.json"
+            )
 
     async def _resolve_symbols(self) -> None:
         """Resolve 'auto' symbols to actual trading pairs via exchange API discovery.
@@ -1338,11 +1393,9 @@ class Engine:
 
         try:
             from src.risk.guardian import RiskGuardian
-            # BUG-A: Merge risk config from both sources (engine.json overrides trading.json)
+            # BUG-A: engine.json is the single source for risk config
             from src.core.config import load_engine_config as _lec_risk
-            _risk_cfg_base = (load_trading_config() or {}).get("risk", {})
-            _risk_cfg_override = _lec_risk().get("risk", {})
-            _risk_cfg = {**_risk_cfg_base, **_risk_cfg_override}
+            _risk_cfg = _lec_risk().get("risk", {})
             _use_pct = _risk_cfg.get("use_percentage", False)
             if _use_pct and "max_position_pct" in _risk_cfg:
                 _max_pos_pct = Decimal(str(_risk_cfg["max_position_pct"])) / Decimal("100")

@@ -622,11 +622,114 @@ class Settings(BaseSettings):
 _settings: Settings | None = None
 
 
+def _apply_engine_json_overrides(settings: Settings) -> None:
+    """Override Pydantic defaults with engine.json runtime values.
+
+    engine.json is the single source of truth for runtime configuration.
+    .env / Pydantic handles secrets (API keys) only.
+    Logs every override for traceability.
+    """
+    ecfg = load_engine_config()
+    if not ecfg:
+        return
+
+    _log = logging.getLogger(__name__)
+    _overrides: list[str] = []
+
+    # --- exchanges.active → trading.active_exchanges ---
+    _exchanges_active = ecfg.get("exchanges", {}).get("active")
+    if _exchanges_active and _exchanges_active != settings.trading.active_exchanges:
+        _overrides.append(
+            f"trading.active_exchanges: {settings.trading.active_exchanges} → {_exchanges_active}"
+        )
+        settings.trading.active_exchanges = _exchanges_active
+
+    # --- risk section ---
+    _risk = ecfg.get("risk", {})
+    _use_pct = _risk.get("use_percentage", False)
+
+    if _use_pct and "max_position_pct" in _risk:
+        _new = Decimal(str(_risk["max_position_pct"])) / Decimal("100")
+        if _new != settings.risk.max_position_pct:
+            _overrides.append(f"risk.max_position_pct: {settings.risk.max_position_pct} → {_new}")
+            settings.risk.max_position_pct = _new
+
+    if _use_pct and "max_daily_loss_pct" in _risk:
+        _new = Decimal(str(_risk["max_daily_loss_pct"])) / Decimal("100")
+        if _new != settings.risk.max_drawdown_pct:
+            _overrides.append(f"risk.max_drawdown_pct: {settings.risk.max_drawdown_pct} → {_new}")
+            settings.risk.max_drawdown_pct = _new
+
+    if "circuit_breaker_consecutive_loss_limit" in _risk:
+        _new = int(_risk["circuit_breaker_consecutive_loss_limit"])
+        if _new != settings.risk.circuit_breaker_consecutive_losses:
+            _overrides.append(
+                f"risk.circuit_breaker_consecutive_losses: "
+                f"{settings.risk.circuit_breaker_consecutive_losses} → {_new}"
+            )
+            settings.risk.circuit_breaker_consecutive_losses = _new
+
+    if "min_edge_bps" in _risk:
+        _new = int(_risk["min_edge_bps"])
+        if _new != settings.operational.min_edge_bps:
+            _overrides.append(f"operational.min_edge_bps: {settings.operational.min_edge_bps} → {_new}")
+            settings.operational.min_edge_bps = _new
+
+    # --- live_gate section ---
+    _lg = ecfg.get("live_gate", {})
+
+    if "bypass" in _lg and _lg["bypass"] != settings.live_gate.bypass:
+        _overrides.append(f"live_gate.bypass: {settings.live_gate.bypass} → {_lg['bypass']}")
+        settings.live_gate.bypass = _lg["bypass"]
+
+    if "sharpe_threshold" in _lg:
+        _new = Decimal(str(_lg["sharpe_threshold"]))
+        if _new != settings.live_gate.sharpe_threshold:
+            _overrides.append(f"live_gate.sharpe_threshold: {settings.live_gate.sharpe_threshold} → {_new}")
+            settings.live_gate.sharpe_threshold = _new
+
+    if "min_signals_per_day" in _lg:
+        _new = int(_lg["min_signals_per_day"])
+        if _new != settings.live_gate.min_signals_per_day:
+            _overrides.append(
+                f"live_gate.min_signals_per_day: {settings.live_gate.min_signals_per_day} → {_new}"
+            )
+            settings.live_gate.min_signals_per_day = _new
+
+    if "evaluation_days" in _lg:
+        _new = int(_lg["evaluation_days"])
+        if _new != settings.live_gate.evaluation_days:
+            _overrides.append(f"live_gate.evaluation_days: {settings.live_gate.evaluation_days} → {_new}")
+            settings.live_gate.evaluation_days = _new
+
+    # --- capital.tier ---
+    _cap_tier = ecfg.get("capital", {}).get("tier")
+    if _cap_tier and _cap_tier != settings.capital.tier:
+        _overrides.append(f"capital.tier: {settings.capital.tier} → {_cap_tier}")
+        settings.capital.tier = _cap_tier
+
+    # --- execution.leg_timeout_ms ---
+    _exec = ecfg.get("execution", {})
+    if "leg_timeout_ms" in _exec:
+        _new = int(_exec["leg_timeout_ms"])
+        if _new != settings.execution.leg_timeout_ms:
+            _overrides.append(f"execution.leg_timeout_ms: {settings.execution.leg_timeout_ms} → {_new}")
+            settings.execution.leg_timeout_ms = _new
+
+    if _overrides:
+        _log.info(
+            "engine.json overrides applied (%d): %s",
+            len(_overrides),
+            "; ".join(_overrides),
+        )
+
+
 def get_settings() -> Settings:
-    """Return cached settings singleton."""
+    """Return cached settings singleton with engine.json overrides applied."""
     global _settings
     if _settings is None:
         _settings = Settings()
+        _apply_engine_json_overrides(_settings)
     return _settings
 
 

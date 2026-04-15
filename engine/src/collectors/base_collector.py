@@ -35,6 +35,7 @@ class BaseCollector(abc.ABC):
 
     MAX_RECONNECT_DELAY = 60.0
     INITIAL_RECONNECT_DELAY = 1.0
+    _BATCH_SUBSCRIBE_DELAY_S: float = 0.0  # delay between batch subscribe sends (rate-limit)
 
     def __init__(
         self,
@@ -120,6 +121,8 @@ class BaseCollector(abc.ABC):
                         await ws.send(_json.dumps(msg))
                     else:
                         await ws.send(str(msg))
+                    if self._BATCH_SUBSCRIBE_DELAY_S > 0:
+                        await asyncio.sleep(self._BATCH_SUBSCRIBE_DELAY_S)
                 for symbol in self.symbols:
                     logger.info("collector_subscribed", exchange=self.exchange_id, symbol=symbol)
             else:
