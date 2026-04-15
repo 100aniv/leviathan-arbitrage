@@ -192,6 +192,18 @@ class FundingRateStrategy(BaseStrategy):
                 self._metrics.signals_filtered += 1
                 return None
 
+        # BUG-88: Max concurrent FR positions — prevent margin exhaustion.
+        # FR 5+ positions consume all Binance margin → FF can't execute.
+        from src.core.config_loader import get_config as _gc_max
+        _max_fr_positions = int(_gc_max("strategy_filters.funding_rate_max_positions", default=3))
+        if len(self._open_positions) >= _max_fr_positions:
+            self._metrics.signals_filtered += 1
+            logger.info(
+                "funding_rate.max_positions sym=%s open=%d max=%d",
+                signal.symbol, len(self._open_positions), _max_fr_positions,
+            )
+            return None
+
         # US-239: Duplicate position guard — skip if already have position or pending settlement exit
         # Check both _open_positions AND _pending_settlement_positions: after _check_settlement_release
         # moves positions to _pending_settlement_positions, the symbol is absent from _open_positions
