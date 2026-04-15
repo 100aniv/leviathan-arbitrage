@@ -1567,8 +1567,12 @@ class LiveMode(BaseMode):
                 _slippage_bps_est, (time.monotonic() - t0) * 1000,
             )
 
-            # Slippage > Alpha auto-kill: track cumulative slippage and halt strategy
-            if _slippage_bps_est > 0:
+            # Slippage > Alpha auto-kill: track cumulative slippage and halt strategy.
+            # BUG-89: Only apply to spread-arb strategies (FF, cross_exchange).
+            # FR carry trade expected_profit is multi-period income — entry PnL is always
+            # negative (fees). This is NOT slippage, just carry trade mechanics.
+            _is_spread_arb_strategy = "futures_futures" in sid or "cross_exchange" in sid
+            if _slippage_bps_est > 0 and _is_spread_arb_strategy:
                 if sid not in self._strategy_slippage_window:
                     self._strategy_slippage_window[sid] = deque(
                         maxlen=self._slippage_window_trades,
