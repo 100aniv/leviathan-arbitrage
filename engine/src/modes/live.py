@@ -2269,6 +2269,33 @@ class LiveMode(BaseMode):
                         _strat = self._strategy_manager.get_strategy(_sid)
                         if _strat is not None and hasattr(_strat, "pop_exit_requests"):
                             for _exit_req in _strat.pop_exit_requests():
+                                # BUG-92: Before sending exit, verify exchange has position.
+                                # Ghost root cause: entry leg2 fails → half position → exchange auto-closes
+                                # → timeout exit hits no position → ghost-clear cascade.
+                                _skip_exit = False
+                                if _exit_req.legs and self._executor:
+                                    _ex_id = _exit_req.legs[0].exchange_id
+                                    _sym = _exit_req.legs[0].symbol
+                                    try:
+                                        _adapter = getattr(self._executor, '_exchanges', {}).get(_ex_id)
+                                        if _adapter and hasattr(_adapter, 'get_positions'):
+                                            _positions = await _adapter.get_positions()
+                                            _has_pos = any(
+                                                p.get('symbol') == _sym or p.get('instId') == _sym.replace('/', '')
+                                                for p in (_positions if isinstance(_positions, list) else [])
+                                            )
+                                            if not _has_pos:
+                                                logger.info(
+                                                    "live_dedup_cleanup.exit_skip_no_position strategy=%s symbol=%s exchange=%s",
+                                                    _sid, _sym, _ex_id,
+                                                )
+                                                _skip_exit = True
+                                                if hasattr(_strat, 'on_execution_rollback'):
+                                                    _strat.on_execution_rollback(_sym)
+                                    except Exception as _pos_err:
+                                        logger.debug("exit_position_check_failed: %s", _pos_err)
+                                if _skip_exit:
+                                    continue
                                 logger.info(
                                     "live_dedup_cleanup.settlement_exit strategy=%s legs=%d reason=%s",
                                     _sid,
