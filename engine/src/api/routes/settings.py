@@ -40,11 +40,11 @@ async def get_settings(request: Request) -> JSONResponse:
         {"id": sid, "type": s.get("type", sid), "enabled": s.get("enabled", True)}
         for sid, s in ctx.strategies.items()
     ]
-    # US-F04: Load strategy-exchange requirements from trading.json
-    from src.core.config import load_trading_config
+    # US-F04: Load strategy-exchange requirements from engine.json (Phase 1: config 단일화)
+    from src.core.config import load_engine_config
     try:
-        tcfg = load_trading_config()
-        strategy_reqs = tcfg.get("strategy_exchange_requirements", {})
+        ecfg = load_engine_config()
+        strategy_reqs = ecfg.get("strategy_exchange_requirements", {})
     except Exception:
         strategy_reqs = {}
 
