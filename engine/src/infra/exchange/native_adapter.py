@@ -399,6 +399,9 @@ class NativeAdapter(abc.ABC):
             # Binance benign codes: -4046/-4048 = already set, -4168 = Multi-Assets mode (no action needed)
             # -2011 = Unknown order (already filled/expired) — cancel is a no-op, not an error
             _binance_benign = any(c in _body_str for c in ("-4046", "-4048", "-4168", "-2011"))
+            # -2022 = ReduceOnly rejected — must still raise for BUG-43 ghost-cleared handler,
+            # but downgrade log from ERROR to WARNING (handled gracefully downstream)
+            _is_reduce_only_reject = "-2022" in _body_str
             if _binance_benign:
                 logger.debug(
                     "http_error exchange=%s status=%s body=%s (benign — suppressed)",
@@ -406,10 +409,16 @@ class NativeAdapter(abc.ABC):
                 )
                 # Return empty dict for benign errors — no need to raise, caller can continue
                 return body if isinstance(body, dict) else {}
-            logger.error(
-                "http_error exchange=%s status=%s body=%s",
-                self.exchange_id, resp.status_code, body,
-            )
+            if _is_reduce_only_reject:
+                logger.warning(
+                    "http_error exchange=%s status=%s body=%s (reduceOnly — ghost-cleared downstream)",
+                    self.exchange_id, resp.status_code, body,
+                )
+            else:
+                logger.error(
+                    "http_error exchange=%s status=%s body=%s",
+                    self.exchange_id, resp.status_code, body,
+                )
             # Embed body in exception message so upstream handlers can inspect error code
             import httpx as _httpx
             try:
