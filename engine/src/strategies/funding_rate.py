@@ -440,6 +440,23 @@ class FundingRateStrategy(BaseStrategy):
         self._pending_exit_requests.clear()
         return reqs
 
+    def inject_position(self, symbol: str, metadata: dict) -> None:
+        """Inject a pre-existing exchange position into tracking.
+
+        Called by live.py._reconcile_positions_on_startup() to sync exchange
+        state with strategy state after engine restart. Expects metadata with
+        keys: sell_exchange, buy_exchange, size, long_size.
+        """
+        if symbol in self._open_positions:
+            logger.info("fr.inject_position_skip symbol=%s — already tracked", symbol)
+            return
+        self._open_positions[symbol] = metadata
+        logger.info(
+            "fr.inject_position symbol=%s sell_exchange=%s buy_exchange=%s size=%s",
+            symbol, metadata.get("sell_exchange"), metadata.get("buy_exchange"),
+            metadata.get("size"),
+        )
+
     def on_execution_rollback(self, symbol: str) -> None:
         """롤백 완료 시 _open_positions/_pending_settlement_positions에서 심볼 제거.
 

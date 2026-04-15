@@ -107,8 +107,8 @@ class FuturesFuturesStrategy(BaseStrategy):
         self._monitor_task: "asyncio.Task | None" = None  # stored ref prevents GC / allows cancel
         # BUG-62: snapshot of positions currently being exited → restore on rollback
         self._pending_exits: dict[str, dict] = {}
-        # BUG-CRITICAL: exit race guard — prevents duplicate exit from both monitor + on_signal()
-        # Both paths independently check _open_positions; this set ensures only one wins.
+        # Exit race guard — tracks symbols with in-flight exit orders from _open_positions_monitor().
+        # Checked in rollback/success/fill handlers to manage pending state.
         self._exiting_symbols: set[str] = set()
 
         # US-260: Adaptive threshold — rolling percentile + volatility weight
@@ -134,6 +134,22 @@ class FuturesFuturesStrategy(BaseStrategy):
     def set_margin_tracker(self, tracker: Any) -> None:
         """Inject MarginTracker (called by live.py after strategy init)."""
         self._margin_tracker = tracker
+
+    def inject_position(self, symbol: str, metadata: dict) -> None:
+        """Inject a pre-existing exchange position into tracking.
+
+        Called by live.py._reconcile_positions_on_startup() to sync exchange
+        state with strategy state after engine restart. Expects metadata with
+        keys: buy_ex, sell_ex, size, entry_time.
+        """
+        if symbol in self._open_positions:
+            logger.info("ff.inject_position_skip symbol=%s — already tracked", symbol)
+            return
+        self._open_positions[symbol] = metadata
+        logger.info(
+            "ff.inject_position symbol=%s buy_ex=%s sell_ex=%s size=%s",
+            symbol, metadata.get("buy_ex"), metadata.get("sell_ex"), metadata.get("size"),
+        )
 
     async def start(self) -> None:
         """전략 시작 + 포지션 시간 모니터 태스크."""
@@ -228,7 +244,7 @@ class FuturesFuturesStrategy(BaseStrategy):
                     last_spread = pos.get("last_spread_bps")
                     if last_spread is not None and last_spread <= _exit_threshold_bps:
                         if sym in self._exiting_symbols:
-                            continue  # BUG-CRITICAL: on_signal() already claimed this exit
+                            continue  # Already has in-flight exit
                         self._exiting_symbols.add(sym)
                         logger.info(
                             "ff.spread_exit_monitor symbol=%s last_spread_bps=%.2f exit_threshold_bps=%.2f age_s=%.0f — 스프레드 수렴 청산",
@@ -268,7 +284,7 @@ class FuturesFuturesStrategy(BaseStrategy):
 
                     if age_s > self.config.max_hold_seconds:
                         if sym in self._exiting_symbols:
-                            continue  # BUG-CRITICAL: on_signal() already claimed this exit
+                            continue  # Already has in-flight exit
                         self._exiting_symbols.add(sym)
                         logger.warning(
                             "ff.stale_position symbol=%s age_s=%.0f max_hold_s=%.0f "
@@ -396,110 +412,17 @@ class FuturesFuturesStrategy(BaseStrategy):
             logger.debug("strategy.rejected strategy=futures_futures reason=pending_entry symbol=%s", _sym)
             return None
         if _sym and _sym in self._open_positions:
-            pos = self._open_positions[_sym]
-            age_s = time.monotonic() - pos["entry_time"]
+            # Exit handled exclusively by _open_positions_monitor() — on_signal() only updates spread.
             _current_spread_bps = float(signal.spread_pct) * 10000 if signal.spread_pct else None
-
-            # --- Spread-reversion exit (PRIMARY exit) ---
-            # Exit when spread closes back below exit threshold (profit locked in)
-            # BUG-76: Do NOT use adaptive p50 for exit — in elevated-spread regimes,
-            # p50 of observed spreads (34-37bps) exceeds min_spread_bps (27bps),
-            # causing every position to exit immediately at a loss.
-            # Static near-zero exit (4.05bps) + time_exit (300s) are the correct exits.
-            _exit_threshold_bps: float = float(self.config.min_spread_bps) * 0.15
-            if _current_spread_bps is not None and _current_spread_bps <= _exit_threshold_bps:
-                # BUG-CRITICAL: guard against duplicate exit if monitor already queued this symbol
-                if _sym in self._exiting_symbols:
-                    return None
-                self._exiting_symbols.add(_sym)
-                logger.info(
-                    "ff.spread_exit symbol=%s spread_bps=%.2f exit_threshold_bps=%.2f age_s=%.0f — 스프레드 수렴 청산",
-                    _sym, _current_spread_bps, _exit_threshold_bps, age_s,
-                )
-                # BUG-62: save snapshot before removing — restored if exit rolls back
-                self._pending_exits[_sym] = dict(pos)
-                del self._open_positions[_sym]
-                self._metrics.trade_requests_generated += 1
-                return TradeRequest(
-                    strategy_id=self.strategy_id,
-                    legs=[
-                        TradeLeg(
-                            exchange_id=pos["buy_ex"],
-                            symbol=_sym,
-                            side=OrderSide.SELL,
-                            size=pos["size"],
-                            order_type=OrderType.MARKET,
-                            price=signal.buy_price,
-                            metadata={"leg_type": "futures_close", "reduceOnly": True},
-                        ),
-                        TradeLeg(
-                            exchange_id=pos["sell_ex"],
-                            symbol=_sym,
-                            side=OrderSide.BUY,
-                            size=pos["size"],
-                            order_type=OrderType.MARKET,
-                            price=signal.sell_price,
-                            metadata={"leg_type": "futures_close", "reduceOnly": True},
-                        ),
-                    ],
-                    expected_profit_usdt=Decimal("0"),
-                    confidence=1.0,
-                    metadata={"close_reason": "spread_reversion", "spread_bps": str(round(_current_spread_bps, 2)), "age_s": str(int(age_s))},
-                )
-
-            # --- Time-based exit (SAFETY fallback) ---
-            if self.config.max_hold_seconds > 0 and age_s > self.config.max_hold_seconds:
-                # BUG-CRITICAL: guard against duplicate exit if monitor already queued this symbol
-                if _sym in self._exiting_symbols:
-                    return None
-                self._exiting_symbols.add(_sym)
-                logger.info(
-                    "ff.time_exit symbol=%s age_s=%.0f max_hold_s=%.0f — closing position",
-                    _sym, age_s, self.config.max_hold_seconds,
-                )
-                # BUG-62: save snapshot before removing — restored if exit rolls back
-                self._pending_exits[_sym] = dict(pos)
-                del self._open_positions[_sym]
-                self._metrics.trade_requests_generated += 1
-                return TradeRequest(
-                    strategy_id=self.strategy_id,
-                    legs=[
-                        TradeLeg(
-                            exchange_id=pos["buy_ex"],
-                            symbol=_sym,
-                            side=OrderSide.SELL,
-                            size=pos["size"],
-                            order_type=OrderType.MARKET,
-                            price=signal.buy_price,
-                            metadata={"leg_type": "futures_close", "reduceOnly": True},
-                        ),
-                        TradeLeg(
-                            exchange_id=pos["sell_ex"],
-                            symbol=_sym,
-                            side=OrderSide.BUY,
-                            size=pos["size"],
-                            order_type=OrderType.MARKET,
-                            price=signal.sell_price,
-                            metadata={"leg_type": "futures_close", "reduceOnly": True},
-                        ),
-                    ],
-                    expected_profit_usdt=Decimal("0"),
-                    confidence=1.0,
-                    metadata={"close_reason": "max_hold_exceeded", "age_s": str(int(age_s))},
-                )
-            else:
-                # Position still active, spread not yet converged → block new entry (BUG-I)
-                # Store last seen spread for monitor-based exit check
-                if _current_spread_bps is not None:
-                    self._open_positions[_sym]["last_spread_bps"] = _current_spread_bps
-                self._metrics.signals_filtered += 1
-                logger.debug(
-                    "ff.rejected reason=position_open symbol=%s age_s=%.0f spread_bps=%s exit_thr=%.2f",
-                    _sym, age_s,
-                    f"{_current_spread_bps:.2f}" if _current_spread_bps is not None else "N/A",
-                    _exit_threshold_bps,
-                )
-                return None
+            if _current_spread_bps is not None:
+                self._open_positions[_sym]["last_spread_bps"] = _current_spread_bps
+            self._metrics.signals_filtered += 1
+            logger.debug(
+                "ff.rejected reason=position_open symbol=%s spread_bps=%s",
+                _sym,
+                f"{_current_spread_bps:.2f}" if _current_spread_bps is not None else "N/A",
+            )
+            return None
 
         # US-254: Regime check — block new entries in CRISIS mode
         if self._regime_detector is not None:

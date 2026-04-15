@@ -628,6 +628,9 @@ class LiveMode(BaseMode):
                 self._execution_mode != "live",
             )
 
+        # Step 2.5: Reconcile exchange positions into strategy state
+        await self._reconcile_positions_on_startup()
+
         # Step 3: Start collectors
         from src.collectors.manager import CollectorManager
 
@@ -733,6 +736,99 @@ class LiveMode(BaseMode):
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
             logger.info("http_prewarm_complete exchanges=%d", len(tasks))
+
+    async def _reconcile_positions_on_startup(self) -> None:
+        """Sync pre-existing exchange positions into strategy._open_positions.
+
+        On engine restart, strategy._open_positions starts empty while the exchange
+        may still hold positions from the previous session. This method queries each
+        futures adapter and injects discovered positions into the matching strategy
+        so that reconciler/ghost-clear can track them correctly.
+
+        Conservative policy: without metadata to distinguish FF from FR, all paired
+        futures positions are assigned to the futures_futures strategy.
+        """
+        if self._strategy_manager is None:
+            return
+
+        _adapters = getattr(self._executor, "_exchanges", {})
+        if not isinstance(_adapters, dict):
+            return
+        _futures_adapters = {k: v for k, v in _adapters.items() if "futures" in k}
+        if not _futures_adapters:
+            logger.info("reconciler.no_futures_adapters — skipping position sync")
+            return
+
+        # Collect open positions from all futures exchanges
+        all_positions: dict[str, list] = {}  # exchange_id → list[Position]
+        for eid, adapter in _futures_adapters.items():
+            try:
+                positions = await adapter.get_positions()
+                open_pos = [p for p in positions if p.size != 0]
+                if open_pos:
+                    all_positions[eid] = open_pos
+            except Exception as exc:
+                logger.warning(
+                    "reconciler.get_positions_failed exchange=%s error=%s", eid, exc,
+                )
+
+        if not all_positions:
+            logger.info("reconciler.no_positions")
+            return
+
+        # Group by symbol across exchanges: symbol → [(exchange_id, Position)]
+        by_symbol: dict[str, list[tuple[str, Any]]] = {}
+        for eid, positions in all_positions.items():
+            for pos in positions:
+                by_symbol.setdefault(pos.symbol, []).append((eid, pos))
+
+        # Find FF and FR strategies
+        ff_strategy: Any = None
+        fr_strategy: Any = None
+        for sid in self._strategy_manager.list_strategies():
+            s = self._strategy_manager.get_strategy(sid)
+            if s is None:
+                continue
+            stype = getattr(s, "STRATEGY_TYPE", "")
+            if stype == "futures_futures":
+                ff_strategy = s
+            elif stype == "funding_rate_arb":
+                fr_strategy = s
+
+        synced = 0
+        for symbol, pos_list in by_symbol.items():
+            longs = [(eid, p) for eid, p in pos_list if p.size > 0]
+            shorts = [(eid, p) for eid, p in pos_list if p.size < 0]
+
+            if not longs or not shorts:
+                logger.warning(
+                    "reconciler.unpaired_position symbol=%s longs=%d shorts=%d — skipping",
+                    symbol, len(longs), len(shorts),
+                )
+                continue
+
+            long_eid, long_pos = longs[0]
+            short_eid, short_pos = shorts[0]
+
+            # Conservative: assign to FF (no metadata to distinguish FF from FR)
+            if ff_strategy is not None and hasattr(ff_strategy, "inject_position"):
+                ff_strategy.inject_position(symbol, {
+                    "buy_ex": long_eid,
+                    "sell_ex": short_eid,
+                    "size": abs(short_pos.size),
+                    "entry_time": time.monotonic(),
+                })
+                synced += 1
+                logger.info(
+                    "reconciler.positions_synced exchange_long=%s exchange_short=%s "
+                    "symbol=%s strategy=futures_futures size=%s",
+                    long_eid, short_eid, symbol, abs(short_pos.size),
+                )
+
+        if synced:
+            logger.info("reconciler.startup_sync_complete synced=%d", synced)
+        else:
+            logger.info("reconciler.no_positions")
 
     async def stop(self) -> None:
         """Stop live mode gracefully."""
