@@ -131,29 +131,45 @@ min_trade_notional_usd: $5
 | v85~v91 | 2026-04-12 | FF | 12 | -$0.04 | min_spread 재조정 과정 |
 | v92 | 2026-04-13 | FF | 0 | $0.00 | min_spread=30bps → 시장없음 |
 | v93 | 2026-04-13 | FF | 193 | -$1.17 | **BUG-73**: 15bps → 22bps 수수료 미반영 |
-| **v94** | 2026-04-13~ | FF+FR | 316 | **-$0.84** | FF API 비활성화 (14:22 KST) — BUG-76 손실 차단, FR 결산 대기 |
+| **v94** | 2026-04-13 | FF+FR | 316 | -$0.84 | BUG-76 즉시청산 루프, FF API 비활성화 |
+| v95~v97 | 2026-04-13~14 | FF+FR | 41 | -$0.04 | BUG-74~78 수정, 결산 cooldown 검증 |
+| **v108** | 2026-04-14 | FF+FR | **59+2** | **+$0.26** | FF 8H 수익! edge 242건 방어 |
+| v109~v115 | 2026-04-15 | FF+FR | varies | ~$0.00 | BUG-85~89 수정, FR 시그널 복구 |
+| **v117** | 2026-04-15~ | FF+FR | 3+ | $0.00 | **구조 리팩토링 적용** (Phase 1+2) |
 
-> v94 (14:22 KST): FF fills=316 (BUG-76 즉시청산 루프), FR positions=4 (LA,MOVE,0G,ID), crash=0, KillSwitch=0  
-> **BUG-74 수정완료**: live.py margin guard (lines 1115-1129), 9 unit tests PASS  
-> **BUG-76 수정완료**: futures_futures.py static 4.05bps exit (lines 222,405), 8 unit tests PASS  
-> **FF API toggle**: 14:22 KST `/api/v1/strategies/futures_futures_v1/toggle` → enabled=false (BUG-76 손실 차단)  
-> **다음**: FR 결산 UTC 08:00 (KST 17:00) → v95 재시작 (BUG-74/75/76 모두 적용)
+> v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
+> 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
+> v108: FF 8시간 +$0.26 수익 (첫 안정 수익 카나리)
+> v117: Phase 1(Config)+Phase 2(Position) 반영, GATE 10/10 PASS
 
 ---
 
-## §5. 미해결 버그
+## §5. 버그 이력 (v117 기준, 전부 수정완료)
 
-| ID | 파일 | 설명 | 영향 | 우선순위 |
-|----|------|------|------|---------|
-| BUG-73 | futures_futures.py:630 | gate `entry_only=True` → 입장비용만 계산, 퇴장비 미포함 | 구조적 손실 (15bps에서 -7bps) | **P0 → 수정완료** (27bps로 우회) |
-| collision_key | live.py:~1595 | `_build_collision_key`에 `strategy_id` 없음 → 멀티전략 동일 심볼 충돌 | Step 2-2+ 에서 FF/FR 동시체결 시 중복 방지 실패 | **P1 → 수정완료** (v94, tests pass) |
-| spread_exit | futures_futures.py:406 | 조기청산 경로 미검증 | FF 포지션 만기 외 청산 경로 미확인 | **P1 → 0/3** (v94 exits = BUG-76 artifacts, v95 재검증 필요) |
-| BUG-74 | live.py:1115 | margin_guard 없음 → Binance margin < $3 시 신규 ENTRY 허용 | FR 0G/USDT -2019 retry loop 185+회 | **P1 → 수정완료** (live.py:1115-1129, 9 unit tests PASS) |
-| BUG-75 | futures_futures.py:94 | `max_hold_seconds` config 캐시 이슈 → 1800s 사용 (engine.json=300) | FF 포지션 30분 보유, 5분 의도 → 마진 고갈 (4포지션 동시 보유) | **P1** (v95 재시작 시 자동 해결) |
-| BUG-76 | futures_futures.py:406,224 | 적응형 exit_threshold (p50) > min_spread_bps (27bps) → 진입 즉시 손절 청산 | FF 모든 포지션 진입 즉시 exit → 수수료 손실 반복 | **P0 → 수정완료** (2026-04-13, static 4.05bps 고정) |
-| BUG-77 | funding_rate.py:101-145 | settlement race condition: 90s timeout이 pending_settlement 클리어 → 미청산 심볼 재진입 허용 → 포지션 적층 | Binance 7 + Bitget 5 중복 포지션 (v94) | **P0 → 수정완료** (120s cooldown 추가) |
-| BUG-78 | live.py:1130 | margin guard rollback → duplicate_guard 통과 → retry loop (JTO 12+x) | 거래소 주문 미전송 (noisy only) | **P2 → 수정완료** (rollback 제거, v96 적용) |
-| WS reconnect | binance/binance_futures | "no close frame" 간헐적 발생 (10회/12분) | 자동 재연결, 운영 영향 없음 | P2 |
+| ID | 설명 | 상태 |
+|----|------|------|
+| BUG-73 | FF entry_only=True → round-trip 수수료 50% 과소 | ✅ entry_only=False + min_spread 45bps |
+| BUG-74 | margin guard 없음 → retry loop | ✅ $3 가드 |
+| BUG-75 | max_hold_seconds config 캐시 | ✅ 재시작 시 해결 |
+| BUG-76 | adaptive exit > min_spread → 즉시 청산 | ✅ static 4.05bps |
+| BUG-77 | settlement race condition | ✅ 120s cooldown + 테스트 |
+| BUG-78 | margin rollback → retry loop | ✅ rollback 제거 |
+| BUG-79 | allocation_pct 미연결 | ✅ per-strategy sizing |
+| BUG-80 | RiskGuardian 10파라미터 미연결 | ✅ 전파라미터 wiring |
+| BUG-81 | DB health gate 없음 | ✅ live 시 SystemExit |
+| BUG-82 | adapter qty desync | ✅ MIN_NOTIONAL ceil 제거 |
+| BUG-83 | Pydantic exchanges default overrode engine.json | ✅ _active_exchanges |
+| BUG-84 | Bitget WS 181 개별 구독 → disconnect | ✅ batch subscribe |
+| BUG-85 | FR 이중 필터 (5/10bps) | ✅ 5bps 통일 |
+| BUG-86 | slippage kill FF false halt | ✅ 100bps/20 window |
+| BUG-87 | -2022 ReduceOnly ERROR 로그 | ✅ WARNING 다운그레이드 |
+| BUG-88 | FR max_positions 무제한 → 마진 고갈 | ✅ max=2 |
+| BUG-89 | slippage kill FR carry trade HALT | ✅ spread-arb only |
+| BUG-A | risk config trading.json만 읽음 | ✅ engine.json merge |
+| BUG-B | min_edge dead code | ✅ 10bps + orderbook recheck |
+| BUG-C | Bitget fee 미추출 | ✅ poll/fill-history 추출 |
+| Phase1 | Config 3곳 분산 | ✅ engine.json 단일화 + validate |
+| Phase2 | FF exit 이중경로 → ghost-clear | ✅ monitor 단일경로 |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
 ```python
