@@ -1247,14 +1247,14 @@ class Engine:
         _ff_max_pos = min(_ff_fixed, _ff_alloc_cap) if _ff_alloc_cap > 0 else _ff_fixed
         ff_config = FuturesFuturesConfig(
             # engine.json strategy_filters.futures_min_spread_bps is the SOLE source of truth.
-            # strategy_params.json min_spread_bps is WFO calibration data and must NOT override
-            # the manually-set safety floor in engine.json (BUG: ff_p.get("min_spread_bps") was 15,
-            # silently overriding engine.json=25).
             min_spread_bps=Decimal(str(_get_config("strategy_filters.futures_min_spread_bps", default=27))),
             max_position_size=_ff_max_pos,
             min_book_depth_usd=_book_depth_usd,
             excluded_symbols=list(_ff_excluded),
             adaptive_static_entry_bps=Decimal(str(_get_config("strategy_filters.futures_adaptive_static_entry_bps", default=50))),
+            # BUG-91: max_hold_seconds was NOT passed → Pydantic default 1800s used instead of 300s.
+            # Positions held 30min → exchange auto-close → ghost on timeout exit.
+            max_hold_seconds=float(_get_config("strategy_filters.futures_max_hold_seconds", default=300)),
         ) if ff_p.get("status") in ("READY", "MONITOR") else None
 
         tri_p = tuned.get("triangular", {})
