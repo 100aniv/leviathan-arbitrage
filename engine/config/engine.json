@@ -1,52 +1,90 @@
 {
-  "_comment": "LEVIATHAN Engine Configuration — Runtime settings (non-secret). Secrets stay in .env",
-
+  "_comment": "LEVIATHAN Engine Configuration \u2014 Runtime settings (non-secret). Secrets stay in .env",
   "mode": "live",
   "env": "dev",
   "log_level": "INFO",
-
   "capital": {
     "allocation_mode": "percentage",
     "reserve_pct": 20,
     "strategies": {
-      "funding_rate":    {"allocation_pct": 35},
-      "futures_futures": {"allocation_pct": 20},
-      "spot_futures":    {"allocation_pct": 20},
-      "cross_exchange":  {"allocation_pct": 25}
+      "funding_rate": {
+        "allocation_pct": 35
+      },
+      "futures_futures": {
+        "allocation_pct": 20
+      },
+      "spot_futures": {
+        "allocation_pct": 20
+      },
+      "cross_exchange": {
+        "allocation_pct": 25
+      }
     },
     "tier": "step2_1",
     "tiers": {
-      "step2_1": {"futures_usd": 60, "initial_usd": 120},
-      "alpha": {"spot_usd": 20, "futures_usd": 30, "spot_krw": 28000, "initial_usd": 70},
-      "beta": {"initial_usd": 750},
-      "production": {"initial_usd": 5000}
+      "step2_1": {
+        "futures_usd": 60,
+        "initial_usd": 120
+      },
+      "alpha": {
+        "spot_usd": 20,
+        "futures_usd": 30,
+        "spot_krw": 28000,
+        "initial_usd": 70
+      },
+      "beta": {
+        "initial_usd": 750
+      },
+      "production": {
+        "initial_usd": 5000
+      }
     }
   },
-
   "api": {
     "port": 8000
   },
-
   "exchanges": {
-    "active": ["binance", "bitget", "upbit", "coinone", "bithumb", "binance_futures", "bitget_futures"],
-    "symbols": ["auto"],
+    "active": [
+      "binance",
+      "bitget",
+      "upbit",
+      "coinone",
+      "bithumb",
+      "binance_futures",
+      "bitget_futures"
+    ],
+    "symbols": [
+      "auto"
+    ],
     "symbol_exclusions_per_exchange": {
-      "coinone": ["BTC"],
-      "binance_futures": ["BARD"],
-      "bitget_futures": ["BARD"]
+      "coinone": [
+        "BTC"
+      ],
+      "binance_futures": [
+        "BARD"
+      ],
+      "bitget_futures": [
+        "BARD"
+      ]
     }
   },
-
   "strategy_filters": {
     "enable_holding_timeout": true,
     "spot_futures_max_hold_seconds": 1800,
-    "futures_max_hold_seconds": 300,
+    "futures_max_hold_seconds": 1800,
     "futures_max_concurrent_positions": 4,
     "futures_min_spread_bps": 45,
     "futures_max_position_size_usdt": 20,
     "futures_adaptive_static_entry_bps": 60,
     "futures_futures_max_position_usd": 12,
-    "futures_excluded_symbols": ["BARD", "0G", "ALLO", "AWE", "CFG", "BCH"],
+    "futures_excluded_symbols": [
+      "BARD",
+      "0G",
+      "ALLO",
+      "AWE",
+      "CFG",
+      "BCH"
+    ],
     "futures_min_book_depth_usd": 1,
     "futures_max_book_age_s": 30,
     "cross_exchange_min_book_depth_usd": 1,
@@ -62,22 +100,21 @@
     "enable_funding_convergence": true,
     "enable_latency_budget": false,
     "triangular_max_latency_ms": 500,
-    "futures_min_edge_bps": 0,
+    "futures_min_edge_bps": 10,
     "max_market_impact_bps": 20
   },
-
   "risk": {
-    "_comment": "퍼센티지 기반 동적 한도 (자본 대비 %). BUG-22 2026-04-11: 3.0→6.0 (base_position_pct=5%와 정렬. $120×3%=$3.60<$5 min_notional → trades 불가, 6%로 $7.20 여유)",
+    "_comment": "\ud37c\uc13c\ud2f0\uc9c0 \uae30\ubc18 \ub3d9\uc801 \ud55c\ub3c4 (\uc790\ubcf8 \ub300\ube44 %). BUG-22 2026-04-11: 3.0\u21926.0 (base_position_pct=5%\uc640 \uc815\ub82c. $120\u00d73%=$3.60<$5 min_notional \u2192 trades \ubd88\uac00, 6%\ub85c $7.20 \uc5ec\uc720)",
     "use_percentage": true,
     "max_position_pct": 6.0,
     "max_daily_loss_pct": 50.0,
     "max_net_exposure_per_asset": 5000,
     "min_edge_bps": 0,
-    "min_price_usd": 0.10,
+    "min_price_usd": 0.1,
     "max_rollback_threshold": 0.02,
     "circuit_breaker_mdd_threshold": 0.02,
     "circuit_breaker_consecutive_loss_limit": 5,
-    "circuit_breaker_api_error_rate_threshold": 0.20,
+    "circuit_breaker_api_error_rate_threshold": 0.2,
     "circuit_breaker_cooldown_seconds": 300.0,
     "circuit_breaker_half_open_test_count": 3,
     "correlation_window": 30,
@@ -88,12 +125,10 @@
     "max_cumulative_slippage_bps": 100,
     "slippage_window_trades": 20
   },
-
   "dynamic_risk": {
-    "_comment": "v7: lowered to 5% — $120×5%=$6/trade at 20x=margin $0.30. Prevents startup burst margin exhaustion.",
+    "_comment": "v7: lowered to 5% \u2014 $120\u00d75%=$6/trade at 20x=margin $0.30. Prevents startup burst margin exhaustion.",
     "base_position_pct": 5.0
   },
-
   "execution": {
     "_comment": "PHOENIX v3: min_trade_notional lowered to $5 (futures exchange minimum)",
     "min_trade_notional_usd": 5,
@@ -111,22 +146,18 @@
       "bitget_futures": 6
     }
   },
-
   "paper": {
     "_comment": "Paper mode: live WS data + SimExecutor",
     "depth_fraction": 1.0,
     "disabled_strategies": []
   },
-
   "backtest": {
     "latency_ms": 500
   },
-
   "live": {
     "_comment": "Live mode (Phase I+): small capital = capital.tiers.alpha, full = production. Replaces shadow mode.",
     "max_daily_loss_pct": 5.0
   },
-
   "live_gate": {
     "bypass": true,
     "sharpe_threshold": 0.0,
@@ -135,13 +166,10 @@
     "evaluation_days": 1,
     "continuous_enabled": true
   },
-
   "strategy_params": {
     "_comment": "See config/strategy_params.json for per-strategy tuning"
   },
-
   "tuner": {},
-
   "db": {
     "host": "localhost",
     "port": 5432,
@@ -152,31 +180,31 @@
     "flush_interval_ms": 100,
     "market_buffer_size": 1000
   },
-
   "monitoring": {
     "prometheus_port": 8000,
     "monitor_interval_sec": 300
   },
-
   "cors": {
-    "origins": ["http://localhost:3000", "http://127.0.0.1:3000", "https://localhost", "https://127.0.0.1"]
+    "origins": [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "https://localhost",
+      "https://127.0.0.1"
+    ]
   },
-
   "security": {
     "dashboard_user": "admin",
     "trusted_proxies": "127.0.0.1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16",
     "allowed_ips": "127.0.0.1,::1,testclient"
   },
-
   "slippage": {
     "k_default": 1.0,
     "conservative_multiplier": 1.5,
     "gamma_calibrated": false,
     "t0": 60.0
   },
-
   "parallel": {
-    "_comment": "Phase K K-2-ALL: 검증 완료 4조합 병렬 24H 운영 설정",
+    "_comment": "Phase K K-2-ALL: \uac80\uc99d \uc644\ub8cc 4\uc870\ud569 \ubcd1\ub82c 24H \uc6b4\uc601 \uc124\uc815",
     "enabled": true,
     "combinations": [
       {
@@ -184,18 +212,21 @@
         "exchange": "binance",
         "strategy": "funding_rate",
         "capital_usd": 7.5,
-        "description": "Binance Funding Rate (SIT-3 검증, 가장 안전)"
+        "description": "Binance Funding Rate (SIT-3 \uac80\uc99d, \uac00\uc7a5 \uc548\uc804)"
       },
       {
         "id": "P-05",
         "exchange": "bitget",
         "strategy": "funding_rate",
         "capital_usd": 7.5,
-        "description": "Bitget Funding Rate (수수료 최저)"
+        "description": "Bitget Funding Rate (\uc218\uc218\ub8cc \ucd5c\uc800)"
       },
       {
         "id": "P-12",
-        "exchanges": ["binance", "bitget"],
+        "exchanges": [
+          "binance",
+          "bitget"
+        ],
         "strategy": "cross_exchange",
         "capital_usd": 7.5,
         "description": "Binance+Bitget Cross Exchange"
@@ -205,7 +236,7 @@
         "exchange": "coinone",
         "strategy": "triangular",
         "capital_usd": 7.5,
-        "description": "Coinone Triangular (수수료 0.02% 최저)"
+        "description": "Coinone Triangular (\uc218\uc218\ub8cc 0.02% \ucd5c\uc800)"
       }
     ],
     "risk": {
