@@ -297,7 +297,8 @@ class FuturesFuturesStrategy(BaseStrategy):
         """
         if symbol in self._pending_position_metadata:
             self._pending_position_metadata.pop(symbol, None)
-            logger.debug("ff.pending_entry_cleared_preexec symbol=%s", symbol)
+            # BUG-96 observability: info 레벨로 승격 (debug는 엔진 기본 log level에서 가려짐)
+            logger.info("ff.pending_entry_cleared_preexec symbol=%s", symbol)
         self._pending_entry_symbols.discard(symbol)
 
     async def _open_positions_monitor(self) -> None:
