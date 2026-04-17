@@ -187,52 +187,33 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 ## 세션 시작 프로토콜
 
 1. **SSOT.md 읽기**: 작업 시작 전 반드시 `SSOT.md`를 읽고 현재 상태를 파악할 것
-   - `SSOT.md`가 프로젝트의 **유일한 활성 설계 문서**
-   - 완료된 Phase(A~M) 이력 → `SSOT_COMPLETE.md` (개발 시 불필요, TF 검증 시에만 참조)
+   - `SSOT.md`가 프로젝트의 **유일한 설계 문서**
    - 다른 문서(docs/archive/)에 상태 정보를 기록하지 말 것
 
 2. **도구 활용 (CLI 우선)**:
    - **GitHub**: `gh` CLI로 push, PR, issue 관리
    - **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`
-   - **Shadow 실행**: `cd engine && timeout 600 python -m src.main` (로컬, 최신 코드 즉시 반영)
-   - **Docker 인프라**: DB/Redis 상시 실행 `docker compose up -d timescaledb redis`. 나머지(engine/auto-tuner/dashboard 등)는 Phase/US에서 필요할 때 `docker compose build <서비스> && docker compose up -d <서비스>` (새 빌드 필수). `docker compose up -d` (전체)는 이전 코드 engine 실행 → 데이터 꼬임 + 로컬 충돌 위험
+   - **Shadow 실행**: `cd engine && timeout 600 python -m src.main`
+   - **Docker**: `docker compose up -d timescaledb redis && docker compose ps` (compose 'engine' 서비스는 로컬 python과 port 8000 충돌 — DB/Redis만 기동)
    - **Exa.ai**: 리서치 시 `mcp__exa__web_search_exa` 사용
 
 3. **완료 기준**: 단위테스트 통과만으로 Phase 완료 선언 금지.
    반드시 Shadow 10분 실행 후 PnL > 0, crash 0건 확인.
 
-## 팀 구조 (7팀 + TF)
+## 팀 구조 (5팀 체제)
 
-> 팀은 기능별 정의, Stage가 필요한 팀을 호출. Stage B-Step 1만 TeamCreate, 나머지 Agent() 서브에이전트.
-> **에이전트 파일**: `.claude/agents/leviathan-*.md` (역할 기반 정의)
+| 팀 | 에이전트 | 역할 |
+|----|---------|------|
+| 기획팀 | architect(opus), planner(opus), analyst(opus) | SSOT 읽기, 리서치, 태스크 분해, 우선순위 |
+| 개발팀 | executor(sonnet), deep-executor(opus), build-fixer(sonnet), designer(sonnet) | 구현, 빌드 수정, UI 반영 |
+| 퀀트팀 | scientist(sonnet), analyst(opus), quant-validator | 수학 검증, 백테스트, 파라미터 민감도 |
+| 테스트팀 | test-engineer(sonnet), qa-tester(sonnet), shadow-tester | 단위/통합/Shadow 테스트, E2E |
+| 검증팀 | code-reviewer(opus), security-reviewer(sonnet), critic(opus), ssot-keeper, browser-verifier(sonnet) | 코드 리뷰, 보안, SSOT 업데이트, Chrome 브라우저 검증(Kazuha) |
 
-| 팀 | Stage | 에이전트 파일 | 역할 |
-|----|-------|-------------|------|
-| ① Planning (기획) | A | `leviathan-planner` | Entry Gate 정합성, 요구사항, 기획비판, PLAN.md |
-| ② Execution (개발) | B-Step 1 | `leviathan-executor` | TeamCreate 협업, 최대 6명 |
-| ②-B Assembly Gate | C-Step 1 | `leviathan-assembler` | **조립검증**: init chain + signal flow + dead wiring + config audit |
-| ③ Review (코드리뷰) | C-Step 2~3 | `leviathan-reviewer` | 코드리뷰+보안+멀티모델 quorum (Assembly Gate PASS 후에만) |
-| ④ QA (테스트) | B-Step 2 | `leviathan-qa` | Shadow 13항목 복합지표, QA, 브라우저 검증 |
-| ⑤ Release (릴리스) | C-Step 5~6 | `leviathan-release` | Phase완료리뷰(7항목)+Go/No-Go, SSOT+git push |
-| ⑥ Quant (검증) | A+B | `leviathan-quant` | 수학 검증, ML(HMM/XGBoost/ONNX), DEX |
-| ⑦ Fix Loop | L1+ | `leviathan-fix` | 에스컬레이션 시 활성화 (Type W/P/B) |
-| TF | QF/SF/PF/Final | `sit3-lead` + 전팀 | 상용화 최종 검증 (4-Round) |
-
-**사이클**: Stage A(기획)→B(구현+검증)→C(리뷰+릴리스+사장님승인)→**다음US** (Phase K부터 US 단위 사이클) → 해당 Phase 모든 US 완료 시 다음Phase
+**사이클**: 기획→개발→퀀트→테스트→검증→(gaps→기획 복귀, 없으면 commit+push+SSOT 업데이트)
 
 ## 커스텀 에이전트 (.claude/agents/)
 
-**역할 기반 (harness 생성):**
-- `leviathan-planner` — Stage A 기획/아키텍처/Entry Gate (opus)
-- `leviathan-executor` — Stage B 구현/테스트 (sonnet, TeamCreate 최대 6명)
-- `leviathan-assembler` — C-Step 1 Assembly Gate 조립 검증 (sonnet)
-- `leviathan-reviewer` — C-Step 2~3 코드리뷰+보안+멀티모델 quorum (opus)
-- `leviathan-qa` — B-Step 2 Shadow 13항목+QA+브라우저 (sonnet)
-- `leviathan-release` — C-Step 5~6 Go/No-Go+SSOT+git push (opus)
-- `leviathan-quant` — 수학/ML/DEX 검증 (opus)
-- `leviathan-fix` — L1+ Fix Loop: Type W/P/B (sonnet)
-
-**도메인 특화 (기존 유지):**
 - `quant-validator` — 슬리피지/마찰력/수익성 수학 검증 + ML 모델 수학 검증
 - `shadow-tester` — Shadow 모드 실 실행 및 결과 분석 + ML Canary 검증
 - `ssot-keeper` — SSOT.md 유일 관리자
@@ -245,44 +226,23 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **엔진**: Python 3.12+ (AsyncIO) + Rust (PyO3) — `engine/src/`
 - **대시보드**: Next.js 14 (App Router) — `dashboard/src/app/`
 - **DB**: TimescaleDB + Redis — `docker-compose.yml`
-- **거래소**: 10 native WS adapters (7 spot + 3 futures, ccxt 미사용) — `engine/src/collectors/`
-- **전략 7개**: `engine/src/strategies/` (cross_exchange, spot_futures, futures_futures, triangular, funding_rate, statistical_arb, cex_dex) — latency_arb는 US-194에서 cross_exchange로 병합
+- **거래소**: 8 native WS adapters (ccxt 미사용) — `engine/src/collectors/`
+- **전략 8개**: `engine/src/strategies/` (cross_exchange, spot_futures, futures_futures, triangular, funding_rate, statistical_arb, latency_arb, cex_dex)
 - **API**: `engine/src/api/` (FastAPI + JWT)
 - **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`
 - **슬리피지**: CEXOrderbookSlippage만 활성 (PowerLaw k=0.0 비활성)
 - **설정**: `engine/.env` (엔진용) + 루트 `.env` (Docker용) — **두 파일 반드시 동기화**
-- **텔레그램 3-Bot** (S21 레거시 제거 완료): `engine/src/infra/telegram_*_bot.py` — TradeBot(20cmd), InfraBot(9cmd), DevBot(17cmd, 비운영)
-  - **TradeBot**: `TRADE_TELEGRAM_BOT_TOKEN` — 거래 알림 + Kill Switch + 포지션/체결/전략 제어
-  - **InfraBot**: `INFRA_TELEGRAM_BOT_TOKEN` — 인프라 모니터링 + **Dead Man's Switch Watchdog** (/watchdog on|off|status, /closepositions)
-  - **DevBot**: `DEV_TELEGRAM_BOT_TOKEN` — **개발 전용 (비운영)**: Claude Code 개발 진행상황 수신. 실제 운영 시 비활성.
-  - **Watchdog**: InfraBot `/watchdog on` → Redis `leviathan:heartbeat` TTL 모니터링. 소실 시 알림 + /closepositions 사용
-  - **Docker monitoring**: INFRA_TELEGRAM_BOT_TOKEN 사용 (docker-compose.yml에서 매핑)
-  - **Alertmanager**: 3봇 토큰 sed 치환 (INFRA/TRADE/DEV placeholder)
-  - **레거시 제거**: SmartTelegramAlerter/TelegramCommandHandler 삭제, main.py 3봇 직접 초기화
-- **워크플로우 자동화**: 순수 Python (sqlite3 + jsonschema + TypedDict) — `engine/src/workflow/`
-  - 체크포인트: `.omc/state/checkpoints.db` (SQLite, 워크플로우 전용 — TimescaleDB 거래 데이터와 분리)
-  - 일관성 검사: `cd engine && python -m src.workflow.cli check_all`
-  - 체크포인트 저장: `cd engine && python -m src.workflow.cli checkpoint save`
-  - 체크포인트 복원: `cd engine && python -m src.workflow.cli checkpoint restore`
 
 ## 자주 틀리는 패턴 (반드시 숙지)
 
 - **이중 슬리피지 금지**: SignalGenerator의 CEXOrderbookSlippage가 유일한 슬리피지 소스. PaperExecutor에 PowerLaw 적용 절대 금지
 - **ENGINE_ENV**: `dev|staging|prod|test`만 허용 (`development` 사용 금지)
 - **KRW 거래소**: upbit, bithumb, coinone은 KRW 페어 자동 매핑. auto-symbols `min_exchanges=3` 필수 (7로 하면 0개)
-- **Bithumb stale data**: 공개 WS 증분 orderbook에서 소형코인 2-10x 가격 오차 → fake spread (304만%). ±50% 가드 + 2단계 REST 검증으로 방어 (코드 정상). Live 인증 API 사용 시 데이터 품질 개선. triangular은 이 가드 때문에 유효 시그널 0건
-- **stat_arb PnL 과대평가 주의**: expected_profit 공식이 position_usd를 5000으로 cap. 변동성 이중 계산 금지
-- **HMM Regime 최소 샘플**: 30샘플 미만 시 NORMAL 유지 (소수 샘플 CRISIS 방지)
-- **funding_rate = carry trade**: Shadow 즉시결산 시 carry income 시뮬레이션 반영 필요. 1기간 PnL만으로 판단 금지
-- **ONNX 모델 피처 수**: runtime 피처 수와 모델 피처 수 일치 필수. dim mismatch 시 자동 fallback (0.5)
-- **Stage B-Step 2 중 /compact 금지**: Shadow/QA 백그라운드 에이전트 실행 중 압축하면 결과 소실. Stage C 완료 + git push 후에만
-- **컨텍스트 memoize 특성**: CLAUDE.md + git status는 세션 시작 시 1회만 로드. 세션 중 SSOT.md 수정 → 현재 세션 에이전트에 미반영. Phase 완료 SSOT sync 후 세션 재시작 또는 `/memory` 호출 필수. 장기 세션(3H+) → checkpoint save 후 `/compact`
-- **Stage별 권한 모드 가이드**: Stage A → `/permissions plan` (read-only 강제), Stage B → `/permissions acceptEdits` (편집 자동 승인), Stage C → `/permissions default`
+- **Bithumb stale data**: 증분 orderbook에서 소형코인 2-10x 가격 오차 → fake spread. Phase G에서 해결
+- **Phase C 중 /compact 금지**: Shadow/리뷰 백그라운드 에이전트 실행 중 압축하면 결과 소실. Phase C 완료 + git push 후에만
 - **Coinone 수수료**: 0.20% → 0.02% (API 할인 적용)
 - **cancel_order**: order.symbol 전달 필수 (Binance rollback). TypeError fallback for legacy adapters
 - **friction prefix**: cost_calculator가 `paper_`/`sandbox_` prefix 자동 strip
-- **passes:true 거짓 양성 금지**: 코드 존재만으로 완료 판정 금지. Shadow 10min 런타임에서 해당 기능 호출 증거(로그/메트릭) 필수. dead code(정의만 있고 호출 안 됨) = passes:false
-- **GATE 강제 (gstack 철학)**: 게이트 미충족 시 멈춤 허용. 물리적 증거 파일(로그/메트릭/체결 기록) 없으면 다음 Phase 진입 금지. "완료"는 코드 존재가 아니라 런타임 증거로만 판정. TeamCreate 30초 무응답 시 TeamDelete → Agent() fallback (#33043).
 
 ## 플랜 파일 (유저 레벨 — 레포 밖)
 
@@ -292,26 +252,25 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## 현재 상태 (SSOT.md §2 참조)
 
-- **Phase 순서**: A~M✅ → S1~S26✅ → SIT-0~2✅ → SIT-3✅ → Phase H✅ → Phase I✅ → Phase J✅ → K✅ → **L** → M → N(TF Final→Live)
-- **Tests**: 5,454 passed, 0 failed, 12 skipped
-- **PRD**: `.omc/prd.json` (437개 US, 419 passes:true / 18 passes:false — US-055/056/332/373/382/425~437 passes:false)
-- **다음 작업**: Phase L 진행중 — US-432(디자인시스템✅진행중) → US-430(Paper리네임, 세션종료후) → US-433(대시보드재설계) → US-437(Assets페이지)
-- **계획서**: `/Users/100aniv/.claude/plans/lucky-watching-porcupine.md` (Phase L 재설계, 2026-04-04 승인)
-- **Upbit 수수료**: Maker 0.05% / Taker 0.139%
+- **다음 Phase**: H (대시보드 통합, US-072 남음) → I → J → K → L → M → F(최종검수, LAST)
+- **Tests**: `pytest --co -q | tail -1` 실시간 확인 (하드코딩 금지)
+- **PRD**: `.omc/prd.json` — `jq '.total_stories, (.stories|length), (.phases|length)'`로 실시간 조회
+- **Docker 필수**: Shadow 실행 전 `docker compose up -d timescaledb redis` — DB/Redis만 기동 (engine 컨테이너는 로컬 python과 port 충돌)
+- **다음 작업**: US-072 (계좌 정보/총자산/거래소별 잔고 — Phase H)
 
-## 워크플로우 핵심 (상세 → leviathan.md)
+## 실행 워크플로우 (ralph autopilot)
 
-- **3-Stage Sequential (US 단위)**: 각 US마다 A(기획)→B(구현+Shadow)→C(Assembly→코드리뷰+멀티모델 병렬→Go/No-Go→SSOT+sync+git)→**다음US**. 해당 Phase 모든 US 완료 시 NEXT_PHASE. FSM: C_release→NEXT_US→(more_us)→A 또는 (phase_complete)→NEXT_PHASE
-- **Assembly Gate (C-Step 1)**: 코드리뷰 전 조립 검증 (init chain + signal flow + dead wiring + config audit)
-- **C-Step 2 병렬**: Jennie(코드리뷰) + Jisoo(보안) + 멀티모델 CLI(codex/gemini/qwen) 동시 실행. quorum 2+ 지적 = MUST FIX
-- **Shadow 13항목 복합지표**: MDD%, PF, 전략별 trade>=1, 방어 레이어 활성
-- **WIRING AC 필수**: 새 컴포넌트 US에 `⚡ WIRING:` AC 3개 (생성→주입→호출)
-- **Fix Loop 유형**: Type W(Wiring→L2) / Type P(Parameter→3회) / Type B(Bug→3회)
-- **CLI**: Codex(`codex exec`), Gemini(`gemini -p`), Qwen(`qwen -p`) — 수동: `/consensus-code-review`, `/octo-debate`
-- **세션**: ralph 루프 연속. `/compact` 금지. checkpoint → `/clear` → checkpoint apply로 재개.
-- **에스컬레이션**: L0(팀 내) → L1(fix) → L2(Stage A) → L3(SSOT) → L4(Phase) → **L5(텔레그램→사장님)**
-- **TF**: leviathan.md §7 자동 진입 (전 US passes:true 시) → leviathan-tf.md 절차 (QF→SF→PF→Final 4-Round)
-- **동기화 CLI**: Phase 완료 시 `python -m src.workflow.cli sync --phase X --tests Y --prd-pass Z --prd-total W` → 7개 파일 원자 업데이트
-- **FSM 전환**: Stage 전환 시 `python -m src.workflow.cli transition <event>` → 잘못된 전환 차단
-- **정합성 검사**: `python -m src.workflow.cli check_all` → 9항목 (파일/PRD/Phase/Tests/해시/CLAUDE.md/State4파일/Phase이력/TF status)
-- **교차검증**: Agent()는 매 호출 새 인스턴스 = 자동 fresh context. 수행자≠검증자 자동 보장.
+**3-Phase Sequential 연속 실행** (leviathan.md 참조):
+1. **Phase A** (기획): ralplan → PLAN.md → QUANT GATE → checkpoint 저장 → **즉시 Phase B**
+2. **Phase B** (개발): TeamCreate + Step 2.5 통합검증 → pytest PASS → TeamDelete → checkpoint 저장 → **즉시 Phase C**
+3. **Phase C** (검증): Shadow + code-reviewer + critic → SSOT 업데이트 → git push → checkpoint 저장 → **즉시 다음 US**
+
+**연속 실행 원칙**: Phase A→B→C는 끊김 없는 단일 흐름. Phase 간 `/clear` 없음. `/compact` 절대 금지.
+**체크포인트 복구**: `.omc/state/leviathan-progress.json` — 세션 크래시/수동 `/clear` 시 `/leviathan` 재호출로 자동 재개.
+**에스컬레이션**: L0(팀 내) → L1(fix 루프) → L2(Phase A 재기획) → L3(SSOT 수정) → L4(Phase 재편)
+
+## LEVIATHAN 워크플로우 핵심 규칙 (3줄)
+
+- **Docker**: Phase B + Phase C 진입 시 `docker compose up -d timescaledb redis && docker compose ps` 필수 (engine 컨테이너는 로컬 python과 port 8000 충돌)
+- **Chrome**: Phase D/H US → Rosé(Phase B) + Kazuha(Phase C)가 Chrome DevTools MCP로 실제 브라우저 검증. `npm run build`만으로 완료 선언 금지.
+- **멈춤 금지**: Phase 간 사용자 확인 요청 절대 금지. 모든 응답에 tool call 포함.
