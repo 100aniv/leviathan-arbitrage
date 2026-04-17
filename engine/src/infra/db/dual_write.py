@@ -21,8 +21,8 @@ from src.risk.kill_switch import halt_local
 logger = logging.getLogger(__name__)
 
 # Timeouts (seconds)
-_PG_TIMEOUT: float = 0.005   # 5ms
-_REDIS_TIMEOUT: float = 0.002  # 2ms
+_PG_TIMEOUT: float = 0.100   # 100ms (was 5ms — caused trade rejections)
+_REDIS_TIMEOUT: float = 0.050  # 50ms (was 2ms)
 
 
 class TradeRejectedError(Exception):
