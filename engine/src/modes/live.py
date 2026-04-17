@@ -1250,6 +1250,20 @@ class LiveMode(BaseMode):
                             _leg.exchange_id, _cached, self._MIN_MARGIN_ENTRY_USD,
                         )
                         self._stats.trades_margin_blocked += 1
+                        # BUG-96 GAP#1: clear pre-exec pending state (FF _pending_position_metadata)
+                        # but NOT _open_positions (BUG-78 soft block preserved).
+                        if self._strategy_manager is not None:
+                            _strat_mg = self._strategy_manager.get_strategy(sid)
+                            if _strat_mg is not None:
+                                for _mg_leg in trade_request.legs:
+                                    if _mg_leg.symbol:
+                                        try:
+                                            _strat_mg.clear_pending_entry(_mg_leg.symbol)
+                                        except Exception as _mg_err:
+                                            logger.debug(
+                                                "live_mode.margin_guard_clear_failed sym=%s err=%s",
+                                                _mg_leg.symbol, _mg_err,
+                                            )
                         return
 
         # --- Collision detection (DeduplicationGate: atomic check-and-register) ---

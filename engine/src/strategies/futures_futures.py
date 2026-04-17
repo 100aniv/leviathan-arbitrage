@@ -286,6 +286,20 @@ class FuturesFuturesStrategy(BaseStrategy):
         self._exiting_symbols.discard(symbol)
         logger.warning("ff.ghost_cleared symbol=%s", symbol)
 
+    def clear_pending_entry(self, symbol: str) -> None:
+        """BUG-96 GAP#1: Clear only _pending_position_metadata (pre-exec reject path).
+
+        Called by live.py when pre-exec margin guard (BUG-74) blocks the trade.
+        We must NOT touch _open_positions (BUG-78 soft block semantics) but MUST
+        clear _pending_position_metadata or it leaks until TTL reaper (BUG-95).
+        Also discards _pending_entry_symbols in case it wasn't cleared by on_signal's
+        finally block.
+        """
+        if symbol in self._pending_position_metadata:
+            self._pending_position_metadata.pop(symbol, None)
+            logger.debug("ff.pending_entry_cleared_preexec symbol=%s", symbol)
+        self._pending_entry_symbols.discard(symbol)
+
     async def _open_positions_monitor(self) -> None:
         """60초마다 _open_positions 점검 — max_hold_seconds 초과 또는 spread 수렴 시 exit TradeRequest 생성."""
         import asyncio as _asyncio

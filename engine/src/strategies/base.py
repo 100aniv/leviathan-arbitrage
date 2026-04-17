@@ -151,3 +151,14 @@ class BaseStrategy(ABC):
         Remove ALL tracking state unconditionally.
         Called by live.py BUG-92 ghost detection — NOT the same as rollback.
         """
+
+    def clear_pending_entry(self, symbol: str) -> None:
+        """BUG-96 GAP#1: Clear only pre-execution pending state (not _open_positions).
+
+        Called by live.py when pre-exec guards (margin, no_orders, etc.) reject
+        a TradeRequest without triggering rollback. Preserves BUG-78 semantics
+        for strategies that keep _open_positions as a soft block, while clearing
+        the BUG-94 _pending_position_metadata two-phase state (FF-specific).
+
+        Default is no-op. Strategies that use two-phase entry should override.
+        """
