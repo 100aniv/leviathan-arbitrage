@@ -1539,14 +1539,27 @@ class Engine:
         from src.execution.executor import AtomicExecutor
         from src.execution.trade_consumer import TradeRequestConsumer
 
-        # US-236: Initialize PositionManager (in-memory tracking; dual_writer=None in shadow mode)
+        # US-236: Initialize PositionManager (in-memory tracking)
+        # WS-4 Step 3: wire DualWriter if db_pool + redis_client available (persistence)
         try:
             from src.risk.position_manager import PositionManager
+            _dual_writer = None
+            if getattr(self, "_db_pool", None) and getattr(self, "_redis_client", None):
+                try:
+                    from src.infra.db.dual_write import DualWriter
+                    _dual_writer = DualWriter(
+                        db_pool=self._db_pool,
+                        redis_client=self._redis_client,
+                    )
+                    logger.info("DualWriter wired for PositionManager (persistence active)")
+                except Exception as _dw_exc:
+                    logger.warning("DualWriter init failed (fallback to None): %s", _dw_exc)
             self._position_manager = PositionManager(
-                dual_writer=None,
+                dual_writer=_dual_writer,
                 redis_client=getattr(self, "_redis_client", None),
             )
-            logger.info("PositionManager initialized (dual_writer=None, shadow mode)")
+            _mode_desc = "with dual_writer" if _dual_writer else "in-memory only (dual_writer=None)"
+            logger.info("PositionManager initialized (%s)", _mode_desc)
         except Exception as exc:
             logger.warning("PositionManager init failed (non-fatal): %s", exc)
         # WS-4 Step 1: async queue + drain task for ordered PositionManager writes
