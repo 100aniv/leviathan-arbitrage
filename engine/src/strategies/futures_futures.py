@@ -295,10 +295,11 @@ class FuturesFuturesStrategy(BaseStrategy):
             except _asyncio.CancelledError:
                 return
             now = time.monotonic()
-            # BUG-94 HIGH-2: TTL reaper for orphan _pending_position_metadata entries.
-            # Catches cases where on_execution_success never fired (task cancel, exception,
-            # empty legs, etc.) — prevents permanent slot exhaustion in max_concurrent_positions.
+            # BUG-94 HIGH-2 + BUG-95c: TTL reaper for orphan pending state.
+            # Catches cases where callbacks never fire (task cancel, exception, etc.)
+            # Prevents permanent slot exhaustion in max_concurrent_positions.
             _PENDING_TTL_S = 60.0  # worst-case executor timeout + network RTT
+            # Reap orphan _pending_position_metadata (entry promotion never fired)
             for _orph_sym, _orph_meta in list(self._pending_position_metadata.items()):
                 _orph_age = now - _orph_meta.get("entry_time", now)
                 if _orph_age > _PENDING_TTL_S:
@@ -307,6 +308,18 @@ class FuturesFuturesStrategy(BaseStrategy):
                         _orph_sym, _orph_age,
                     )
                     self._pending_position_metadata.pop(_orph_sym, None)
+                    self._metrics.rollback_no_state_count += 1
+            # Reap orphan _pending_exits (exit callback never fired) — longer TTL since monitor is 60s
+            _EXIT_PENDING_TTL_S = 180.0
+            for _orph_sym, _orph_meta in list(self._pending_exits.items()):
+                _orph_age = now - _orph_meta.get("exit_start_time", _orph_meta.get("entry_time", now))
+                if _orph_age > _EXIT_PENDING_TTL_S:
+                    logger.warning(
+                        "ff.pending_exits_reaped symbol=%s age_s=%.0f — no success/rollback callback",
+                        _orph_sym, _orph_age,
+                    )
+                    self._pending_exits.pop(_orph_sym, None)
+                    self._exiting_symbols.discard(_orph_sym)
                     self._metrics.rollback_no_state_count += 1
             for sym, pos in list(self._open_positions.items()):
                 try:
@@ -355,7 +368,10 @@ class FuturesFuturesStrategy(BaseStrategy):
                         )
                         self._pending_exit_requests.append(exit_req)
                         # BUG-62: save snapshot before removing — restored if exit rolls back
-                        self._pending_exits[sym] = dict(pos)
+                        # BUG-95c: exit_start_time for TTL reaper
+                        _exit_snap = dict(pos)
+                        _exit_snap["exit_start_time"] = now
+                        self._pending_exits[sym] = _exit_snap
                         self._open_positions.pop(sym, None)
                         continue
 
@@ -396,7 +412,10 @@ class FuturesFuturesStrategy(BaseStrategy):
                         )
                         self._pending_exit_requests.append(exit_req)
                         # BUG-62: save snapshot before removing — restored if exit rolls back
-                        self._pending_exits[sym] = dict(pos)
+                        # BUG-95c: exit_start_time for TTL reaper
+                        _exit_snap = dict(pos)
+                        _exit_snap["exit_start_time"] = now
+                        self._pending_exits[sym] = _exit_snap
                         # 중복 emit 방지: 모니터에서 즉시 제거
                         self._open_positions.pop(sym, None)
                 except Exception:
@@ -739,16 +758,11 @@ class FuturesFuturesStrategy(BaseStrategy):
 
     async def on_fill(self, trade: Trade) -> None:
         await super().on_fill(trade)
-        # BUG-HIGH: clear _pending_exits/_exiting_symbols on exit fill to prevent
-        # indefinite leak when on_execution_success is not called (partial fills).
-        _EXIT_LEG_TYPES = frozenset((
-            "futures_close", "spread_exit_close_long", "spread_exit_close_short",
-            "time_exit_close_long", "time_exit_close_short",
-        ))
-        leg_type = (trade.metadata or {}).get("leg_type", "")
-        if leg_type in _EXIT_LEG_TYPES:
-            sym = trade.symbol
-            self._exiting_symbols.discard(sym)
-            if sym in self._pending_exits:
-                self._pending_exits.pop(sym)
-                logger.debug("ff.on_fill_exit_cleanup symbol=%s leg_type=%s", sym, leg_type)
+        # BUG-95c (Gemini CRITICAL): DO NOT pop _pending_exits on per-leg fill.
+        # For 2-leg exit, on_fill fires per leg. If leg2 rolls back after leg1 filled,
+        # _pending_exits snapshot is needed to restore _open_positions.
+        # Cleanup now happens in:
+        # - on_execution_success (confirmed success)
+        # - handle_exit_success / handle_exit_rollback (callbacks)
+        # - TTL reaper in _open_positions_monitor (orphan safety net)
+        pass

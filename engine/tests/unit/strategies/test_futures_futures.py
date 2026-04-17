@@ -305,11 +305,14 @@ def test_rollback_no_state_emits_warning(caplog):
 
 
 @pytest.mark.asyncio
-async def test_on_fill_then_rollback_no_ghost_restore(caplog):
-    """on_fill이 먼저 _pending_exits 정리 후 rollback 도착 시 ghost restore 없음 (BUG-116 시퀀스 테스트).
+async def test_on_fill_then_success_then_rollback_no_ghost_restore(caplog):
+    """BUG-95c (BUG-116 재설계): on_fill은 per-leg 단순 알림. 실제 상태 전환은
+    on_execution_success/handle_exit_rollback/TTL reaper가 담당.
 
-    실제 on_fill() 메서드를 호출해 leg_type="futures_close" 경로를 실행한 뒤
-    on_execution_rollback을 호출한다.
+    새 시퀀스:
+    1. on_fill (per-leg): _pending_exits 건드리지 않음
+    2. on_execution_success (모든 leg 완료): _pending_exits 정리
+    3. 뒤늦은 rollback: 스냅샷 없음 → ghost restore 안 됨 (rollback_no_state 경고)
     """
     import logging
 
@@ -323,7 +326,7 @@ async def test_on_fill_then_rollback_no_ghost_restore(caplog):
     strategy._pending_exits["BTC/USDT"] = snapshot
     strategy._exiting_symbols.add("BTC/USDT")
 
-    # 실제 on_fill() 호출 — leg_type="futures_close" → _pending_exits에서 제거
+    # 1. on_fill — BUG-95c: no-op (snapshot 유지)
     fill = Trade(
         trade_id="fill-001",
         exchange_id="binance_futures",
@@ -334,12 +337,15 @@ async def test_on_fill_then_rollback_no_ghost_restore(caplog):
         metadata={"leg_type": "futures_close"},
     )
     await strategy.on_fill(fill)
+    # on_fill은 snapshot 유지 (rollback 가능성 때문에)
+    assert "BTC/USDT" in strategy._pending_exits
 
-    # on_fill 후 _pending_exits + _exiting_symbols 비어있어야 함
+    # 2. on_execution_success — 실제 정리
+    strategy.on_execution_success("BTC/USDT")
     assert "BTC/USDT" not in strategy._pending_exits
     assert "BTC/USDT" not in strategy._exiting_symbols
 
-    # 그 후 rollback 도착 → rollback_no_state 경고, ghost restore 없음
+    # 3. 뒤늦은 rollback → rollback_no_state (스냅샷 이미 정리됨)
     with caplog.at_level(logging.WARNING, logger="src.strategies.futures_futures"):
         strategy.on_execution_rollback("BTC/USDT")
 
