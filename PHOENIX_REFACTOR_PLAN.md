@@ -136,3 +136,55 @@ PLAN → EXEC (Agent Teams) → TEST (pytest) → VERIFY (code-reviewer Opus) �
 | WS-3 | ~8 | 높음 (PositionManager 연결 + DualWriter 활성화) | 높음 (실행 경로 핵심 변경) |
 
 총 ~26개 파일, ~30개 작업.
+
+---
+
+## 2026-04-17 후속: BUG-93~96 + 멀티모델 독립 리뷰
+
+### 추가 발견 (WS-3 이후 멀티모델 리뷰)
+- **BUG-93**: LiveMode에 position_manager 파라미터 누락 → WS-3이 live 경로에서 dead
+- **BUG-94**: FF `on_signal` optimistic write → v123에서 ghost 11건 발생
+- **BUG-95a-d**: duplicate race + on_fill eager + exit rollback + handle_*_success 미연결
+- **BUG-96 GAP#1-#3 + HIGH**: margin guard 누수, exec_result invalid 팬텀, CancelledError, 멱등성
+
+### 해결
+| BUG | 수정 내용 | 커밋 | 검증 |
+|----|---------|------|------|
+| 93 | LiveMode position_manager 파라미터 추가 + trade_executed 경로에서 호출 | `80df207` | FR VANA 양쪽 leg position_opened 로그 |
+| 94 | `_pending_position_metadata` two-phase + `on_execution_success` 승격 | `cb0312d` | ff.position_confirmed 로그 |
+| 95a | Duplicate signal reject + TTL reaper (60s/180s) | `f85017d` | - |
+| 95b | **CRITICAL** ROLLED_BACK Exit → handle_exit_rollback 분리 | `c827423` | Opus+Codex+Gemini 합의 |
+| 95c | **CRITICAL** on_fill no-op + pending_exits TTL reaper | `0198ff7` | Gemini CRITICAL 해결 |
+| 95d | handle_entry/exit_success dispatch on success path | `5b4a788` | - |
+| 96-1 | margin guard → `clear_pending_entry` (BUG-78 보존) | `021cc45` | v137 PreexecClear 39+ 실전 |
+| 96-2 | **CRITICAL** exec_result invalid → defensive rollback + early return | `fa1a37a`+`8fdca69` | phantom success 방지 |
+| 96-3 | CancelledError + Exception handler → rollback notify | `28be30e` | - |
+| 96-H | `_notify_pre_exec_rollback` 멱등성 guard | `5eaa0b8` | 이중 호출 방지 |
+| 96-T | 방어 경로 5개 unit tests | `4ed276f` | 5 new pass |
+
+### 멀티모델 리뷰 체계 정립
+- `/ultrareview` (클라우드 병렬 multi-agent)
+- `ccg` skill (codex + gemini + Claude synthesis)
+- Opus code-reviewer → CRITICAL 3건 (GAP#2 return 누락 등) 독립 발견
+- Opus debugger → BUG-96 근본 원인 3개 GAP 전수 식별
+
+### v131 → v137 실증 (BUG-96 효과)
+| 지표 | v131 (41min) | v137 (17min+) |
+|------|--------------|----------------|
+| Reaped (orphan) | 38 | **0** |
+| Ghost_cleared | 1 | 0 |
+| ERR/CRIT | 0 | 0 |
+| PreexecClear | 0 (log debug였음) | 39+ (margin guard 실작동) |
+| Trades | 2 | 1+ |
+
+### WS-4 (다음 단계, 별도 US로 스케줄)
+**목표**: PositionManager durability + 단일 source of truth
+
+1. `asyncio.Queue` + 전용 `_pm_drain_loop` task (exception surfaced)
+2. `update_index_sync()` on PositionManager before queue dispatch
+3. `dual_writer=self._dual_writer` wire (persistence 활성화)
+4. `_position_sizes` 통합 → PositionManager 단일 읽기 (flag-gated)
+
+- 예상 LOC: ~90
+- 예상 시간: 2시간
+- 파일: `.omc/plans/ws-4-position-manager-durability.md`
