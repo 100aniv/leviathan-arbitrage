@@ -2820,6 +2820,7 @@ class Engine:
             execution_mode=execution_mode,
             tca_analyzer=getattr(self, "_tca_analyzer", None),
             slippage_feedback_collector=getattr(self, "_slippage_fb_collector", None),
+            position_manager=self._position_manager,
         )
 
         try:

@@ -206,10 +206,12 @@ class LiveMode(BaseMode):
         execution_mode: str = "paper",  # "paper" | "live"
         tca_analyzer: Any | None = None,
         slippage_feedback_collector: Any | None = None,
+        position_manager: Any | None = None,
     ) -> None:
         self._signal_generator = signal_generator
         self._executor = executor
         self._strategy_manager = strategy_manager
+        self._position_manager = position_manager
         self._multi_signal_producer = multi_signal_producer
         self._funding_rate_collector = funding_rate_collector
         self._market_recorder = market_recorder
@@ -1697,6 +1699,34 @@ class LiveMode(BaseMode):
                                 sid,
                                 reason=f"cumulative_slippage_{_cum_slip:.1f}bps",
                             )
+
+            # WS-3: Wire PositionManager in live execution path
+            if self._position_manager is not None and exec_result is not None and hasattr(exec_result, 'legs'):
+                _is_close_pm = self._is_reduceonly_request(trade_request)
+                for _lr in exec_result.legs:
+                    _t = getattr(_lr, 'trade', None)
+                    _o = getattr(_lr, 'order', None)
+                    if _t is not None and _o is not None:
+                        try:
+                            if _is_close_pm:
+                                asyncio.ensure_future(self._position_manager.close_position(
+                                    strategy_id=sid,
+                                    exchange_id=_o.exchange_id,
+                                    symbol=_o.symbol,
+                                    close_price=_t.price,
+                                ))
+                            else:
+                                _side_pm = getattr(_o.side, 'value', str(_o.side)).upper()
+                                asyncio.ensure_future(self._position_manager.open_position(
+                                    strategy_id=sid,
+                                    exchange_id=_o.exchange_id,
+                                    symbol=_o.symbol,
+                                    side="LONG" if _side_pm == "BUY" else "SHORT",
+                                    quantity=_t.amount,
+                                    entry_price=_t.price,
+                                ))
+                        except Exception as _pm_e:
+                            logger.warning("live_mode.position_manager_err: %s", _pm_e)
 
             logger.info(
                 "live_mode.trade_executed strategy=%s pnl=%.4f total_pnl=%.2f mode=%s latency_ms=%.1f",
