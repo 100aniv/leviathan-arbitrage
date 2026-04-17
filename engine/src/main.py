@@ -1549,6 +1549,11 @@ class Engine:
             logger.info("PositionManager initialized (dual_writer=None, shadow mode)")
         except Exception as exc:
             logger.warning("PositionManager init failed (non-fatal): %s", exc)
+        # WS-4 Step 1: async queue + drain task for ordered PositionManager writes
+        # (replaces fire-and-forget asyncio.ensure_future - no ordering, no exception surfacing)
+        self._pm_queue: asyncio.Queue = asyncio.Queue(maxsize=1024)
+        self._pm_drain_task: asyncio.Task | None = None
+        self._pm_drain_errors = 0  # metric counter
 
         self._executor = AtomicExecutor(
             exchanges=self._exchanges,
@@ -1843,22 +1848,31 @@ class Engine:
                     for trade, order in legs_info:
                         if trade is not None and order is not None:
                             _side_str = getattr(order.side, "value", str(order.side)).upper()
+                            # WS-4 Step 1: enqueue ordered ops via drain task (예외 surfaced, order 보장)
                             if _is_close_exec:
-                                asyncio.ensure_future(self._position_manager.close_position(
-                                    strategy_id=trade_request.strategy_id,
-                                    exchange_id=order.exchange_id,
-                                    symbol=order.symbol,
-                                    close_price=trade.price,
-                                ))
+                                _op_kwargs = ("close_position", {
+                                    "strategy_id": trade_request.strategy_id,
+                                    "exchange_id": order.exchange_id,
+                                    "symbol": order.symbol,
+                                    "close_price": trade.price,
+                                })
                             else:
-                                asyncio.ensure_future(self._position_manager.open_position(
-                                    strategy_id=trade_request.strategy_id,
-                                    exchange_id=order.exchange_id,
-                                    symbol=order.symbol,
-                                    side="LONG" if _side_str == "BUY" else "SHORT",
-                                    quantity=trade.amount,
-                                    entry_price=trade.price,
-                                ))
+                                _op_kwargs = ("open_position", {
+                                    "strategy_id": trade_request.strategy_id,
+                                    "exchange_id": order.exchange_id,
+                                    "symbol": order.symbol,
+                                    "side": "LONG" if _side_str == "BUY" else "SHORT",
+                                    "quantity": trade.amount,
+                                    "entry_price": trade.price,
+                                })
+                            try:
+                                self._pm_queue.put_nowait(_op_kwargs)
+                            except asyncio.QueueFull:
+                                # Safety net: fall back to fire-and-forget if queue saturated
+                                logger.warning("pm_queue_full — falling back to ensure_future op=%s sym=%s",
+                                               _op_kwargs[0], _op_kwargs[1].get("symbol"))
+                                _op_name, _op_args = _op_kwargs
+                                asyncio.ensure_future(getattr(self._position_manager, _op_name)(**_op_args))
 
                 # Track cross-exchange hedged positions (funding_rate, spot_futures)
                 # _position_sizes nets BUY/SELL to ~0 for hedged positions, so we track separately
@@ -2336,6 +2350,9 @@ class Engine:
             # BUG-81: Poll strategies for pending exit requests (FF settlement, SF timeout)
             asyncio.create_task(self._strategy_exit_poll_loop(), name="strategy_exit_poll"),
         ]
+        # WS-4 Step 1: PositionManager drain task — exception surfacing, ordered writes
+        self._pm_drain_task = asyncio.create_task(self._pm_drain_loop(), name="pm_drain")
+        tasks.append(self._pm_drain_task)
 
         # --- Single-axis mode routing (Phase H-2) ---
         if self._engine_mode == EngineMode.BACKTEST:
@@ -3820,6 +3837,36 @@ class Engine:
                 break
             except Exception as exc:
                 logger.warning("Heartbeat error: %s", exc)
+
+    async def _pm_drain_loop(self) -> None:
+        """WS-4 Step 1: PositionManager 작업 큐 드레인 loop.
+
+        asyncio.ensure_future 를 큐 기반으로 대체:
+        - 순서 보장 (open 후 close 순서 유지)
+        - 예외 surface (로그 + 메트릭, swallow 금지)
+        - 엔진 lifecycle 에 바인딩 (start/stop)
+        """
+        if self._position_manager is None:
+            return
+        while self.state.running:
+            try:
+                op, kwargs = await self._pm_queue.get()
+                try:
+                    await getattr(self._position_manager, op)(**kwargs)
+                except Exception as exc:
+                    self._pm_drain_errors += 1
+                    logger.error(
+                        "pm_drain_error op=%s sym=%s err=%s (errors_total=%d)",
+                        op, kwargs.get("symbol"), exc, self._pm_drain_errors,
+                    )
+                finally:
+                    self._pm_queue.task_done()
+            except asyncio.CancelledError:
+                # Engine shutdown
+                return
+            except Exception as exc:
+                logger.error("pm_drain_loop_unexpected err=%s — continuing", exc)
+                await asyncio.sleep(0.1)  # backoff to prevent tight loop
 
     async def _redis_halt_watch_loop(self) -> None:
         """Redis leviathan:halt 키 폴링 — InfraBot 원격 halt 명령 수신.
