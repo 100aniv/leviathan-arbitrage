@@ -1454,12 +1454,22 @@ class LiveMode(BaseMode):
                     return
 
             # --- Notify strategy of successful execution (BUG-80: clean _pending_exits) ---
+            # BUG-95d: also dispatch WS-2 handle_entry_success/handle_exit_success for strategies
+            # that implement split callbacks (FR needs handle_exit_success for settlement cleanup).
             _success_symbol = trade_request.legs[0].symbol if trade_request.legs else None
             if _success_symbol and self._strategy_manager is not None:
                 _strat_s = self._strategy_manager.get_strategy(sid)
-                if _strat_s is not None and hasattr(_strat_s, "on_execution_success"):
+                if _strat_s is not None:
+                    _is_exit_succ = self._is_reduceonly_request(trade_request)
                     try:
-                        _strat_s.on_execution_success(_success_symbol)
+                        # Legacy callback (FF promotes pending → _open_positions)
+                        if hasattr(_strat_s, "on_execution_success"):
+                            _strat_s.on_execution_success(_success_symbol)
+                        # WS-2 split callbacks (FR needs this to clear _pending_settlement_positions)
+                        if _is_exit_succ and hasattr(_strat_s, "handle_exit_success"):
+                            _strat_s.handle_exit_success(_success_symbol)
+                        elif not _is_exit_succ and hasattr(_strat_s, "handle_entry_success"):
+                            _strat_s.handle_entry_success(_success_symbol)
                     except Exception as _se_err:
                         # BUG-94 HIGH-1: elevated from DEBUG — silent swallowing masks promotion bugs
                         logger.warning("live_mode.success_notify_failed strategy=%s err=%s", sid, _se_err)
