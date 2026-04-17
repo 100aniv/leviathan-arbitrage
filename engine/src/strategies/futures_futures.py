@@ -98,7 +98,12 @@ class FuturesFuturesStrategy(BaseStrategy):
         self.config = config
         self._margin_tracker: Any | None = None  # injected by live.py
         # Position tracking for time-based exit: symbol → {buy_ex, sell_ex, size, entry_time}
+        # CONFIRMED positions (fill callback fired). Only these are subject to exit/monitor.
         self._open_positions: dict[str, dict] = {}
+        # BUG-94 (Ghost=0): metadata for trades that returned TradeRequest but not yet confirmed filled.
+        # Promoted to _open_positions on on_execution_success; popped on rollback/ghost.
+        # This separation prevents optimistic-write ghosts (11 ghosts in v123 due to this).
+        self._pending_position_metadata: dict[str, dict] = {}
         # MAJOR-1 race guard: symbols with in-flight on_signal() calls (between check and write).
         # Prevents concurrent coroutines from both passing _open_positions check before either writes.
         self._pending_entry_symbols: set[str] = set()
@@ -212,12 +217,17 @@ class FuturesFuturesStrategy(BaseStrategy):
                 )
 
     def on_execution_success(self, symbol: str) -> None:
-        """성공적 실행 완료 시 _pending_exits 정리 (BUG-80).
+        """성공적 실행 완료 시 상태 정리 (BUG-80 + BUG-94).
 
-        EXIT success: 실제 포지션이 거래소에서 청산됨 → _pending_exits 스냅샷 삭제.
-        ENTRY success: _pending_exits에 해당 심볼 없음 → no-op.
+        ENTRY success: _pending_position_metadata → _open_positions 승격 (BUG-94).
+        EXIT success: _pending_exits 스냅샷 삭제 (BUG-80).
         """
         self._exiting_symbols.discard(symbol)
+        # BUG-94: ENTRY success → promote pending metadata to confirmed position
+        if symbol in self._pending_position_metadata:
+            self._open_positions[symbol] = self._pending_position_metadata.pop(symbol)
+            logger.info("ff.position_confirmed symbol=%s", symbol)
+        # EXIT success → clear pending exit snapshot
         if symbol in self._pending_exits:
             self._pending_exits.pop(symbol)
             logger.debug("ff.pending_exits_cleared_on_success symbol=%s", symbol)
@@ -227,9 +237,10 @@ class FuturesFuturesStrategy(BaseStrategy):
     # ------------------------------------------------------------------
 
     def handle_entry_rollback(self, symbol: str) -> None:
-        """Entry rolled back → position never opened → clear tracking."""
+        """Entry rolled back → position never opened → clear tracking (BUG-94)."""
         self._exiting_symbols.discard(symbol)
-        self._open_positions.pop(symbol, None)
+        self._pending_position_metadata.pop(symbol, None)  # BUG-94: pending → discarded
+        self._open_positions.pop(symbol, None)  # defensive
         logger.info("ff.entry_rollback_cleared symbol=%s", symbol)
 
     def handle_exit_rollback(self, symbol: str) -> None:
@@ -260,7 +271,8 @@ class FuturesFuturesStrategy(BaseStrategy):
         self._pending_exits.pop(symbol, None)
 
     def clear_ghost(self, symbol: str) -> None:
-        """Exchange has no position for symbol — remove ALL tracking."""
+        """Exchange has no position for symbol — remove ALL tracking (BUG-94)."""
+        self._pending_position_metadata.pop(symbol, None)  # BUG-94
         self._pending_exits.pop(symbol, None)
         self._open_positions.pop(symbol, None)
         self._exiting_symbols.discard(symbol)
@@ -437,7 +449,13 @@ class FuturesFuturesStrategy(BaseStrategy):
         # the exit actually executes on the exchange.  Without counting pending_exits, the strategy
         # thinks slots are free and allows new entries while exits are still in-flight, exhausting
         # Binance margin → -2019 "Margin is insufficient".
-        _cur_positions = len(self._open_positions) + len(self._pending_entry_symbols) + len(self._pending_exits)
+        # BUG-94: include _pending_position_metadata (pending fill confirmation)
+        _cur_positions = (
+            len(self._open_positions)
+            + len(self._pending_entry_symbols)
+            + len(self._pending_exits)
+            + len(self._pending_position_metadata)
+        )
         if _cur_positions >= self.config.max_concurrent_positions:
             self._metrics.signals_filtered += 1
             logger.debug(
@@ -632,10 +650,11 @@ class FuturesFuturesStrategy(BaseStrategy):
                     return f"{eid}_futures"
                 return eid
 
-            # Track entry for time-based exit.
-            # Use _sym (= signal.symbol or "") to match the lookup key used everywhere else.
+            # BUG-94: Store pending metadata (NOT _open_positions) to prevent ghost.
+            # Promoted to _open_positions only after on_execution_success confirms fill.
+            # If execution fails/rejects → handle_entry_rollback pops this → no ghost.
             if self.config.max_hold_seconds > 0 and _sym:
-                self._open_positions[_sym] = {
+                self._pending_position_metadata[_sym] = {
                     "buy_ex": _to_futures_exchange(signal.buy_exchange),
                     "sell_ex": _to_futures_exchange(signal.sell_exchange),
                     "size": size,
