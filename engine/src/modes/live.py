@@ -1785,10 +1785,24 @@ class LiveMode(BaseMode):
                 self._execution_mode, (time.monotonic() - t0) * 1000,
             )
 
+        except asyncio.CancelledError:
+            # BUG-96 GAP#3: task cancellation (engine shutdown, stop_signal, etc.)
+            # Without this handler, pending_position_metadata orphans until TTL reaper.
+            logger.warning("live_mode.execution_cancelled strategy=%s — firing rollback notify", sid)
+            try:
+                self._notify_pre_exec_rollback(trade_request, sid)
+            except Exception:
+                pass  # best-effort cleanup
+            raise  # preserve cancellation semantics
         except Exception as exc:
             logger.error("live_mode.execution_failed strategy=%s error=%s", sid, exc, exc_info=True)
             if LIVE_TRADES_TOTAL is not None:
                 LIVE_TRADES_TOTAL.labels(strategy=sid, result="error").inc()
+            # BUG-96 GAP#3b: unknown exception mid-execution → also clear pending state
+            try:
+                self._notify_pre_exec_rollback(trade_request, sid)
+            except Exception:
+                pass
         finally:
             self._trade_semaphore.release()
 
