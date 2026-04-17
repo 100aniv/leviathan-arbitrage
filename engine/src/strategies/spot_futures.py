@@ -368,23 +368,41 @@ class SpotFuturesStrategy(BaseStrategy):
                     self._pending_close_symbols.discard(resolved)  # BUG-91: clear pending flag
 
     def on_execution_rollback(self, symbol: str) -> None:
-        """롤백 완료 시 _open_positions에서 심볼 제거 — 재진입 lockout 방지.
-
-        ROLLED_BACK: leg2 실패 후 leg1 언와인드 성공 → 포지션 없음 → 즉시 재진입 허용.
-        ROLLBACK_FAILED: 호출하지 않음 (stranded position 존재).
-
-        BUG-91: close TradeRequest 실패 시 _pending_close_symbols만 제거
-        (position은 여전히 거래소에 살아있으므로 _open_positions 유지).
-        """
+        """Legacy — delegates to entry rollback for backward compat."""
         resolved = self._resolve_spot_symbol(symbol) or symbol
         if resolved in self._pending_close_symbols:
-            # Close request rolled back → keep position tracked, allow retry next tick
-            logger.info("sf.close_rollback_retry symbol=%s", resolved)
-            self._pending_close_symbols.discard(resolved)
-        elif resolved in self._open_positions:
-            # Entry request rolled back → no position on exchange
-            logger.info("sf.position_cleared_on_rollback symbol=%s", resolved)
-            self._open_positions.pop(resolved, None)
+            self.handle_exit_rollback(symbol)
+        else:
+            self.handle_entry_rollback(symbol)
+
+    # WS-2: Separated lifecycle callbacks
+    def handle_entry_rollback(self, symbol: str) -> None:
+        """Entry rolled back → no position on exchange → clear tracking."""
+        resolved = self._resolve_spot_symbol(symbol) or symbol
+        self._open_positions.pop(resolved, None)
+        logger.info("sf.entry_rollback_cleared symbol=%s", resolved)
+
+    def handle_exit_rollback(self, symbol: str) -> None:
+        """Close rolled back → position still on exchange → allow retry."""
+        resolved = self._resolve_spot_symbol(symbol) or symbol
+        self._pending_close_symbols.discard(resolved)
+        logger.info("sf.exit_rollback_retry symbol=%s", resolved)
+
+    def handle_entry_success(self, symbol: str) -> None:
+        """Entry succeeded — no pending cleanup for SF."""
+
+    def handle_exit_success(self, symbol: str) -> None:
+        """Exit succeeded — clear both."""
+        resolved = self._resolve_spot_symbol(symbol) or symbol
+        self._pending_close_symbols.discard(resolved)
+        self._open_positions.pop(resolved, None)
+
+    def clear_ghost(self, symbol: str) -> None:
+        """Exchange has no position → remove ALL tracking."""
+        resolved = self._resolve_spot_symbol(symbol) or symbol
+        self._open_positions.pop(resolved, None)
+        self._pending_close_symbols.discard(resolved)
+        logger.warning("sf.ghost_cleared symbol=%s", resolved)
 
     def on_execution_success(self, symbol: str) -> None:
         """성공적 실행 완료 시 _pending_close_symbols + _open_positions 정리 (BUG-80 SpotFutures).

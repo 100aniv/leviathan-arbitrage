@@ -2,7 +2,6 @@
   "_comment": "LEVIATHAN Engine Configuration \u2014 Runtime settings (non-secret). Secrets stay in .env",
   "mode": "live",
   "env": "dev",
-  "log_level": "INFO",
   "capital": {
     "allocation_mode": "percentage",
     "reserve_pct": 20,
@@ -40,9 +39,6 @@
       }
     }
   },
-  "api": {
-    "port": 8000
-  },
   "exchanges": {
     "active": [
       "binance",
@@ -52,21 +48,7 @@
       "bithumb",
       "binance_futures",
       "bitget_futures"
-    ],
-    "symbols": [
-      "auto"
-    ],
-    "symbol_exclusions_per_exchange": {
-      "coinone": [
-        "BTC"
-      ],
-      "binance_futures": [
-        "BARD"
-      ],
-      "bitget_futures": [
-        "BARD"
-      ]
-    }
+    ]
   },
   "strategy_filters": {
     "enable_holding_timeout": true,
@@ -123,7 +105,9 @@
     "flash_guard_window_s": 300,
     "flash_guard_cooldown_s": 60,
     "max_cumulative_slippage_bps": 100,
-    "slippage_window_trades": 20
+    "slippage_window_trades": 20,
+    "warmup_seconds": 120.0,
+    "max_net_exposure_pct": 30
   },
   "dynamic_risk": {
     "_comment": "v7: lowered to 5% \u2014 $120\u00d75%=$6/trade at 20x=margin $0.30. Prevents startup burst margin exhaustion.",
@@ -146,11 +130,6 @@
       "bitget_futures": 6
     }
   },
-  "paper": {
-    "_comment": "Paper mode: live WS data + SimExecutor",
-    "depth_fraction": 1.0,
-    "disabled_strategies": []
-  },
   "backtest": {
     "latency_ms": 500
   },
@@ -169,7 +148,6 @@
   "strategy_params": {
     "_comment": "See config/strategy_params.json for per-strategy tuning"
   },
-  "tuner": {},
   "db": {
     "host": "localhost",
     "port": 5432,
@@ -184,14 +162,6 @@
     "prometheus_port": 8000,
     "monitor_interval_sec": 300
   },
-  "cors": {
-    "origins": [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "https://localhost",
-      "https://127.0.0.1"
-    ]
-  },
   "security": {
     "dashboard_user": "admin",
     "trusted_proxies": "127.0.0.1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16",
@@ -200,6 +170,7 @@
   "slippage": {
     "k_default": 1.0,
     "conservative_multiplier": 1.5,
+    "gamma": 0.5,
     "gamma_calibrated": false,
     "t0": 60.0
   },

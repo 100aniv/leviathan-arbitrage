@@ -222,6 +222,50 @@ class FuturesFuturesStrategy(BaseStrategy):
             self._pending_exits.pop(symbol)
             logger.debug("ff.pending_exits_cleared_on_success symbol=%s", symbol)
 
+    # ------------------------------------------------------------------
+    # WS-2: Separated lifecycle callbacks (replace on_execution_rollback)
+    # ------------------------------------------------------------------
+
+    def handle_entry_rollback(self, symbol: str) -> None:
+        """Entry rolled back → position never opened → clear tracking."""
+        self._exiting_symbols.discard(symbol)
+        self._open_positions.pop(symbol, None)
+        logger.info("ff.entry_rollback_cleared symbol=%s", symbol)
+
+    def handle_exit_rollback(self, symbol: str) -> None:
+        """Exit rolled back → position still on exchange → restore from _pending_exits."""
+        self._exiting_symbols.discard(symbol)
+        if symbol in self._pending_exits:
+            restored = self._pending_exits.pop(symbol)
+            self._open_positions[symbol] = restored
+            logger.info("ff.exit_rollback_restored symbol=%s", symbol)
+        else:
+            self._metrics.rollback_no_state_count += 1
+            logger.warning(
+                "ff.exit_rollback_no_pending symbol=%s — on_fill may have fired first",
+                symbol,
+            )
+            if self._metrics.rollback_no_state_count >= _ROLLBACK_NO_STATE_ALERT_THRESHOLD:
+                logger.critical(
+                    "ff.rollback_no_state_threshold strategy=%s count=%d",
+                    self._strategy_id, self._metrics.rollback_no_state_count,
+                )
+
+    def handle_entry_success(self, symbol: str) -> None:
+        """Entry succeeded — no pending-entry cleanup needed for FF."""
+
+    def handle_exit_success(self, symbol: str) -> None:
+        """Exit succeeded — same as on_execution_success."""
+        self._exiting_symbols.discard(symbol)
+        self._pending_exits.pop(symbol, None)
+
+    def clear_ghost(self, symbol: str) -> None:
+        """Exchange has no position for symbol — remove ALL tracking."""
+        self._pending_exits.pop(symbol, None)
+        self._open_positions.pop(symbol, None)
+        self._exiting_symbols.discard(symbol)
+        logger.warning("ff.ghost_cleared symbol=%s", symbol)
+
     async def _open_positions_monitor(self) -> None:
         """60초마다 _open_positions 점검 — max_hold_seconds 초과 또는 spread 수렴 시 exit TradeRequest 생성."""
         import asyncio as _asyncio

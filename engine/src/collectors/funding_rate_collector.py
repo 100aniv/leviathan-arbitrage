@@ -234,13 +234,12 @@ class FundingRateCollector:
         Filters ``exchanges.active`` to entries with a ``_futures`` suffix that this
         collector knows how to query.  Falls back to DEFAULT_EXCHANGES on any error.
         """
+        # WS-1.5: get_config() 경유 (직접 파일 읽기 제거)
         try:
-            config_path = os.path.normpath(
-                os.path.join(os.path.dirname(__file__), "..", "..", "config", "engine.json")
-            )
-            with open(config_path) as f:
-                cfg = json.load(f)
-            active: list[str] = cfg.get("exchanges", {}).get("active", [])
+            from src.core.config_loader import get_config as _gc
+            active: list[str] = _gc("exchanges.active", default=[])
+            if not isinstance(active, list):
+                active = []
             result = [ex for ex in active if ex in _SUPPORTED_FUTURES_EXCHANGES]
             return result if result else list(DEFAULT_EXCHANGES)
         except Exception as exc:

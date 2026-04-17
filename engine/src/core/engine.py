@@ -180,13 +180,11 @@ class LEVIATHANEngine:
         self._shutdown.clear()
 
         # parallel 설정 읽기 및 로그 (US-373)
+        # WS-1.5: get_config() 경유 (직접 파일 읽기 제거)
         try:
-            import json
-            import pathlib
-            _engine_cfg_path = pathlib.Path(__file__).parents[2] / "config" / "engine.json"
-            _engine_cfg = json.loads(_engine_cfg_path.read_text())
-            _parallel = _engine_cfg.get("parallel", {})
-            if _parallel.get("enabled"):
+            from src.core.config_loader import get_config as _gc
+            _parallel = _gc("parallel", default={})
+            if isinstance(_parallel, dict) and _parallel.get("enabled"):
                 logger.info(
                     "engine.parallel_config_loaded combinations=%d total_capital=%.1f",
                     len(_parallel.get("combinations", [])),

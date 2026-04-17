@@ -120,3 +120,34 @@ class BaseStrategy(ABC):
         else:
             # Deduct fees as minimum PnL impact
             self._metrics.total_realized_pnl_usdt -= trade.fee
+
+    # ------------------------------------------------------------------
+    # WS-2: Execution lifecycle callbacks (replaces on_execution_rollback)
+    #
+    # Entry rollback: position was never opened → clear tracking.
+    # Exit rollback: position still exists on exchange → restore tracking.
+    # These have OPPOSITE semantics — the old on_execution_rollback
+    # overloaded both, causing ghost infinite loops (BUG-92 GAP#2).
+    # ------------------------------------------------------------------
+
+    def handle_entry_rollback(self, symbol: str) -> None:
+        """Entry order rolled back (ROLLED_BACK/REJECTED).
+        Position was never opened on exchange → clear all tracking for symbol.
+        """
+
+    def handle_exit_rollback(self, symbol: str) -> None:
+        """Exit order rolled back (ROLLED_BACK).
+        Position still exists on exchange → restore tracking so monitor retries.
+        """
+
+    def handle_entry_success(self, symbol: str) -> None:
+        """Entry order succeeded. Clean up pending-entry guards."""
+
+    def handle_exit_success(self, symbol: str) -> None:
+        """Exit order succeeded. Clean up pending-exit tracking."""
+
+    def clear_ghost(self, symbol: str) -> None:
+        """Exchange confirms no position exists for symbol.
+        Remove ALL tracking state unconditionally.
+        Called by live.py BUG-92 ghost detection — NOT the same as rollback.
+        """

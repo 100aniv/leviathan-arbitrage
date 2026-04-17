@@ -675,6 +675,25 @@ def _apply_engine_json_overrides(settings: Settings) -> None:
             _overrides.append(f"operational.min_edge_bps: {settings.operational.min_edge_bps} → {_new}")
             settings.operational.min_edge_bps = _new
 
+    # WS-1.4: 3 missing overrides — circuit_breaker_cooldown, api_error_rate, mdd_threshold
+    if "circuit_breaker_cooldown_seconds" in _risk:
+        _new = int(float(_risk["circuit_breaker_cooldown_seconds"]))
+        if _new != settings.risk.circuit_breaker_cooldown_seconds:
+            _overrides.append(
+                f"risk.circuit_breaker_cooldown_seconds: "
+                f"{settings.risk.circuit_breaker_cooldown_seconds} → {_new}"
+            )
+            settings.risk.circuit_breaker_cooldown_seconds = _new
+
+    if "circuit_breaker_api_error_rate_threshold" in _risk:
+        _new = Decimal(str(_risk["circuit_breaker_api_error_rate_threshold"]))
+        if _new != settings.risk.circuit_breaker_api_error_rate:
+            _overrides.append(
+                f"risk.circuit_breaker_api_error_rate: "
+                f"{settings.risk.circuit_breaker_api_error_rate} → {_new}"
+            )
+            settings.risk.circuit_breaker_api_error_rate = _new
+
     # --- live_gate section ---
     _lg = ecfg.get("live_gate", {})
 
@@ -701,6 +720,12 @@ def _apply_engine_json_overrides(settings: Settings) -> None:
         if _new != settings.live_gate.evaluation_days:
             _overrides.append(f"live_gate.evaluation_days: {settings.live_gate.evaluation_days} → {_new}")
             settings.live_gate.evaluation_days = _new
+
+    if "mdd_threshold" in _lg:
+        _new = Decimal(str(_lg["mdd_threshold"]))
+        if _new != settings.live_gate.mdd_threshold:
+            _overrides.append(f"live_gate.mdd_threshold: {settings.live_gate.mdd_threshold} → {_new}")
+            settings.live_gate.mdd_threshold = _new
 
     # --- capital.tier ---
     _cap_tier = ecfg.get("capital", {}).get("tier")

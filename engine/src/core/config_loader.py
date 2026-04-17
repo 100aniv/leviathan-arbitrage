@@ -1,9 +1,10 @@
-"""Unified config loader — engine.json primary, trading.json legacy fallback.
+"""Unified config loader — engine.json is the sole runtime config source.
 
 .env에는 시크릿(API키/토큰/DB URL/비밀번호)만 보관.
 모든 비시크릿 설정은 engine.json에서 get_config()로 접근.
 
-설정 우선순위: engine.json > trading.json > 환경변수 > default
+설정 우선순위: engine.json > 환경변수 > default
+(WS-1: trading.json deep-merge 제거 — 키 leak 방지)
 """
 from __future__ import annotations
 
@@ -18,10 +19,6 @@ logger = structlog.get_logger(__name__)
 
 _ENGINE_ROOT = Path(__file__).resolve().parent.parent.parent  # engine/
 _ENGINE_JSON = _ENGINE_ROOT / "config" / "engine.json"
-_TRADING_JSON = Path(os.environ.get(
-    "TRADING_CONFIG_PATH",
-    str(_ENGINE_ROOT / "config" / "trading.json"),
-))
 
 _cache: dict[str, Any] | None = None
 
@@ -44,17 +41,9 @@ def _load() -> dict[str, Any]:
 
     merged: dict[str, Any] = {}
 
-    # Secondary: trading.json (legacy)
+    # engine.json is the sole config source (WS-1: trading.json removed)
     try:
-        merged = json.loads(_TRADING_JSON.read_text())
-        logger.debug("config_loader.loaded_trading", path=str(_TRADING_JSON))
-    except Exception as exc:
-        logger.debug("config_loader.trading_missing", error=str(exc))
-
-    # Primary: engine.json (overrides trading.json)
-    try:
-        engine_cfg = json.loads(_ENGINE_JSON.read_text())
-        merged = _deep_merge(merged, engine_cfg)
+        merged = json.loads(_ENGINE_JSON.read_text())
         logger.debug("config_loader.loaded_engine", path=str(_ENGINE_JSON))
     except Exception as exc:
         logger.warning("config_loader.engine_load_failed", path=str(_ENGINE_JSON), error=str(exc))

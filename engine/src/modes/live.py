@@ -1389,10 +1389,11 @@ class LiveMode(BaseMode):
                             # Only call for strategies with _pending_exits tracking (futures_futures).
                             # spot_futures/_funding_rate docstrings say "ROLLBACK_FAILED: do not call"
                             # and lack _pending_exits, so calling on them violates the contract.
-                            if _strat_rf is not None and hasattr(_strat_rf, "_pending_exits") and hasattr(_strat_rf, "on_execution_rollback"):
+                            if _strat_rf is not None:
                                 for _rf_sym_ex in {l.symbol for l in trade_request.legs if l.symbol}:
                                     try:
-                                        _strat_rf.on_execution_rollback(_rf_sym_ex)
+                                        # WS-2.6: Exit rollback = position still on exchange → restore
+                                        _strat_rf.handle_exit_rollback(_rf_sym_ex)
                                         logger.warning(
                                             "live_mode.exit_rollback_failed_pending_restored "
                                             "symbol=%s — stranded! verify exchange positions.",
@@ -1415,10 +1416,11 @@ class LiveMode(BaseMode):
                         _rb_syms = {leg.symbol for leg in trade_request.legs if leg.symbol}
                         if _rb_syms and self._strategy_manager is not None:
                             _strat = self._strategy_manager.get_strategy(sid)
-                            if _strat is not None and hasattr(_strat, "on_execution_rollback"):
+                            if _strat is not None:
                                 for _rb_sym in _rb_syms:
                                     try:
-                                        _strat.on_execution_rollback(_rb_sym)
+                                        # WS-2.6: Entry rollback = position never opened → clear
+                                        _strat.handle_entry_rollback(_rb_sym)
                                     except Exception as _rb_err:
                                         logger.warning(
                                             "live_mode.rollback_notify_failed strategy=%s symbol=%s err=%s",
@@ -1887,12 +1889,13 @@ class LiveMode(BaseMode):
         if not trade_request.legs or self._strategy_manager is None:
             return
         _strat = self._strategy_manager.get_strategy(sid)
-        if _strat is None or not hasattr(_strat, "on_execution_rollback"):
+        if _strat is None:
             return
         _syms = {leg.symbol for leg in trade_request.legs if leg.symbol}
         for _sym in _syms:
             try:
-                _strat.on_execution_rollback(_sym)
+                # WS-2.6: Pre-exec rejection = entry never happened → clear
+                _strat.handle_entry_rollback(_sym)
             except Exception as _e:
                 logger.debug("live_mode.pre_exec_rollback_notify_failed strategy=%s sym=%s err=%s", sid, _sym, _e)
 
@@ -2272,6 +2275,7 @@ class LiveMode(BaseMode):
                                 # BUG-92: Before sending exit, verify exchange has position.
                                 # Ghost root cause: entry leg2 fails → half position → exchange auto-closes
                                 # → timeout exit hits no position → ghost-clear cascade.
+                                # BUG-92: Before sending exit, verify exchange has position.
                                 _skip_exit = False
                                 if _exit_req.legs and self._executor:
                                     _ex_id = _exit_req.legs[0].exchange_id
@@ -2280,20 +2284,28 @@ class LiveMode(BaseMode):
                                         _adapter = getattr(self._executor, '_exchanges', {}).get(_ex_id)
                                         if _adapter and hasattr(_adapter, 'get_positions'):
                                             _positions = await _adapter.get_positions()
-                                            _has_pos = any(
-                                                p.get('symbol') == _sym or p.get('instId') == _sym.replace('/', '')
+                                            # GAP#3: get_positions() returns [] on API failure
+                                            # → false ghost detection. None = API error → don't skip.
+                                            if _positions is None:
+                                                logger.warning(
+                                                    "exit_position_check_api_null strategy=%s symbol=%s — "
+                                                    "proceeding with exit (API returned None)",
+                                                    _sid, _sym,
+                                                )
+                                            elif not any(
+                                                getattr(p, 'symbol', '') == _sym
                                                 for p in (_positions if isinstance(_positions, list) else [])
-                                            )
-                                            if not _has_pos:
+                                            ):
                                                 logger.info(
                                                     "live_dedup_cleanup.exit_skip_no_position strategy=%s symbol=%s exchange=%s",
                                                     _sid, _sym, _ex_id,
                                                 )
                                                 _skip_exit = True
-                                                if hasattr(_strat, 'on_execution_rollback'):
-                                                    _strat.on_execution_rollback(_sym)
+                                                # WS-2.8: Use clear_ghost() instead of direct dict access.
+                                                # clear_ghost removes ALL tracking state for the symbol.
+                                                _strat.clear_ghost(_sym)
                                     except Exception as _pos_err:
-                                        logger.debug("exit_position_check_failed: %s", _pos_err)
+                                        logger.warning("exit_position_check_failed: %s", _pos_err)
                                 if _skip_exit:
                                     continue
                                 logger.info(

@@ -243,5 +243,13 @@ class TriangularStrategy(BaseStrategy):
         self._inflight_paths = {pk for pk in self._inflight_paths if trade.symbol not in pk}
 
     def on_execution_rollback(self, symbol: str) -> None:
-        """BUG-80: Clear inflight path on rollback to prevent permanent lockout."""
+        """Legacy — delegates to handle_entry_rollback."""
+        self.handle_entry_rollback(symbol)
+
+    def handle_entry_rollback(self, symbol: str) -> None:
+        """Clear inflight path on rollback to prevent permanent lockout."""
         self._inflight_paths = {pk for pk in self._inflight_paths if symbol not in pk}
+
+    def clear_ghost(self, symbol: str) -> None:
+        """Same as entry rollback for Triangular."""
+        self.handle_entry_rollback(symbol)

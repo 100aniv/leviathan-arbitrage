@@ -458,21 +458,37 @@ class FundingRateStrategy(BaseStrategy):
         )
 
     def on_execution_rollback(self, symbol: str) -> None:
-        """롤백 완료 시 _open_positions/_pending_settlement_positions에서 심볼 제거.
+        """Legacy — delegates to handle_entry_rollback for backward compat."""
+        self.handle_entry_rollback(symbol)
 
-        ROLLED_BACK: 진입 실패 후 언와인드 완료 → 포지션 없음 → 즉시 재진입 허용.
-        Settlement exit rollback: pending_settlement_positions도 정리 → 재시도 허용.
-        ROLLBACK_FAILED: 호출하지 않음 (stranded position 존재).
-        """
+    # WS-2: Separated lifecycle callbacks
+    def handle_entry_rollback(self, symbol: str) -> None:
+        """Entry rolled back → clear tracking."""
         if symbol in self._open_positions:
-            logger.info("fr.position_cleared_on_rollback symbol=%s", symbol)
+            logger.info("fr.entry_rollback_cleared symbol=%s", symbol)
             self._open_positions.pop(symbol, None)
+
+    def handle_exit_rollback(self, symbol: str) -> None:
+        """Settlement exit rolled back → restore for retry."""
         if symbol in self._pending_settlement_positions:
             logger.warning(
-                "fr.settlement_exit_rollback symbol=%s — clearing pending_settlement to allow retry",
-                symbol,
+                "fr.settlement_exit_rollback symbol=%s — restoring to allow retry", symbol,
             )
-            self._pending_settlement_positions.pop(symbol, None)
+            restored = self._pending_settlement_positions.pop(symbol)
+            self._open_positions[symbol] = restored
             self._settlement_routed_at = 0.0
         # NOTE: _settlement_cooldown_until is NOT cleared on rollback — intentional.
+
+    def handle_entry_success(self, symbol: str) -> None:
+        """Entry succeeded — no pending cleanup for FR."""
+
+    def handle_exit_success(self, symbol: str) -> None:
+        """Settlement exit succeeded — clear pending."""
+        self._pending_settlement_positions.pop(symbol, None)
+
+    def clear_ghost(self, symbol: str) -> None:
+        """Exchange has no position → remove ALL tracking."""
+        self._open_positions.pop(symbol, None)
+        self._pending_settlement_positions.pop(symbol, None)
+        logger.warning("fr.ghost_cleared symbol=%s", symbol)
         # If settlement exits are failing, blocking new entries is the safe default.

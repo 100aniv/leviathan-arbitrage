@@ -49,14 +49,13 @@ _BTC_REFERENCE_PRICE = _s.btc_reference_price
 
 
 def _get_fallback_exchanges() -> list[str]:
-    """engine.json의 active 거래소 중 spot 거래소만 반환 (fallback 용)."""
+    """engine.json의 active 거래소 중 spot 거래소만 반환 (fallback 용).
+    WS-1.5: load_engine_config() 경유 (직접 파일 읽기 제거).
+    """
     try:
-        import json as _json
-        p = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "config", "engine.json"))
-        with open(p) as f:
-            cfg = _json.load(f)
+        from src.core.config import load_engine_config
+        cfg = load_engine_config()
         active = cfg.get("exchanges", {}).get("active", [])
-        # spot 거래소만 (futures 제외)
         return [ex for ex in active if not ex.endswith("_futures")] or ["binance", "bitget"]
     except Exception:
         return ["binance", "bitget"]
@@ -2070,10 +2069,11 @@ class Engine:
         if getattr(execution_result.status, "value", str(execution_result.status)) in ("rolled_back", "rejected"):
             try:
                 strategy = self._strategy_manager.get_strategy(trade_request.strategy_id)
-                if strategy is not None and hasattr(strategy, "on_execution_rollback"):
+                if strategy is not None:
                     symbol = trade_request.legs[0].symbol if trade_request.legs else None
                     if symbol:
-                        strategy.on_execution_rollback(symbol)
+                        # WS-2.6: Use handle_entry_rollback (rolled_back/rejected = entry failed)
+                        strategy.handle_entry_rollback(symbol)
             except Exception:
                 pass  # Non-critical: position clear failure
 

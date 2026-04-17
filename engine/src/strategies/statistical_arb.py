@@ -1048,12 +1048,12 @@ class StatisticalArbStrategy(BaseStrategy):
         return []
 
     def on_execution_rollback(self, symbol: str) -> None:
-        """BUG-77: Reset pair state on rollback to prevent stuck LONG/SHORT state.
+        """Legacy — delegates to handle_entry_rollback."""
+        self.handle_entry_rollback(symbol)
 
-        Finds all pair_states where symbol_a or symbol_b matches and resets to FLAT.
-        Clears entry tracking dicts to prevent stale PnL calculations.
-        BUG-T5: also reset legacy self._state for single-pair mode.
-        """
+    # WS-2: Separated lifecycle callbacks
+    def handle_entry_rollback(self, symbol: str) -> None:
+        """Entry rolled back → reset pair states to FLAT."""
         for (sym_a, sym_b), ps in self._pair_states.items():
             if symbol in (sym_a, sym_b) and ps.state != StatArbState.FLAT:
                 logger.info(
@@ -1065,8 +1065,15 @@ class StatisticalArbStrategy(BaseStrategy):
                 _pk = (sym_a, sym_b)
                 self._pair_entry_spread.pop(_pk, None)
                 self._pair_entry_notional.pop(_pk, None)
-        # BUG-T5: legacy single-pair mode uses self._state — reset on rollback
         if self._state != StatArbState.FLAT:
             logger.info("stat_arb.rollback_reset_legacy symbol=%s prev_state=%s", symbol, self._state)
             self._state = StatArbState.FLAT
             self._bars_in_position = 0
+
+    def handle_exit_rollback(self, symbol: str) -> None:
+        """StatArb exits are inline from on_signal — same as entry rollback."""
+        self.handle_entry_rollback(symbol)
+
+    def clear_ghost(self, symbol: str) -> None:
+        """Same as entry rollback for StatArb (no pending_exits tracking)."""
+        self.handle_entry_rollback(symbol)
