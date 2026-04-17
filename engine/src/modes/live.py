@@ -1416,13 +1416,19 @@ class LiveMode(BaseMode):
                         # For cross-exchange arb legs can have different symbols (e.g. spot_futures).
                         # Clearing only legs[0] leaves legs[1] locked in _open_positions for 30min.
                         _rb_syms = {leg.symbol for leg in trade_request.legs if leg.symbol}
+                        # BUG-95 CRITICAL: distinguish entry vs exit rollback semantics.
+                        # EXIT rollback: position still on exchange → restore tracking (exit_rollback)
+                        # ENTRY rollback: position never opened → clear tracking (entry_rollback)
+                        _is_exit_req_rb = self._is_reduceonly_request(trade_request)
                         if _rb_syms and self._strategy_manager is not None:
                             _strat = self._strategy_manager.get_strategy(sid)
                             if _strat is not None:
                                 for _rb_sym in _rb_syms:
                                     try:
-                                        # WS-2.6: Entry rollback = position never opened → clear
-                                        _strat.handle_entry_rollback(_rb_sym)
+                                        if _is_exit_req_rb:
+                                            _strat.handle_exit_rollback(_rb_sym)
+                                        else:
+                                            _strat.handle_entry_rollback(_rb_sym)
                                     except Exception as _rb_err:
                                         logger.warning(
                                             "live_mode.rollback_notify_failed strategy=%s symbol=%s err=%s",
@@ -1923,10 +1929,14 @@ class LiveMode(BaseMode):
         if _strat is None:
             return
         _syms = {leg.symbol for leg in trade_request.legs if leg.symbol}
+        # BUG-95 CRITICAL: distinguish entry vs exit rollback
+        _is_exit_preexec = self._is_reduceonly_request(trade_request)
         for _sym in _syms:
             try:
-                # WS-2.6: Pre-exec rejection = entry never happened → clear
-                _strat.handle_entry_rollback(_sym)
+                if _is_exit_preexec:
+                    _strat.handle_exit_rollback(_sym)
+                else:
+                    _strat.handle_entry_rollback(_sym)
             except Exception as _e:
                 logger.debug("live_mode.pre_exec_rollback_notify_failed strategy=%s sym=%s err=%s", sid, _sym, _e)
 

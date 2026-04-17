@@ -2096,8 +2096,18 @@ class Engine:
                 if strategy is not None:
                     symbol = trade_request.legs[0].symbol if trade_request.legs else None
                     if symbol:
-                        # WS-2.6: Use handle_entry_rollback (rolled_back/rejected = entry failed)
-                        strategy.handle_entry_rollback(symbol)
+                        # BUG-95 CRITICAL: distinguish entry vs exit rollback semantics
+                        _is_exit_tc = any(
+                            isinstance(getattr(leg, "metadata", None), dict) and (
+                                leg.metadata.get("reduceOnly") is True or
+                                str(leg.metadata.get("leg_type", "")).startswith(("settlement_close", "timeout_close", "spread_exit"))
+                            )
+                            for leg in trade_request.legs
+                        )
+                        if _is_exit_tc:
+                            strategy.handle_exit_rollback(symbol)
+                        else:
+                            strategy.handle_entry_rollback(symbol)
             except Exception:
                 pass  # Non-critical: position clear failure
 
