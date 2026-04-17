@@ -408,3 +408,109 @@ async def test_concurrent_positions_cap_blocks_fourth_entry():
     result = await strategy.on_signal(signal)
     assert result is None
     assert strategy.metrics.signals_filtered >= 1
+
+
+# ---------------------------------------------------------------------------
+# BUG-94 / BUG-95: _pending_position_metadata semantics
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_on_signal_writes_pending_not_open():
+    """BUG-94: profitable signal writes to _pending_position_metadata, not _open_positions."""
+    strategy = FuturesFuturesStrategy(
+        "ff_cross",
+        make_calculator(Decimal("1")),
+        FuturesFuturesConfig(min_spread_bps=Decimal("8"), max_notional_usd=None),
+    )
+    await strategy.start()
+    signal = make_signal(spread_pct=Decimal("0.002"))
+    result = await strategy.on_signal(signal)
+    assert result is not None
+    sym = signal.symbol
+    assert sym in strategy._pending_position_metadata
+    assert sym not in strategy._open_positions
+
+
+def test_on_execution_success_promotes_pending_to_open():
+    """BUG-94: on_execution_success moves metadata from _pending_position_metadata → _open_positions."""
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    meta = {"buy_ex": "binance_futures", "sell_ex": "bybit_futures", "size": Decimal("0.5"), "entry_time": 0.0}
+    strategy._pending_position_metadata["BTC/USDT"] = meta
+
+    strategy.on_execution_success("BTC/USDT")
+
+    assert "BTC/USDT" in strategy._open_positions
+    assert strategy._open_positions["BTC/USDT"] == meta
+    assert "BTC/USDT" not in strategy._pending_position_metadata
+
+
+def test_handle_entry_rollback_pops_pending():
+    """BUG-94: handle_entry_rollback removes symbol from _pending_position_metadata."""
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    strategy._pending_position_metadata["ETH/USDT"] = {"entry_time": 0.0}
+
+    strategy.handle_entry_rollback("ETH/USDT")
+
+    assert "ETH/USDT" not in strategy._pending_position_metadata
+    assert "ETH/USDT" not in strategy._open_positions
+
+
+def test_clear_ghost_pops_pending(caplog):
+    """BUG-94: clear_ghost removes symbol from _pending_position_metadata and emits ff.ghost_cleared."""
+    import logging
+
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator())
+    strategy._pending_position_metadata["SOL/USDT"] = {"entry_time": 0.0}
+
+    with caplog.at_level(logging.WARNING, logger="src.strategies.futures_futures"):
+        strategy.clear_ghost("SOL/USDT")
+
+    assert "SOL/USDT" not in strategy._pending_position_metadata
+    assert any("ff.ghost_cleared" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_max_concurrent_counts_pending_metadata():
+    """BUG-94: _pending_position_metadata entries count toward max_concurrent_positions."""
+    config = FuturesFuturesConfig(
+        min_spread_bps=Decimal("8"),
+        max_concurrent_positions=1,
+        max_notional_usd=None,
+    )
+    strategy = FuturesFuturesStrategy("ff_cross", make_calculator(Decimal("1")), config)
+    await strategy.start()
+
+    # Fill pending slot to capacity
+    strategy._pending_position_metadata["ETH/USDT:USDT"] = {
+        "buy_ex": "binance_futures",
+        "sell_ex": "bybit_futures",
+        "size": Decimal("0.01"),
+        "entry_time": 0.0,
+    }
+
+    # New signal for a different symbol must be rejected (slot full)
+    result = await strategy.on_signal(make_signal())
+    assert result is None
+    assert strategy.metrics.signals_filtered >= 1
+
+
+@pytest.mark.asyncio
+async def test_duplicate_signal_rejected_when_pending():
+    """BUG-95: signal for symbol already in _pending_position_metadata is rejected."""
+    strategy = FuturesFuturesStrategy(
+        "ff_cross",
+        make_calculator(Decimal("1")),
+        FuturesFuturesConfig(min_spread_bps=Decimal("8"), max_notional_usd=None),
+    )
+    await strategy.start()
+    sym = "BTC/USDT:USDT"
+    strategy._pending_position_metadata[sym] = {
+        "buy_ex": "binance_futures",
+        "sell_ex": "bybit_futures",
+        "size": Decimal("0.5"),
+        "entry_time": 0.0,
+    }
+
+    result = await strategy.on_signal(make_signal(spread_pct=Decimal("0.002")))
+    assert result is None

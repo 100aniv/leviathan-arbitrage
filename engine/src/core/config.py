@@ -727,6 +727,15 @@ def _apply_engine_json_overrides(settings: Settings) -> None:
             _overrides.append(f"live_gate.mdd_threshold: {settings.live_gate.mdd_threshold} → {_new}")
             settings.live_gate.mdd_threshold = _new
 
+    if "continuous_enabled" in _lg:
+        _new_bool = bool(_lg["continuous_enabled"])
+        if _new_bool != settings.operational.live_gate_continuous_enabled:
+            _overrides.append(
+                f"operational.live_gate_continuous_enabled: "
+                f"{settings.operational.live_gate_continuous_enabled} → {_new_bool}"
+            )
+            settings.operational.live_gate_continuous_enabled = _new_bool
+
     # --- capital.tier ---
     _cap_tier = ecfg.get("capital", {}).get("tier")
     if _cap_tier and _cap_tier != settings.capital.tier:
