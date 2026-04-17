@@ -1455,7 +1455,8 @@ class LiveMode(BaseMode):
                     try:
                         _strat_s.on_execution_success(_success_symbol)
                     except Exception as _se_err:
-                        logger.debug("live_mode.success_notify_failed strategy=%s err=%s", sid, _se_err)
+                        # BUG-94 HIGH-1: elevated from DEBUG — silent swallowing masks promotion bugs
+                        logger.warning("live_mode.success_notify_failed strategy=%s err=%s", sid, _se_err)
 
             # --- Record trade result ---
             self._stats.trades_executed += 1

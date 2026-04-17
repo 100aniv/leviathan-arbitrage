@@ -223,10 +223,18 @@ class FuturesFuturesStrategy(BaseStrategy):
         EXIT success: _pending_exits 스냅샷 삭제 (BUG-80).
         """
         self._exiting_symbols.discard(symbol)
-        # BUG-94: ENTRY success → promote pending metadata to confirmed position
+        # BUG-94 HIGH-1: robust promotion with rollback on failure.
+        # If dict swap raises, re-queue pending so TTL reaper can recover (not silent loss).
         if symbol in self._pending_position_metadata:
-            self._open_positions[symbol] = self._pending_position_metadata.pop(symbol)
-            logger.info("ff.position_confirmed symbol=%s", symbol)
+            _meta = self._pending_position_metadata.pop(symbol)
+            try:
+                self._open_positions[symbol] = _meta
+                logger.info("ff.position_confirmed symbol=%s", symbol)
+            except Exception:
+                # Re-queue so orphan reaper can handle it
+                self._pending_position_metadata[symbol] = _meta
+                logger.exception("ff.position_promote_failed symbol=%s", symbol)
+                raise
         # EXIT success → clear pending exit snapshot
         if symbol in self._pending_exits:
             self._pending_exits.pop(symbol)
@@ -287,6 +295,19 @@ class FuturesFuturesStrategy(BaseStrategy):
             except _asyncio.CancelledError:
                 return
             now = time.monotonic()
+            # BUG-94 HIGH-2: TTL reaper for orphan _pending_position_metadata entries.
+            # Catches cases where on_execution_success never fired (task cancel, exception,
+            # empty legs, etc.) — prevents permanent slot exhaustion in max_concurrent_positions.
+            _PENDING_TTL_S = 60.0  # worst-case executor timeout + network RTT
+            for _orph_sym, _orph_meta in list(self._pending_position_metadata.items()):
+                _orph_age = now - _orph_meta.get("entry_time", now)
+                if _orph_age > _PENDING_TTL_S:
+                    logger.warning(
+                        "ff.pending_metadata_reaped symbol=%s age_s=%.0f — on_execution_success never fired",
+                        _orph_sym, _orph_age,
+                    )
+                    self._pending_position_metadata.pop(_orph_sym, None)
+                    self._metrics.rollback_no_state_count += 1
             for sym, pos in list(self._open_positions.items()):
                 try:
                     age_s = now - pos["entry_time"]
@@ -483,6 +504,15 @@ class FuturesFuturesStrategy(BaseStrategy):
                 "ff.rejected reason=position_open symbol=%s spread_bps=%s",
                 _sym,
                 f"{_current_spread_bps:.2f}" if _current_spread_bps is not None else "N/A",
+            )
+            return None
+        # BUG-94 race fix: reject duplicate signal while first trade is in flight.
+        # Without this guard, a second signal during execution caused handle_entry_rollback
+        # to pop _pending_position_metadata — nuking the first (successful) trade's promotion data.
+        if _sym and _sym in self._pending_position_metadata:
+            self._metrics.signals_filtered += 1
+            logger.debug(
+                "ff.rejected reason=pending_metadata_inflight symbol=%s", _sym,
             )
             return None
 
