@@ -500,13 +500,7 @@ class Engine:
             if section not in ecfg:
                 logger.warning("CONFIG: required section '%s' missing from engine.json", section)
 
-        # 5. Deprecated trading.json warning
-        import pathlib
-        _trading_json = pathlib.Path(__file__).parent.parent / "config" / "trading.json"
-        if _trading_json.exists():
-            logger.warning(
-                "CONFIG: trading.json detected — deprecated, migrate settings to engine.json"
-            )
+        # WS-1: trading.json deprecation check removed (file is gone)
 
     async def _resolve_symbols(self) -> None:
         """Resolve 'auto' symbols to actual trading pairs via exchange API discovery.
