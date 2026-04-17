@@ -68,6 +68,10 @@ class TradeReconciler:
     def __init__(self, db_pool=None, telegram=None) -> None:
         self._db = db_pool
         self._telegram = telegram
+        # BUG-96 followup: 첫 reconcile cycle은 preflight auto-close 잔류로 인한
+        # unmatched가 정상이므로 warning 대신 info 로 강등 (노이즈 제거).
+        # 정상 reconcile 2회차부터 warning 유지 (진짜 불일치 감지). Per-exchange 추적.
+        self._first_cycle_done: set[str] = set()
 
     async def reconcile_period(
         self,
@@ -153,10 +157,11 @@ class TradeReconciler:
                                 "buy_exchange": row.get("buy_exchange"),
                                 "sell_exchange": row.get("sell_exchange"),
                             })
-                        logger.warning(
-                            "trade_reconciler.api_returned_empty exchange=%s db_rows=%d "
-                            "(exchange returned 0 fills — possible API failure or phantom positions)",
-                            exchange_id, len(db_rows_check),
+                        _log_fn = logger.info if exchange_id not in self._first_cycle_done else logger.warning
+                        _log_fn(
+                            "trade_reconciler.api_returned_empty exchange=%s db_rows=%d first_cycle=%s "
+                            "(exchange returned 0 fills — possible API failure or phantom positions or preflight stale)",
+                            exchange_id, len(db_rows_check), exchange_id not in self._first_cycle_done,
                         )
                         if self._telegram is not None:
                             try:
@@ -320,9 +325,10 @@ class TradeReconciler:
                     logger.debug("trade_reconciler.telegram_failed error=%s", _tg_exc)
 
         if report.unmatched_exchange:
-            logger.warning(
-                "trade_reconciler.unmatched_exchange exchange=%s count=%d",
-                exchange_id, len(report.unmatched_exchange),
+            _log_fn2 = logger.info if exchange_id not in self._first_cycle_done else logger.warning
+            _log_fn2(
+                "trade_reconciler.unmatched_exchange exchange=%s count=%d first_cycle=%s",
+                exchange_id, len(report.unmatched_exchange), exchange_id not in self._first_cycle_done,
             )
             if self._telegram is not None:
                 try:
@@ -337,5 +343,7 @@ class TradeReconciler:
             "trade_recon ex=%s matched=%d is_p95=%.1fbps",
             exchange_id, report.matched, report.is_p95_bps or 0.0,
         )
+        # BUG-96 followup: mark first cycle done per exchange (subsequent calls emit warning)
+        self._first_cycle_done.add(exchange_id)
 
         return report
