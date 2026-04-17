@@ -1836,6 +1836,36 @@ class Engine:
                                 self._position_sizes.pop(symbol, None)
                             else:
                                 self._position_sizes[symbol] = updated
+                # WS-3.1+3.2: Wire PositionManager open/close from trade fills
+                # _on_execution_result is sync → fire-and-forget via ensure_future
+                if self._position_manager is not None:
+                    _is_close_exec = any(
+                        isinstance(getattr(o, "metadata", None), dict) and (
+                            o.metadata.get("reduceOnly") is True or
+                            str(o.metadata.get("leg_type", "")).startswith(("settlement_close", "timeout_close"))
+                        )
+                        for _, o in legs_info if o
+                    )
+                    for trade, order in legs_info:
+                        if trade is not None and order is not None:
+                            _side_str = getattr(order.side, "value", str(order.side)).upper()
+                            if _is_close_exec:
+                                asyncio.ensure_future(self._position_manager.close_position(
+                                    strategy_id=trade_request.strategy_id,
+                                    exchange_id=order.exchange_id,
+                                    symbol=order.symbol,
+                                    close_price=trade.price,
+                                ))
+                            else:
+                                asyncio.ensure_future(self._position_manager.open_position(
+                                    strategy_id=trade_request.strategy_id,
+                                    exchange_id=order.exchange_id,
+                                    symbol=order.symbol,
+                                    side="LONG" if _side_str == "BUY" else "SHORT",
+                                    quantity=trade.amount,
+                                    entry_price=trade.price,
+                                ))
+
                 # Track cross-exchange hedged positions (funding_rate, spot_futures)
                 # _position_sizes nets BUY/SELL to ~0 for hedged positions, so we track separately
                 buy_exchanges = {order.exchange_id for _, order in legs_info if order and getattr(order.side, "value", str(order.side)).upper() == "BUY"}
@@ -2076,6 +2106,22 @@ class Engine:
                         strategy.handle_entry_rollback(symbol)
             except Exception:
                 pass  # Non-critical: position clear failure
+
+            # WS-3.3: Fix _position_sizes rollback leak — reverse any exposure added
+            # by optimistic on_signal before execution was attempted.
+            try:
+                for leg in trade_request.legs:
+                    if leg.symbol and leg.symbol in self._position_sizes:
+                        _val = (leg.price or Decimal("0")) * (leg.size or Decimal("0"))
+                        if _val > 0:
+                            current = self._position_sizes.get(leg.symbol, Decimal("0"))
+                            updated = max(Decimal("0"), current - _val)
+                            if updated == Decimal("0"):
+                                self._position_sizes.pop(leg.symbol, None)
+                            else:
+                                self._position_sizes[leg.symbol] = updated
+            except Exception:
+                pass  # Non-critical
 
         # US-DW8: Send Korean fill notification via Telegram
         if self._trade_bot is not None and getattr(execution_result.status, "value", str(execution_result.status)) == "success":

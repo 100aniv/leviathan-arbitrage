@@ -76,18 +76,24 @@ class PositionManager:
         entry_price: Decimal,
     ) -> int:
         """
-        Open a new position. Dual-writes to WAL then Redis.
-        Returns wal_id from the WAL write.
+        Open a new position. Dual-writes to WAL then Redis if available.
+        WS-3: None-safe — works in-memory only when dual_writer=None.
+        Returns wal_id from the WAL write (0 if no writer).
         """
-        wal_id = await self._writer.write_position(
-            strategy_id=strategy_id,
-            exchange_id=exchange_id,
-            symbol=symbol,
-            side=side,
-            quantity=quantity,
-            avg_price=entry_price,
-            event_type="OPEN",
-        )
+        wal_id = 0
+        if self._writer is not None:
+            try:
+                wal_id = await self._writer.write_position(
+                    strategy_id=strategy_id,
+                    exchange_id=exchange_id,
+                    symbol=symbol,
+                    side=side,
+                    quantity=quantity,
+                    avg_price=entry_price,
+                    event_type="OPEN",
+                )
+            except Exception as exc:
+                logger.warning("position_manager.wal_write_failed event=OPEN err=%s", exc)
 
         key = (strategy_id, exchange_id, symbol)
         self._positions[key] = PositionRecord(
@@ -100,9 +106,10 @@ class PositionManager:
             wal_id=wal_id,
         )
 
-        # Update Redis net exposure
-        delta = quantity if side == "LONG" else -quantity
-        await self._update_redis_exposure(exchange_id, symbol, delta)
+        # Update Redis net exposure (skip if no redis)
+        if self._redis is not None:
+            delta = quantity if side == "LONG" else -quantity
+            await self._update_redis_exposure(exchange_id, symbol, delta)
 
         logger.info(
             "position_opened",
@@ -166,20 +173,26 @@ class PositionManager:
         record.mark_price = close_price
         realized_pnl = record.unrealized_pnl + record.realized_pnl
 
-        await self._writer.write_position(
-            strategy_id=strategy_id,
-            exchange_id=exchange_id,
-            symbol=symbol,
-            side=record.side,
-            quantity=record.quantity,
-            avg_price=close_price,
-            event_type="CLOSE",
-            metadata={"realized_pnl": str(realized_pnl)},
-        )
+        # WS-3: None-safe dual_writer
+        if self._writer is not None:
+            try:
+                await self._writer.write_position(
+                    strategy_id=strategy_id,
+                    exchange_id=exchange_id,
+                    symbol=symbol,
+                    side=record.side,
+                    quantity=record.quantity,
+                    avg_price=close_price,
+                    event_type="CLOSE",
+                    metadata={"realized_pnl": str(realized_pnl)},
+                )
+            except Exception as exc:
+                logger.warning("position_manager.wal_write_failed event=CLOSE err=%s", exc)
 
-        # Reverse the exposure delta
-        delta = -(record.quantity if record.side == "LONG" else -record.quantity)
-        await self._update_redis_exposure(exchange_id, symbol, delta)
+        # Reverse the exposure delta (skip if no redis)
+        if self._redis is not None:
+            delta = -(record.quantity if record.side == "LONG" else -record.quantity)
+            await self._update_redis_exposure(exchange_id, symbol, delta)
 
         del self._positions[key]
 
