@@ -1362,6 +1362,26 @@ class LiveMode(BaseMode):
                 LIVE_EXECUTION_TIME.observe(time.monotonic() - t0)
 
             # --- Validate execution result ---
+            # BUG-96 GAP#2: exec_result 가 None 또는 status 속성 없을 경우
+            # (fallback path가 list 반환, executor 예외 등) → defensive rollback notify.
+            if exec_result is None or not hasattr(exec_result, 'status'):
+                logger.warning(
+                    "live_mode.exec_result_invalid strategy=%s type=%s — firing defensive rollback",
+                    sid, type(exec_result).__name__,
+                )
+                if self._strategy_manager is not None:
+                    _strat_inv = self._strategy_manager.get_strategy(sid)
+                    if _strat_inv is not None:
+                        _is_exit_inv = self._is_reduceonly_request(trade_request)
+                        for _inv_leg in trade_request.legs:
+                            if _inv_leg.symbol:
+                                try:
+                                    if _is_exit_inv:
+                                        _strat_inv.handle_exit_rollback(_inv_leg.symbol)
+                                    else:
+                                        _strat_inv.handle_entry_rollback(_inv_leg.symbol)
+                                except Exception as _inv_err:
+                                    logger.debug("invalid_result_rollback_failed: %s", _inv_err)
             if exec_result is not None and hasattr(exec_result, 'status'):
                 from src.execution.executor import ExecutionStatus
                 if exec_result.status != ExecutionStatus.SUCCESS:
