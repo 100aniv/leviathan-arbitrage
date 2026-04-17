@@ -1363,10 +1363,11 @@ class LiveMode(BaseMode):
 
             # --- Validate execution result ---
             # BUG-96 GAP#2: exec_result 가 None 또는 status 속성 없을 경우
-            # (fallback path가 list 반환, executor 예외 등) → defensive rollback notify.
+            # (fallback path가 list 반환, executor 예외 등) → defensive rollback notify + EARLY RETURN.
+            # code-reviewer CRITICAL: return 누락 시 success-notify → DB phantom success 기록 위험.
             if exec_result is None or not hasattr(exec_result, 'status'):
                 logger.warning(
-                    "live_mode.exec_result_invalid strategy=%s type=%s — firing defensive rollback",
+                    "live_mode.exec_result_invalid strategy=%s type=%s — firing defensive rollback + abort",
                     sid, type(exec_result).__name__,
                 )
                 if self._strategy_manager is not None:
@@ -1376,12 +1377,15 @@ class LiveMode(BaseMode):
                         for _inv_leg in trade_request.legs:
                             if _inv_leg.symbol:
                                 try:
+                                    # clear_pending_entry는 BUG-78 보존 (GAP#1과 semantic 일관)
+                                    # — exec_result invalid 상황에선 orders 실제 발행 여부 불명
                                     if _is_exit_inv:
                                         _strat_inv.handle_exit_rollback(_inv_leg.symbol)
                                     else:
-                                        _strat_inv.handle_entry_rollback(_inv_leg.symbol)
+                                        _strat_inv.clear_pending_entry(_inv_leg.symbol)
                                 except Exception as _inv_err:
                                     logger.debug("invalid_result_rollback_failed: %s", _inv_err)
+                return  # CRITICAL: 이 return 없으면 phantom success가 DB 기록됨
             if exec_result is not None and hasattr(exec_result, 'status'):
                 from src.execution.executor import ExecutionStatus
                 if exec_result.status != ExecutionStatus.SUCCESS:
