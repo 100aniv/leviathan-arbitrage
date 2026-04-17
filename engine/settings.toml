@@ -5,14 +5,10 @@
 # =============================================================================
 
 [default]
+# WS-1: execution_mode / data_mode removed from here — engine.json "mode" is authoritative.
+# Use [test], [backtest] profiles to override (via ENV_FOR_DYNACONF).
 engine_env = "dev"
-execution_mode = "paper"
-data_mode = "shadow"
 min_edge_bps = 5
-max_position_usd = 1000
-max_daily_loss_usd = 500
-shadow_depth_fraction = 0.1
-shadow_max_trade_size = 10
 kill_switch_enabled = true
 min_price_usd = 0.1
 max_rollback_threshold = 0.02
