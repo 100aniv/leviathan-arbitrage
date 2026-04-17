@@ -1987,6 +1987,15 @@ class LiveMode(BaseMode):
         """
         if not trade_request.legs or self._strategy_manager is None:
             return
+        # BUG-96 HIGH (code-reviewer Opus): idempotency guard — prevent double-fire
+        # when CancelledError + Exception or multiple guards fire for same TradeRequest.
+        # FR/FF handle_exit_rollback 이중 호출 시 rollback_no_state_count 오탐 + Telegram 스팸 위험.
+        if getattr(trade_request, "_rollback_notified", False):
+            return
+        try:
+            setattr(trade_request, "_rollback_notified", True)
+        except (AttributeError, TypeError):
+            pass  # pydantic immutable 등 방어, best-effort only
         _strat = self._strategy_manager.get_strategy(sid)
         if _strat is None:
             return
