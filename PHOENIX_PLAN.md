@@ -18,17 +18,34 @@
 
 **현재**: Phase 2 Step 2-2 — FF(45bps) + FR(5bps) 동시 운영 (카나리 재개 대기)  
 **설정**: max_hold=1800s, edge=10bps, min_spread=45bps (v108 수익 설정)  
-**구조 리팩토링 v2**: WS-1(Config 단일화) + WS-2(Pipeline 분리) + WS-3(Position 중앙화) 완료  
-**41 commits** (v94~v121b + WS refactor), 23 bugs fixed (BUG-73~92)
+**구조 리팩토링 v2/v3**: WS-1/2/3 + BUG-93/94/95/96 완료  
+**60+ commits** (v94~v137), 27 bugs fixed (BUG-73~96)
 
-### 구조 리팩토링 결과 (2026-04-17, 3개 감사 → 3개 워크스트림)
-| WS | 내용 | 커밋 | 테스트 |
+### 구조 리팩토링 결과 (2026-04-17, 5개 감사 → 4개 워크스트림 + BUG-93~96)
+| WS / BUG | 내용 | 커밋 | 테스트 |
 |----|------|------|--------|
 | WS-1 | Config 단일화: trading.json leak 제거, Pydantic override 3개, 직접리더→get_config() | `3cfb65c` | 4,793 pass |
 | WS-2 | Pipeline 분리: 4-콜백(handle_entry/exit_rollback/success) + clear_ghost, on_execution_rollback 호출 0건 | `3cfb65c` | 4,792 pass |
 | WS-3 | Position 중앙화: PositionManager.open/close 실행 경로 연결, _position_sizes 롤백 누수 수정 | `1a5c80a` | 4,792 pass |
+| BUG-93 | LiveMode position_manager param 누락 | `80df207` | 4,792 pass |
+| BUG-94 | FF optimistic write 제거 (_pending_position_metadata two-phase) | `cb0312d` | 29 pass |
+| BUG-95a | duplicate signal race + TTL reaper | `f85017d` | - |
+| BUG-95b | **CRITICAL** Exit rollback ghost (Codex+Gemini+Opus 합의) | `c827423` | - |
+| BUG-95c | **CRITICAL** on_fill eager cleanup → TTL reaper pending_exits | `0198ff7` | 21 pass |
+| BUG-95d | handle_entry/exit_success dispatch | `5b4a788` | 173 pass |
+| BUG-96 GAP#1 | margin guard clears _pending_position_metadata | `021cc45` | - |
+| BUG-96 GAP#2 | **CRITICAL** defensive rollback + early return (phantom success 방지) | `fa1a37a`+`8fdca69` | 46 pass |
+| BUG-96 GAP#3 | CancelledError + Exception handler | `28be30e` | 221 pass |
+| BUG-96 HIGH | _notify_pre_exec_rollback 멱등성 guard | `5eaa0b8` | 46 pass |
+| BUG-96 tests | 방어 경로 regression 커버리지 5개 | `4ed276f` | **5 new** |
 
-근거: 3개 Opus 감사 에이전트 (Config/Position/Pipeline) + Opus Critic 리뷰 → PHOENIX_REFACTOR_PLAN.md
+근거: Opus 감사 에이전트 5개 (Config/Position/Pipeline/Execute_callback/Next_improvement) + Opus Critic/code-reviewer 리뷰 + Codex + Gemini 멀티모델 합의 + /ultrareview 8건 피드백 + v131→v137 실증 측정
+
+### v137 실증 결과 (9분+ 가동)
+- **Reaped (orphan)**: v131 **38건/41min → v137 0건** (BUG-96 GAP#1 효과)
+- **PreexecClear 11건**: margin guard → clear_pending_entry 실시간 작동 확인
+- **Ghost/ERR/CancelledError/ExecInvalid**: 모두 0
+- **체결**: FR VANA/USDT 1건, PositionManager 2 legs 기록 (WS-3 효과)
 
 ---
 
