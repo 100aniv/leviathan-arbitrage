@@ -1904,6 +1904,10 @@ class LiveMode(BaseMode):
 
         BUG-35: differentiate entry vs exit so close orders aren't blocked
         by the 10-second dedup window of the preceding entry.
+
+        NOTE (WS-2.9): live.py and executor.py each have their own DeduplicationGate.
+        live.py key includes exchange IDs (more specific), executor.py key does not (broader block).
+        This is intentional — two-layer dedup with executor as safety net.
         """
         symbols = sorted({leg.symbol for leg in trade_request.legs})
         exchanges = sorted({leg.exchange_id for leg in trade_request.legs})

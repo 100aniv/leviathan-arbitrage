@@ -16,9 +16,19 @@
 | 2 | 카나리 단계 확장 | 🔄 진행중 (Step 2-2) |
 | 3 | 풀 통합 72H + 튜너 | ⏳ 대기 |
 
-**현재**: Phase 2 Step 2-2 — FF(27bps) + FR(6.55bps) 동시 운영  
-**PID**: 67470 | **버전**: v97 | **시작**: 2026-04-14 08:52 KST  
-**v94 종료**: 17:08 KST (BUG-77 settlement race condition → SIGTERM)
+**현재**: Phase 2 Step 2-2 — FF(45bps) + FR(5bps) 동시 운영 (카나리 재개 대기)  
+**설정**: max_hold=1800s, edge=10bps, min_spread=45bps (v108 수익 설정)  
+**구조 리팩토링 v2**: WS-1(Config 단일화) + WS-2(Pipeline 분리) + WS-3(Position 중앙화) 완료  
+**41 commits** (v94~v121b + WS refactor), 23 bugs fixed (BUG-73~92)
+
+### 구조 리팩토링 결과 (2026-04-17, 3개 감사 → 3개 워크스트림)
+| WS | 내용 | 커밋 | 테스트 |
+|----|------|------|--------|
+| WS-1 | Config 단일화: trading.json leak 제거, Pydantic override 3개, 직접리더→get_config() | `3cfb65c` | 4,793 pass |
+| WS-2 | Pipeline 분리: 4-콜백(handle_entry/exit_rollback/success) + clear_ghost, on_execution_rollback 호출 0건 | `3cfb65c` | 4,792 pass |
+| WS-3 | Position 중앙화: PositionManager.open/close 실행 경로 연결, _position_sizes 롤백 누수 수정 | `1a5c80a` | 4,792 pass |
+
+근거: 3개 Opus 감사 에이전트 (Config/Position/Pipeline) + Opus Critic 리뷰 → PHOENIX_REFACTOR_PLAN.md
 
 ---
 
@@ -168,8 +178,14 @@ min_trade_notional_usd: $5
 | BUG-A | risk config trading.json만 읽음 | ✅ engine.json merge |
 | BUG-B | min_edge dead code | ✅ 10bps + orderbook recheck |
 | BUG-C | Bitget fee 미추출 | ✅ poll/fill-history 추출 |
-| Phase1 | Config 3곳 분산 | ✅ engine.json 단일화 + validate |
+| BUG-90 | ROLLED_BACK slippage 누적 오류 | ✅ accumulator 제외 |
+| BUG-91 | max_hold_seconds FF config 미전달 | ✅ main.py wiring |
+| BUG-92 | ghost position exit 무한루프 | ✅ clear_ghost + 4-콜백 분리 (WS-2) |
+| Phase1 | Config 3곳 분산 | ✅ engine.json 단일화 + trading.json 제거 (WS-1) |
 | Phase2 | FF exit 이중경로 → ghost-clear | ✅ monitor 단일경로 |
+| WS-1 | trading.json leak + Pydantic override 누락 | ✅ deep-merge 제거 + 3개 override 추가 |
+| WS-2 | entry/exit rollback 의미 충돌 | ✅ 4-콜백 분리 + clear_ghost |
+| WS-3 | PositionManager dead code + 롤백 누수 | ✅ 실행 경로 연결 + _position_sizes 수정 |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
 ```python
@@ -247,11 +263,25 @@ WS Orderbook → SignalGenerator + RealSignalProducer
 
 > shadow 모드 없음. "shadow" 언급 금지.
 
-### 설정 소스 (2개만)
+### 설정 소스 (WS-1 단일화 완료)
 - `engine/.env`: API 키/시크릿 전용
-- `engine/config/engine.json`: 모든 운영 설정 (모드/자본/리스크/전략/거래소)
+- `engine/config/engine.json`: 모든 운영 설정 — `get_config()` 또는 `load_engine_config()` 경유
 - `engine/config/strategy_params.json`: 전략별 임계값
 - `engine/config/strategy_activation.json`: 활성/비활성 목록
+- ~~`engine/config/trading.json`~~: **제거됨** (deep-merge leak 방지, WS-1)
+
+### 포지션 추적 (WS-3 중앙화)
+- **PositionManager**: open/close 실행 결과에서 호출 (in-memory, dual_writer 선택적)
+- **_position_sizes**: RiskGuardian 전용 (롤백 시 감소 — WS-3.3)
+- **전략 _open_positions**: 전략 로컬 추적 (PositionManager와 병행, 점진적 통합)
+- **Exchange get_positions()**: 유일한 진실 소스 (ghost check용)
+
+### 실행 콜백 (WS-2 분리 완료)
+- `handle_entry_rollback(sym)`: 진입 실패 → 추적 삭제
+- `handle_exit_rollback(sym)`: 청산 실패 → 추적 복원
+- `handle_entry_success(sym)` / `handle_exit_success(sym)`: 성공 정리
+- `clear_ghost(sym)`: 거래소에 포지션 없음 → 모든 추적 강제 삭제
+- ~~`on_execution_rollback`~~: legacy (내부 위임만, 직접 호출 0건)
 
 ---
 
