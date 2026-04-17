@@ -1865,6 +1865,13 @@ class Engine:
                                     "quantity": trade.amount,
                                     "entry_price": trade.price,
                                 })
+                            # WS-4 Step 2: 동기 인메모리 인덱스 먼저 업데이트
+                            # reconciler가 같은 tick에 최신 상태 볼 수 있도록
+                            try:
+                                self._position_manager.update_index_sync(_op_kwargs[0], **_op_kwargs[1])
+                            except Exception as _sync_err:
+                                logger.debug("update_index_sync_failed: %s", _sync_err)
+                            # 그 후 async 큐에 dispatch (WAL/Redis 쓰기)
                             try:
                                 self._pm_queue.put_nowait(_op_kwargs)
                             except asyncio.QueueFull:

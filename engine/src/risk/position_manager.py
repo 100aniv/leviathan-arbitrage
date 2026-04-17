@@ -213,6 +213,42 @@ class PositionManager:
         """Return all open positions as a flat list (US-236 dead wiring fix)."""
         return list(self._positions.values())
 
+    def update_index_sync(
+        self,
+        op: str,
+        strategy_id: str,
+        exchange_id: str,
+        symbol: str,
+        **kwargs,
+    ) -> None:
+        """WS-4 Step 2: 동기 인메모리 인덱스 업데이트 (I/O 없음).
+
+        Engine._on_execution_result 에서 fill 콜백 시 호출.
+        drain task가 async I/O(WAL, Redis)를 처리하기 전에 reconciler 가
+        이미 최신 상태를 볼 수 있도록 sync 반영.
+
+        op: "open_position" | "close_position"
+        kwargs: open시 side/quantity/entry_price, close시 close_price
+        """
+        key = (strategy_id, exchange_id, symbol)
+        if op == "open_position":
+            side = kwargs.get("side", "LONG")
+            quantity = kwargs.get("quantity", Decimal("0"))
+            entry_price = kwargs.get("entry_price", Decimal("0"))
+            self._positions[key] = PositionRecord(
+                strategy_id=strategy_id,
+                exchange_id=exchange_id,
+                symbol=symbol,
+                side=side,
+                quantity=quantity,
+                entry_price=entry_price,
+                wal_id=0,  # drain task가 실제 WAL 쓰기 후 업데이트 (optional)
+            )
+        elif op == "close_position":
+            self._positions.pop(key, None)
+        else:
+            logger.warning("update_index_sync: unknown op=%s", op)
+
     async def get_net_exposure(self, exchange_id: str, base_asset: str) -> Decimal:
         """Read current net exposure for (exchange, base_asset) from Redis."""
         redis_key = EXPOSURE_KEY.format(exchange=exchange_id, base_asset=base_asset)
