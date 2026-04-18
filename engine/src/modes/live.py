@@ -339,16 +339,8 @@ class LiveMode(BaseMode):
                     stale_detector=self._stale_detector,
                     regime_detector=self._regime_detector,
                 )
-                # BUG-112: start KRWRateProvider live polling (Upbit 30s).
-                # __init__ is sync — schedule coroutine via ensure_future if event loop
-                # already running, otherwise defer (will start on first async call).
-                try:
-                    import asyncio as _aio
-                    _loop = _aio.get_event_loop()
-                    if _loop.is_running():
-                        _aio.ensure_future(self._real_signal_producer._fx_provider.start())
-                except Exception as _fx_exc:
-                    logger.warning("live_mode.fx_provider_start_failed: %s", _fx_exc)
+                # BUG-112: FX provider start deferred to LiveMode.start() (async).
+                # Codex review: __init__ off-loop would lose the task silently.
             except Exception as exc:
                 logger.warning("live_mode.real_signal_producer_init_failed: %s", exc)
 
@@ -448,6 +440,16 @@ class LiveMode(BaseMode):
         if self._running:
             logger.warning("live_mode.already_running")
             return
+
+        # BUG-112 (Codex fix): start FX oracle inside async context — guarantees the
+        # background task attaches to the engine's loop instead of leaking or no-op.
+        if self._real_signal_producer is not None:
+            _fx = getattr(self._real_signal_producer, "_fx_provider", None)
+            if _fx is not None:
+                try:
+                    await _fx.start()
+                except Exception as _fx_exc:
+                    logger.warning("live_mode.fx_provider_start_failed: %s", _fx_exc)
 
         # Step 1: LiveGate enforcement (if available)
         if self._live_gate is not None:
@@ -860,6 +862,15 @@ class LiveMode(BaseMode):
                 try:
                     await task
                 except asyncio.CancelledError:
+                    pass
+
+        # BUG-112 (Codex fix): stop FX oracle background poll to prevent task leak
+        if self._real_signal_producer is not None:
+            _fx = getattr(self._real_signal_producer, "_fx_provider", None)
+            if _fx is not None:
+                try:
+                    await _fx.stop()
+                except Exception:
                     pass
 
         # Drain in-flight settlement exit tasks (fire-and-forget closes that must complete
