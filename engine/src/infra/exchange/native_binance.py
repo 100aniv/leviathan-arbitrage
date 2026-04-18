@@ -105,16 +105,25 @@ class BinanceNativeAdapter(NativeAdapter):
             quantity=order.amount,
             price=order.price if otype == "LIMIT" else None,
         )
-        # Parse WS response → Trade
+        # Parse WS response → Trade (BUG-122: Trade model requires non-zero price)
         if resp.get("status") != 200:
             raise RuntimeError(f"ws_place_order rejected: {resp}")
         result = resp.get("result", {})
+        _px_raw = result.get("avgPrice") or result.get("price") or order.price or Decimal("0")
+        _px = Decimal(str(_px_raw))
+        # MARKET orders return avgPrice=0 until fill confirmation; fallback to order.price
+        if _px <= 0 and order.price:
+            _px = order.price
+        _qty_raw = result.get("executedQty") or result.get("origQty") or order.amount
+        _qty = Decimal(str(_qty_raw))
+        if _qty <= 0:
+            _qty = order.amount
         return Trade(
             trade_id=str(result.get("orderId", "")),
             symbol=order.symbol,
             side=order.side,
-            amount=Decimal(str(result.get("executedQty", order.amount))),
-            price=Decimal(str(result.get("avgPrice") or result.get("price") or order.price or 0)),
+            amount=_qty,
+            price=_px,
             fee=Decimal("0"),
             timestamp=datetime.now(timezone.utc),
         )

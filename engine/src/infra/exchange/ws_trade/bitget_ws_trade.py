@@ -139,6 +139,8 @@ class BitgetWSTrade:
         price: Optional[Decimal] = None,
         force: str = "gtc",
         client_oid: Optional[str] = None,
+        marginMode: Optional[str] = None,
+        **extra: Any,
     ) -> dict[str, Any]:
         """Send order via WS. Returns parsed response dict (event=trade or error)."""
         if not self._logged_in:
@@ -154,6 +156,11 @@ class BitgetWSTrade:
             params["price"] = str(price)
         if client_oid:
             params["clientOid"] = client_oid
+        if marginMode:
+            params["marginMode"] = marginMode
+        for k, v in extra.items():
+            if v is not None:
+                params[k] = v
 
         msg = {
             "op": "trade",

@@ -81,6 +81,10 @@ class NativeBitgetAdapter(NativeAdapter):
         inst_id = order.symbol.replace("/", "")
         side = "buy" if order.side == OrderSide.BUY else "sell"
         otype = "limit" if order.order_type == OrderType.LIMIT else "market"
+        # BUG-121: Bitget V2 futures WS requires marginMode (isolated/cross)
+        extra_params: dict[str, Any] = {}
+        if self._market_type == "futures":
+            extra_params["marginMode"] = "isolated"
         resp = await client.place_order(
             inst_type=inst_type,
             inst_id=inst_id,
@@ -89,6 +93,7 @@ class NativeBitgetAdapter(NativeAdapter):
             size=order.amount,
             price=order.price if otype == "limit" else None,
             force="gtc",
+            **extra_params,
         )
         if resp.get("code") not in (0, "0") and resp.get("event") != "trade":
             raise RuntimeError(f"bitget ws_place_order rejected: {resp}")
