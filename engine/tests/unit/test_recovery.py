@@ -222,18 +222,18 @@ class TestReconcileWithExchangeBug97:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_ccxt_adapter_fetch_position_fallback(self):
-        """ccxt adapter (has fetch_position) uses that path."""
+    async def test_fetch_position_fallback_path(self):
+        """Legacy adapter (fetch_position only, no get_positions) uses that path."""
         from src.infra.db.recovery import RecoveryManager
 
         manager = RecoveryManager.__new__(RecoveryManager)
 
-        class _CcxtAdapter:
+        class _LegacyAdapter:
             # No get_positions attribute — forces fetch_position path
             async def fetch_position(self, symbol):
                 return {"quantity": "0.1"}
 
-        manager._exchange_clients = {"binance": _CcxtAdapter()}
+        manager._exchange_clients = {"binance": _LegacyAdapter()}
 
         wal = [{
             "strategy_id": "s1",
