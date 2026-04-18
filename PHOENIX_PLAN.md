@@ -207,6 +207,8 @@ min_trade_notional_usd: $5
 | **v174** | 2026-04-18 | FF+FR+SF+XE | pending | — | **BUG-132 FR entry spread guard** (API3 -25bps, T -16bps, THETA -13bps reject) |
 | **v175** | 2026-04-18 | FF+FR+SF+XE | 4 | 0 | BUG-133 XE log noise 제거 (book_depth 28→0, spread_wide 5→0) |
 | **v176** | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-134 recovery log noise 제거. preflight auto-close 작동 확인 (API3 + WLD). total WARNING 56→9 (-84%) |
+| **v177** | 2026-04-18 | FF+FR+SF+XE | pending | — | **BUG-126 재활성화 + BUG-136 진단**: Bitget 40026 'User is disabled' 확정. BD/RM 승인 필요 확정 |
+| **v178** | 2026-04-18 | FF+FR+SF+XE | 4 | 0 | **BUG-136 자동 처리 완성**: 40026 감지 → session disable → 후속 시도 1회로 제한 |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
@@ -278,6 +280,8 @@ min_trade_notional_usd: $5
 | **BUG-132** | FR entry가 funding diff만 검증하고 price spread 무시 → 역방향 spread에서도 체결 (API3 -56bps, THETA -4bps). `funding_max_entry_adverse_bps=-10` 가드 추가 | ✅ v174 |
 | **BUG-133** | XE 로그 스팸: `book_depth_insufficient` 28회 + `spread_too_wide` 5회 WARNING. 정상 필터 이벤트인데 WARNING → DEBUG로. min depth 1→10 USD | ✅ v175 |
 | **BUG-134** | recovery.Position WARNING 16회 (startup adapter stale timing). WARNING → INFO. v174 56 → v176 9 (-84%) | ✅ v176 |
+| **BUG-135** | FF slippage 240bps 실측 (API3 -$0.11) — 45bps spread threshold로 극복 불가. `futures_min_spread_bps` 45→300 (2.2s latency × 크립토 변동성 기반 현실화) | ✅ v177 |
+| **BUG-136** | Bitget V2 WS 40026 'User is disabled' — 계정 BD/RM 미승인 확정. 자동 session disable + 명확 안내. 사장님 BD/RM 연락 대기 | ✅ v178 (엔진 측) |
 | **ccxt deprecation** | ccxt_adapter.py / okx.py / bybit.py / upbit.py / bithumb.py = dead code (runtime 사용 0). 문서화 완료. | ✅ v163+ |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
