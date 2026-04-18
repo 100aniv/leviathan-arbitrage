@@ -845,11 +845,8 @@ class Engine:
             self._settings.trading.use_native_adapters if self._settings else False
         )
         exchanges = self._active_exchanges or _get_fallback_exchanges()
-        if use_native:
-            await self._init_native_exchanges(exchanges, sandbox=True)
-        else:
-            logger.info("Sandbox exchange initialization — CCXTAdapter (sandbox=True)")
-            # TODO: Phase 6 — create CCXTAdapters with sandbox=True
+        # BUG-151: ccxt legacy path removed per 사장님 지시. Native adapters only.
+        await self._init_native_exchanges(exchanges, sandbox=True)
 
     async def _init_live_exchanges(self) -> None:
         from src.core.config import load_engine_config

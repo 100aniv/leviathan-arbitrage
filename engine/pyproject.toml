@@ -33,9 +33,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-legacy = [
-    "ccxt>=4.2",
-]
+# BUG-151: legacy ccxt dependency 완전 제거 (사장님 지시).
+# 모든 거래소 native WebSocket + REST adapter 사용.
 ml = [
     "hmmlearn>=0.3",
     "scikit-learn>=1.4",
