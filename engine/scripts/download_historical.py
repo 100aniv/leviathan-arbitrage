@@ -752,7 +752,7 @@ _INSERT_SQL = """
 async def insert_candles(
     pool,
     exchange: str,
-    ccxt_symbol: str,
+    unified_symbol: str,
     candles: list[list],
     dry_run: bool = False,
 ) -> int:
@@ -774,7 +774,7 @@ async def insert_candles(
         rows.append((
             ts,
             exchange,
-            ccxt_symbol,
+            unified_symbol,
             json.dumps(bids),
             json.dumps(asks),
             best_bid,
@@ -784,7 +784,7 @@ async def insert_candles(
         ))
 
     if dry_run:
-        logger.info("[DRY-RUN] %s %s: would insert %d rows", exchange, ccxt_symbol, len(rows))
+        logger.info("[DRY-RUN] %s %s: would insert %d rows", exchange, unified_symbol, len(rows))
         return len(rows)
 
     if not rows:
@@ -1037,7 +1037,7 @@ DEFAULT_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 
 async def main(
     exchanges: list[str],
-    ccxt_symbols: list[str],
+    unified_symbols: list[str],
     start_date: str,
     end_date: str,
     dry_run: bool,
@@ -1083,26 +1083,26 @@ async def main(
                 continue
 
             sym_map = SYMBOL_MAP.get(exchange, {})
-            for ccxt_sym in ccxt_symbols:
-                exchange_sym = sym_map.get(ccxt_sym)
+            for unified_sym in unified_symbols:
+                exchange_sym = sym_map.get(unified_sym)
                 if not exchange_sym:
-                    logger.debug("%s %s: no symbol mapping — skipping", exchange, ccxt_sym)
+                    logger.debug("%s %s: no symbol mapping — skipping", exchange, unified_sym)
                     continue
 
-                logger.info("Fetching %s %s (%s) interval=%s...", exchange, ccxt_sym, exchange_sym, interval)
+                logger.info("Fetching %s %s (%s) interval=%s...", exchange, unified_sym, exchange_sym, interval)
                 try:
                     candles = await fetcher(session, exchange_sym, start_ms, end_ms)
                     logger.info(
-                        "%s %s: fetched %d candles", exchange, ccxt_sym, len(candles)
+                        "%s %s: fetched %d candles", exchange, unified_sym, len(candles)
                     )
                     if candles:
-                        inserted = await insert_candles(pool, exchange, ccxt_sym, candles, dry_run)
+                        inserted = await insert_candles(pool, exchange, unified_sym, candles, dry_run)
                         total_inserted += inserted
                         logger.info(
-                            "%s %s: inserted %d rows", exchange, ccxt_sym, inserted
+                            "%s %s: inserted %d rows", exchange, unified_sym, inserted
                         )
                 except Exception as exc:
-                    logger.error("%s %s: unexpected error: %s", exchange, ccxt_sym, exc)
+                    logger.error("%s %s: unexpected error: %s", exchange, unified_sym, exc)
                     continue
 
                 await asyncio.sleep(0.2)
@@ -1172,7 +1172,7 @@ if __name__ == "__main__":
 
     asyncio.run(main(
         exchanges=exchanges,
-        ccxt_symbols=symbols,
+        unified_symbols=symbols,
         start_date=args.start,
         end_date=args.end,
         dry_run=args.dry_run,

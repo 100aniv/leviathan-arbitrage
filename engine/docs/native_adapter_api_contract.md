@@ -27,12 +27,12 @@ Status: Authoritative reference for all native exchange adapter implementations
 
 ### Why Native Adapters
 
-The native adapters replace `ccxt` entirely. The motivations are:
+The native adapters replace legacy adapter entirely. The motivations are:
 
-- **Latency**: ccxt adds serialization overhead on every call. Direct `httpx` + `websockets` eliminates the abstraction layer.
+- **Latency**: legacy adapter adds serialization overhead on every call. Direct `httpx` + `websockets` eliminates the abstraction layer.
 - **Control**: Custom signing, custom reconnect logic, custom rate limiting tuned per exchange.
-- **Dependency**: Removing ccxt removes ~180 transitive dependencies and the risk of upstream breaking changes.
-- **Correctness**: ccxt normalizes data in ways that obscure exchange-specific fields (sequence numbers, checksums, fee structures).
+- **Dependency**: Removing legacy removes ~180 transitive dependencies and the risk of upstream breaking changes.
+- **Correctness**: Legacy adapter normalizes data in ways that obscure exchange-specific fields (sequence numbers, checksums, fee structures).
 
 ### Class Hierarchy
 
