@@ -1,6 +1,6 @@
 """Bitget USDT-M perpetual futures public orderbook collector via native WebSocket.
 
-Endpoint: wss://ws.bitget.com/v2/ws/public  (same as spot)
+Endpoint: wss://ws.bitget.com/v3/ws/public  (same as spot)
 
 Uses instType="USDT-FUTURES" with the books15 channel.
 Message format is identical to the Bitget spot V2 API:
@@ -48,7 +48,7 @@ class BitgetFuturesCollector(BaseCollector):
     No API key is required.
     """
 
-    _WS_URL = "wss://ws.bitget.com/v2/ws/public"
+    _WS_URL = "wss://ws.bitget.com/v3/ws/public"
     _CHANNEL = "books15"
     _INST_TYPE = "USDT-FUTURES"
 

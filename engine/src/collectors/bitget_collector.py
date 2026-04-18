@@ -33,7 +33,7 @@ def _denormalize_symbol(inst_id: str) -> str:
 class BitgetCollector(BaseCollector):
     """Collects Bitget spot orderbook data via the public V2 WebSocket.
 
-    Endpoint: wss://ws.bitget.com/v2/ws/public
+    Endpoint: wss://ws.bitget.com/v3/ws/public
 
     Subscribes to the "books15" channel (top-15 levels) for SPOT market type.
     Both "snapshot" and "update" actions are forwarded as a full replace of
@@ -42,7 +42,7 @@ class BitgetCollector(BaseCollector):
     No API key is required.
     """
 
-    _WS_URL = "wss://ws.bitget.com/v2/ws/public"
+    _WS_URL = "wss://ws.bitget.com/v3/ws/public"
     _CHANNEL = "books15"
     _INST_TYPE = "SPOT"
 

@@ -529,11 +529,21 @@ class LiveMode(BaseMode):
                     # Bitget: raw API check to catch stale total=0 positions (Bug 28)
                     if "bitget" in _eid and hasattr(_adapter, "_request"):
                         try:
-                            _raw_resp = await _adapter._request(
-                                "GET", "/api/v2/mix/position/all-position",
-                                params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
-                                signed=True,
-                            )
+                            # BUG-170: UTA V3 uses /api/v3/position/current-position (category param).
+                            # V2 /mix/position/all-position returns 400 in UTA mode.
+                            _bitget_is_uta = hasattr(_adapter, "_is_uta") and _adapter._is_uta()
+                            if _bitget_is_uta:
+                                _raw_resp = await _adapter._request(
+                                    "GET", "/api/v3/position/current-position",
+                                    params={"category": "USDT-FUTURES"},
+                                    signed=True,
+                                )
+                            else:
+                                _raw_resp = await _adapter._request(
+                                    "GET", "/api/v2/mix/position/all-position",
+                                    params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
+                                    signed=True,
+                                )
                             for _item in (_raw_resp.get("data") or []):
                                 _hold_side = _item.get("holdSide", "")
                                 _raw_sym = _item.get("symbol", "")
@@ -597,11 +607,20 @@ class LiveMode(BaseMode):
                                 # BUG-115: Bitget requires POST body (data=) + per-symbol call.
                                 # Bulk close via params= always returns 400172.
                                 try:
-                                    _raw_close = await _adapter._request(
-                                        "GET", "/api/v2/mix/position/all-position",
-                                        params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
-                                        signed=True,
-                                    )
+                                    # BUG-170: UTA V3 uses /api/v3/position/current-position.
+                                    _bitget_is_uta_close = hasattr(_adapter, "_is_uta") and _adapter._is_uta()
+                                    if _bitget_is_uta_close:
+                                        _raw_close = await _adapter._request(
+                                            "GET", "/api/v3/position/current-position",
+                                            params={"category": "USDT-FUTURES"},
+                                            signed=True,
+                                        )
+                                    else:
+                                        _raw_close = await _adapter._request(
+                                            "GET", "/api/v2/mix/position/all-position",
+                                            params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
+                                            signed=True,
+                                        )
                                     for _pos_item in (_raw_close.get("data") or []):
                                         _ps = _pos_item.get("symbol", "")
                                         _ph = _pos_item.get("holdSide", "")

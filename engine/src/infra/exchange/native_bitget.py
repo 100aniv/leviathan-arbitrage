@@ -24,7 +24,7 @@ _BITGET_RATE_LIMITS: dict[str, RateLimitConfig] = {
 }
 
 _REST_BASE = "https://api.bitget.com"
-_WS_PUBLIC = "wss://ws.bitget.com/v2/ws/public"
+_WS_PUBLIC = "wss://ws.bitget.com/v3/ws/public"
 
 
 def _normalize_symbol(symbol: str) -> str:
@@ -1035,7 +1035,15 @@ class NativeBitgetAdapter(NativeAdapter):
                 signed=True,
             )
             result: dict[str, Balance] = {}
-            for item in resp.get("data", []):
+            # BUG-170: V3 /account/assets may return data as dict (USDT-FUTURES unified account)
+            # or list (SPOT per-asset). Guard against iterating over dict keys (which are strings).
+            _data = resp.get("data") or []
+            if isinstance(_data, dict):
+                # Unified account response: {"accountEquity": ..., "assets": [...]}
+                _data = _data.get("assets", [])
+            for item in _data:
+                if not isinstance(item, dict):
+                    continue
                 # V3 response fields: coin (spot) or marginCoin (futures)
                 cur = item.get("coin") or item.get("marginCoin", "")
                 free = Decimal(str(item.get("available", "0")))
