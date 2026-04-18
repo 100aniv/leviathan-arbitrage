@@ -1,4 +1,13 @@
-"""Generic ccxt-based exchange adapter with WebSocket support and auto-reconnect."""
+"""DEPRECATED — ccxt-based legacy adapter. NOT used by live engine.
+
+Engine live/paper modes use native_* adapters exclusively (ccxt-free per PHOENIX
+§7 "shadow 모드 없음"). This file and its subclasses (okx.py, bybit.py, upbit.py,
+bithumb.py) are kept only for historical compatibility. Do NOT import in new code.
+
+For live trading WebSocket order placement (BUG-120 planned), see:
+  - native_binance.py (Binance Futures WS — wss://ws-fapi.binance.com/ws-fapi/v1)
+  - native_bitget.py  (Bitget V2 WS — wss://ws.bitget.com/v2/ws/private)
+"""
 from __future__ import annotations
 
 import asyncio

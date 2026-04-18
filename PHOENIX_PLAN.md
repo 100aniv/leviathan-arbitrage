@@ -250,6 +250,10 @@ min_trade_notional_usd: $5
 | Redis tuning | retry_on_timeout + health_check_interval + socket_keepalive + pool=100 + timeout=5s | ✅ v141~ / 20 pass |
 | Redis logs | transient xadd/xreadgroup ERROR→WARN (auto-recovery 있음) | ✅ v141~ |
 | FF freshness | 3s→5s (fresh_drop 70%→35% 증명) | ✅ v143 |
+| **BUG-114** | DualWriter PG timeout 100→500ms (TimescaleDB typical 200-300ms) | ✅ v162 |
+| **BUG-116** | Edge recheck REST → WS in-memory book (AtomicExecutor.set_books_provider) | ✅ v163 |
+| **BUG-120 PLANNED** | WebSocket order placement 전환 (Binance Futures WS + Bitget V2 WS) — REST 350-1000ms → WS 100-300ms (~70% 감소 예상). ccxt_adapter.py + subclasses deprecated 마킹 완료. | 🔄 설계 완료, 구현 대기 |
+| **ccxt deprecation** | ccxt_adapter.py / okx.py / bybit.py / upbit.py / bithumb.py = dead code (runtime 사용 0). 문서화 완료. | ✅ v163+ |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
 ```python
