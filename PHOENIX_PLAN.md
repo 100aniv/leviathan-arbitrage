@@ -209,6 +209,7 @@ min_trade_notional_usd: $5
 | **v176** | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-134 recovery log noise 제거. preflight auto-close 작동 확인 (API3 + WLD). total WARNING 56→9 (-84%) |
 | **v177** | 2026-04-18 | FF+FR+SF+XE | pending | — | **BUG-126 재활성화 + BUG-136 진단**: Bitget 40026 'User is disabled' 확정. BD/RM 승인 필요 확정 |
 | **v178** | 2026-04-18 | FF+FR+SF+XE | 4 | 0 | **BUG-136 자동 처리 완성**: 40026 감지 → session disable → 후속 시도 1회로 제한 |
+| **v179** | 2026-04-18 | FF+FR+SF+XE | 4 | 0 | BUG-137 HTTP/2 활성화 (효과 미미 — 977→1074ms). 네트워크 지배적 확인 |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
@@ -282,6 +283,7 @@ min_trade_notional_usd: $5
 | **BUG-134** | recovery.Position WARNING 16회 (startup adapter stale timing). WARNING → INFO. v174 56 → v176 9 (-84%) | ✅ v176 |
 | **BUG-135** | FF slippage 240bps 실측 (API3 -$0.11) — 45bps spread threshold로 극복 불가. `futures_min_spread_bps` 45→300 (2.2s latency × 크립토 변동성 기반 현실화) | ✅ v177 |
 | **BUG-136** | Bitget V2 WS 40026 'User is disabled' — 계정 BD/RM 미승인 확정. 자동 session disable + 명확 안내. 사장님 BD/RM 연락 대기 | ✅ v178 (엔진 측) |
+| **BUG-137** | HTTP/2 (h2) 활성화 — 이론상 multiplexing + HPACK. 실측: v178 977ms → v179 1074ms, **효과 미미** (네트워크 latency 지배적). 유지하되 기대 낮춤. **진짜 해결: Bitget WS 승인 or VPS 이전** | ✅ v179 유지 |
 | **ccxt deprecation** | ccxt_adapter.py / okx.py / bybit.py / upbit.py / bithumb.py = dead code (runtime 사용 0). 문서화 완료. | ✅ v163+ |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
