@@ -133,6 +133,9 @@ class RealDataSignalProducer:
             # than live tick data, so live-tuned thresholds (2.0+) rarely trigger in backtest
             self._stat_arb_z_threshold = min(self._stat_arb_z_threshold, 1.5)
         self._stat_arb_cooldown_s = float(get_config("strategy_filters.stat_arb_cooldown_s", default=300))
+        # BUG-108: FX rate config-driven (hardcoded 0.000714 → configurable)
+        # Full dynamic oracle (Upbit USDT/KRW WS + BoK fallback) is Phase 2+ work.
+        self._krw_usdt_rate = Decimal(str(get_config("strategy_filters.krw_usdt_rate", default=0.000714)))
         self._stat_arb_min_history = int(get_config("strategy_filters.stat_arb_min_history", default=120))
         # In backtest mode: skip Korean exchange filter (data is synthetic, not stale)
         # and skip wall-clock cooldowns (simulated time is passed instead)
@@ -989,8 +992,8 @@ class RealDataSignalProducer:
         if krw_bid is None or krw_ask is None:
             return signals
 
-        krw_bid_usdt = _normalize_price_to_usdt(krw_bid, krw_exchange, krw_symbol)
-        krw_ask_usdt = _normalize_price_to_usdt(krw_ask, krw_exchange, krw_symbol)
+        krw_bid_usdt = _normalize_price_to_usdt(krw_bid, krw_exchange, krw_symbol, self._krw_usdt_rate)
+        krw_ask_usdt = _normalize_price_to_usdt(krw_ask, krw_exchange, krw_symbol, self._krw_usdt_rate)
 
         # USDT 거래소 오더북 조회
         # BUG-103.2: snapshot inner dict (concurrency safety)
@@ -1031,7 +1034,7 @@ class RealDataSignalProducer:
                     timestamp=datetime.now(timezone.utc),
                     metadata={
                         "krw_normalized": True,
-                        "krw_rate": str(_DEFAULT_KRW_TO_USDT_RATE),
+                        "krw_rate": str(self._krw_usdt_rate),
                         "direction": "sell_krw",
                         "krw_exchange": krw_exchange,
                         "krw_symbol": krw_symbol,
@@ -1073,7 +1076,7 @@ class RealDataSignalProducer:
                     timestamp=datetime.now(timezone.utc),
                     metadata={
                         "krw_normalized": True,
-                        "krw_rate": str(_DEFAULT_KRW_TO_USDT_RATE),
+                        "krw_rate": str(self._krw_usdt_rate),
                         "direction": "buy_krw",
                         "krw_exchange": krw_exchange,
                         "krw_symbol": krw_symbol,
