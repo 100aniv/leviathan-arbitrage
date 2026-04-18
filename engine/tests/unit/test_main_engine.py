@@ -193,31 +193,19 @@ class TestEngineInitExchanges:
         assert "paper_binance" in engine._exchanges
         assert "paper_okx" in engine._exchanges
 
+    @pytest.mark.skip(reason="BUG-151 (ccxt 완전 제거) 후 use_native_adapters flag obsolete — native only")
     @pytest.mark.asyncio
     async def test_init_exchanges_sandbox_non_native_no_adapters(self):
-        from src.core.config import ExecutionMode
-        engine = Engine()
-        mock_settings = MagicMock()
-        mock_settings.execution_mode = ExecutionMode.SANDBOX
-        mock_settings.trading.use_native_adapters = False
-        mock_settings.trading.active_exchanges = ["binance"]
-        engine._settings = mock_settings
+        """BUG-151: legacy ccxt path removed. use_native_adapters=False 는 무시되고
+        native adapter 가 항상 사용됨. 이 테스트는 의도적으로 skip."""
+        pass
 
-        await engine._init_exchanges()
-        assert len(engine._exchanges) == 0  # TODO path, no adapters created
-
+    @pytest.mark.skip(reason="BUG-151 (ccxt 완전 제거) 후 use_native_adapters flag obsolete — native only")
     @pytest.mark.asyncio
     async def test_init_exchanges_live_non_native_no_adapters(self):
-        from src.core.config import ExecutionMode
-        engine = Engine()
-        mock_settings = MagicMock()
-        mock_settings.execution_mode = ExecutionMode.LIVE
-        mock_settings.trading.use_native_adapters = False
-        mock_settings.trading.active_exchanges = ["binance"]
-        engine._settings = mock_settings
-
-        await engine._init_exchanges()
-        assert len(engine._exchanges) == 0
+        """BUG-151: legacy ccxt path removed. use_native_adapters=False 는 무시되고
+        native adapter 가 항상 사용됨. 이 테스트는 의도적으로 skip."""
+        pass
 
     @pytest.mark.asyncio
     async def test_init_native_exchanges_value_error_skips(self):

@@ -69,9 +69,15 @@ def test_us246_live_gate_has_enforce_or_fallback_method():
 
 
 @pytest.mark.asyncio
-async def test_us246_enforce_or_fallback_returns_false_when_not_eligible():
+async def test_us246_enforce_or_fallback_returns_false_when_not_eligible(monkeypatch):
     """enforce_or_fallback() returns False (shadow fallback) when gate evaluation is not eligible."""
     from src.modes.live_gate import LiveGate
+    from src.core import config as _core_config
+
+    # engine.json 기본값 bypass=true 를 우회하기 위한 monkeypatch
+    # (해당 플래그 true 시 enforce_or_fallback 은 run_preflight 호출 전 단락 True 반환)
+    _settings = _core_config.get_settings()
+    monkeypatch.setattr(_settings.live_gate, "bypass", False)
 
     mock_pool = MagicMock()
     gate = LiveGate(pool=mock_pool)
@@ -81,6 +87,8 @@ async def test_us246_enforce_or_fallback_returns_false_when_not_eligible():
         False,
         {"checks": {}, "all_pass": False, "failed_checks": ["sharpe_gate"], "timestamp": ""},
     ))
+    # DB load 도 False (저장된 pass state 없음)
+    gate._db_load_pass_state = AsyncMock(return_value=(False, None))
 
     result = await gate.enforce_or_fallback()
     assert result is False, "enforce_or_fallback() must return False when preflight fails"
