@@ -84,12 +84,23 @@ class BitgetWSTrade:
         await self._ws.send(json.dumps(msg))
         try:
             resp = await asyncio.wait_for(self._login_future, timeout=_LOGIN_TIMEOUT_S)
-            if resp.get("code") == "0" or resp.get("event") == "login":
+            # BUG-136: log full response for diagnostics
+            logger.info("BitgetWSTrade login resp: %s", resp)
+            # Bitget V2 success: {"event":"login","code":0,"msg":"success"}
+            # code can be int 0 or string "0". event="login" alone is not enough
+            # (error responses may also carry event="login" with non-zero code).
+            _code = resp.get("code")
+            _code_ok = _code == 0 or _code == "0"
+            _event_ok = resp.get("event") == "login"
+            if _code_ok and _event_ok:
                 self._logged_in = True
             else:
-                raise RuntimeError(f"Bitget WS login failed: {resp}")
+                raise RuntimeError(
+                    f"Bitget WS login rejected: code={_code} event={resp.get('event')} "
+                    f"msg={resp.get('msg')} full={resp}"
+                )
         except asyncio.TimeoutError:
-            raise RuntimeError("Bitget WS login timeout")
+            raise RuntimeError(f"Bitget WS login timeout after {_LOGIN_TIMEOUT_S}s")
 
     async def close(self) -> None:
         self._running = False
@@ -112,10 +123,16 @@ class BitgetWSTrade:
             async for raw in self._ws:
                 try:
                     msg = json.loads(raw)
+                    # BUG-136: log every inbound message at DEBUG (trade responses are rare)
+                    logger.debug("BitgetWSTrade inbound: %s", raw[:500] if isinstance(raw, str) else raw)
                     # Login response has event=login (no id)
                     if msg.get("event") == "login" and self._login_future and not self._login_future.done():
                         self._login_future.set_result(msg)
                         continue
+                    # Error responses: {"event":"error","code":...,"msg":...} — warn + route to pending futures
+                    if msg.get("event") == "error":
+                        logger.warning("BitgetWSTrade error event: %s", msg)
+                        # Still try to route by id so waiting place_order raises quickly
                     # Trade responses have arg[0].id
                     args = msg.get("arg") or []
                     req_id = args[0].get("id") if args else None
@@ -123,8 +140,15 @@ class BitgetWSTrade:
                         fut = self._futures.pop(req_id, None)
                         if fut and not fut.done():
                             fut.set_result(msg)
+                    elif msg.get("event") == "error" and self._futures:
+                        # error without id: route to all pending (best-effort)
+                        for _rid in list(self._futures.keys()):
+                            _f = self._futures.pop(_rid, None)
+                            if _f and not _f.done():
+                                _f.set_result(msg)
+                                break  # only first pending
                 except Exception as exc:
-                    logger.warning("BitgetWSTrade listen err: %s", exc)
+                    logger.warning("BitgetWSTrade listen err: %s raw=%r", exc, raw[:200] if isinstance(raw, str) else raw)
         except Exception as exc:
             logger.warning("BitgetWSTrade listener closed: %s", exc)
             self._running = False
@@ -188,14 +212,16 @@ class BitgetWSTrade:
         }
         fut: asyncio.Future = asyncio.Future()
         self._futures[req_id] = fut
+        # BUG-136: log request body for diagnostics (redact nothing — internal log)
+        logger.info("BitgetWSTrade place_order req: %s", json.dumps(msg))
         await self._ws.send(json.dumps(msg))
         try:
             resp = await asyncio.wait_for(fut, timeout=_RESPONSE_TIMEOUT_S)
-            logger.debug("BitgetWSTrade place_order resp: %s", resp)
+            logger.info("BitgetWSTrade place_order resp: %s", resp)
             return resp
         except asyncio.TimeoutError:
             self._futures.pop(req_id, None)
             raise RuntimeError(
                 f"BitgetWSTrade timeout after {_RESPONSE_TIMEOUT_S}s "
-                f"inst={inst_type}/{inst_id} side={side} size={size}"
+                f"inst={inst_type}/{inst_id} side={side} size={size} req_id={req_id}"
             )
