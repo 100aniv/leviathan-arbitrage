@@ -411,7 +411,7 @@ class RealDataSignalProducer:
                         if signal.metadata is None:
                             signal.metadata = {}
                         signal.metadata["direction"] = "contango"
-                        logger.info(
+                        logger.debug(
                             "real_signal_producer.spot_futures_signal",
                             extra={"symbol": symbol, "spot_ex": spot_ex, "fut_ex": fut_ex, "direction": "contango"},
                         )
@@ -451,7 +451,7 @@ class RealDataSignalProducer:
                         if signal.metadata is None:
                             signal.metadata = {}
                         signal.metadata["direction"] = "backwardation"
-                        logger.info(
+                        logger.debug(
                             "real_signal_producer.spot_futures_signal",
                             extra={"symbol": symbol, "spot_ex": spot_ex, "fut_ex": fut_ex, "direction": "backwardation"},
                         )
@@ -656,7 +656,7 @@ class RealDataSignalProducer:
                         book_age_ms=_ff_age_ms1,
                     )
                     if signal is not None:
-                        logger.info(
+                        logger.debug(
                             "real_signal_producer.futures_futures_signal",
                             extra={"symbol": symbol, "buy_ex": ex_b, "sell_ex": ex_a},
                         )
@@ -731,7 +731,7 @@ class RealDataSignalProducer:
                         book_age_ms=_ff_age_ms2,
                     )
                     if signal is not None:
-                        logger.info(
+                        logger.debug(
                             "real_signal_producer.futures_futures_signal",
                             extra={"symbol": symbol, "buy_ex": ex_a, "sell_ex": ex_b},
                         )
@@ -893,7 +893,7 @@ class RealDataSignalProducer:
                 sig.metadata["rsp_z_score"] = float(z_score)
                 sig.metadata["rsp_history_len"] = len(history)
                 self._stat_arb_cooldown[pair_key] = now
-                logger.info(
+                logger.debug(
                     "real_signal_producer.statistical_arb_signal",
                     extra={
                         "sym_a": sym_a, "sym_b": sym_b, "exchange": exchange_id,
@@ -961,7 +961,7 @@ class RealDataSignalProducer:
                 latency_diff_ms=latency_diff_ms,
             )
             if sig is not None:
-                logger.info(
+                logger.debug(
                     "real_signal_producer.latency_arb_signal",
                     extra={"symbol": symbol, "fast_ex": fast_ex, "slow_ex": slow_ex,
                            "latency_diff_ms": f"{latency_diff_ms:.1f}"},
@@ -1046,7 +1046,7 @@ class RealDataSignalProducer:
                         "krw_symbol": krw_symbol,
                     },
                 )
-                logger.info(
+                logger.debug(
                     "real_signal_producer.cross_krw_signal",
                     extra={
                         "usdt_ex": usdt_exchange, "krw_ex": krw_exchange,
@@ -1088,7 +1088,7 @@ class RealDataSignalProducer:
                         "krw_symbol": krw_symbol,
                     },
                 )
-                logger.info(
+                logger.debug(
                     "real_signal_producer.cross_krw_signal",
                     extra={
                         "usdt_ex": usdt_exchange, "krw_ex": krw_exchange,
