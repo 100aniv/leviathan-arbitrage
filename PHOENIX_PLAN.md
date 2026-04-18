@@ -400,6 +400,9 @@ min_trade_notional_usd: $5
 | ID | 내용 | 상태 |
 |----|------|------|
 | **BUG-165** | Bithumb price guard DEBUG 로그가 blacklist 체크 **전**에 fire → persistently-fake 심볼(SOL/BTC, ETH/BTC)이 20분간 1357건 스팸 생산. blacklist 체크 우선 후 로그 출력으로 조정. | ✅ v201 대비 |
+| **BUG-166** | Codex 독립 리뷰(2026-04-18) 발견: WS place_order ACK-success 승격. `NativeAdapter.place_order()` WS 경로가 FILLED 확인 전 `Trade` 반환 → position_confirmed 조기 fire → **silent ghost 재발 여지** (BUG-94 미완결). 단기 우회: futures MARKET WS 비활성화 (`execution.ws_order_enabled=false`). 장기: `PendingAck` 상태 도입, FILLED/executedQty>0 확인 후 승격. Bitget WS close 시 `reduceOnly`/`tradeSide`/`posSide` REST 동일 주입 누락. | ⏳ 설계 대기 |
+| **BUG-167** | Codex 리뷰: BUG-163 `preflight_auto_close_enabled=false` 의도와 충돌. false 시 stranded 존재하면 5회 재시도 후 `LiveGateFailed` abort → "수동 청산 대기"가 아니라 "live 기동 불가". 패치: default=false, false 시 `kill_switch.force_halt("manual_preflight_cleanup_required")` + paused-live 전환 (프로세스는 유지). | ⏳ 설계 대기 |
+| **recovery test** | BUG-97.3/BUG-134 이후 `_reconcile_with_exchange` 는 mismatch 발견 시 INFO 로그 + True 반환 (startup hard-halt 해결). 테스트 2건이 `False` 기대로 stale 상태. hasattr(AsyncMock, 'get_positions') 항상 True로 native 경로 착오. MagicMock `spec=['fetch_position']` 제한으로 legacy fallback 강제 + 기대값 True로 업데이트. | ✅ 커밋 |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
 ```python

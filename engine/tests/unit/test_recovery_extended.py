@@ -189,8 +189,10 @@ class TestReconcileWithExchange:
     async def test_fetch_position_failure_returns_false(self):
         from src.infra.db.recovery import RecoveryManager
 
-        mock_client = AsyncMock()
-        mock_client.fetch_position.side_effect = Exception("API error")
+        # BUG-97: _reconcile_with_exchange 는 hasattr(client, "get_positions") 로
+        # native 경로 우선. spec=['fetch_position'] 로 legacy fallback 경로 강제.
+        mock_client = MagicMock(spec=['fetch_position'])
+        mock_client.fetch_position = AsyncMock(side_effect=Exception("API error"))
         manager = RecoveryManager(exchange_clients={"binance": mock_client})
 
         entries = [{"exchange_id": "binance", "symbol": "BTC/USDT", "quantity": Decimal("0.1")}]
@@ -198,16 +200,21 @@ class TestReconcileWithExchange:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_position_mismatch_returns_false(self):
+    async def test_position_mismatch_permissive_startup_returns_true(self):
+        """BUG-97.3/BUG-134: startup position mismatch는 INFO 로그 후 True 반환.
+        기존 hard-halt 로 인한 cold-init stale 응답으로 기동 실패 문제를 완화.
+        실시간 불일치는 60s continuous reconciler 가 감지."""
         from src.infra.db.recovery import RecoveryManager
 
-        mock_client = AsyncMock()
-        mock_client.fetch_position.return_value = {"quantity": "0.5"}  # WAL says 0.1
+        mock_client = MagicMock(spec=['fetch_position'])
+        mock_client.fetch_position = AsyncMock(return_value={"quantity": "0.5"})
 
         manager = RecoveryManager(exchange_clients={"binance": mock_client})
         entries = [{"exchange_id": "binance", "symbol": "BTC/USDT", "quantity": Decimal("0.1")}]
         result = await manager._reconcile_with_exchange(entries)
-        assert result is False
+        # BUG-97.3/BUG-134 permissive: mismatch 발견 시 INFO 로그 + fall through → True
+        # (startup hard-halt 문제 해결, 60s reconciler 가 실시간 검증)
+        assert result is True
 
     @pytest.mark.asyncio
     async def test_position_match_within_tolerance_returns_true(self):
