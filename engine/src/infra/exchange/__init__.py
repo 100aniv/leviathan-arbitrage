@@ -17,20 +17,10 @@ from src.infra.exchange.native_coinone import NativeCoinoneAdapter
 from src.infra.exchange.rate_limiter import ExchangeRateLimiter, RateLimitConfig
 from src.infra.exchange.websocket_manager import ConnectionConfig, ConnectionState, WebSocketManager
 
-# Legacy CCXT-based adapters — lazy import to avoid hard ccxt dependency.
-# Install with: pip install leviathan-engine[legacy]
-try:
-    from src.infra.exchange.ccxt_adapter import CCXTAdapter
-    from src.infra.exchange.binance import BinanceAdapter
-    from src.infra.exchange.bitget import BitgetAdapter
-    from src.infra.exchange.bithumb import BithumbAdapter
-    from src.infra.exchange.bybit import BybitAdapter
-    from src.infra.exchange.coinone import CoinoneAdapter
-    from src.infra.exchange.okx import OKXAdapter
-    from src.infra.exchange.upbit import UpbitAdapter
-    _CCXT_AVAILABLE = True
-except ImportError:
-    _CCXT_AVAILABLE = False
+# BUG-128: ccxt legacy adapters removed from default import chain.
+# Live mode uses create_native_adapter only. Sandbox CLI (sandbox_paper_runner /
+# sandbox_verify) may still import CCXTAdapter directly when needed.
+_CCXT_AVAILABLE = False
 
 __all__ = [
     # Base protocols
