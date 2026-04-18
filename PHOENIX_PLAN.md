@@ -305,7 +305,11 @@ min_trade_notional_usd: $5
 | **BUG-152** | triangular_signal INFO 1025건/5min → DEBUG. BUG-139에서 빠뜨림 | ✅ v190 |
 | **BUG-153** | signal INFO 전면 DEBUG (spot_futures/futures_futures/statistical_arb/cross_krw/latency_arb) — 2093+75+... = 2100+건/5min → 0 | ✅ v191 |
 | **BUG-154** | signal.min_edge_rejected 451건 INFO → DEBUG | ✅ v192 |
-| **BUG-155** | (관찰 기록) PositionReconciler가 live 모드에서 실행 안 됨 (main.py:3758 주석 TODO). 체결엔 영향 없음 (reconciler는 진단용). 장기 수정 대상 | 기록 |
+| **BUG-155** | PositionReconciler live 모드 unreachable (`_paper_mode None → continue`). balance snapshot 조건부 처리 + PositionReconciler 블록 도달 가능하게 | ✅ v194 |
+| **BUG-156** | trade_reconciler `unmatched_internal` first_cycle noise 를 WARNING 처리. first_cycle INFO, 이후 cycle WARNING으로 구분 | ✅ v193 |
+| **BUG-157** | PositionReconciler Pydantic validation error — `entry_price` 필드 필수. `avg_price` fallback 추가 | ✅ v195 |
+| **BUG-158** | Reconciler 부호 불일치 false CRITICAL. engine unsigned qty vs exchange signed size. side 기반 signed quantity 사용 | ✅ v196 |
+| **BUG-159** | position_manager 미wire로 모든 exchange position을 'engine has no record' CRITICAL 판정. position_manager 비어있을 때 reconcile skip | ✅ v197 |
 
 ### 📋 8 전략 코드 완성도 검증 (v182 기준)
 
