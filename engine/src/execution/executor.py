@@ -142,6 +142,9 @@ class AtomicExecutor:
     ) -> None:
         self._exchanges = exchanges
         self._config = config or ExecutionConfig()
+        # BUG-116: WS book provider callback for edge recheck (avoids REST 300-500ms).
+        # live.py sets via set_books_provider. Falls back to REST if None or returns None.
+        self._books_provider: Any = None
         # Per-exchange capital locks (asyncio.Lock prevents concurrent executions)
         self._locks: dict[str, asyncio.Lock] = {}
         from src.execution.stranded import StrandedPositionTracker
@@ -161,6 +164,10 @@ class AtomicExecutor:
     def set_margin_tracker(self, tracker: Any) -> None:
         """Inject a shared MarginTracker (called by live.py to unify strategy + executor tracking)."""
         self._margin_tracker = tracker
+
+    def set_books_provider(self, provider: Any) -> None:
+        """BUG-116: Inject WS books provider for edge recheck — callable(symbol, exchange_id) -> OrderBook|None."""
+        self._books_provider = provider
 
     def _get_lock(self, exchange_id: str) -> asyncio.Lock:
         return self._locks.setdefault(exchange_id, asyncio.Lock())
@@ -1195,7 +1202,15 @@ class AtomicExecutor:
             # 2-4s may pass after leg1 fill — spread can evaporate.
             if min_edge > Decimal("0") and leg1_result and leg1_result.fill_price and leg1_result.fill_price > 0:
                 try:
-                    _recheck_book = await adapter_b.get_orderbook_snapshot(adjusted_leg2.symbol, depth=5)
+                    # BUG-116: prefer WS book (0ms) over REST (300-500ms) when available
+                    _recheck_book = None
+                    if self._books_provider is not None:
+                        try:
+                            _recheck_book = self._books_provider(adjusted_leg2.symbol, ex_b_id)
+                        except Exception:
+                            _recheck_book = None
+                    if _recheck_book is None:
+                        _recheck_book = await adapter_b.get_orderbook_snapshot(adjusted_leg2.symbol, depth=5)
                     if _recheck_book:
                         # Determine current available price on leg2 side
                         if adjusted_leg2.side == OrderSide.SELL:

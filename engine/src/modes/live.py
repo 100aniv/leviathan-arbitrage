@@ -370,6 +370,12 @@ class LiveMode(BaseMode):
         if hasattr(self._executor, "set_margin_tracker"):
             self._executor.set_margin_tracker(self._margin_tracker)
 
+        # BUG-116: wire WS books provider for edge recheck (replaces REST orderbook_snapshot)
+        if hasattr(self._executor, "set_books_provider"):
+            self._executor.set_books_provider(
+                lambda symbol, exchange_id: self._books.get(symbol, {}).get(exchange_id)
+            )
+
         # BUG-18 fix: cached margin_available per futures exchange (refreshed every 60s)
         # produce_futures_futures_signal() has no adapter access, so we inject here.
         self._cached_margin: dict[str, Decimal] = {}
