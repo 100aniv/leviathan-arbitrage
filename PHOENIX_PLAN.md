@@ -252,7 +252,7 @@ min_trade_notional_usd: $5
 | FF freshness | 3s→5s (fresh_drop 70%→35% 증명) | ✅ v143 |
 | **BUG-114** | DualWriter PG timeout 100→500ms (TimescaleDB typical 200-300ms) | ✅ v162 |
 | **BUG-116** | Edge recheck REST → WS in-memory book (AtomicExecutor.set_books_provider) | ✅ v163 |
-| **BUG-120 PLANNED** | WebSocket order placement 전환 (Binance Futures WS + Bitget V2 WS) — REST 350-1000ms → WS 100-300ms (~70% 감소 예상). ccxt_adapter.py + subclasses deprecated 마킹 완료. | 🔄 설계 완료, 구현 대기 |
+| **BUG-120** | WebSocket order placement 전환 — Phase 1-5c 완료 (Binance+Bitget WS clients + native adapter wiring + feature flag). REST 350-1000ms → WS 100-300ms 목표. engine.json execution.ws_order_enabled flip으로 활성화 가능 (default false). ws_trade/ 신규 모듈 + 6 unit tests | ✅ 구현 완료 / ⏳ 활성화 대기 |
 | **ccxt deprecation** | ccxt_adapter.py / okx.py / bybit.py / upbit.py / bithumb.py = dead code (runtime 사용 0). 문서화 완료. | ✅ v163+ |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
