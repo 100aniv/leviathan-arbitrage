@@ -287,6 +287,8 @@ min_trade_notional_usd: $5
 | **BUG-136** | Bitget V2 WS 40026 'User is disabled' — 계정 BD/RM 미승인 확정. 자동 session disable + 명확 안내. 사장님 BD/RM 연락 대기 | ✅ v178 (엔진 측) |
 | **BUG-137** | HTTP/2 (h2) 활성화 — 이론상 multiplexing + HPACK. 실측: v178 977ms → v179 1074ms, **효과 미미** (네트워크 latency 지배적). 유지하되 기대 낮춤. **진짜 해결: Bitget WS 승인 or VPS 이전** | ✅ v179 유지 |
 | **BUG-138** | SF reject 4885회/4min + FF reject 744회/4min INFO 로그 스팸. DEBUG로 전환 → v179 2.97MB → v180 192KB (-75% 로그 크기, CPU format 비용 감소) | ✅ v180 |
+| **BUG-139** | real_signal_producer.funding_rate_signal 3633회/2min + outlier_rejected INFO. DEBUG 전환 → -100% INFO 로그 스팸 추가 | ✅ v181 |
+| **BUG-142** | (관찰 기록) TCA expected vs actual 9-10x 괴리 — FR은 8h funding cycle 수익 vs immediate fill PnL 차이가 설계적 mismatch. 체결에 영향 없음, 장기 로깅 개선 대상 | 기록 (설계 이슈) |
 | **ccxt deprecation** | ccxt_adapter.py / okx.py / bybit.py / upbit.py / bithumb.py = dead code (runtime 사용 0). 문서화 완료. | ✅ v163+ |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
