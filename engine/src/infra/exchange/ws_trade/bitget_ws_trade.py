@@ -219,16 +219,19 @@ class BitgetWSTrade:
             if client_oid:
                 args_inner["clientOid"] = client_oid
             # BUG-169: hedge mode posSide ("long" | "short")
-            # BUG-174: one_way mode requires explicit reduceOnly field
+            # BUG-174: one_way mode — reduceOnly only for closes.
+            # BUG-176: Bitget V3 UTA rejects reduceOnly="no" with 41101. Omit field for
+            # opening orders; set "YES" (uppercase) only for explicit closes.
             if pos_side:
                 args_inner["posSide"] = pos_side  # hedge mode
             else:
-                # one_way mode: "no" = open position, "yes" = close position
                 _reduce_only = extra.get("reduceOnly", False)
-                args_inner["reduceOnly"] = "yes" if _reduce_only else "no"
-            # UTA 는 marginMode/marginCoin 불필요 (자동 관리)
+                if _reduce_only:
+                    args_inner["reduceOnly"] = "YES"
+            # UTA 는 marginMode/marginCoin 불필요 (자동 관리).
+            # BUG-176: reduceOnly 는 위에서 처리 — extra 재주입 금지.
             for k, v in extra.items():
-                if v is not None and k not in ("marginMode", "marginCoin"):
+                if v is not None and k not in ("marginMode", "marginCoin", "reduceOnly"):
                     args_inner[k] = v
             msg = {
                 "op": "trade",

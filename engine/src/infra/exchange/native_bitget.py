@@ -118,6 +118,21 @@ class NativeBitgetAdapter(NativeAdapter):
         if _account_mode == "classic" and self._market_type == "futures":
             extra_params["marginMode"] = getattr(self, "_margin_mode", "crossed")
             extra_params["marginCoin"] = "USDT"  # USDT-M futures
+        # BUG-176: UTA hedge_mode requires posSide (long/short) — reduceOnly=no rejected (41101).
+        # Derive posSide from metadata or side+tradeSide. One_way mode passes pos_side=None → WS
+        # layer uses reduceOnly. This mirrors native_bitget REST V3 logic (lines 576-589).
+        _pos_side: str | None = None
+        if _account_mode == "unified" and self._market_type == "futures":
+            md = order.metadata or {}
+            if md.get("posSide"):
+                _pos_side = str(md["posSide"]).lower()
+            elif getattr(self, "_pos_mode", "one_way") == "hedge":
+                _is_close = bool(md.get("reduceOnly") or md.get("tradeSide") == "close")
+                if _is_close:
+                    # close long → sell; close short → buy
+                    _pos_side = "short" if side == "buy" else "long"
+                else:
+                    _pos_side = "long" if side == "buy" else "short"
         resp = await client.place_order(
             inst_type=inst_type,
             inst_id=inst_id,
@@ -127,6 +142,7 @@ class NativeBitgetAdapter(NativeAdapter):
             price=order.price if otype == "limit" else None,
             force="gtc",
             account_mode=_account_mode,
+            pos_side=_pos_side,
             **extra_params,
         )
         # BUG-136: 40026 "User is disabled" → Bitget WS permissions not granted.
