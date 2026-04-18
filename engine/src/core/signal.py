@@ -404,7 +404,8 @@ class SignalGenerator:
             net_edge_bps = float(net_edge * 10000)
             min_edge_bps = float(effective_min_edge * 10000)
             if net_edge_bps > -5:  # only log signals within 5bps of passing
-                logger.info(
+                # BUG-154: DEBUG — signal.min_edge_rejected 451건/5min at INFO
+                logger.debug(
                     "signal.min_edge_rejected symbol=%s net_edge_bps=%.2f min_edge_bps=%.2f "
                     "buy_ex=%s sell_ex=%s fee=%.4f slip=%.4f net_profit=%.6f",
                     symbol, net_edge_bps, min_edge_bps,
