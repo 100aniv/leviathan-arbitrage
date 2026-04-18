@@ -83,12 +83,14 @@ class NativeBitgetAdapter(NativeAdapter):
     async def _ws_place_order(self, order: Order) -> Trade:
         """Place order via Bitget V2 WS (BUG-120). Raises on failure for REST fallback."""
         from datetime import datetime, timezone
-        # BUG-126: Bitget V2 WS place-order requires BD/RM market-maker approval.
-        # Without approval, requests are silently dropped → 5s timeout + REST fallback = 6s.
-        # Skip WS path entirely when flag is off (default) to avoid wasted timeout.
+        # BUG-126: Bitget V2 WS place-order requires BD/RM approval.
+        # Config flag for explicit opt-out; auto-disable on 40026 (BUG-136).
         from src.core.config_loader import get_config as _gc
         if not _gc("execution.bitget_ws_order_enabled", default=False):
             raise NotImplementedError("Bitget WS place-order not approved — using REST")
+        # BUG-136: session-level auto-disable after 40026 "User is disabled"
+        if getattr(self, "_ws_perm_disabled", False):
+            raise NotImplementedError("Bitget WS disabled (40026 detected) — using REST")
         client = await self._get_ws_trade()
         inst_type = "USDT-FUTURES" if self._market_type == "futures" else "SPOT"
         # Bitget instId is e.g. BTCUSDT (no slash)
@@ -110,6 +112,17 @@ class NativeBitgetAdapter(NativeAdapter):
             force="gtc",
             **extra_params,
         )
+        # BUG-136: 40026 "User is disabled" → Bitget WS permissions not granted.
+        # Auto-disable WS for this session; surface clear guidance.
+        if resp.get("code") == 40026 or resp.get("msg") == "User is disabled":
+            if not getattr(self, "_ws_perm_disabled", False):
+                self._ws_perm_disabled = True
+                logger.warning(
+                    "Bitget WS trading auto-disabled for session — account lacks "
+                    "WS order permission (40026). Contact Bitget BD/RM to enable. "
+                    "Falling back to REST for remainder of session."
+                )
+            raise NotImplementedError("Bitget WS disabled — 40026 User is disabled")
         if resp.get("code") not in (0, "0") and resp.get("event") != "trade":
             raise RuntimeError(f"bitget ws_place_order rejected: {resp}")
         arg = (resp.get("arg") or [{}])[0]
