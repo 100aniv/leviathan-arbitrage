@@ -302,6 +302,13 @@ class TestReconcilerUnmatchedInternal:
             "side": "buy",
         }])
 
+        # BUG-156: first_cycle 가드 — first cycle은 Telegram 스킵 (이전 세션 fill 누적 예상).
+        # 두 번째 사이클부터 실제 불일치로 판단 → Telegram 알림.
+        await reconciler.reconcile_period(
+            exchange_adapter=adapter, exchange_id="binance_futures", since_ms=0,
+            symbols=["ETH/USDT"],
+        )
+        # Second call: first_cycle flag set, now alerts fire
         await reconciler.reconcile_period(
             exchange_adapter=adapter, exchange_id="binance_futures", since_ms=0,
             symbols=["ETH/USDT"],
