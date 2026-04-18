@@ -210,7 +210,7 @@ min_trade_notional_usd: $5
 | **v177** | 2026-04-18 | FF+FR+SF+XE | pending | — | **BUG-126 재활성화 + BUG-136 진단**: Bitget 40026 'User is disabled' 확정. BD/RM 승인 필요 확정 |
 | **v178** | 2026-04-18 | FF+FR+SF+XE | 4 | 0 | **BUG-136 자동 처리 완성**: 40026 감지 → session disable → 후속 시도 1회로 제한 |
 | **v179** | 2026-04-18 | FF+FR+SF+XE | **4** | **+$0.03** | **🎯 순수 fill-based PnL 첫 양수** (+$0.0126 + $0.0190). BUG-132 FR entry spread guard 실질 효과 증명 |
-| **v180** | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-138 로그 스팸 제거 (2.97MB/4min → 192KB/min, -75%) |
+| **v180** | 2026-04-18 | FF+FR+SF+XE | **4** | **+$0.16** | BUG-138 로그 -75% + **세션 최대 PnL** (API3 $0.15 + BARD $0.01, BUG-132 효과 강화) |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
