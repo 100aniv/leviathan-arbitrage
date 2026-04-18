@@ -196,6 +196,11 @@ min_trade_notional_usd: $5
 | v158~v159 | 2026-04-18 | FF+FR+SF+XE | — | — | BUG-97.2/97.4 recovery native compat |
 | **v160** | 2026-04-18 | FF+FR+SF+XE | **3+** | **+$0.02** | **FF THETA +$0.0289 세션 첫 수익!** Bitget bimodal latency |
 | v161 | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-113 HTTP keepalive tuning (expected 1000→500ms) |
+| v162~v164 | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-114 PG timeout 500ms, BUG-120 ws_order_enabled=true 활성화 |
+| v165~v167 | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-121/122/123 Bitget marginMode/marginCoin, Binance exchange_id |
+| **v168** | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-124 init 누락 + BUG-125 WS 재연결. Bitget 6040ms (WS timeout 누적) |
+| **v169** | 2026-04-18 | FF+FR+SF+XE | **4** | 0 | **BUG-126 Bitget WS skip** → 991-1033ms (-83% v168 대비) |
+| **v170** | 2026-04-18 | FF+FR+SF+XE | **6** | 0 | **BUG-127 cancel WS + BUG-128 ccxt 청소** (ERR 0, WS 40-205ms 유지) |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
@@ -255,6 +260,12 @@ min_trade_notional_usd: $5
 | **BUG-120** | WebSocket order placement 전환 — Phase 1-7 완료 + v164 ACTIVATED. REST 350-1000ms → WS 100-300ms 목표. engine.json execution.ws_order_enabled=true. Fallback REST 정상 작동. | ✅ v164 활성화 |
 | **BUG-121** | Bitget V2 futures WS — `marginMode` 파라미터 필수 (code=41101 'Param marginMode=null error') | ✅ v165 |
 | **BUG-122** | Binance WS order response — MARKET 주문 avgPrice=0 → Trade 모델 validation fail. order.price fallback | ✅ v165 |
+| **BUG-123** | Bitget V2 futures WS — `marginCoin` 필수 (code=41101 'Param marginCoin=null error'). **extra kwargs 전파 | ✅ v167 |
+| **BUG-124** | Bitget `_exchange_order_id_map` / `_margin_mode` 초기화가 `_ws_place_order` return 뒤 unreachable 코드로 배치 → AttributeError 캐스케이드. __init__ 이동 | ✅ v168 |
+| **BUG-125** | Binance/Bitget WS 'no close frame received or sent' 중간 끊김 → 영구 실패. place_order/cancel_order 호출 전 closed 체크 + auto-reconnect | ✅ v168 |
+| **BUG-126** | Bitget V2 WS place-order는 BD/RM 승인 필요. 미승인 시 5s timeout + REST fallback = 6040ms. flag로 즉시 skip → v168 6040ms → v169 991ms (-83%) | ✅ v169 |
+| **BUG-127** | Binance ws-fapi `order.cancel` WS 경로 추가. rollback latency 절감. NotImplementedError 로그 톤다운(WARNING→INFO 1회) | ✅ v170 |
+| **BUG-128** | ccxt legacy adapter auto-import 제거 (`__init__.py`). Live 경로 ccxt 모듈 로드 안 함. Sandbox CLI만 직접 import | ✅ v170 |
 | **ccxt deprecation** | ccxt_adapter.py / okx.py / bybit.py / upbit.py / bithumb.py = dead code (runtime 사용 0). 문서화 완료. | ✅ v163+ |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
