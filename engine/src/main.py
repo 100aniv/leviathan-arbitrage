@@ -841,11 +841,9 @@ class Engine:
             self._exchanges[cfg["exchange_id"]] = adapter
 
     async def _init_sandbox_exchanges(self) -> None:
-        use_native = (
-            self._settings.trading.use_native_adapters if self._settings else False
-        )
+        # BUG-151: legacy ccxt path removed, native adapters only.
+        # `settings.trading.use_native_adapters` flag 이제 obsolete (읽지 않음).
         exchanges = self._active_exchanges or _get_fallback_exchanges()
-        # BUG-151: native_adapter legacy path removed per 사장님 지시. Native adapters only.
         await self._init_native_exchanges(exchanges, sandbox=True)
 
     async def _init_live_exchanges(self) -> None:
