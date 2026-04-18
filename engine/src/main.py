@@ -1736,18 +1736,19 @@ class Engine:
                         "position_discrepancy",
                         {"count": len(result.discrepancies), "summary": str(summary)},
                     ))
-                # Auto-close orphan positions (exchange has, engine doesn't know about)
+                # BUG-160: auto_close disabled — position_manager not fully wired
+                # in live mode, causing false orphan detection on just-executed trades.
+                # Log only; actual orphan cleanup is preflight_stale (startup) + manual.
                 orphans = {
                     k: v for k, v in result.exchange_positions.items()
                     if k not in result.engine_positions and abs(v.size) > Decimal("0.0001")
                 }
                 for key, pos in orphans.items():
-                    ex_id = key.split(":")[0]
-                    logger.critical(
-                        "reconciler_orphan_detected key=%s size=%s — scheduling auto_close",
+                    logger.warning(
+                        "reconciler_orphan_detected key=%s size=%s (auto_close disabled — "
+                        "review manually if persists)",
                         key, pos.size,
                     )
-                    asyncio.ensure_future(_auto_close_orphan(ex_id, pos))
 
             self._position_reconciler = PositionReconciler(
                 exchanges=list(self._exchanges.values()),
