@@ -81,10 +81,11 @@ class NativeBitgetAdapter(NativeAdapter):
         inst_id = order.symbol.replace("/", "")
         side = "buy" if order.side == OrderSide.BUY else "sell"
         otype = "limit" if order.order_type == OrderType.LIMIT else "market"
-        # BUG-121 + Codex fix: use detected/configured margin mode (not hardcoded)
+        # BUG-121/123: Bitget V2 futures WS needs marginMode + marginCoin
         extra_params: dict[str, Any] = {}
         if self._market_type == "futures":
             extra_params["marginMode"] = getattr(self, "_margin_mode", "crossed")
+            extra_params["marginCoin"] = "USDT"  # USDT-M futures
         resp = await client.place_order(
             inst_type=inst_type,
             inst_id=inst_id,
