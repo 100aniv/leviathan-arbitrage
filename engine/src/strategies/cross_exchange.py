@@ -140,7 +140,8 @@ class CrossExchangeStrategy(BaseStrategy):
             max_spread = self.config.max_spread_bps / Decimal("10000")
             if signal.spread_pct > max_spread:
                 self._metrics.signals_filtered += 1
-                logger.warning(
+                # BUG-133: DEBUG level — routine anomaly filter, not a warning
+                logger.debug(
                     "cross_exchange.spread_too_wide symbol=%s spread_pct=%.6f max_spread_bps=%s",
                     signal.symbol,
                     float(signal.spread_pct),
@@ -160,7 +161,8 @@ class CrossExchangeStrategy(BaseStrategy):
             book_depth_usd = signal.volume * signal.buy_price
             if book_depth_usd < self.config.min_book_depth_usd:
                 self._metrics.signals_filtered += 1
-                logger.warning(
+                # BUG-133: DEBUG level — routine liquidity filter, not a warning
+                logger.debug(
                     "cross_exchange.book_depth_insufficient symbol=%s depth_usd=%.2f min=%.2f",
                     signal.symbol,
                     float(book_depth_usd),

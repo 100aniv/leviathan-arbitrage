@@ -71,7 +71,7 @@
     ],
     "futures_min_book_depth_usd": 1,
     "futures_max_book_age_s": 30,
-    "cross_exchange_min_book_depth_usd": 1,
+    "cross_exchange_min_book_depth_usd": 10,
     "funding_zscore_threshold": -1,
     "funding_min_diff_bps": 2.0,
     "funding_max_entry_adverse_bps": -10,
