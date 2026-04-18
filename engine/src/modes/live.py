@@ -1209,7 +1209,13 @@ class LiveMode(BaseMode):
                 if not approved:
                     self._stats.trades_risk_blocked += 1
                     strat_stats.rejections += 1
-                    logger.info("live_mode.risk_rejected strategy=%s", sid)
+                    # BUG-109: add trade context to risk_rejected log for debugging
+                    _sym = trade_request.legs[0].symbol if trade_request.legs else "?"
+                    _exs = "/".join(_leg.exchange_id for _leg in trade_request.legs)
+                    logger.info(
+                        "live_mode.risk_rejected strategy=%s symbol=%s legs=%s",
+                        sid, _sym, _exs,
+                    )
                     self._notify_pre_exec_rollback(trade_request, sid)
                     return
             except Exception as exc:
