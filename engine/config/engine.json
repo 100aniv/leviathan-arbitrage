@@ -123,6 +123,8 @@
     "_bug_136_note": "v177 진단 결과: Bitget 계정이 40026 'User is disabled' 반환 → WS trading 권한 없음. Bitget BD/RM 연락 필요. 엔진은 40026 감지 시 자동 session-level disable.",
     "_bitget_account_mode": "classic = V2 API (/api/v2/mix/*, instType/channel/size/force). unified = V3 API (/api/v3/trade/*, category/topic/qty/timeInForce, UTA 모드). 사장님 Bitget 웹에서 Unified Account 전환 후 'unified' 로 변경.",
     "bitget_account_mode": "classic",
+    "_bug_163_note": "preflight_auto_close_enabled=true 유지 시 기동 시 오펀 자동 청산(현 기본). false 설정 시 수동 청산 대기 (CRITICAL-2 방어).",
+    "preflight_auto_close_enabled": true,
     "ws_order_enabled": true,
     "bitget_ws_order_enabled": true,
     "min_trade_notional_usd": 5,

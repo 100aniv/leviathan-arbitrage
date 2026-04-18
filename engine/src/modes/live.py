@@ -561,6 +561,18 @@ class LiveMode(BaseMode):
                         "preflight_stale_positions_found attempt=%d/%d: %s — auto-close 시도 후 재확인",
                         _pf_attempt + 1, _PREFLIGHT_RETRIES, _stranded,
                     )
+                    # BUG-163 (CRITICAL-2): preflight_auto_close_enabled flag — default True (backward-compat),
+                    # but user can set false via engine.json to force manual cleanup. Prevents unhedged
+                    # asymmetric close when preflight only finds positions on one exchange side.
+                    from src.core.config_loader import get_config as _gc_pf
+                    _auto_close_enabled = bool(_gc_pf("execution.preflight_auto_close_enabled", default=True))
+                    if _pf_attempt == 0 and not _auto_close_enabled:
+                        logger.warning(
+                            "preflight_auto_close_disabled — stranded positions detected: %s. "
+                            "Manual cleanup required. Engine will abort after %d retries.",
+                            _stranded, _PREFLIGHT_RETRIES,
+                        )
+                        continue
                     if _pf_attempt == 0:
                         # First detection: attempt to close stale positions via adapters
                         for _eid, _adapter in _futures_adapters.items():
@@ -1816,17 +1828,30 @@ class LiveMode(BaseMode):
                     _t = getattr(_lr, 'trade', None)
                     _o = getattr(_lr, 'order', None)
                     if _t is not None and _o is not None:
+                        # BUG-163 (MAJOR-1): fire-and-forget 예외를 add_done_callback 으로 수집.
+                        # 이전: asyncio.ensure_future(...) → 예외 삼켜짐 → ghost 재발 silent.
+                        def _pm_err_cb(_task, _op=_o.symbol, _is_close=_is_close_pm):
+                            try:
+                                _exc = _task.exception()
+                                if _exc is not None:
+                                    logger.warning(
+                                        "live_mode.position_manager_async_err op=%s symbol=%s err=%s",
+                                        "close" if _is_close else "open", _op, _exc,
+                                    )
+                            except Exception:
+                                pass
                         try:
                             if _is_close_pm:
-                                asyncio.ensure_future(self._position_manager.close_position(
+                                _pm_task = asyncio.ensure_future(self._position_manager.close_position(
                                     strategy_id=sid,
                                     exchange_id=_o.exchange_id,
                                     symbol=_o.symbol,
                                     close_price=_t.price,
                                 ))
+                                _pm_task.add_done_callback(_pm_err_cb)
                             else:
                                 _side_pm = getattr(_o.side, 'value', str(_o.side)).upper()
-                                asyncio.ensure_future(self._position_manager.open_position(
+                                _pm_task = asyncio.ensure_future(self._position_manager.open_position(
                                     strategy_id=sid,
                                     exchange_id=_o.exchange_id,
                                     symbol=_o.symbol,
@@ -1834,8 +1859,9 @@ class LiveMode(BaseMode):
                                     quantity=_t.amount,
                                     entry_price=_t.price,
                                 ))
+                                _pm_task.add_done_callback(_pm_err_cb)
                         except Exception as _pm_e:
-                            logger.warning("live_mode.position_manager_err: %s", _pm_e)
+                            logger.warning("live_mode.position_manager_sync_err: %s", _pm_e)
 
             logger.info(
                 "live_mode.trade_executed strategy=%s pnl=%.4f total_pnl=%.2f mode=%s latency_ms=%.1f",
