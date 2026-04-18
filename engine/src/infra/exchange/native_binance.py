@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import zlib
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -75,6 +76,48 @@ class BinanceNativeAdapter(NativeAdapter):
         )
         self._market_type = market_type  # "spot" or "futures"
         self._step_sizes: dict[str, Decimal] = {}  # PHOENIX: LOT_SIZE cache (symbol → stepSize)
+        # BUG-120 Phase 5: WS trade client (lazy, futures only for now)
+        self._ws_trade: Any = None  # BinanceWSTrade instance when enabled
+
+    async def _get_ws_trade(self) -> Any:
+        """Lazy-connect Binance Futures WS trade client (BUG-120)."""
+        if self._market_type != "futures":
+            return None
+        if self._ws_trade is None:
+            from src.infra.exchange.ws_trade import BinanceWSTrade
+            self._ws_trade = BinanceWSTrade(self._api_key, self._api_secret)
+            await self._ws_trade.connect()
+            logger.info("Binance WS trade connected (futures)")
+        return self._ws_trade
+
+    async def _ws_place_order(self, order: Order) -> Trade:
+        """Place order via WebSocket (BUG-120). Raises on failure for REST fallback."""
+        client = await self._get_ws_trade()
+        if client is None:
+            raise RuntimeError("ws_trade unavailable for market_type=%s" % self._market_type)
+        _bsym = _symbol_to_binance(order.symbol)
+        side = "BUY" if order.side == OrderSide.BUY else "SELL"
+        otype = "LIMIT" if order.order_type == OrderType.LIMIT else "MARKET"
+        resp = await client.place_order(
+            symbol=_bsym,
+            side=side,
+            order_type=otype,
+            quantity=order.amount,
+            price=order.price if otype == "LIMIT" else None,
+        )
+        # Parse WS response → Trade
+        if resp.get("status") != 200:
+            raise RuntimeError(f"ws_place_order rejected: {resp}")
+        result = resp.get("result", {})
+        return Trade(
+            trade_id=str(result.get("orderId", "")),
+            symbol=order.symbol,
+            side=order.side,
+            amount=Decimal(str(result.get("executedQty", order.amount))),
+            price=Decimal(str(result.get("avgPrice") or result.get("price") or order.price or 0)),
+            fee=Decimal("0"),
+            timestamp=datetime.now(timezone.utc),
+        )
 
     # ------------------------------------------------------------------
     # URL / header overrides
