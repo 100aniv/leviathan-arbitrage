@@ -312,7 +312,8 @@ class RealDataSignalProducer:
                 profit_pct=cycle.profit_pct,
             )
             if signal is not None:
-                logger.info(
+                # BUG-152: DEBUG — triangular_signal 1025건/5min at INFO (초당 3+ 로그)
+                logger.debug(
                     "real_signal_producer.triangular_signal",
                     extra={
                         "exchange": exchange_id,
