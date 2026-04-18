@@ -201,6 +201,10 @@ class DualWriter:
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING wal_id
         """
+        # BUG-168: metadata 컬럼은 JSONB — asyncpg 는 dict→str 자동 변환 안 함.
+        # json.dumps 로 직렬화하여 전달 (이전: {'realized_pnl': '...'} dict 전달 → PG reject).
+        import json as _json
+        _meta_json = _json.dumps(wal_metadata) if wal_metadata else None
         async with self._db_pool.pool.acquire() as conn:
             row = await conn.fetchrow(
                 sql,
@@ -211,7 +215,7 @@ class DualWriter:
                 side,
                 str(quantity),
                 str(avg_price),
-                wal_metadata,
+                _meta_json,
                 checksum,
             )
             return row["wal_id"]
