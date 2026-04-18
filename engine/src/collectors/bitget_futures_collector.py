@@ -1,9 +1,11 @@
-"""Bitget USDT-M perpetual futures public orderbook collector via native WebSocket.
+"""Bitget USDT-M perpetual futures public orderbook collector via UTA V3 WebSocket.
 
-Endpoint: wss://ws.bitget.com/v2/ws/public  (BUG-181 fix: V3 public WS does not exist;
-only /v3/ws/private is valid for UTA trade). Public market feeds stay on V2.
+Endpoint: wss://ws.bitget.com/v3/ws/public (BUG-182: full V3 migration).
+V3 payload: topic (not channel), symbol (not instId), instType lowercase.
+V3 supports books1/books5/books50/books; books15 is V2-only.
+Response fields: b (bids), a (asks) vs V2 bids/asks.
 
-Uses instType="USDT-FUTURES" with the books15 channel.
+Uses instType="usdt-futures" with the books5 topic (top 5 levels).
 Message format is identical to the Bitget spot V2 API:
   {"action": "snapshot"|"update", "arg": {..., "instId": "BTCUSDT"}, "data": [...]}
 
@@ -49,9 +51,9 @@ class BitgetFuturesCollector(BaseCollector):
     No API key is required.
     """
 
-    _WS_URL = "wss://ws.bitget.com/v2/ws/public"
-    _CHANNEL = "books15"
-    _INST_TYPE = "USDT-FUTURES"
+    _WS_URL = "wss://ws.bitget.com/v3/ws/public"
+    _TOPIC = "books5"
+    _INST_TYPE = "usdt-futures"
 
     def __init__(
         self,
@@ -78,10 +80,7 @@ class BitgetFuturesCollector(BaseCollector):
         return self._WS_URL
 
     def _subscribe_all_messages(self) -> list[dict] | None:
-        """BUG-84: Batch subscribe — Bitget V2 supports multiple args per message.
-        Sending 181 individual subscribes floods the WS and causes silent disconnect.
-        Batch into groups of 30 to stay within Bitget rate limits.
-        """
+        """BUG-84: Batch subscribe. BUG-182: V3 uses topic/symbol/lowercase instType."""
         messages = []
         for i in range(0, len(self.symbols), self._BATCH_SIZE):
             batch = self.symbols[i : i + self._BATCH_SIZE]
@@ -90,8 +89,8 @@ class BitgetFuturesCollector(BaseCollector):
                 "args": [
                     {
                         "instType": self._INST_TYPE,
-                        "channel": self._CHANNEL,
-                        "instId": _normalize_symbol(sym),
+                        "topic": self._TOPIC,
+                        "symbol": _normalize_symbol(sym),
                     }
                     for sym in batch
                 ],
@@ -99,14 +98,14 @@ class BitgetFuturesCollector(BaseCollector):
         return messages
 
     def _subscribe_message(self, symbol: str) -> str | dict:
-        """Build the Bitget V2 subscribe frame for one futures symbol (fallback)."""
+        """Build V3 subscribe frame for one futures symbol (fallback)."""
         return {
             "op": "subscribe",
             "args": [
                 {
                     "instType": self._INST_TYPE,
-                    "channel": self._CHANNEL,
-                    "instId": _normalize_symbol(symbol),
+                    "topic": self._TOPIC,
+                    "symbol": _normalize_symbol(symbol),
                 }
             ],
         }
@@ -123,7 +122,8 @@ class BitgetFuturesCollector(BaseCollector):
             return None
 
         arg = data.get("arg", {})
-        inst_id: str = arg.get("instId", "")
+        # BUG-182: V3 response uses 'symbol' (V2 used 'instId')
+        inst_id: str = arg.get("symbol") or arg.get("instId", "")
         if not inst_id:
             return None
 
@@ -134,8 +134,8 @@ class BitgetFuturesCollector(BaseCollector):
             return None
 
         entry = data_list[0]
-        # Bitget level format: [price_str, qty_str]
-        bids: list = entry.get("bids", [])
-        asks: list = entry.get("asks", [])
+        # BUG-182: V3 response uses 'b'/'a' (V2 used 'bids'/'asks')
+        bids: list = entry.get("b") or entry.get("bids", [])
+        asks: list = entry.get("a") or entry.get("asks", [])
 
         return symbol, bids, asks

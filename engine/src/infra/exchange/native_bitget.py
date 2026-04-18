@@ -24,7 +24,7 @@ _BITGET_RATE_LIMITS: dict[str, RateLimitConfig] = {
 }
 
 _REST_BASE = "https://api.bitget.com"
-_WS_PUBLIC = "wss://ws.bitget.com/v2/ws/public"  # BUG-181: V3 public WS does not exist
+_WS_PUBLIC = "wss://ws.bitget.com/v3/ws/public"  # BUG-182: UTA V3 migration
 
 
 def _normalize_symbol(symbol: str) -> str:
@@ -295,11 +295,11 @@ class NativeBitgetAdapter(NativeAdapter):
 
     def _ws_subscribe_message(self, symbol: str) -> dict | None:
         sym = _normalize_symbol(symbol)
-        # BUG-07: futures requires "USDT-FUTURES" instType, not "SPOT"
-        inst_type = "USDT-FUTURES" if self._market_type == "futures" else "SPOT"
+        # BUG-182: UTA V3 uses topic/symbol/lowercase instType (V2 used channel/instId/UPPERCASE)
+        inst_type = "usdt-futures" if self._market_type == "futures" else "spot"
         return {
             "op": "subscribe",
-            "args": [{"instType": inst_type, "channel": "books5", "instId": sym}],
+            "args": [{"instType": inst_type, "topic": "books5", "symbol": sym}],
         }
 
     def _parse_ws_orderbook(self, raw: str | bytes, symbol: str) -> OrderBook | None:
@@ -308,8 +308,9 @@ class NativeBitgetAdapter(NativeAdapter):
             if msg.get("action") not in ("snapshot", "update"):
                 return None
             data = msg.get("data", [{}])[0]
-            bids = data.get("bids", [])
-            asks = data.get("asks", [])
+            # BUG-182: V3 uses 'b'/'a' (V2 used 'bids'/'asks')
+            bids = data.get("b") or data.get("bids", [])
+            asks = data.get("a") or data.get("asks", [])
             return self._build_orderbook(symbol, bids, asks)
         except Exception:
             return None
