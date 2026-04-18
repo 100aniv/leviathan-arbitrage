@@ -53,7 +53,11 @@
 | **BUG-109** | risk_rejected 로그에 symbol/legs 컨텍스트 누락 | v154 | 24 pass |
 | **BUG-110** | SF config None fallback → default max_position_size=50000 (notional $100 > max $12.60 리젝) | v155 | - |
 | **BUG-112** | FX rate config 수동 업데이트 → **KRWRateProvider live oracle** (Upbit 30s poll + 60s stale fallback) | v157 | 37 pass |
-| **Step 2-3** | XE-KRW staged activation: engine.json xe_krw_enabled=false (default). USDT XE only per PHOENIX §2. Gemini review PASS. | v157 | — |
+| **Step 2-3** | XE-KRW staged activation: engine.json xe_krw_enabled=false (default). USDT XE only per PHOENIX §2. Gemini+Codex review PASS. | v157 | — |
+| **BUG-97.2** | Native Position field `size` (not `quantity`) — reconciler exchange_qty=0 false alarm | v159 | 9 pass |
+| **BUG-97.4** | Startup reconciliation hard-halt → warn (continuous reconciler 60s authoritative) | v160 | 9 pass |
+| **BUG-113** | HTTP keepalive_connections 10→20 + expiry 120s — Bitget fresh TCP 1000ms → keepalive hit 500ms | v161 | — |
+| **v160 실거래 증명** | FF THETA/WLD 체결 성공, FR WLD 2건, **FF pnl=+$0.0289** (세션 첫 수익), Bitget latency bimodal 확인 | v160 | — |
 | **v146 실증** | BUG-100 fix 후 **3분 SF 11,087 signals** (이전 v145 0건) → Step 2-1.5 활성 확인 | v146 | 175 exec tests |
 | Redis client | retry_on_timeout, health_check_interval=30, socket_keepalive, pool=100, transient ERR→WARNING | v141~ | 20 pass |
 | FF freshness | 3s→5s (fresh_drop 70%→35% 증명, v143) | v143 | — |
