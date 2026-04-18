@@ -118,7 +118,9 @@
   "execution": {
     "_comment": "PHOENIX v3: min_trade_notional lowered to $5 (futures exchange minimum)",
     "_bug_120_note": "ws_order_enabled=true enables WebSocket order placement (Binance ws-fapi + Bitget v2 WS). REST fallback on exception. Expected: 2500ms → 800ms (-70%) and slippage 100bps → 20bps. Requires testnet validation before production activation.",
+    "_bug_126_note": "bitget_ws_order_enabled=false: Bitget V2 WS place-order requires BD/RM market-maker approval. Without approval, WS sends succeed but responses never arrive → 5s timeout + REST fallback = 6s total latency. Skip WS entirely until approved.",
     "ws_order_enabled": true,
+    "bitget_ws_order_enabled": false,
     "min_trade_notional_usd": 5,
     "default_futures_leverage": 5,
     "leg_timeout_ms": 15000,

@@ -227,8 +227,8 @@ class NativeAdapter(abc.ABC):
                     _path = "ws"
                 except Exception as _ws_exc:
                     logger.warning(
-                        "ws_place_order failed exchange=%s symbol=%s — falling back to REST: %s",
-                        self.exchange_id, order.symbol, _ws_exc,
+                        "ws_place_order failed exchange=%s symbol=%s type=%s — falling back to REST: %r",
+                        self.exchange_id, order.symbol, type(_ws_exc).__name__, _ws_exc,
                     )
                     trade = None
             if trade is None:

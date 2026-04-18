@@ -83,6 +83,12 @@ class NativeBitgetAdapter(NativeAdapter):
     async def _ws_place_order(self, order: Order) -> Trade:
         """Place order via Bitget V2 WS (BUG-120). Raises on failure for REST fallback."""
         from datetime import datetime, timezone
+        # BUG-126: Bitget V2 WS place-order requires BD/RM market-maker approval.
+        # Without approval, requests are silently dropped → 5s timeout + REST fallback = 6s.
+        # Skip WS path entirely when flag is off (default) to avoid wasted timeout.
+        from src.core.config_loader import get_config as _gc
+        if not _gc("execution.bitget_ws_order_enabled", default=False):
+            raise NotImplementedError("Bitget WS place-order not approved — using REST")
         client = await self._get_ws_trade()
         inst_type = "USDT-FUTURES" if self._market_type == "futures" else "SPOT"
         # Bitget instId is e.g. BTCUSDT (no slash)

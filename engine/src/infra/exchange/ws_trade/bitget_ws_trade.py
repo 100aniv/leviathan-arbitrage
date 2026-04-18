@@ -190,7 +190,12 @@ class BitgetWSTrade:
         self._futures[req_id] = fut
         await self._ws.send(json.dumps(msg))
         try:
-            return await asyncio.wait_for(fut, timeout=_RESPONSE_TIMEOUT_S)
+            resp = await asyncio.wait_for(fut, timeout=_RESPONSE_TIMEOUT_S)
+            logger.debug("BitgetWSTrade place_order resp: %s", resp)
+            return resp
         except asyncio.TimeoutError:
             self._futures.pop(req_id, None)
-            raise
+            raise RuntimeError(
+                f"BitgetWSTrade timeout after {_RESPONSE_TIMEOUT_S}s "
+                f"inst={inst_type}/{inst_id} side={side} size={size}"
+            )
