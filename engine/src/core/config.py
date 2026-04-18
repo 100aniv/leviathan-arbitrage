@@ -327,7 +327,7 @@ class TradingSettings(BaseSettings):
     use_native_adapters: bool = Field(
         default=False,
         alias="USE_NATIVE_ADAPTERS",
-        description="Use native (ccxt-free) exchange adapters when True",
+        description="Use native (native) exchange adapters when True",
     )
 
 

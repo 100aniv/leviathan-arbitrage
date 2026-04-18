@@ -845,7 +845,7 @@ class Engine:
             self._settings.trading.use_native_adapters if self._settings else False
         )
         exchanges = self._active_exchanges or _get_fallback_exchanges()
-        # BUG-151: ccxt legacy path removed per 사장님 지시. Native adapters only.
+        # BUG-151: native_adapter legacy path removed per 사장님 지시. Native adapters only.
         await self._init_native_exchanges(exchanges, sandbox=True)
 
     async def _init_live_exchanges(self) -> None:
@@ -859,11 +859,11 @@ class Engine:
 
         exchanges = _cfg_exchanges or self._active_exchanges or _get_fallback_exchanges()
 
-        # Native adapters are the default for shadow/live (ccxt-free)
+        # Native adapters are the default for shadow/live (native)
         await self._init_native_exchanges(exchanges, sandbox=False)
 
     async def _init_native_exchanges(self, exchanges: list[str], sandbox: bool) -> None:
-        """Create and connect native (ccxt-free) adapters for each exchange."""
+        """Create and connect native (native) adapters for each exchange."""
         from src.infra.exchange import create_native_adapter
 
         # Non-standard credential field name mapping for exchanges that differ from

@@ -134,8 +134,8 @@ class RecoveryManager:
                 )
                 continue
 
-            # BUG-97: native adapters use get_positions() (list), ccxt uses fetch_position(symbol) (dict).
-            # Duck-type: prefer native get_positions() when available, fallback to ccxt.
+            # BUG-97: native adapters use get_positions() (list), legacy adapter uses fetch_position(symbol) (dict).
+            # Duck-type: prefer native get_positions() when available, fallback to fetch_position.
             try:
                 if hasattr(client, "get_positions"):
                     positions = await client.get_positions()

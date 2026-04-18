@@ -1796,7 +1796,7 @@ class PaperMode:
         _is_cross_asset = trade_request.metadata.get("cross_asset") == "true"
         # US-388: normalize symbol by stripping exchange suffix and futures margin suffix
         # e.g. "BTC/USDT@binance_futures" -> "BTC/USDT"
-        # e.g. "BTC/USDT:USDT" -> "BTC/USDT"  (perpetual futures ccxt symbol)
+        # e.g. "BTC/USDT:USDT" -> "BTC/USDT"  (perpetual futures native symbol)
         def _normalize_symbol(sym: str) -> str:
             s = sym.split("@")[0].strip()
             if ":" in s:
