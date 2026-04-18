@@ -1628,10 +1628,15 @@ class LiveMode(BaseMode):
                 _exp_buy = next((l.price for l in trade_request.legs if l.side == OrderSide.BUY and l.price), None)
                 _exp_sell = next((l.price for l in trade_request.legs if l.side == OrderSide.SELL and l.price), None)
                 _is_parts: list[float] = []
+                # BUG-130: adverse-only slippage (signed → cap to 0+).
+                # Buy 손실 = fill > expected; Sell 손실 = fill < expected.
+                # abs()는 유리한 방향까지 집계 → halt 과민 (v170에서 2-3건 체결에 100bps 초과).
                 if _buy_fill_from_result and _buy_fill_price and _exp_buy and _exp_buy > 0:
-                    _is_parts.append(float(abs(_buy_fill_price - _exp_buy) / _exp_buy * 10000))
+                    _adv_buy = max(0.0, float((_buy_fill_price - _exp_buy) / _exp_buy * 10000))
+                    _is_parts.append(_adv_buy)
                 if _sell_fill_from_result and _sell_fill_price and _exp_sell and _exp_sell > 0:
-                    _is_parts.append(float(abs(_sell_fill_price - _exp_sell) / _exp_sell * 10000))
+                    _adv_sell = max(0.0, float((_exp_sell - _sell_fill_price) / _exp_sell * 10000))
+                    _is_parts.append(_adv_sell)
                 if _is_parts:
                     _slippage_bps_est = sum(_is_parts)
 
