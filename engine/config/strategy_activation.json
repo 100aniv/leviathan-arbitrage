@@ -24,11 +24,11 @@
   "active_strategies": [
     "futures_futures_v1",
     "funding_rate_v1",
-    "spot_futures_v1"
+    "spot_futures_v1",
+    "cross_exchange_v1"
   ],
   "unverified_strategies": [],
   "disabled_strategies": [
-    "cross_exchange_v1",
     "latency_arb_v1",
     "cex_dex_v1",
     "triangular_v1"
