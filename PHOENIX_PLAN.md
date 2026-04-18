@@ -203,7 +203,8 @@ min_trade_notional_usd: $5
 | **v170** | 2026-04-18 | FF+FR+SF+XE | **6** | 0 | **BUG-127 cancel WS + BUG-128 ccxt 청소** (ERR 0, WS 40-205ms 유지) |
 | **v171** | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-129 FF halt 최소 5건 샘플 요구 |
 | **v172** | 2026-04-18 | FF+FR+SF+XE | **4** | **+$0.19** | FR 2건 수익 실증 (API3 $0.04 + THETA $0.15). BUG-130 adverse-only |
-| **v173** | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-131 avgPrice '0.00' truthy fix (zero_price_abort 제거) |
+| **v173** | 2026-04-18 | FF+FR+SF+XE | **4** | **-$0.10** | BUG-131 검증: zero_price_abort 0건 + **fill-based PnL** 활성화 (환상 제거) |
+| **v174** | 2026-04-18 | FF+FR+SF+XE | pending | — | **BUG-132 FR entry spread guard** (API3 -25bps, T -16bps, THETA -13bps reject) |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
@@ -272,6 +273,7 @@ min_trade_notional_usd: $5
 | **BUG-129** | FF 슬리피지 halt false positive (2-4 건 샘플로 `slippage_exceeds_alpha` CRITICAL). 최소 5건 샘플 요구 | ✅ v171 |
 | **BUG-130** | 슬리피지 계산이 `abs()` 사용 → 유리한 방향까지 halt threshold 소진. adverse-only (`max(0, signed)`)로 전환 | ✅ v172 |
 | **BUG-131** | Binance WS MARKET response `avgPrice="0.00"` 문자열 truthy → or chain fallback 실패 → Trade.price=0 → `zero_price_leg_pnl_abort`. `_pos_dec()` 헬퍼로 0 이하 모두 falsy 취급 | ✅ v173 |
+| **BUG-132** | FR entry가 funding diff만 검증하고 price spread 무시 → 역방향 spread에서도 체결 (API3 -56bps, THETA -4bps). `funding_max_entry_adverse_bps=-10` 가드 추가 | ✅ v174 |
 | **ccxt deprecation** | ccxt_adapter.py / okx.py / bybit.py / upbit.py / bithumb.py = dead code (runtime 사용 0). 문서화 완료. | ✅ v163+ |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
