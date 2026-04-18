@@ -1163,17 +1163,44 @@ class Engine:
             _cap_cfg.get("tiers", {}).get(_tier, {}).get("initial_usd", 70)
         ))
         if _allocation_mode == "percentage":
-            # Percentage mode: position sizes computed from live exchange balances.
-            # At strategy-config time, balances may not be fetched yet → use tier default.
-            # _btc_price_update_loop and live balance fetch will refine sizing at runtime.
-            _capital_usd = _tier_initial_usd
-            logger.info(
-                "capital.allocation_mode=percentage reserve_pct=%s strategies=%s "
-                "(runtime balance-based, startup fallback=$%.0f)",
-                _cap_cfg.get("reserve_pct", 20),
-                list(_cap_cfg.get("strategies", {}).keys()),
-                _capital_usd,
-            )
+            # BUG-148: percentage mode should derive capital from live balances.
+            # Attempt to read balances right here; fall back to tier default on any error.
+            _live_total_usd: Decimal = Decimal("0")
+            try:
+                if hasattr(self, "_exchanges") and self._exchanges:
+                    # FX rate for KRW conversion
+                    from src.core.config_loader import get_config as _gc_cap
+                    _fx_cap = float(_gc_cap("strategy_filters.krw_usdt_rate", default=0.000676))
+                    _KRW_IDS = {"upbit", "bithumb", "coinone"}
+                    for _ex_name, _ex_adapter in self._exchanges.items():
+                        try:
+                            _bals = await _ex_adapter.get_balances()
+                        except Exception:
+                            continue
+                        _usdt_bal = _bals.get("USDT")
+                        if _usdt_bal:
+                            _live_total_usd += Decimal(str(_usdt_bal.total))
+                        if _ex_name.lower() in _KRW_IDS or any(k in _ex_name.lower() for k in _KRW_IDS):
+                            _krw_bal = _bals.get("KRW")
+                            if _krw_bal:
+                                _live_total_usd += Decimal(str(_krw_bal.total)) * Decimal(str(_fx_cap))
+            except Exception as _cap_exc:
+                logger.warning("capital.balance_probe_failed err=%s", _cap_exc)
+            if _live_total_usd > 0:
+                _capital_usd = _live_total_usd
+                logger.info(
+                    "capital.allocation_mode=percentage capital=$%.2f (live balance, tier fallback=$%.0f)",
+                    float(_capital_usd), float(_tier_initial_usd),
+                )
+            else:
+                _capital_usd = _tier_initial_usd
+                logger.info(
+                    "capital.allocation_mode=percentage reserve_pct=%s strategies=%s "
+                    "(balance unavailable — fallback=$%.0f)",
+                    _cap_cfg.get("reserve_pct", 20),
+                    list(_cap_cfg.get("strategies", {}).keys()),
+                    _capital_usd,
+                )
         else:
             _capital_usd = _tier_initial_usd
         _risk_cfg = _ecfg.get("dynamic_risk", {})
