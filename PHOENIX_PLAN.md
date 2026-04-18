@@ -201,6 +201,9 @@ min_trade_notional_usd: $5
 | **v168** | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-124 init 누락 + BUG-125 WS 재연결. Bitget 6040ms (WS timeout 누적) |
 | **v169** | 2026-04-18 | FF+FR+SF+XE | **4** | 0 | **BUG-126 Bitget WS skip** → 991-1033ms (-83% v168 대비) |
 | **v170** | 2026-04-18 | FF+FR+SF+XE | **6** | 0 | **BUG-127 cancel WS + BUG-128 ccxt 청소** (ERR 0, WS 40-205ms 유지) |
+| **v171** | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-129 FF halt 최소 5건 샘플 요구 |
+| **v172** | 2026-04-18 | FF+FR+SF+XE | **4** | **+$0.19** | FR 2건 수익 실증 (API3 $0.04 + THETA $0.15). BUG-130 adverse-only |
+| **v173** | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-131 avgPrice '0.00' truthy fix (zero_price_abort 제거) |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
@@ -266,6 +269,9 @@ min_trade_notional_usd: $5
 | **BUG-126** | Bitget V2 WS place-order는 BD/RM 승인 필요. 미승인 시 5s timeout + REST fallback = 6040ms. flag로 즉시 skip → v168 6040ms → v169 991ms (-83%) | ✅ v169 |
 | **BUG-127** | Binance ws-fapi `order.cancel` WS 경로 추가. rollback latency 절감. NotImplementedError 로그 톤다운(WARNING→INFO 1회) | ✅ v170 |
 | **BUG-128** | ccxt legacy adapter auto-import 제거 (`__init__.py`). Live 경로 ccxt 모듈 로드 안 함. Sandbox CLI만 직접 import | ✅ v170 |
+| **BUG-129** | FF 슬리피지 halt false positive (2-4 건 샘플로 `slippage_exceeds_alpha` CRITICAL). 최소 5건 샘플 요구 | ✅ v171 |
+| **BUG-130** | 슬리피지 계산이 `abs()` 사용 → 유리한 방향까지 halt threshold 소진. adverse-only (`max(0, signed)`)로 전환 | ✅ v172 |
+| **BUG-131** | Binance WS MARKET response `avgPrice="0.00"` 문자열 truthy → or chain fallback 실패 → Trade.price=0 → `zero_price_leg_pnl_abort`. `_pos_dec()` 헬퍼로 0 이하 모두 falsy 취급 | ✅ v173 |
 | **ccxt deprecation** | ccxt_adapter.py / okx.py / bybit.py / upbit.py / bithumb.py = dead code (runtime 사용 0). 문서화 완료. | ✅ v163+ |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
