@@ -120,7 +120,9 @@
   "execution": {
     "_comment": "PHOENIX v3: min_trade_notional lowered to $5 (futures exchange minimum)",
     "_bug_120_note": "ws_order_enabled=true enables WebSocket order placement (Binance ws-fapi + Bitget v2 WS). REST fallback on exception. Expected: 2500ms → 800ms (-70%) and slippage 100bps → 20bps. Requires testnet validation before production activation.",
-    "_bug_136_note": "v177 진단 결과: Bitget 계정이 40026 'User is disabled' 반환 → WS trading 권한 없음. Bitget BD/RM 연락 필요 (사장님 액션). 엔진은 40026 감지 시 자동 session-level disable하여 시도 비용 최소화. 권한 승인 후 엔진 재기동으로 자동 재시도.",
+    "_bug_136_note": "v177 진단 결과: Bitget 계정이 40026 'User is disabled' 반환 → WS trading 권한 없음. Bitget BD/RM 연락 필요. 엔진은 40026 감지 시 자동 session-level disable.",
+    "_bitget_account_mode": "classic = V2 API (/api/v2/mix/*, instType/channel/size/force). unified = V3 API (/api/v3/trade/*, category/topic/qty/timeInForce, UTA 모드). 사장님 Bitget 웹에서 Unified Account 전환 후 'unified' 로 변경.",
+    "bitget_account_mode": "classic",
     "ws_order_enabled": true,
     "bitget_ws_order_enabled": true,
     "min_trade_notional_usd": 5,
