@@ -554,10 +554,20 @@ class NativeBitgetAdapter(NativeAdapter):
                     _v3_body["price"] = body["price"]
                 if "clientOid" in body:
                     _v3_body["clientOid"] = body["clientOid"]
+                # BUG-171: V3 UTA requires either posSide (hedge mode) or reduceOnly (one-way mode).
+                # Omitting both fields causes error 25236 "Incorrect position open type".
                 if "posSide" in body:
+                    # Explicit posSide from metadata or hedge-mode logic already set in body
                     _v3_body["posSide"] = body["posSide"]
-                if _is_close_v3:
-                    _v3_body["reduceOnly"] = "yes"
+                elif self._pos_mode == "hedge":
+                    # Hedge mode: derive posSide from side + tradeSide
+                    if _is_close_v3:
+                        _v3_body["posSide"] = "short" if body["side"] == "buy" else "long"
+                    else:
+                        _v3_body["posSide"] = "long" if body["side"] == "buy" else "short"
+                else:
+                    # One-way mode: use reduceOnly for all orders (yes=close, no=open)
+                    _v3_body["reduceOnly"] = "yes" if _is_close_v3 else "no"
                 _v3_path = "/api/v3/trade/place-order"
                 _v3_body_ref = _v3_body  # keep reference for retry block
             try:
@@ -955,11 +965,17 @@ class NativeBitgetAdapter(NativeAdapter):
         # retry paths would otherwise fall back to raw UUID and get error 40017 again.
         resolved_id = self._exchange_order_id_map.get(order_id, order_id)
         # BUG-169: UTA V3 uses /api/v3/trade/cancel-order with category body
+        # BUG-171: V3 expects exchange orderId (numeric string), not our internal UUID.
+        # resolved_id falls back to order_id (UUID) when no map entry exists.
+        # In that case use clientOid so V3 can match by client order ID instead.
         if self._is_uta():
-            v3_body: dict[str, Any] = {
-                "category": self._v3_category(),
-                "orderId": resolved_id,
-            }
+            v3_body: dict[str, Any] = {"category": self._v3_category()}
+            if resolved_id != order_id:
+                # Successfully resolved to exchange orderId
+                v3_body["orderId"] = resolved_id
+            else:
+                # No mapping found — pass our UUID as clientOid
+                v3_body["clientOid"] = str(order_id)
             if symbol:
                 v3_body["symbol"] = _normalize_symbol(symbol)
             resp = await self._request(
