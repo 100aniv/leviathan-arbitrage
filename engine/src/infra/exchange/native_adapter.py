@@ -91,6 +91,15 @@ class NativeAdapter(abc.ABC):
         # BUG-113: keepalive tuning — v160 Bitget orders showed 1010/1011/1051ms
         # (fresh TCP+TLS) vs 575ms (keepalive hit). max_keepalive=max_connections
         # ensures all sockets stay pooled; 120s expiry exceeds Bitget server idle.
+        # BUG-137: try HTTP/2 (multiplexing + HPACK compression) — falls back to
+        # HTTP/1.1 if h2 package absent. Expected -50-150ms on first order in
+        # concurrent burst scenarios (future.gather) by sharing single TCP stream.
+        _http2 = False
+        try:
+            import h2  # noqa: F401
+            _http2 = True
+        except ImportError:
+            pass
         self._http = httpx.AsyncClient(
             base_url=self._rest_base_url(),
             timeout=httpx.Timeout(10.0, connect=1.0),
@@ -100,6 +109,7 @@ class NativeAdapter(abc.ABC):
                 keepalive_expiry=120.0,
             ),
             headers=self._default_headers(),
+            http2=_http2,
         )
         self._connected = True
         self._health.record_ws_connect()
