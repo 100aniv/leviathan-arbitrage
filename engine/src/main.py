@@ -3768,8 +3768,17 @@ class Engine:
                     try:
                         from src.core.models import Position
                         engine_positions: dict[str, Position] = {}
+                        # BUG-159: skip reconcile if position_manager not wired
+                        # (live mode currently doesn't populate it consistently →
+                        # every exchange position becomes false 'no record' CRITICAL)
+                        if self._position_manager is None:
+                            continue
+                        _all_pos = list(self._position_manager.get_all_positions())
+                        if not _all_pos:
+                            # No engine positions tracked → skip reconcile cycle
+                            continue
                         if self._position_manager is not None:
-                            for p in self._position_manager.get_all_positions():
+                            for p in _all_pos:
                                 key = f"{p.exchange_id}:{p.symbol}"
                                 # BUG-157: Position requires entry_price field
                                 # BUG-158: sign quantity by side — exchange returns signed size.
