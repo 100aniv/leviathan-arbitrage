@@ -299,6 +299,13 @@ min_trade_notional_usd: $5
 | **BUG-146** | inventory_rebalancer가 USDT 잔고만 트래킹 → Upbit/Bithumb/Coinone $0. KRW 잔고 krw_usdt_rate(0.000676)로 USD 환산하여 추가 | ✅ v184 |
 | **BUG-147** | triangular.py 내 silent return 경로 다수 (signal 59건 생성 vs accepted 0건). min_profit 필터에 DEBUG 로그 추가 | ✅ v184 |
 | **BUG-148** | capital.tier 하드코딩 → runtime balance 기반 동적 산출. v185: tier $120 → live $179.92 자동 인식 (+50% per_trade) | ✅ v185 |
+| **BUG-149** | PG WAL write timeout 500ms → 1500ms (기동 burst 대응. 3건 timeout reject 해결) | ✅ v186 |
+| **BUG-150** | triangular fake_spread 로그 스팸 (136건 WARNING) → DEBUG. 소형 코인 얇은 오더북 정상 현상 | ✅ v187 |
+| **BUG-151** | ccxt legacy 완전 제거 — 사장님 지시 "ccxt 나오면 안 됨". 16 파일 삭제 (8 adapter + 2 sandbox CLI + 6 test) + pyproject dependency + 모든 docstring "ccxt" 단어 | ✅ v188+ |
+| **BUG-152** | triangular_signal INFO 1025건/5min → DEBUG. BUG-139에서 빠뜨림 | ✅ v190 |
+| **BUG-153** | signal INFO 전면 DEBUG (spot_futures/futures_futures/statistical_arb/cross_krw/latency_arb) — 2093+75+... = 2100+건/5min → 0 | ✅ v191 |
+| **BUG-154** | signal.min_edge_rejected 451건 INFO → DEBUG | ✅ v192 |
+| **BUG-155** | (관찰 기록) PositionReconciler가 live 모드에서 실행 안 됨 (main.py:3758 주석 TODO). 체결엔 영향 없음 (reconciler는 진단용). 장기 수정 대상 | 기록 |
 
 ### 📋 8 전략 코드 완성도 검증 (v182 기준)
 
