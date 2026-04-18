@@ -88,11 +88,17 @@ class NativeAdapter(abc.ABC):
     async def connect(self) -> None:
         """Initialize HTTP client and mark connected."""
         # PHOENIX §8.3 Tier1 patch 3-6: connect timeout 5s→1s
-        # (failed-fast on dead routes; 1s is generous for ap-northeast TLS handshake)
+        # BUG-113: keepalive tuning — v160 Bitget orders showed 1010/1011/1051ms
+        # (fresh TCP+TLS) vs 575ms (keepalive hit). max_keepalive=max_connections
+        # ensures all sockets stay pooled; 120s expiry exceeds Bitget server idle.
         self._http = httpx.AsyncClient(
             base_url=self._rest_base_url(),
             timeout=httpx.Timeout(10.0, connect=1.0),
-            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            limits=httpx.Limits(
+                max_connections=20,
+                max_keepalive_connections=20,
+                keepalive_expiry=120.0,
+            ),
             headers=self._default_headers(),
         )
         self._connected = True
