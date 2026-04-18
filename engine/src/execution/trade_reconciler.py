@@ -311,11 +311,16 @@ class TradeReconciler:
             report.is_p95_bps = sorted_is[min(max(0, int(math.ceil(n * 0.95)) - 1), n - 1)]
 
         if report.unmatched_internal:
-            logger.warning(
-                "trade_reconciler.unmatched exchange=%s unmatched_internal=%d",
-                exchange_id, len(report.unmatched_internal),
+            # BUG-156: first cycle 에 이전 세션 fill 누적 → 예상된 상황.
+            # 이후 cycle 에서도 발생하면 진짜 이슈 — WARNING.
+            _is_first = exchange_id not in self._first_cycle_done
+            _log_fn = logger.info if _is_first else logger.warning
+            _log_fn(
+                "trade_reconciler.unmatched exchange=%s unmatched_internal=%d first_cycle=%s",
+                exchange_id, len(report.unmatched_internal), _is_first,
             )
-            if self._telegram is not None:
+            # Telegram 알림은 first cycle 아닌 경우에만 (스팸 방지)
+            if self._telegram is not None and not _is_first:
                 try:
                     await self._telegram.send_alert(
                         f"⚠️ TradeRecon: {exchange_id} 내부 미매칭 {len(report.unmatched_internal)}건 "
