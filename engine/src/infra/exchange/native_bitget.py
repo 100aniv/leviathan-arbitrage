@@ -58,6 +58,51 @@ class NativeBitgetAdapter(NativeAdapter):
         # hedge_mode: BOTH open and close orders require posSide.
         # one_way_mode: no posSide, reduceOnly=True is sufficient for closes.
         self._pos_mode: str = "one_way"
+        # BUG-120 Phase 5c: WS trade client (lazy)
+        self._ws_trade: Any = None
+
+    async def _get_ws_trade(self) -> Any:
+        """Lazy-connect Bitget V2 WS trade client (BUG-120)."""
+        if self._ws_trade is None:
+            from src.infra.exchange.ws_trade import BitgetWSTrade
+            self._ws_trade = BitgetWSTrade(
+                self._api_key, self._api_secret, self._passphrase,
+            )
+            await self._ws_trade.connect()
+            logger.info("Bitget WS trade connected + authenticated (%s)", self._market_type)
+        return self._ws_trade
+
+    async def _ws_place_order(self, order: Order) -> Trade:
+        """Place order via Bitget V2 WS (BUG-120). Raises on failure for REST fallback."""
+        from datetime import datetime, timezone
+        client = await self._get_ws_trade()
+        inst_type = "USDT-FUTURES" if self._market_type == "futures" else "SPOT"
+        # Bitget instId is e.g. BTCUSDT (no slash)
+        inst_id = order.symbol.replace("/", "")
+        side = "buy" if order.side == OrderSide.BUY else "sell"
+        otype = "limit" if order.order_type == OrderType.LIMIT else "market"
+        resp = await client.place_order(
+            inst_type=inst_type,
+            inst_id=inst_id,
+            order_type=otype,
+            side=side,
+            size=order.amount,
+            price=order.price if otype == "limit" else None,
+            force="gtc",
+        )
+        if resp.get("code") not in (0, "0") and resp.get("event") != "trade":
+            raise RuntimeError(f"bitget ws_place_order rejected: {resp}")
+        arg = (resp.get("arg") or [{}])[0]
+        params = arg.get("params") or {}
+        return Trade(
+            trade_id=str(params.get("orderId", "")),
+            symbol=order.symbol,
+            side=order.side,
+            amount=order.amount,
+            price=order.price or Decimal("0"),
+            fee=Decimal("0"),
+            timestamp=datetime.now(timezone.utc),
+        )
         # BUG-107: margin mode for USDT-FUTURES orders. Detected at connect() via
         # /api/v2/mix/account/accounts (same endpoint as posMode). Default "crossed"
         # (USDT-M cross-margin is the Bitget default). Can be overridden via config
