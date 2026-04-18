@@ -544,8 +544,16 @@ class LiveMode(BaseMode):
                                     params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
                                     signed=True,
                                 )
-                            for _item in (_raw_resp.get("data") or []):
-                                _hold_side = _item.get("holdSide", "")
+                            # BUG-178: V3 /current-position returns {data: {list: [...], cursor}} (dict),
+                            # V2 /all-position returns {data: [...]} (list). Field names also differ:
+                            # V3=posSide, V2=holdSide. Unwrap list + alias field for both paths.
+                            _raw_data = _raw_resp.get("data") or ({} if _bitget_is_uta else [])
+                            if isinstance(_raw_data, dict):
+                                _pos_items = _raw_data.get("list") or []
+                            else:
+                                _pos_items = _raw_data
+                            for _item in _pos_items:
+                                _hold_side = _item.get("holdSide") or _item.get("posSide", "")
                                 _raw_sym = _item.get("symbol", "")
                                 _total = float(_item.get("total", 0) or 0)
                                 _available = float(_item.get("available", 0) or 0)
@@ -621,18 +629,42 @@ class LiveMode(BaseMode):
                                             params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
                                             signed=True,
                                         )
-                                    for _pos_item in (_raw_close.get("data") or []):
+                                    # BUG-178: V3 response data is dict {list, cursor}; V2 is list.
+                                    # Unwrap + alias field names (V3 posSide vs V2 holdSide).
+                                    _rc_data = _raw_close.get("data") or ({} if _bitget_is_uta_close else [])
+                                    if isinstance(_rc_data, dict):
+                                        _rc_items = _rc_data.get("list") or []
+                                    else:
+                                        _rc_items = _rc_data
+                                    for _pos_item in _rc_items:
                                         _ps = _pos_item.get("symbol", "")
-                                        _ph = _pos_item.get("holdSide", "")
+                                        _ph = _pos_item.get("holdSide") or _pos_item.get("posSide", "")
                                         _pt = float(_pos_item.get("total", 0) or 0)
                                         if _ps and _ph and _pt > 0:
                                             try:
                                                 await asyncio.sleep(0.5)  # Bitget rate limit: 2 req/s
-                                                await _adapter._request(
-                                                    "POST", "/api/v2/mix/order/close-positions",
-                                                    data={"symbol": _ps, "productType": "USDT-FUTURES", "holdSide": _ph},
-                                                    signed=True,
-                                                )
+                                                if _bitget_is_uta_close:
+                                                    # BUG-178: UTA has no V2 close-positions — use V3 place-order
+                                                    # with opposite side + same posSide + reduceOnly market close.
+                                                    _close_side = "sell" if _ph.lower() == "long" else "buy"
+                                                    await _adapter._request(
+                                                        "POST", "/api/v3/trade/place-order",
+                                                        data={
+                                                            "category": "USDT-FUTURES",
+                                                            "symbol": _ps,
+                                                            "side": _close_side,
+                                                            "orderType": "market",
+                                                            "qty": str(_pt),
+                                                            "posSide": _ph.lower(),
+                                                        },
+                                                        signed=True,
+                                                    )
+                                                else:
+                                                    await _adapter._request(
+                                                        "POST", "/api/v2/mix/order/close-positions",
+                                                        data={"symbol": _ps, "productType": "USDT-FUTURES", "holdSide": _ph},
+                                                        signed=True,
+                                                    )
                                                 logger.info(
                                                     "preflight_bitget_auto_close exchange=%s symbol=%s holdSide=%s size=%s",
                                                     _eid, _ps, _ph, _pt,
