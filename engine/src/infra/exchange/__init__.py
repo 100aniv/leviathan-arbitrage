@@ -17,18 +17,13 @@ from src.infra.exchange.native_coinone import NativeCoinoneAdapter
 from src.infra.exchange.rate_limiter import ExchangeRateLimiter, RateLimitConfig
 from src.infra.exchange.websocket_manager import ConnectionConfig, ConnectionState, WebSocketManager
 
-# BUG-128 → BUG-151: ccxt legacy adapters + CCXTAdapter + sandbox CLI 완전 제거.
-# 사장님 지시 "ccxt 나오면 안 된다" 준수. 전 거래소 native adapter (WebSocket + REST)
-# 만 사용. legacy 파일 10개 삭제 (binance.py, bitget.py, bybit.py, bithumb.py,
-# coinone.py, okx.py, upbit.py, ccxt_adapter.py, sandbox_paper_runner.py,
-# sandbox_verify.py). ccxt 모듈 dependency 완전 해제.
-_CCXT_AVAILABLE = False  # 영원히 False — 참조 가능성 0
+# Native adapter only (WebSocket + REST). No legacy wrapper dependency.
 
 __all__ = [
     # Base protocols
     "ExchangeAdapter",
     "NativeAdapter",
-    # Native adapters (ccxt-free, production)
+    # Native adapters (production)
     "BinanceNativeAdapter",
     "NativeBitgetAdapter",
     "NativeBithumbAdapter",
