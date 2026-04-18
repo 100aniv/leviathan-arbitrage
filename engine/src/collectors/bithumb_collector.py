@@ -250,6 +250,13 @@ class BithumbCollector(BaseCollector):
             if last_mid is not None and last_mid > 0:
                 change_pct = abs(new_mid - last_mid) / last_mid
                 if change_pct > 0.5:  # >50% change
+                    # BUG-165: check blacklist BEFORE logging — prevents DEBUG spam for
+                    # persistently-fake symbols (SOL/BTC, ETH/BTC etc seen 1357/20min in v198).
+                    _now = time.monotonic()
+                    _expiry = self._fake_blacklist_expiry.get(symbol, 0.0)
+                    if _now < _expiry:
+                        # Symbol is blacklisted — reject delta silently, no log, no REST call
+                        return None
                     logger.debug(
                         "bithumb_ws_price_guard_triggered",
                         symbol=symbol,
@@ -257,12 +264,6 @@ class BithumbCollector(BaseCollector):
                         new_mid=new_mid,
                         change_pct=f"{change_pct:.1%}",
                     )
-                    # BUG-70b: Check persistent fake blacklist first
-                    _now = time.monotonic()
-                    _expiry = self._fake_blacklist_expiry.get(symbol, 0.0)
-                    if _now < _expiry:
-                        # Symbol is blacklisted — reject delta silently, no REST call
-                        return None
 
                     # BUG-70: Only schedule verify if no verify is already in-flight for this symbol
                     if symbol not in self._two_step_pending:

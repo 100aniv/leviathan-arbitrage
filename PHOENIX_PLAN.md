@@ -364,6 +364,43 @@ min_trade_notional_usd: $5
 **결론**: 엔진 측 8 전략 코드 **100% 완성**. 실거래 검증은 외부 조건 (Bitget 승인 / 시장 / 자본 / DEX / 데이터) 의존.
 | **ccxt deprecation** | ccxt_adapter.py / okx.py / bybit.py / upbit.py / bithumb.py = dead code (runtime 사용 0). 문서화 완료. | ✅ v163+ |
 
+### 📡 거래소별 WS / Private API 지원 현황 (2026-04-18)
+
+| 거래소 | WS public | WS private (userData) | WS order placement | Private REST | 비고 |
+|--------|-----------|----------------------|---------------------|--------------|------|
+| **Binance** (futures) | ✅ | ✅ | ✅ (ws-fapi) | ✅ | WS order 45ms |
+| **Bitget** (futures) | ✅ | ✅ (UTA 전환 후) | ✅ (v2/v3) | ✅ | Classic v2 / UTA v3 듀얼 |
+| **Upbit** (KRW spot) | ✅ (ticker/orderbook/trade) | ❌ (private 미지원) | ❌ **거래소 미지원** | ✅ | 주문은 REST only |
+| **Bithumb** (KRW spot) | ✅ (public) | ❌ | ❌ **거래소 미지원** | ✅ | 주문은 REST only |
+| **Coinone** (KRW spot) | ✅ (public v2) | ❌ | ❌ **거래소 미지원** | ✅ | 주문은 REST only |
+
+**사장님 질문 "모든 거래소 WS 주문" 답변**:
+- **Binance / Bitget**: WS order placement 구현 완료 (BUG-120, ws-fapi + v2 WS)
+- **KRW 3사 (Upbit/Bithumb/Coinone)**: 2026-04 현재 **거래소 공식 API가 WS 주문을 지원하지 않음**.
+  공식 문서 확인됨 — WebSocket은 market-data only, 주문은 REST 전용.
+  엔진 구조/의지 문제 아님. 거래소 측 제한.
+- 향후 KRW 거래소가 WS private 채널 발표 시 즉시 적용 가능 (native adapter 구조 이미 준비).
+
+### 🧹 ccxt 잔재 현황 (2026-04-18 최종 감사)
+
+사장님 우려 "한번씩 cctx가 나온다":
+
+| 위치 | ccxt 언급 | 타입 | 판정 |
+|------|----------|------|------|
+| `engine/src/**/*.py` | **0 건** | runtime | ✅ 완전 제거 |
+| `engine/pyproject.toml:36` | 1 건 | 주석 ("BUG-151: legacy ccxt dependency 완전 제거") | ✅ 정상 이력 |
+| `engine/scripts/run_kbt_backtests.py` | `_TRADING_JSON_PATH` 로컬 변수 | 스크립트 전용 | ⚪ ccxt 아님 (이름 유사) |
+| `docs/archive/`, `.omc/artifacts/`, `PHOENIX_PLAN.md` | 다수 | 과거 감사/리뷰 로그 | ✅ 이력 기록 (runtime 영향 0) |
+| `docs/research/`, `SSOT.md`, `README.md` | 다수 | 설계 문서 과거 참조 | ✅ 이력 기록 |
+
+**결론**: 엔진 runtime 코드 ccxt 완전 제거 완료 (v163~v184). 문서/주석에 과거 이력이 남아있으나 실행/주문에 **전혀 영향 없음**. `grep -r 'import ccxt' engine/src` → 0건 재확인.
+
+### 버그 수정 (v200)
+
+| ID | 내용 | 상태 |
+|----|------|------|
+| **BUG-165** | Bithumb price guard DEBUG 로그가 blacklist 체크 **전**에 fire → persistently-fake 심볼(SOL/BTC, ETH/BTC)이 20분간 1357건 스팸 생산. blacklist 체크 우선 후 로그 출력으로 조정. | ✅ v201 대비 |
+
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
 ```python
 # live.py:181 — 클래스 상수
