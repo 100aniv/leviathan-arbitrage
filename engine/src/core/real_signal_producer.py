@@ -1008,7 +1008,7 @@ class RealDataSignalProducer:
             if float(krw_bid_usdt) > float(usdt_ask):
                 spread_bps = (float(krw_bid_usdt) - float(usdt_ask)) / float(usdt_ask) * 10000
                 # 비합리적 스프레드 필터 (100bps 이상은 환율 오차로 간주)
-                if spread_bps <= 0 or spread_bps > 200:
+                if spread_bps <= 0 or spread_bps > 500:
                     continue
                 _ce_key = (usdt_symbol, usdt_exchange, krw_exchange)
                 _ce_hist = self._rolling_spread[_ce_key]
@@ -1019,7 +1019,7 @@ class RealDataSignalProducer:
                         continue
                 spread_pct = Decimal(str(spread_bps / 10000))
                 sig = Signal(
-                    strategy_id="cross_exchange_krw",
+                    strategy_id="cross_exchange_v1",
                     symbol=usdt_symbol,
                     buy_exchange=usdt_exchange,
                     sell_exchange=krw_exchange,
@@ -1050,7 +1050,7 @@ class RealDataSignalProducer:
             # 방향 2: USDT 거래소가 더 비쌈 → USDT 거래소에서 팔고 KRW 거래소에서 삼
             if float(usdt_bid) > float(krw_ask_usdt):
                 spread_bps = (float(usdt_bid) - float(krw_ask_usdt)) / float(krw_ask_usdt) * 10000
-                if spread_bps <= 0 or spread_bps > 200:
+                if spread_bps <= 0 or spread_bps > 500:
                     continue
                 _ce_key2 = (usdt_symbol, krw_exchange, usdt_exchange)
                 _ce_hist2 = self._rolling_spread[_ce_key2]
@@ -1061,7 +1061,7 @@ class RealDataSignalProducer:
                         continue
                 spread_pct2 = Decimal(str(spread_bps / 10000))
                 sig = Signal(
-                    strategy_id="cross_exchange_krw",
+                    strategy_id="cross_exchange_v1",
                     symbol=usdt_symbol,
                     buy_exchange=krw_exchange,
                     sell_exchange=usdt_exchange,
