@@ -111,10 +111,20 @@ class BinanceNativeAdapter(NativeAdapter):
         if resp.get("status") != 200:
             raise RuntimeError(f"ws_place_order rejected: {resp}")
         result = resp.get("result", {})
-        _px_raw = result.get("avgPrice") or result.get("price") or order.price or Decimal("0")
-        _px = Decimal(str(_px_raw))
-        _qty_raw = result.get("executedQty") or result.get("origQty") or order.amount
-        _qty = Decimal(str(_qty_raw))
+        # BUG-131: result fields are strings like "0.00" (truthy) — pick first > 0.
+        def _pos_dec(v) -> Decimal:
+            try:
+                d = Decimal(str(v)) if v not in (None, "", "null") else Decimal("0")
+                return d if d > 0 else Decimal("0")
+            except Exception:
+                return Decimal("0")
+        _avg_px = _pos_dec(result.get("avgPrice"))
+        _resp_px = _pos_dec(result.get("price"))
+        _order_px = Decimal(str(order.price)) if order.price else Decimal("0")
+        _px = _avg_px if _avg_px > 0 else (_resp_px if _resp_px > 0 else _order_px)
+        _exec_qty = _pos_dec(result.get("executedQty"))
+        _orig_qty = _pos_dec(result.get("origQty"))
+        _qty = _exec_qty if _exec_qty > 0 else (_orig_qty if _orig_qty > 0 else order.amount)
         if _qty <= 0:
             _qty = order.amount
         return Trade(
