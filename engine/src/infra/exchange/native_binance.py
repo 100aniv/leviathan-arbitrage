@@ -124,12 +124,42 @@ class BinanceNativeAdapter(NativeAdapter):
         _px = _avg_px if _avg_px > 0 else (_resp_px if _resp_px > 0 else _order_px)
         _exec_qty = _pos_dec(result.get("executedQty"))
         _orig_qty = _pos_dec(result.get("origQty"))
+        _order_id = str(result.get("orderId", ""))
+
+        # BUG-166: WS ACK 승격 방지 — futures MARKET 주문이 ACK 시점 status=NEW/executedQty=0 일 때
+        # REST path 와 동일하게 FILLED 상태 확인 후 실제 fill 수치 사용. 이전: order.amount fallback → ghost risk.
+        _status = result.get("status", "")
+        if (
+            self._market_type == "futures"
+            and order.order_type == OrderType.MARKET
+            and _order_id
+            and (_status != _ORDER_STATUS_FILLED or _exec_qty <= 0 or _avg_px <= 0)
+        ):
+            for _attempt in range(3):
+                await asyncio.sleep(0.1)
+                try:
+                    _qp = {"symbol": _bsym, "orderId": _order_id}
+                    _poll = await self._signed_request("GET", "/fapi/v1/order", params=_qp)
+                    if _poll.get("status") == _ORDER_STATUS_FILLED:
+                        _exec_qty = _pos_dec(_poll.get("executedQty"))
+                        _avg_px_p = _pos_dec(_poll.get("avgPrice"))
+                        if _avg_px_p > 0:
+                            _avg_px = _avg_px_p
+                            _px = _avg_px
+                        logger.debug(
+                            "ws_post_ack_fill_confirmed symbol=%s orderId=%s attempt=%d qty=%s px=%s",
+                            order.symbol, _order_id, _attempt + 1, _exec_qty, _px,
+                        )
+                        break
+                except Exception as _pe:
+                    logger.debug("ws_post_ack_poll_failed orderId=%s: %s", _order_id, _pe)
+
         _qty = _exec_qty if _exec_qty > 0 else (_orig_qty if _orig_qty > 0 else order.amount)
         if _qty <= 0:
             _qty = order.amount
         return Trade(
-            trade_id=str(result.get("orderId", "")),
-            order_id=str(result.get("orderId", "")) or order.order_id,
+            trade_id=_order_id,
+            order_id=_order_id or order.order_id,
             exchange_id=self.exchange_id,
             symbol=order.symbol,
             side=order.side,
