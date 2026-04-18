@@ -57,7 +57,10 @@
 | **BUG-97.2** | Native Position field `size` (not `quantity`) — reconciler exchange_qty=0 false alarm | v159 | 9 pass |
 | **BUG-97.4** | Startup reconciliation hard-halt → warn (continuous reconciler 60s authoritative) | v160 | 9 pass |
 | **BUG-113** | HTTP keepalive_connections 10→20 + expiry 120s — Bitget fresh TCP 1000ms → keepalive hit 500ms | v161 | — |
+| **BUG-114** | DualWriter PG timeout 100→500ms — v161 FR trades rejected by timeout (TimescaleDB hypertable 200-300ms typical) | v162 | — |
 | **v160 실거래 증명** | FF THETA/WLD 체결 성공, FR WLD 2건, **FF pnl=+$0.0289** (세션 첫 수익), Bitget latency bimodal 확인 | v160 | — |
+| **v162 안정** | PG timeout=0, trade_executed 2건 FR, FX oracle live (USDT/KRW=1479), reconciliation PASS | v162 | — |
+| **레이턴시 물리 한계** | Bitget REST 500-1000ms (거래소 인프라), 한국 노트북→싱가포르. VPS Tokyo 이전 시 200-400ms 가능. | — | — |
 | **v146 실증** | BUG-100 fix 후 **3분 SF 11,087 signals** (이전 v145 0건) → Step 2-1.5 활성 확인 | v146 | 175 exec tests |
 | Redis client | retry_on_timeout, health_check_interval=30, socket_keepalive, pool=100, transient ERR→WARNING | v141~ | 20 pass |
 | FF freshness | 3s→5s (fresh_drop 70%→35% 증명, v143) | v143 | — |
@@ -186,6 +189,13 @@ min_trade_notional_usd: $5
 | **v108** | 2026-04-14 | FF+FR | **59+2** | **+$0.26** | FF 8H 수익! edge 242건 방어 |
 | v109~v115 | 2026-04-15 | FF+FR | varies | ~$0.00 | BUG-85~89 수정, FR 시그널 복구 |
 | **v117** | 2026-04-15~ | FF+FR | 3+ | $0.00 | **구조 리팩토링 적용** (Phase 1+2) |
+| v118~v140 | 2026-04-16~17 | FF+FR | 4 | ~0 | BUG-93~96 Ghost 구조 수정, 2만+ FR/FF signal |
+| v141~v150 | 2026-04-17~18 | FF+FR+SF | ~10 | ~0 | **BUG-100 CRITICAL** (SF signal 0 → 11k/3min), Redis tuning, race fix |
+| v151~v156 | 2026-04-18 | FF+FR+SF+XE-USDT | — | — | BUG-106/107/108/109/110 fix + XE activation |
+| **v157** | 2026-04-18 | FF+FR+SF+XE-USDT | — | — | **FX oracle live** (KRWRateProvider Upbit 30s), Step 2-3 정렬 |
+| v158~v159 | 2026-04-18 | FF+FR+SF+XE | — | — | BUG-97.2/97.4 recovery native compat |
+| **v160** | 2026-04-18 | FF+FR+SF+XE | **3+** | **+$0.02** | **FF THETA +$0.0289 세션 첫 수익!** Bitget bimodal latency |
+| v161 | 2026-04-18 | FF+FR+SF+XE | pending | — | BUG-113 HTTP keepalive tuning (expected 1000→500ms) |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
