@@ -167,16 +167,16 @@ class RecoveryManager:
             if abs(wal_qty - exchange_qty) > tolerance:
                 # Permissive path: warn but allow startup to continue
                 if exchange_qty > 0 and exchange_qty >= wal_qty * Decimal("0.1"):
-                    logger.warning(
+                    # BUG-134: INFO — startup reconciler handles partial matches routinely
+                    logger.info(
                         "Position partial match on %s %s: WAL=%s exchange=%s — "
                         "accepting (continuous reconciler will monitor)",
                         exchange_id, symbol, wal_qty, exchange_qty,
                     )
                     continue
-                # BUG-97.4: downgrade hard-halt to warning. Cold-start adapter
-                # timing frequently returns stale/empty positions; the 60s
-                # continuous reconciler is the authoritative runtime check.
-                logger.warning(
+                # BUG-97.4 + BUG-134: INFO — cold-start adapter stale responses are
+                # routine; 60s continuous reconciler is the authoritative check.
+                logger.info(
                     "Position mismatch on %s %s: WAL=%s, exchange=%s "
                     "(startup — reconciler will verify at runtime)",
                     exchange_id, symbol, wal_qty, exchange_qty,
