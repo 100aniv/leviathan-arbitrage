@@ -1729,25 +1729,40 @@ class Engine:
                                  exchange_id, pos.symbol, _exc)
 
             def _on_reconcile_discrepancy(result) -> None:
-                # Telegram alert
-                if self._telegram:
-                    summary = result.discrepancies[:3]
-                    asyncio.ensure_future(self._telegram.send_alert_kr(
-                        "position_discrepancy",
-                        {"count": len(result.discrepancies), "summary": str(summary)},
-                    ))
-                # BUG-160: auto_close disabled — position_manager not fully wired
-                # in live mode, causing false orphan detection on just-executed trades.
-                # Log only; actual orphan cleanup is preflight_stale (startup) + manual.
-                orphans = {
-                    k: v for k, v in result.exchange_positions.items()
+                # BUG-164: race guard — reconciler (60s cycle) can run between
+                # order_placed and position_opened (fire-and-forget PM). Discrepancies
+                # that appear ONCE are almost always race artifacts. Only escalate to
+                # Telegram if the same orphan persists for 2+ cycles.
+                orphans_now = {
+                    k for k, v in result.exchange_positions.items()
                     if k not in result.engine_positions and abs(v.size) > Decimal("0.0001")
                 }
-                for key, pos in orphans.items():
-                    logger.warning(
-                        "reconciler_orphan_detected key=%s size=%s (auto_close disabled — "
-                        "review manually if persists)",
-                        key, pos.size,
+                _prev = getattr(self, "_prev_reconciler_orphans", set())
+                persistent = orphans_now & _prev
+                self._prev_reconciler_orphans = orphans_now
+
+                if persistent:
+                    # Persistent orphan → real issue, alert
+                    if self._telegram:
+                        summary = [s for s in result.discrepancies if any(k in s for k in persistent)][:3]
+                        asyncio.ensure_future(self._telegram.send_alert_kr(
+                            "position_discrepancy",
+                            {"count": len(persistent), "summary": str(summary)},
+                        ))
+                    for key in persistent:
+                        pos = result.exchange_positions.get(key)
+                        if pos is not None:
+                            logger.warning(
+                                "reconciler_orphan_PERSISTENT key=%s size=%s "
+                                "(auto_close disabled — manual cleanup required)",
+                                key, pos.size,
+                            )
+                elif orphans_now:
+                    # Transient (race) — log at INFO, no Telegram (BUG-164)
+                    logger.info(
+                        "reconciler_orphan_transient count=%d keys=%s "
+                        "(will escalate next cycle if persistent)",
+                        len(orphans_now), list(orphans_now)[:3],
                     )
 
             self._position_reconciler = PositionReconciler(

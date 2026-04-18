@@ -313,22 +313,40 @@ min_trade_notional_usd: $5
 | **BUG-160** | **긴급**: reconciler auto_close 체결 직후 포지션을 'orphan' 판정 → 자동 청산 위험. auto_close 비활성화, WARNING 로그만 유지 | ✅ v198 |
 | **BUG-161** | PG WAL timeout 1500ms 도 부족 → 3000ms 상향 | ✅ v198 |
 | **BUG-162** | Bitget UTA V3 API 듀얼 모드 지원. `bitget_account_mode: classic/unified` config 플래그. BitgetWSTrade: account_mode 파라미터 + Classic/UTA payload 분기 (instType/channel/size/force ↔ category/topic/qty/timeInForce). `_listen` UTA id 추출. orderId 파싱 양방향. Native adapter config 기반 분기. 사장님 전환 완료 후 config 1줄 변경으로 활성화. | ✅ 코드 준비 (활성화 대기) |
+| **BUG-163** | 독립 감사(code-reviewer+architect) 3건 일괄 수정. (CRITICAL-2) `preflight_auto_close_enabled` 플래그 default=true, false 시 수동 청산 대기로 asymmetric close 방지. (MAJOR-1) PositionManager `asyncio.ensure_future()` → `add_done_callback` 예외 수집, silent ghost 재발 방지. (MAJOR-3) dead code `load_trading_config()` + `_TRADING_JSON_PATH` 제거, WS-1 단일화 완결. commit 070de46. | ✅ v200 |
+| **BUG-164** | Reconciler race 가드. 60s 주기 PositionReconciler가 `order_placed → position_opened` 사이에 실행되어 false CRITICAL + Telegram 스팸 유발. 2연속 사이클 지속 시에만 Telegram escalate — 1회성(race)은 `reconciler_orphan_transient` INFO 로그. `self._prev_reconciler_orphans` set 유지. | ✅ v201 대비 |
 
 ### 🎯 Bitget WS 권한 해결 경로 확정 (2026-04-18)
 
-**고객센터 답변:**
+**고객센터 답변 1차 (2026-04-18 오전):**
 1. 일반 Private WS 채널 = VIP 4 이상 필요 (거래량 요구 과도)
 2. **Unified Account 전환 = VIP 등급 없이 즉시 사용 가능** ✅
 
+**고객센터 답변 2차 (2026-04-18 저녁):**
+1. UTA 전환 시 **V3 trading API 전용** 경로 사용 필수 — https://www.bitget.com/api-doc/uta/guide
+2. 전환 전 **모든 기존 포지션 수동 청산 필수** (UTA migration precondition)
+3. spot + USDT-M futures 자산은 **자동 이전**
+4. 전환 중 downtime ~1분
+
+**전환 조건 (사용자 귀책):**
+- 통합계정 전환은 Bitget 내 **1000 USDT 이상 잔고** 필요 (사장님 입금 진행 중)
+- 입금 완료 → 웹 UI에서 account mode 전환 → 엔진 측 config 1줄 수정
+
 **전환 절차:**
-1. v198 엔진 중지 ✅ (완료)
-2. 사장님 Bitget 웹에서 Account Mode → Unified Account 전환
-3. 엔진 측 UTA API v3 엔드포인트 적용 예정:
-   - REST: `/api/v2/mix/order/place-order` → `/api/v3/trade/place-order`
-   - WS payload: `instType: UTA` + `topic: place-order` + `category: futures`
-   - 잔고: spot/futures 분리 → 단일 풀
-4. v199 재기동 + 40026 에러 해소 검증
-5. Bitget 주문 latency: 1000ms → ~100ms (-90% 예상)
+1. v200+ 카나리 FR 수익 축적 → 사장님 Bitget 1000 USDT 입금
+2. 엔진 가동 중지 (v20X kill)
+3. Bitget 웹에서 모든 포지션 수동 청산 (사장님 직접)
+4. Bitget 웹에서 Account Mode → Unified Account 전환 (~1분 downtime)
+5. `engine/config/engine.json`: `"bitget_account_mode": "classic"` → `"unified"` 수정
+6. 엔진 v201 재기동 → `bitget_pos_mode_detected mode=unified` 로그 확인
+7. Bitget 주문 latency: 1000ms → ~100ms (-90% 예상) 실측
+8. FF 전략 활성화 (그간 차단됐던 Bitget Private WS 정상 작동)
+
+**REST V3 경로 (사전 대비):**
+- Classic: `/api/v2/mix/order/place-order` (instType/channel/size/force)
+- UTA: `/api/v3/trade/place-order` (category/topic/qty/timeInForce)
+- WS Classic: `{op:trade, args:[{id, instType, instId, channel, params}]}`
+- WS UTA: `{op:trade, id, category, topic, args:[{symbol, orderType, side, qty, timeInForce}]}`
 
 ### 📋 8 전략 코드 완성도 검증 (v182 기준)
 
