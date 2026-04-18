@@ -290,6 +290,12 @@ min_trade_notional_usd: $5
 | **BUG-139** | real_signal_producer.funding_rate_signal 3633회/2min + outlier_rejected INFO. DEBUG 전환 → -100% INFO 로그 스팸 추가 | ✅ v181 |
 | **BUG-142** | TCA expected vs actual 9-10x 괴리 — FR은 8h funding cycle 수익 vs immediate fill PnL 차이. 로그에 `expected_type` 추가 (funding_cycle_8h / immediate_fill) → 소비자 해석 오류 방지 | ✅ v182 |
 
+| **BUG-143** | strategy_activation.json: triangular_v1 disabled 상태 → active로 이동. 3각 차익 활성 | ✅ v183 |
+| **BUG-145** | KRWRateProvider fetch_failed 빈 str(exc) 메시지. type + repr 로깅 강화 | ✅ v183 |
+| **BUG-146** | inventory_rebalancer가 USDT 잔고만 트래킹 → Upbit/Bithumb/Coinone $0. KRW 잔고 krw_usdt_rate(0.000676)로 USD 환산하여 추가 | ✅ v184 |
+| **BUG-147** | triangular.py 내 silent return 경로 다수 (signal 59건 생성 vs accepted 0건). min_profit 필터에 DEBUG 로그 추가 | ✅ v184 |
+| **BUG-148** | capital.tier 하드코딩 → runtime balance 기반 동적 산출. v185: tier $120 → live $179.92 자동 인식 (+50% per_trade) | ✅ v185 |
+
 ### 📋 8 전략 코드 완성도 검증 (v182 기준)
 
 | # | 전략 | 등록 | 코드 | 검증 상태 |
