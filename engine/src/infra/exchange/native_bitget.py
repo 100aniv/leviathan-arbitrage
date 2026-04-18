@@ -1144,10 +1144,19 @@ class NativeBitgetAdapter(NativeAdapter):
                     signed=True,
                 )
             positions = []
-            for item in resp.get("data", []):
+            # BUG-180: V3 /current-position returns data={list,cursor} (dict), V2 returns list.
+            # V3 field names differ: posSide/avgPrice/unrealisedPnl vs holdSide/averageOpenPrice/unrealizedPL.
+            _raw = resp.get("data")
+            if isinstance(_raw, dict):
+                _items = _raw.get("list") or []
+            elif isinstance(_raw, list):
+                _items = _raw
+            else:
+                _items = []
+            for item in _items:
                 symbol_raw = item.get("symbol", "")
                 symbol = _denormalize_symbol(symbol_raw)
-                hold_side = item.get("holdSide", "long")
+                hold_side = item.get("holdSide") or item.get("posSide", "long")
                 total = Decimal(str(item.get("total", "0")))
                 if total == 0:
                     continue
@@ -1155,15 +1164,15 @@ class NativeBitgetAdapter(NativeAdapter):
 
                 # Bug 28: averageOpenPrice can be null/None for recently-opened positions (Bitget REST stale).
                 # Use mark_price as fallback. These are REAL positions — do NOT filter them out.
-                entry_raw = item.get("averageOpenPrice")
+                entry_raw = item.get("averageOpenPrice") or item.get("avgPrice")
                 if entry_raw is None or entry_raw == "" or entry_raw == "0":
                     # Stale REST data — position exists but entry not yet populated
                     # Use mark_price as proxy; reconciler will update later
                     entry_price = Decimal("0")
                 else:
                     entry_price = Decimal(str(entry_raw))
-                unrealized_pnl = Decimal(str(item.get("unrealizedPL", "0")))
-                mark_price_str = item.get("markPrice", item.get("averageOpenPrice", "0"))
+                unrealized_pnl = Decimal(str(item.get("unrealizedPL") or item.get("unrealisedPnl", "0")))
+                mark_price_str = item.get("markPrice") or item.get("averageOpenPrice") or item.get("avgPrice", "0")
                 mark_price = Decimal(str(mark_price_str))
                 positions.append(Position(
                     exchange_id=self.exchange_id,
