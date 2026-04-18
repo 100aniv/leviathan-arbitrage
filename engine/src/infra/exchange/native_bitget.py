@@ -24,7 +24,7 @@ _BITGET_RATE_LIMITS: dict[str, RateLimitConfig] = {
 }
 
 _REST_BASE = "https://api.bitget.com"
-_WS_PUBLIC = "wss://ws.bitget.com/v3/ws/public"
+_WS_PUBLIC = "wss://ws.bitget.com/v2/ws/public"  # BUG-181: V3 public WS does not exist
 
 
 def _normalize_symbol(symbol: str) -> str:
