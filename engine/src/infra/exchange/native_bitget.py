@@ -128,10 +128,21 @@ class NativeBitgetAdapter(NativeAdapter):
             raise NotImplementedError("Bitget WS disabled — 40026 User is disabled")
         if resp.get("code") not in (0, "0") and resp.get("event") != "trade":
             raise RuntimeError(f"bitget ws_place_order rejected: {resp}")
-        arg = (resp.get("arg") or [{}])[0]
-        params = arg.get("params") or {}
+        # BUG-162: Classic vs UTA 응답 구조 다름
+        # Classic: arg[0].params.orderId
+        # UTA: args[0].orderId (top-level)
+        _order_id_str = ""
+        if resp.get("args"):
+            # UTA V3
+            args_list = resp.get("args") or []
+            _order_id_str = str((args_list[0] if args_list else {}).get("orderId", ""))
+        elif resp.get("arg"):
+            # Classic V2
+            arg_list = resp.get("arg") or []
+            _params = (arg_list[0] if arg_list else {}).get("params") or {}
+            _order_id_str = str(_params.get("orderId", ""))
         return Trade(
-            trade_id=str(params.get("orderId", "")),
+            trade_id=_order_id_str,
             symbol=order.symbol,
             side=order.side,
             amount=order.amount,
