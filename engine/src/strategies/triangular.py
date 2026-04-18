@@ -122,6 +122,13 @@ class TriangularStrategy(BaseStrategy):
         min_profit = self.config.min_profit_bps / Decimal("10000")
         if signal.spread_pct < min_profit:
             self._metrics.signals_filtered += 1
+            # BUG-147: DEBUG log for rejection observability
+            logger.debug(
+                "triangular.rejected reason=min_profit spread_bps=%.2f threshold_bps=%.2f path=%s",
+                float(signal.spread_pct) * 10000,
+                float(self.config.min_profit_bps),
+                "→".join(path) if path else "?",
+            )
             return None
 
         # US-241: Sanity check — reject obviously fake spreads BEFORE cost estimation
