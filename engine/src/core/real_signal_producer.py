@@ -236,9 +236,11 @@ class RealDataSignalProducer:
             await self._evaluate_futures_futures(symbol, futures_books)
         )
 
-        # Cross-exchange KRW↔USDT arb (backtest only — live uses SignalGenerator directly)
-        # K-BT-10~12: Binance USDT vs Upbit/Bithumb/Coinone KRW comparison
-        if self._backtest_mode and exchange_id in KRW_EXCHANGES and symbol.endswith("/KRW"):
+        # Cross-exchange KRW↔USDT arb (Kimchi premium)
+        # BUG-106: removed backtest-only gate — live mode needs KRW signal visibility.
+        # Trade execution still requires strategy_id="cross_exchange_v1" enabled in
+        # strategy_activation.json + FX oracle wired (currently hardcoded 0.000714).
+        if exchange_id in KRW_EXCHANGES and symbol.endswith("/KRW"):
             signals.extend(
                 await self._evaluate_cross_exchange_krw(
                     exchange_id, symbol, book, all_books, simulated_ts=simulated_ts
