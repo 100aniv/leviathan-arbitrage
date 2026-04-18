@@ -69,6 +69,20 @@ class NativeBitgetAdapter(NativeAdapter):
         # BUG-104: map internal UUID order_id → Bitget's numeric orderId for cancel
         self._exchange_order_id_map: dict[str, str] = {}
 
+    def _is_uta(self) -> bool:
+        """BUG-169: True when Bitget UTA V3 REST/WS endpoints should be used.
+
+        Config key `execution.bitget_account_mode` drives routing:
+          - "unified" → V3 API (/api/v3/*, category=USDT-FUTURES|SPOT uppercase)
+          - "classic" → V2 API (/api/v2/mix/*, /api/v2/spot/*)
+        V2 REST returns 40085 after Bitget UTA migration; V3 is required.
+        """
+        return get_config("execution.bitget_account_mode", default="classic") == "unified"
+
+    def _v3_category(self) -> str:
+        """REST V3 body `category` field — UPPERCASE (differs from WS lowercase)."""
+        return "USDT-FUTURES" if self._market_type == "futures" else "SPOT"
+
     async def _get_ws_trade(self) -> Any:
         """Lazy-connect Bitget V2 WS trade client (BUG-120)."""
         if self._ws_trade is None:
@@ -165,15 +179,23 @@ class NativeBitgetAdapter(NativeAdapter):
         Calls Bitget /api/v2/mix/account/accounts once at connect time.
         Result cached in self._pos_mode ("hedge" | "one_way").
         Binance Futures never needs this — it is always one-way.
+        BUG-169: UTA V3 uses /api/v3/account/assets with category body.
         """
         if self._market_type != "futures":
             return
         try:
-            resp = await self._request(
-                "GET", "/api/v2/mix/account/accounts",
-                params={"productType": "USDT-FUTURES"},
-                signed=True,
-            )
+            if self._is_uta():
+                resp = await self._request(
+                    "GET", "/api/v3/account/assets",
+                    params={"category": "USDT-FUTURES"},
+                    signed=True,
+                )
+            else:
+                resp = await self._request(
+                    "GET", "/api/v2/mix/account/accounts",
+                    params={"productType": "USDT-FUTURES"},
+                    signed=True,
+                )
             data = resp.get("data", [])
             if data:
                 raw_mode = data[0].get("posMode", "one_way_mode")
@@ -362,16 +384,29 @@ class NativeBitgetAdapter(NativeAdapter):
             _default_lev = int(get_config("execution.default_futures_leverage") or 5)
             _leverage = int(order.metadata.get("leverage", _default_lev)) if order.metadata else _default_lev
             try:
-                await self._request(
-                    "POST", "/api/v2/mix/account/set-leverage",
-                    data={
-                        "symbol": _normalize_symbol(order.symbol),
-                        "productType": "USDT-FUTURES",
-                        "marginCoin": "USDT",
-                        "leverage": str(_leverage),
-                    },
-                    signed=True,
-                )
+                # BUG-169: UTA V3 uses /api/v3/account/set-leverage with category
+                if self._is_uta():
+                    await self._request(
+                        "POST", "/api/v3/account/set-leverage",
+                        data={
+                            "category": "USDT-FUTURES",
+                            "symbol": _normalize_symbol(order.symbol),
+                            "marginCoin": "USDT",
+                            "leverage": str(_leverage),
+                        },
+                        signed=True,
+                    )
+                else:
+                    await self._request(
+                        "POST", "/api/v2/mix/account/set-leverage",
+                        data={
+                            "symbol": _normalize_symbol(order.symbol),
+                            "productType": "USDT-FUTURES",
+                            "marginCoin": "USDT",
+                            "leverage": str(_leverage),
+                        },
+                        signed=True,
+                    )
                 logger.debug("leverage_set symbol=%s leverage=%d", order.symbol, _leverage)
             except Exception as _lev_err:
                 logger.warning("leverage_set_failed symbol=%s error=%s", order.symbol, _lev_err)
@@ -427,7 +462,9 @@ class NativeBitgetAdapter(NativeAdapter):
 
             # BUG-NEW: Bitget place-order with tradeSide=close returns 22002 even when
             # position exists. Use /close-positions endpoint for all close orders instead.
-            if body.get("tradeSide") == "close":
+            # BUG-169: UTA V3 has no dedicated close-positions endpoint — use place-order
+            # with reduceOnly=yes. Non-UTA path retains V2 /close-positions behavior.
+            if body.get("tradeSide") == "close" and not self._is_uta():
                 _hold_side = "long" if side == "sell" else "short"
                 _close_body = {
                     "symbol": sym,
@@ -500,8 +537,34 @@ class NativeBitgetAdapter(NativeAdapter):
                         )
                     raise
 
+            # BUG-169: UTA V3 place-order — remap body to V3 schema
+            if self._is_uta():
+                _is_close_v3 = body.get("tradeSide") == "close"
+                _v3_body: dict[str, Any] = {
+                    "category": "USDT-FUTURES",
+                    "symbol": body["symbol"],
+                    "marginMode": body["marginMode"],
+                    "marginCoin": body["marginCoin"],
+                    "qty": body["size"],
+                    "side": body["side"],
+                    "orderType": body["orderType"],
+                    "timeInForce": body["force"],
+                }
+                if "price" in body:
+                    _v3_body["price"] = body["price"]
+                if "clientOid" in body:
+                    _v3_body["clientOid"] = body["clientOid"]
+                if "posSide" in body:
+                    _v3_body["posSide"] = body["posSide"]
+                if _is_close_v3:
+                    _v3_body["reduceOnly"] = "yes"
+                _v3_path = "/api/v3/trade/place-order"
+                _v3_body_ref = _v3_body  # keep reference for retry block
             try:
-                resp = await self._request("POST", "/api/v2/mix/order/place-order", data=body, signed=True)
+                if self._is_uta():
+                    resp = await self._request("POST", _v3_path, data=_v3_body_ref, signed=True)
+                else:
+                    resp = await self._request("POST", "/api/v2/mix/order/place-order", data=body, signed=True)
             except Exception as _exc:
                 import httpx as _httpx
                 _err_code = ""
@@ -540,9 +603,17 @@ class NativeBitgetAdapter(NativeAdapter):
                     )
                     body["orderType"] = "market"
                     body.pop("price", None)
-                    resp = await self._request(
-                        "POST", "/api/v2/mix/order/place-order", data=body, signed=True
-                    )
+                    # BUG-169: UTA V3 retry uses V3 path + v3 body shape
+                    if self._is_uta():
+                        _v3_body_ref["orderType"] = "market"
+                        _v3_body_ref.pop("price", None)
+                        resp = await self._request(
+                            "POST", _v3_path, data=_v3_body_ref, signed=True
+                        )
+                    else:
+                        resp = await self._request(
+                            "POST", "/api/v2/mix/order/place-order", data=body, signed=True
+                        )
                 else:
                     raise
         else:
@@ -561,7 +632,27 @@ class NativeBitgetAdapter(NativeAdapter):
                 body["price"] = self._quantize_spot_price(order.symbol, order.price)
             if order.client_order_id:
                 body["clientOid"] = order.client_order_id
-            resp = await self._request("POST", "/api/v2/spot/trade/place-order", data=body, signed=True)
+            # BUG-169: UTA V3 spot place-order
+            if self._is_uta():
+                _v3_spot_body: dict[str, Any] = {
+                    "category": "SPOT",
+                    "symbol": body["symbol"],
+                    "side": body["side"],
+                    "orderType": body["orderType"],
+                    "qty": body["size"],
+                    "timeInForce": body["force"],
+                }
+                if "price" in body:
+                    _v3_spot_body["price"] = body["price"]
+                if "clientOid" in body:
+                    _v3_spot_body["clientOid"] = body["clientOid"]
+                resp = await self._request(
+                    "POST", "/api/v3/trade/place-order", data=_v3_spot_body, signed=True
+                )
+            else:
+                resp = await self._request(
+                    "POST", "/api/v2/spot/trade/place-order", data=body, signed=True
+                )
         rd = resp.get("data", {}) or {}
         trade_id = str(rd.get("orderId", ""))
         # BUG-108: validate Bitget soft-error responses.
@@ -623,15 +714,27 @@ class NativeBitgetAdapter(NativeAdapter):
             for _attempt in range(3):
                 await _asyncio.sleep(0.2)
                 try:
-                    _detail = await self._request(
-                        "GET", "/api/v2/mix/order/detail",
-                        params={
-                            "symbol": sym,
-                            "productType": "USDT-FUTURES",
-                            "orderId": trade_id,
-                        },
-                        signed=True,
-                    )
+                    # BUG-169: UTA V3 order detail endpoint
+                    if self._is_uta():
+                        _detail = await self._request(
+                            "GET", "/api/v3/trade/order-info",
+                            params={
+                                "category": "USDT-FUTURES",
+                                "symbol": sym,
+                                "orderId": trade_id,
+                            },
+                            signed=True,
+                        )
+                    else:
+                        _detail = await self._request(
+                            "GET", "/api/v2/mix/order/detail",
+                            params={
+                                "symbol": sym,
+                                "productType": "USDT-FUTURES",
+                                "orderId": trade_id,
+                            },
+                            signed=True,
+                        )
                     _d = _detail.get("data", {})
                     _status = _d.get("status", "")
                     if _status in ("filled", "partially_filled"):
@@ -691,15 +794,27 @@ class NativeBitgetAdapter(NativeAdapter):
                 if _fill_attempt > 0:
                     await _asyncio.sleep(1.5)
                 try:
-                    _fills_resp = await self._request(
-                        "GET", "/api/v2/mix/order/fills",
-                        params={
-                            "symbol": sym,
-                            "productType": "USDT-FUTURES",
-                            "orderId": trade_id,
-                        },
-                        signed=True,
-                    )
+                    # BUG-169: UTA V3 fills-history endpoint
+                    if self._is_uta():
+                        _fills_resp = await self._request(
+                            "GET", "/api/v3/trade/fills-history",
+                            params={
+                                "category": "USDT-FUTURES",
+                                "symbol": sym,
+                                "orderId": trade_id,
+                            },
+                            signed=True,
+                        )
+                    else:
+                        _fills_resp = await self._request(
+                            "GET", "/api/v2/mix/order/fills",
+                            params={
+                                "symbol": sym,
+                                "productType": "USDT-FUTURES",
+                                "orderId": trade_id,
+                            },
+                            signed=True,
+                        )
                     _fills = _fills_resp.get("data") or {}
                     if isinstance(_fills, dict):
                         _fills = _fills.get("fillList") or _fills.get("list") or []
@@ -741,16 +856,29 @@ class NativeBitgetAdapter(NativeAdapter):
                 try:
                     _ts_from = str(int((_time.time() - 300) * 1000))  # last 5 minutes
                     _ts_to = str(int(_time.time() * 1000))
-                    _fb_resp = await self._request(
-                        "GET", "/api/v2/mix/order/fills",
-                        params={
-                            "symbol": sym,
-                            "productType": "USDT-FUTURES",
-                            "startTime": _ts_from,
-                            "endTime": _ts_to,
-                        },
-                        signed=True,
-                    )
+                    # BUG-169: UTA V3 fills-history endpoint (time-window)
+                    if self._is_uta():
+                        _fb_resp = await self._request(
+                            "GET", "/api/v3/trade/fills-history",
+                            params={
+                                "category": "USDT-FUTURES",
+                                "symbol": sym,
+                                "startTime": _ts_from,
+                                "endTime": _ts_to,
+                            },
+                            signed=True,
+                        )
+                    else:
+                        _fb_resp = await self._request(
+                            "GET", "/api/v2/mix/order/fills",
+                            params={
+                                "symbol": sym,
+                                "productType": "USDT-FUTURES",
+                                "startTime": _ts_from,
+                                "endTime": _ts_to,
+                            },
+                            signed=True,
+                        )
                     _fb_data = _fb_resp.get("data") or {}
                     if isinstance(_fb_data, dict):
                         _fb_data = _fb_data.get("fillList") or _fb_data.get("list") or []
@@ -826,19 +954,31 @@ class NativeBitgetAdapter(NativeAdapter):
         # Use .get() (not .pop()) so the mapping survives a non-success response —
         # retry paths would otherwise fall back to raw UUID and get error 40017 again.
         resolved_id = self._exchange_order_id_map.get(order_id, order_id)
-        body: dict[str, Any] = {"orderId": resolved_id}
-        if symbol:
-            body["symbol"] = _normalize_symbol(symbol)
-        if self._market_type == "futures":
-            body["productType"] = "USDT-FUTURES"
-            body["marginCoin"] = "USDT"  # BUG-03: required by Bitget V2 mix cancel API
+        # BUG-169: UTA V3 uses /api/v3/trade/cancel-order with category body
+        if self._is_uta():
+            v3_body: dict[str, Any] = {
+                "category": self._v3_category(),
+                "orderId": resolved_id,
+            }
+            if symbol:
+                v3_body["symbol"] = _normalize_symbol(symbol)
             resp = await self._request(
-                "POST", "/api/v2/mix/order/cancel-order", data=body, signed=True
+                "POST", "/api/v3/trade/cancel-order", data=v3_body, signed=True
             )
         else:
-            resp = await self._request(
-                "POST", "/api/v2/spot/trade/cancel-order", data=body, signed=True
-            )
+            body: dict[str, Any] = {"orderId": resolved_id}
+            if symbol:
+                body["symbol"] = _normalize_symbol(symbol)
+            if self._market_type == "futures":
+                body["productType"] = "USDT-FUTURES"
+                body["marginCoin"] = "USDT"  # BUG-03: required by Bitget V2 mix cancel API
+                resp = await self._request(
+                    "POST", "/api/v2/mix/order/cancel-order", data=body, signed=True
+                )
+            else:
+                resp = await self._request(
+                    "POST", "/api/v2/spot/trade/cancel-order", data=body, signed=True
+                )
         code = resp.get("code", "")
         if code == "00000":
             self._exchange_order_id_map.pop(order_id, None)  # clean up on confirmed success
@@ -851,6 +991,20 @@ class NativeBitgetAdapter(NativeAdapter):
         return False
 
     async def _rest_cancel_all_orders(self, symbol: str | None) -> int:
+        # BUG-169: UTA V3 uses single /api/v3/trade/cancel-batch for both spot+futures
+        if self._is_uta():
+            v3_body: dict[str, Any] = {"category": self._v3_category()}
+            if symbol:
+                v3_body["symbol"] = _normalize_symbol(symbol)
+            resp = await self._request(
+                "POST", "/api/v3/trade/cancel-batch", data=v3_body, signed=True
+            )
+            data = resp.get("data", {})
+            if isinstance(data, dict):
+                return len(data.get("successList", []))
+            if isinstance(data, list):
+                return len(data)
+            return 0
         if self._market_type == "futures":
             body: dict[str, Any] = {"productType": "USDT-FUTURES"}
             if symbol:
@@ -873,12 +1027,27 @@ class NativeBitgetAdapter(NativeAdapter):
         return len(cancelled) if isinstance(cancelled, list) else 0
 
     async def _rest_get_balances(self) -> dict[str, Balance]:
+        # BUG-169: UTA V3 uses /api/v3/account/assets with category (SPOT or USDT-FUTURES)
+        if self._is_uta():
+            resp = await self._request(
+                "GET", "/api/v3/account/assets",
+                params={"category": self._v3_category()},
+                signed=True,
+            )
+            result: dict[str, Balance] = {}
+            for item in resp.get("data", []):
+                # V3 response fields: coin (spot) or marginCoin (futures)
+                cur = item.get("coin") or item.get("marginCoin", "")
+                free = Decimal(str(item.get("available", "0")))
+                frozen = Decimal(str(item.get("frozen") or item.get("locked") or "0"))
+                result[cur] = Balance(currency=cur, free=free, used=frozen, total=free + frozen)
+            return result
         if self._market_type == "futures":
             resp = await self._request(
                 "GET", "/api/v2/mix/account/accounts",
                 params={"productType": "USDT-FUTURES"}, signed=True,
             )
-            result: dict[str, Balance] = {}
+            result = {}
             for item in resp.get("data", []):
                 cur = item.get("marginCoin", "")
                 free = Decimal(str(item.get("available", "0")))
@@ -898,11 +1067,19 @@ class NativeBitgetAdapter(NativeAdapter):
         if self._market_type != "futures":
             return []
         try:
-            resp = await self._request(
-                "GET", "/api/v2/mix/position/all-position",
-                params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
-                signed=True,
-            )
+            # BUG-169: UTA V3 uses /api/v3/position/current-position with category
+            if self._is_uta():
+                resp = await self._request(
+                    "GET", "/api/v3/position/current-position",
+                    params={"category": "USDT-FUTURES"},
+                    signed=True,
+                )
+            else:
+                resp = await self._request(
+                    "GET", "/api/v2/mix/position/all-position",
+                    params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
+                    signed=True,
+                )
             positions = []
             for item in resp.get("data", []):
                 symbol_raw = item.get("symbol", "")
@@ -982,7 +1159,13 @@ class NativeBitgetAdapter(NativeAdapter):
             params["startTime"] = str(start_time_ms)
         await self._rate_limiter.acquire("default")  # 10 req/s, burst 20
         try:
-            resp = await self._request("GET", "/api/v2/mix/order/fills", params=params, signed=True)
+            # BUG-169: UTA V3 fills-history endpoint with category
+            if self._is_uta():
+                v3_params = {k: v for k, v in params.items() if k != "productType"}
+                v3_params["category"] = "USDT-FUTURES"
+                resp = await self._request("GET", "/api/v3/trade/fills-history", params=v3_params, signed=True)
+            else:
+                resp = await self._request("GET", "/api/v2/mix/order/fills", params=params, signed=True)
             fill_list = []
             if isinstance(resp, dict):
                 raw_data = resp.get("data")

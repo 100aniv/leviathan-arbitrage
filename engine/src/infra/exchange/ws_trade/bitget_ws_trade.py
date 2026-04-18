@@ -28,7 +28,7 @@ import websockets
 
 logger = logging.getLogger(__name__)
 
-_WS_URL = "wss://ws.bitget.com/v2/ws/private"
+_WS_URL = "wss://ws.bitget.com/v3/ws/private"
 _RESPONSE_TIMEOUT_S = 5.0
 _LOGIN_TIMEOUT_S = 10.0
 
@@ -168,6 +168,7 @@ class BitgetWSTrade:
         client_oid: Optional[str] = None,
         marginMode: Optional[str] = None,
         account_mode: str = "classic",  # BUG-162: "classic" | "unified" (UTA V3)
+        pos_side: Optional[str] = None,  # BUG-169: hedge mode posSide ("long" | "short")
         **extra: Any,
     ) -> dict[str, Any]:
         """Send order via WS. Returns parsed response dict (event=trade or error).
@@ -196,8 +197,16 @@ class BitgetWSTrade:
         req_id = str(uuid.uuid4())
         # BUG-162: UTA V3 payload uses different field names
         if account_mode == "unified":
-            # UTA: category, topic, qty, timeInForce, symbol
-            _category = "futures" if inst_type == "USDT-FUTURES" else "spot"
+            # UTA V3 WS: category, topic, qty, timeInForce, symbol
+            # BUG-169: V3 WS spec uses lowercase with hyphen for category
+            if inst_type == "USDT-FUTURES":
+                _category = "usdt-futures"
+            elif inst_type == "COIN-FUTURES":
+                _category = "coin-futures"
+            elif inst_type == "USDC-FUTURES":
+                _category = "usdc-futures"
+            else:
+                _category = "spot"
             args_inner = {
                 "symbol": inst_id,
                 "orderType": order_type.lower(),
@@ -209,6 +218,9 @@ class BitgetWSTrade:
                 args_inner["price"] = str(price)
             if client_oid:
                 args_inner["clientOid"] = client_oid
+            # BUG-169: hedge mode posSide ("long" | "short")
+            if pos_side:
+                args_inner["posSide"] = pos_side
             # UTA 는 marginMode/marginCoin 불필요 (자동 관리)
             for k, v in extra.items():
                 if v is not None and k not in ("marginMode", "marginCoin"):

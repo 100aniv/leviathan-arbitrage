@@ -200,7 +200,8 @@ class TestBitgetUTAPayload:
         payload = _j.loads(sent_messages[0])
         # UTA 구조 검증
         assert payload["op"] == "trade"
-        assert payload["category"] == "futures"  # USDT-FUTURES → futures
+        # BUG-169: V3 WS spec — lowercase with hyphen
+        assert payload["category"] == "usdt-futures"  # USDT-FUTURES → usdt-futures
         assert payload["topic"] == "place-order"
         assert "instType" not in payload  # Classic 전용
         assert "channel" not in payload   # Classic 전용
