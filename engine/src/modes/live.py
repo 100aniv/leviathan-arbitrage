@@ -995,12 +995,18 @@ class LiveMode(BaseMode):
         # --- RealDataSignalProducer (spot_futures, funding_rate, stat_arb, etc.) ---
         if self._real_signal_producer is not None:
             try:
+                # BUG-100: all_books must be full {symbol: {exchange: book}} dict
+                # (real_signal_producer internally does all_books.get(symbol, {}) again,
+                # so passing pre-indexed {exchange: book} yielded empty spot_books → SF 0 signals).
+                # BUG-103: shallow copy to prevent "dict changed size during iteration"
+                # (collectors concurrently mutate self._books).
+                _books_snapshot = dict(self._books)
                 signals = await self._real_signal_producer.on_orderbook_update(
                     exchange_id=exchange_id,
                     symbol=symbol,
                     book=core_book,
-                    all_books=self._books.get(symbol, {}),
-                    futures_books=self._books,
+                    all_books=_books_snapshot,
+                    futures_books=_books_snapshot,
                 )
                 for signal in (signals or []):
                     if self._strategy_manager is not None:

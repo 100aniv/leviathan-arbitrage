@@ -118,6 +118,11 @@ class RecoveryManager:
             return True
 
         for entry in wal_entries:
+            # BUG-97: skip CLOSE entries — they indicate position already closed,
+            # no need to reconcile against live exchange state.
+            if entry.get("event_type") == "CLOSE":
+                continue
+
             exchange_id = entry["exchange_id"]
             symbol = entry["symbol"]
 
@@ -129,8 +134,16 @@ class RecoveryManager:
                 )
                 continue
 
+            # BUG-97: native adapters use get_positions() (list), ccxt uses fetch_position(symbol) (dict).
+            # Duck-type: prefer native get_positions() when available, fallback to ccxt.
             try:
-                exchange_position = await client.fetch_position(symbol)
+                if hasattr(client, "get_positions"):
+                    positions = await client.get_positions()
+                    _p = next((p for p in positions if getattr(p, "symbol", None) == symbol), None)
+                    exchange_qty = Decimal(str(getattr(_p, "quantity", 0))) if _p else Decimal("0")
+                else:
+                    exchange_position = await client.fetch_position(symbol)
+                    exchange_qty = Decimal(str(exchange_position.get("quantity", 0)))
             except Exception as exc:
                 logger.error(
                     "Failed to fetch position from %s for %s: %s",
@@ -139,7 +152,6 @@ class RecoveryManager:
                 return False
 
             wal_qty = Decimal(str(entry["quantity"]))
-            exchange_qty = Decimal(str(exchange_position.get("quantity", 0)))
 
             # Allow 0.01% tolerance for rounding differences
             tolerance = wal_qty * Decimal("0.0001")

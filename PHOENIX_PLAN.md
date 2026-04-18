@@ -18,8 +18,9 @@
 
 **현재**: Phase 2 Step 2-2 — FF(45bps) + FR(5bps) 동시 운영 (카나리 재개 대기)  
 **설정**: max_hold=1800s, edge=10bps, min_spread=45bps (v108 수익 설정)  
-**구조 리팩토링 v2/v3**: WS-1/2/3 + BUG-93/94/95/96 완료  
-**60+ commits** (v94~v137), 27 bugs fixed (BUG-73~96)
+**구조 리팩토링 v2/v3**: WS-1/2/3 + BUG-93/94/95/96/97/98 완료  
+**70+ commits** (v94~v145), 29 bugs fixed (BUG-73~98)  
+**v141~v145 인프라 튜닝**: Redis client(retry/keepalive/timeout 5s/pool 100), Freshness guard FF+SF 3s→5s, recovery.py native-adapter 호환 (duck-typing), ERROR→WARNING (transient timeout)
 
 ### 구조 리팩토링 결과 (2026-04-17, 5개 감사 → 4개 워크스트림 + BUG-93~96)
 | WS / BUG | 내용 | 커밋 | 테스트 |
@@ -38,6 +39,16 @@
 | BUG-96 GAP#3 | CancelledError + Exception handler | `28be30e` | 221 pass |
 | BUG-96 HIGH | _notify_pre_exec_rollback 멱등성 guard | `5eaa0b8` | 46 pass |
 | BUG-96 tests | 방어 경로 regression 커버리지 5개 | `4ed276f` | **5 new** |
+| BUG-97 | recovery.py ccxt-only `fetch_position` → native adapter 호환 (duck-type + CLOSE skip) | v142/v143 | 20 pass |
+| BUG-98 | SF freshness guard 3s→5s (FF 일치, 저유동성 SF 지원) | v145 | — |
+| BUG-100 | **CRITICAL** SF `all_books` 파라미터 구조 오류 (live.py:1002) — pre-indexed dict 전달 → spot_books 영구 빈값 → SF 시그널 0건 (5분 v145 가동 중 0) | v146 | — |
+| BUG-101 | `get_lot_step` 2-leg sequential → parallel (asyncio.gather) — cross-exchange 마이너 latency 감소 | v147 | — |
+| BUG-103 | `dict changed size during iteration` — BUG-100 fix 후 race condition 발생, shallow copy로 해결 | v147 | — |
+| BUG-103.2 | Inner dict race (SF/FF) — producer 내 `dict(all_books.get(symbol, {}))` inner snapshot 추가 | v148 | 13 pass |
+| BUG-103.3 | Inner race 확장 (FR/LatencyArb/XE-KRW) — 모든 evaluator inner snapshot 적용 | v149 | 13 pass |
+| **v146 실증** | BUG-100 fix 후 **3분 SF 11,087 signals** (이전 v145 0건) → Step 2-1.5 활성 확인 | v146 | 175 exec tests |
+| Redis client | retry_on_timeout, health_check_interval=30, socket_keepalive, pool=100, transient ERR→WARNING | v141~ | 20 pass |
+| FF freshness | 3s→5s (fresh_drop 70%→35% 증명, v143) | v143 | — |
 
 근거: Opus 감사 에이전트 5개 (Config/Position/Pipeline/Execute_callback/Next_improvement) + Opus Critic/code-reviewer 리뷰 + Codex + Gemini 멀티모델 합의 + /ultrareview 8건 피드백 + v131→v137 실증 측정
 
@@ -203,6 +214,20 @@ min_trade_notional_usd: $5
 | WS-1 | trading.json leak + Pydantic override 누락 | ✅ deep-merge 제거 + 3개 override 추가 |
 | WS-2 | entry/exit rollback 의미 충돌 | ✅ 4-콜백 분리 + clear_ghost |
 | WS-3 | PositionManager dead code + 롤백 누수 | ✅ 실행 경로 연결 + _position_sizes 수정 |
+| BUG-93 | LiveMode position_manager param 누락 | ✅ main.py → live.py wire |
+| BUG-94 | FF optimistic write (_pending_position_metadata two-phase) | ✅ ghost=0 설계 |
+| BUG-95 (x4) | duplicate signal race, exit rollback ghost, on_fill eager cleanup, dispatch | ✅ clear_pending_entry + TTL reaper + 4-callback |
+| BUG-96 (x4) | margin guard missing pre-exec clear, defensive rollback, CancelledError, idempotency | ✅ clear_pending_entry + early return + try/except + guard |
+| **BUG-97** | recovery.py ccxt-only `fetch_position` → native adapter 호환 (duck-type + CLOSE skip) | ✅ v143 / 20 pass |
+| **BUG-98** | SF freshness guard 3s→5s (FF 일치, 저유동성 SF 지원) | ✅ v145 |
+| **BUG-100** | **CRITICAL** SF all_books 파라미터 구조 오류 (live.py:1002) | ✅ v146 / SF 11k signals 증명 |
+| **BUG-101** | `get_lot_step` 2-leg sequential → parallel | ✅ v147 / ~200ms 절감 |
+| **BUG-103** | dict changed size during iteration (outer shallow copy) | ✅ v147 |
+| **BUG-103.2** | SF/FF inner dict race (snapshot) | ✅ v148 / 13 pass |
+| **BUG-103.3** | FR/LatencyArb/XE inner race (모든 evaluator snapshot) | ✅ v149 / 13 pass |
+| Redis tuning | retry_on_timeout + health_check_interval + socket_keepalive + pool=100 + timeout=5s | ✅ v141~ / 20 pass |
+| Redis logs | transient xadd/xreadgroup ERROR→WARN (auto-recovery 있음) | ✅ v141~ |
+| FF freshness | 3s→5s (fresh_drop 70%→35% 증명) | ✅ v143 |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
 ```python

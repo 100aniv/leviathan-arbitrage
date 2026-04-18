@@ -166,3 +166,83 @@ class TestRecoveryProtocol:
         manager._clear_halt.assert_called_once()
 
         assert is_halted() is False
+
+
+class TestReconcileWithExchangeBug97:
+    """BUG-97: native adapter duck-typing + CLOSE entry skip."""
+
+    @pytest.mark.asyncio
+    async def test_native_adapter_get_positions_used(self):
+        """Native adapter uses get_positions() (list), not fetch_position()."""
+        from src.infra.db.recovery import RecoveryManager
+
+        manager = RecoveryManager.__new__(RecoveryManager)
+
+        class _Pos:
+            def __init__(self, symbol, quantity):
+                self.symbol = symbol
+                self.quantity = quantity
+
+        class _NativeAdapter:
+            async def get_positions(self):
+                return [_Pos("BTC/USDT", Decimal("0.1"))]
+
+        manager._exchange_clients = {"binance_futures": _NativeAdapter()}
+
+        wal = [{
+            "strategy_id": "s1",
+            "exchange_id": "binance_futures",
+            "symbol": "BTC/USDT",
+            "side": "LONG",
+            "quantity": Decimal("0.1"),
+            "avg_price": Decimal("50000"),
+            "event_type": "OPEN",
+        }]
+        result = await manager._reconcile_with_exchange(wal)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_close_entry_skipped(self):
+        """CLOSE entries are skipped — no reconciliation needed."""
+        from src.infra.db.recovery import RecoveryManager
+
+        manager = RecoveryManager.__new__(RecoveryManager)
+        manager._exchange_clients = {}  # no client needed — CLOSE skipped
+
+        wal = [{
+            "strategy_id": "s1",
+            "exchange_id": "binance_futures",
+            "symbol": "ZBT/USDT",
+            "side": "LONG",
+            "quantity": Decimal("50"),
+            "avg_price": Decimal("1.0"),
+            "event_type": "CLOSE",
+        }]
+        result = await manager._reconcile_with_exchange(wal)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_ccxt_adapter_fetch_position_fallback(self):
+        """ccxt adapter (has fetch_position) uses that path."""
+        from src.infra.db.recovery import RecoveryManager
+
+        manager = RecoveryManager.__new__(RecoveryManager)
+
+        class _CcxtAdapter:
+            # No get_positions attribute — forces fetch_position path
+            async def fetch_position(self, symbol):
+                return {"quantity": "0.1"}
+
+        manager._exchange_clients = {"binance": _CcxtAdapter()}
+
+        wal = [{
+            "strategy_id": "s1",
+            "exchange_id": "binance",
+            "symbol": "BTC/USDT",
+            "side": "LONG",
+            "quantity": Decimal("0.1"),
+            "avg_price": Decimal("50000"),
+            "event_type": "OPEN",
+        }]
+        result = await manager._reconcile_with_exchange(wal)
+        assert result is True

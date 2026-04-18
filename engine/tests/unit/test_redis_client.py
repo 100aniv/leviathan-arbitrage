@@ -22,7 +22,11 @@ class TestRedisConfig:
         assert config.host == "localhost"
         assert config.port == 6379
         assert config.db == 0
-        assert config.max_connections == 20
+        assert config.max_connections == 100
+        assert config.socket_timeout == 5.0
+        assert config.socket_keepalive is True
+        assert config.health_check_interval == 30
+        assert config.retry_on_timeout is True
 
     def test_custom_values(self):
         config = RedisConfig(host="redis", port=6380, db=1, max_connections=10)

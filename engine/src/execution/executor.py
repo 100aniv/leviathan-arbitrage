@@ -941,8 +941,11 @@ class AtomicExecutor:
         # becomes 2.0 on Binance and 2.038 on Bitget → $0.20 net-long mismatch.
         # Fix: compute the coarser (larger) step and floor BOTH legs to it.
         try:
-            _step_a = await adapter_a.get_lot_step(leg1_order.symbol)
-            _step_b = await adapter_b.get_lot_step(leg2_order.symbol)
+            # BUG-101 (partial): parallel lot_step fetch (was sequential, 2x REST latency)
+            _step_a, _step_b = await asyncio.gather(
+                adapter_a.get_lot_step(leg1_order.symbol),
+                adapter_b.get_lot_step(leg2_order.symbol),
+            )
             _coarser = max(_step_a, _step_b)
             if _coarser > Decimal("0"):
                 _synced = (leg1_order.amount // _coarser) * _coarser

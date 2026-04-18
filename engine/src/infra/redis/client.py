@@ -21,9 +21,12 @@ class RedisConfig:
     port: int = 6379
     db: int = 0
     password: Optional[str] = None
-    max_connections: int = 20
-    socket_timeout: float = 2.0
-    socket_connect_timeout: float = 2.0
+    max_connections: int = 100
+    socket_timeout: float = 5.0
+    socket_connect_timeout: float = 5.0
+    socket_keepalive: bool = True
+    health_check_interval: int = 30
+    retry_on_timeout: bool = True
 
 
 class RedisClient:
@@ -54,6 +57,9 @@ class RedisClient:
             max_connections=self._config.max_connections,
             socket_timeout=self._config.socket_timeout,
             socket_connect_timeout=self._config.socket_connect_timeout,
+            socket_keepalive=self._config.socket_keepalive,
+            health_check_interval=self._config.health_check_interval,
+            retry_on_timeout=self._config.retry_on_timeout,
         )
         self._redis = aioredis.Redis(connection_pool=self._pool)
         await self._redis.ping()
@@ -128,7 +134,7 @@ class RedisClient:
         try:
             await self._redis.set(key, value, ex=ex)
         except Exception as exc:
-            logger.error("Redis set failed key=%s: %s", key, exc)
+            logger.warning("Redis set failed key=%s: %s", key, exc)
             self._redis = None
 
     async def get(self, key: str) -> Optional[bytes]:
@@ -137,7 +143,7 @@ class RedisClient:
         try:
             return await self._redis.get(key)
         except Exception as exc:
-            logger.error("Redis get failed key=%s: %s", key, exc)
+            logger.warning("Redis get failed key=%s: %s", key, exc)
             self._redis = None
             return None
 
@@ -147,7 +153,7 @@ class RedisClient:
         try:
             return await self._redis.delete(*keys)
         except Exception as exc:
-            logger.error("Redis delete failed: %s", exc)
+            logger.warning("Redis delete failed: %s", exc)
             self._redis = None
             return 0
 
@@ -159,7 +165,7 @@ class RedisClient:
         try:
             return await self._redis.hset(name, mapping=mapping)
         except Exception as exc:
-            logger.error("Redis hset failed name=%s: %s", name, exc)
+            logger.warning("Redis hset failed name=%s: %s", name, exc)
             self._redis = None
             return 0
 
@@ -169,7 +175,7 @@ class RedisClient:
         try:
             return await self._redis.hget(name, key)
         except Exception as exc:
-            logger.error("Redis hget failed name=%s key=%s: %s", name, key, exc)
+            logger.warning("Redis hget failed name=%s key=%s: %s", name, key, exc)
             self._redis = None
             return None
 
@@ -179,7 +185,7 @@ class RedisClient:
         try:
             return await self._redis.hgetall(name)
         except Exception as exc:
-            logger.error("Redis hgetall failed name=%s: %s", name, exc)
+            logger.warning("Redis hgetall failed name=%s: %s", name, exc)
             self._redis = None
             return {}
 
@@ -189,7 +195,7 @@ class RedisClient:
         try:
             return await self._redis.hdel(name, *keys)
         except Exception as exc:
-            logger.error("Redis hdel failed name=%s: %s", name, exc)
+            logger.warning("Redis hdel failed name=%s: %s", name, exc)
             self._redis = None
             return 0
 
@@ -201,7 +207,7 @@ class RedisClient:
         try:
             return await self._redis.zadd(name, mapping)
         except Exception as exc:
-            logger.error("Redis zadd failed name=%s: %s", name, exc)
+            logger.warning("Redis zadd failed name=%s: %s", name, exc)
             self._redis = None
             return 0
 
@@ -211,7 +217,7 @@ class RedisClient:
         try:
             return await self._redis.zrem(name, *values)
         except Exception as exc:
-            logger.error("Redis zrem failed name=%s: %s", name, exc)
+            logger.warning("Redis zrem failed name=%s: %s", name, exc)
             self._redis = None
             return 0
 
@@ -223,7 +229,7 @@ class RedisClient:
         try:
             return await self._redis.zrangebyscore(name, min, max, withscores=withscores)
         except Exception as exc:
-            logger.error("Redis zrangebyscore failed name=%s: %s", name, exc)
+            logger.warning("Redis zrangebyscore failed name=%s: %s", name, exc)
             self._redis = None
             return []
 
@@ -233,7 +239,7 @@ class RedisClient:
         try:
             return await self._redis.zremrangebyscore(name, min, max)
         except Exception as exc:
-            logger.error("Redis zremrangebyscore failed name=%s: %s", name, exc)
+            logger.warning("Redis zremrangebyscore failed name=%s: %s", name, exc)
             self._redis = None
             return 0
 
@@ -251,7 +257,7 @@ class RedisClient:
                 name, fields, id=id, maxlen=maxlen, approximate=approximate,
             )
         except Exception as exc:
-            logger.error("Redis xadd failed stream=%s: %s", name, exc)
+            logger.warning("Redis xadd failed stream=%s: %s", name, exc)
             self._redis = None
             return b""
 
@@ -266,7 +272,7 @@ class RedisClient:
         try:
             return await self._redis.xread(streams, count=count, block=block)
         except Exception as exc:
-            logger.error("Redis xread failed: %s", exc)
+            logger.warning("Redis xread failed: %s", exc)
             self._redis = None
             return []
 
@@ -287,7 +293,7 @@ class RedisClient:
                 count=count, block=block, noack=noack,
             )
         except Exception as exc:
-            logger.error("Redis xreadgroup failed group=%s: %s", groupname, exc)
+            logger.warning("Redis xreadgroup failed group=%s: %s", groupname, exc)
             self._redis = None
             return []
 
@@ -300,7 +306,7 @@ class RedisClient:
             await self._redis.xgroup_create(name, groupname, id=id, mkstream=mkstream)
         except Exception as exc:
             if "BUSYGROUP" not in str(exc):
-                logger.error("Redis xgroup_create failed stream=%s group=%s: %s", name, groupname, exc)
+                logger.warning("Redis xgroup_create failed stream=%s group=%s: %s", name, groupname, exc)
                 self._redis = None
 
     async def xack(self, name: str, groupname: str, *ids) -> int:
@@ -309,7 +315,7 @@ class RedisClient:
         try:
             return await self._redis.xack(name, groupname, *ids)
         except Exception as exc:
-            logger.error("Redis xack failed stream=%s: %s", name, exc)
+            logger.warning("Redis xack failed stream=%s: %s", name, exc)
             self._redis = None
             return 0
 
@@ -319,7 +325,7 @@ class RedisClient:
         try:
             return await self._redis.xpending(name, groupname)
         except Exception as exc:
-            logger.error("Redis xpending failed stream=%s: %s", name, exc)
+            logger.warning("Redis xpending failed stream=%s: %s", name, exc)
             self._redis = None
             return {}
 
@@ -338,6 +344,6 @@ class RedisClient:
                 name, groupname, consumername, min_idle_time, message_ids
             )
         except Exception as exc:
-            logger.error("Redis xclaim failed stream=%s: %s", name, exc)
+            logger.warning("Redis xclaim failed stream=%s: %s", name, exc)
             self._redis = None
             return []

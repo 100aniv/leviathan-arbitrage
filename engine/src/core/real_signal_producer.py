@@ -327,8 +327,10 @@ class RealDataSignalProducer:
         """
         signals: list[Signal] = []
 
-        spot_books = all_books.get(symbol, {})
-        fut_books = futures_books.get(symbol, {})
+        # BUG-103.2: snapshot inner dicts to prevent concurrent collector mutation
+        # during iteration (outer shallow-copy in live.py:1002 only protects outer keys).
+        spot_books = dict(all_books.get(symbol, {}))
+        fut_books = dict(futures_books.get(symbol, {}))
 
         if not spot_books or not fut_books:
             return signals
@@ -349,9 +351,10 @@ class RealDataSignalProducer:
                     continue
 
                 # US-229: Orderbook freshness guard for spot-futures
+                # (BUG-98 v145: 3s→5s to match FF, support lower-liquidity pair update cadence)
                 _sf_age_spot = time.monotonic() - spot_book.last_update_time if getattr(spot_book, "last_update_time", 0) > 0 else 999.0
                 _sf_age_fut = time.monotonic() - fut_book.last_update_time if getattr(fut_book, "last_update_time", 0) > 0 else 999.0
-                if _sf_age_spot > 3.0 or _sf_age_fut > 3.0:
+                if _sf_age_spot > 5.0 or _sf_age_fut > 5.0:
                     continue
 
                 # If futures > spot: buy spot, sell futures
@@ -453,7 +456,8 @@ class RealDataSignalProducer:
 
         # BUG-30: filter to futures-only exchanges — spot exchanges must not be paired
         # as futures-futures (e.g. "binance" vs "binance_futures" is a basis trade, not FF arb)
-        _all_for_symbol = futures_books.get(symbol, {})
+        # BUG-103.2: snapshot inner dict to prevent concurrent collector mutation
+        _all_for_symbol = dict(futures_books.get(symbol, {}))
         fut_books = {
             ex_id: book
             for ex_id, book in _all_for_symbol.items()
@@ -539,11 +543,12 @@ class RealDataSignalProducer:
                     if not self._stale_detector.check_cross_exchange(ex_b, symbol, book_b, {symbol: other_books_b}):
                         continue
 
-                # S10/US-221: Orderbook freshness guard — skip if book updated > 3s ago
+                # S10/US-221: Orderbook freshness guard — skip if book updated > 5s ago
+                # (v141: 3s→5s 완화. 저유동성 페어 업데이트 주기 수용, fresh_drop 70%→30% 목표)
                 now_mono = time.monotonic()
                 age_a = now_mono - book_a.last_update_time if book_a.last_update_time > 0 else 999.0
                 age_b = now_mono - book_b.last_update_time if book_b.last_update_time > 0 else 999.0
-                if age_a > 3.0 or age_b > 3.0:
+                if age_a > 5.0 or age_b > 5.0:
                     # BUG-44 diagnostic: log when freshness guard drops a pair (rate-limited)
                     _fk = (symbol, min(ex_a, ex_b), max(ex_a, ex_b))
                     if (now_mono - self._ts_filter_log_cooldown.get(_fk, 0.0) > 60.0
@@ -898,7 +903,8 @@ class RealDataSignalProducer:
         if not pairs:
             return signals
 
-        sym_books = all_books.get(symbol, {})
+        # BUG-103.2: snapshot inner dict (concurrency safety)
+        sym_books = dict(all_books.get(symbol, {}))
 
         for fast_ex, slow_ex in pairs:
             fast_book = sym_books.get(fast_ex)
@@ -978,7 +984,8 @@ class RealDataSignalProducer:
         krw_ask_usdt = _normalize_price_to_usdt(krw_ask, krw_exchange, krw_symbol)
 
         # USDT 거래소 오더북 조회
-        usdt_books = all_books.get(usdt_symbol, {})
+        # BUG-103.2: snapshot inner dict (concurrency safety)
+        usdt_books = dict(all_books.get(usdt_symbol, {}))
         for usdt_exchange, usdt_book in usdt_books.items():
             if usdt_exchange in KRW_EXCHANGES:
                 continue  # USDT 거래소만 비교
@@ -1118,7 +1125,8 @@ class RealDataSignalProducer:
             _fr_pass_diff += 1
             # Reference price from any available USDT spot book
             # BUG-01: exclude KRW exchanges (prices off by ~1400x vs USDT)
-            sym_books = books.get(symbol, {})
+            # BUG-103.2: snapshot inner dict (concurrency safety)
+            sym_books = dict(books.get(symbol, {}))
             if not sym_books:
                 _fr_no_book += 1
                 continue
