@@ -310,6 +310,24 @@ min_trade_notional_usd: $5
 | **BUG-157** | PositionReconciler Pydantic validation error — `entry_price` 필드 필수. `avg_price` fallback 추가 | ✅ v195 |
 | **BUG-158** | Reconciler 부호 불일치 false CRITICAL. engine unsigned qty vs exchange signed size. side 기반 signed quantity 사용 | ✅ v196 |
 | **BUG-159** | position_manager 미wire로 모든 exchange position을 'engine has no record' CRITICAL 판정. position_manager 비어있을 때 reconcile skip | ✅ v197 |
+| **BUG-160** | **긴급**: reconciler auto_close 체결 직후 포지션을 'orphan' 판정 → 자동 청산 위험. auto_close 비활성화, WARNING 로그만 유지 | ✅ v198 |
+| **BUG-161** | PG WAL timeout 1500ms 도 부족 → 3000ms 상향 | ✅ v198 |
+
+### 🎯 Bitget WS 권한 해결 경로 확정 (2026-04-18)
+
+**고객센터 답변:**
+1. 일반 Private WS 채널 = VIP 4 이상 필요 (거래량 요구 과도)
+2. **Unified Account 전환 = VIP 등급 없이 즉시 사용 가능** ✅
+
+**전환 절차:**
+1. v198 엔진 중지 ✅ (완료)
+2. 사장님 Bitget 웹에서 Account Mode → Unified Account 전환
+3. 엔진 측 UTA API v3 엔드포인트 적용 예정:
+   - REST: `/api/v2/mix/order/place-order` → `/api/v3/trade/place-order`
+   - WS payload: `instType: UTA` + `topic: place-order` + `category: futures`
+   - 잔고: spot/futures 분리 → 단일 풀
+4. v199 재기동 + 40026 에러 해소 검증
+5. Bitget 주문 latency: 1000ms → ~100ms (-90% 예상)
 
 ### 📋 8 전략 코드 완성도 검증 (v182 기준)
 
