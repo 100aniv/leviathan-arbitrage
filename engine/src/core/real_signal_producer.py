@@ -133,9 +133,10 @@ class RealDataSignalProducer:
             # than live tick data, so live-tuned thresholds (2.0+) rarely trigger in backtest
             self._stat_arb_z_threshold = min(self._stat_arb_z_threshold, 1.5)
         self._stat_arb_cooldown_s = float(get_config("strategy_filters.stat_arb_cooldown_s", default=300))
-        # BUG-108: FX rate config-driven (hardcoded 0.000714 → configurable)
-        # Full dynamic oracle (Upbit USDT/KRW WS + BoK fallback) is Phase 2+ work.
-        self._krw_usdt_rate = Decimal(str(get_config("strategy_filters.krw_usdt_rate", default=0.000714)))
+        # BUG-108 → BUG-112: FX rate from live Upbit oracle (fallback to config)
+        from src.infra.fx import KRWRateProvider
+        _fallback = Decimal(str(get_config("strategy_filters.krw_usdt_rate", default=0.000676)))
+        self._fx_provider: KRWRateProvider = KRWRateProvider(fallback_rate=_fallback)
         self._stat_arb_min_history = int(get_config("strategy_filters.stat_arb_min_history", default=120))
         # In backtest mode: skip Korean exchange filter (data is synthetic, not stale)
         # and skip wall-clock cooldowns (simulated time is passed instead)
@@ -240,10 +241,13 @@ class RealDataSignalProducer:
         )
 
         # Cross-exchange KRW↔USDT arb (Kimchi premium)
-        # BUG-106: removed backtest-only gate — live mode needs KRW signal visibility.
-        # Trade execution still requires strategy_id="cross_exchange_v1" enabled in
-        # strategy_activation.json + FX oracle wired (currently hardcoded 0.000714).
-        if exchange_id in KRW_EXCHANGES and symbol.endswith("/KRW"):
+        # PHOENIX Step 2-4~2-6: staged activation per-exchange. Default DISABLED in live
+        # to prevent bulk activation of Upbit+Bithumb+Coinone at once (troubleshooting).
+        # Enable via engine.json strategy_filters.xe_krw_enabled=true once FX oracle
+        # + per-exchange KYC/TOS checks complete.
+        from src.core.config_loader import get_config as _gc
+        _xe_krw_enabled = bool(_gc("strategy_filters.xe_krw_enabled", default=False))
+        if (self._backtest_mode or _xe_krw_enabled) and exchange_id in KRW_EXCHANGES and symbol.endswith("/KRW"):
             signals.extend(
                 await self._evaluate_cross_exchange_krw(
                     exchange_id, symbol, book, all_books, simulated_ts=simulated_ts
@@ -992,8 +996,9 @@ class RealDataSignalProducer:
         if krw_bid is None or krw_ask is None:
             return signals
 
-        krw_bid_usdt = _normalize_price_to_usdt(krw_bid, krw_exchange, krw_symbol, self._krw_usdt_rate)
-        krw_ask_usdt = _normalize_price_to_usdt(krw_ask, krw_exchange, krw_symbol, self._krw_usdt_rate)
+        _fx_rate = self._fx_provider.get_rate()
+        krw_bid_usdt = _normalize_price_to_usdt(krw_bid, krw_exchange, krw_symbol, _fx_rate)
+        krw_ask_usdt = _normalize_price_to_usdt(krw_ask, krw_exchange, krw_symbol, _fx_rate)
 
         # USDT 거래소 오더북 조회
         # BUG-103.2: snapshot inner dict (concurrency safety)
@@ -1034,7 +1039,7 @@ class RealDataSignalProducer:
                     timestamp=datetime.now(timezone.utc),
                     metadata={
                         "krw_normalized": True,
-                        "krw_rate": str(self._krw_usdt_rate),
+                        "krw_rate": str(_fx_rate),
                         "direction": "sell_krw",
                         "krw_exchange": krw_exchange,
                         "krw_symbol": krw_symbol,
@@ -1076,7 +1081,7 @@ class RealDataSignalProducer:
                     timestamp=datetime.now(timezone.utc),
                     metadata={
                         "krw_normalized": True,
-                        "krw_rate": str(self._krw_usdt_rate),
+                        "krw_rate": str(_fx_rate),
                         "direction": "buy_krw",
                         "krw_exchange": krw_exchange,
                         "krw_symbol": krw_symbol,

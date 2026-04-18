@@ -339,6 +339,16 @@ class LiveMode(BaseMode):
                     stale_detector=self._stale_detector,
                     regime_detector=self._regime_detector,
                 )
+                # BUG-112: start KRWRateProvider live polling (Upbit 30s).
+                # __init__ is sync — schedule coroutine via ensure_future if event loop
+                # already running, otherwise defer (will start on first async call).
+                try:
+                    import asyncio as _aio
+                    _loop = _aio.get_event_loop()
+                    if _loop.is_running():
+                        _aio.ensure_future(self._real_signal_producer._fx_provider.start())
+                except Exception as _fx_exc:
+                    logger.warning("live_mode.fx_provider_start_failed: %s", _fx_exc)
             except Exception as exc:
                 logger.warning("live_mode.real_signal_producer_init_failed: %s", exc)
 

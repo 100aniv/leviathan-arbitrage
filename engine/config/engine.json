@@ -52,6 +52,7 @@
   },
   "strategy_filters": {
     "krw_usdt_rate": 0.000676,
+    "xe_krw_enabled": false,
     "enable_holding_timeout": true,
     "spot_futures_max_hold_seconds": 1800,
     "futures_max_hold_seconds": 1800,

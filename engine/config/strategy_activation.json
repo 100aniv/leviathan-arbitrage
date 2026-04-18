@@ -33,6 +33,7 @@
     "cex_dex_v1",
     "triangular_v1"
   ],
+  "_step_2_3_note": "cross_exchange_v1 active but XE-KRW (Upbit/Bithumb/Coinone) gated by engine.json strategy_filters.xe_krw_enabled=false. Current Step 2-3 supports only global USDT XE (Binance<->Bitget spot). KRW activation sequence: 2-4 Coinone -> 2-5 Upbit -> 2-6 Bithumb.",
   "shadow_disabled_env": "funding_rate_v1,latency_arb_v1,cex_dex_v1,triangular_v1",
   "results": {
     "cross_exchange_v1": {
