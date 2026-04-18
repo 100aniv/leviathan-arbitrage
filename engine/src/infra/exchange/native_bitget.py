@@ -171,8 +171,12 @@ class NativeBitgetAdapter(NativeAdapter):
             arg_list = resp.get("arg") or []
             _params = (arg_list[0] if arg_list else {}).get("params") or {}
             _order_id_str = str(_params.get("orderId", ""))
+        # BUG-179: Trade model requires exchange_id — missing field caused
+        # silent Pydantic ValidationError → REST fallback → double entry → orphan.
         return Trade(
             trade_id=_order_id_str,
+            order_id=_order_id_str,
+            exchange_id=self.exchange_id,
             symbol=order.symbol,
             side=order.side,
             amount=order.amount,
