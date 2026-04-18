@@ -179,16 +179,30 @@ class NativeBitgetAdapter(NativeAdapter):
         Calls Bitget /api/v2/mix/account/accounts once at connect time.
         Result cached in self._pos_mode ("hedge" | "one_way").
         Binance Futures never needs this — it is always one-way.
-        BUG-169: UTA V3 uses /api/v3/account/assets with category body.
+        BUG-172: UTA V3 uses /api/v3/account/settings (not /assets which has no posMode).
+          Response: data.posMode = "one_way_mode" | "hedge_mode" (single object, not list).
+          Fallback default for UTA is "hedge" (UTA accounts default to hedge_mode).
         """
         if self._market_type != "futures":
             return
         try:
             if self._is_uta():
+                # BUG-172: /api/v3/account/settings returns posMode at data.posMode (dict).
+                # /api/v3/account/assets returns balance list — posMode field absent there.
                 resp = await self._request(
-                    "GET", "/api/v3/account/assets",
+                    "GET", "/api/v3/account/settings",
                     params={"category": "USDT-FUTURES"},
                     signed=True,
+                )
+                data = resp.get("data", {})
+                # data is a single dict for /settings endpoint
+                if isinstance(data, list):
+                    data = data[0] if data else {}
+                raw_mode = data.get("posMode", "hedge_mode")
+                self._pos_mode = "hedge" if "hedge" in raw_mode.lower() else "one_way"
+                logger.info(
+                    "bitget_pos_mode_detected exchange=%s pos_mode=%s margin_mode=%s (raw_pos=%s) [UTA V3 /settings]",
+                    self.exchange_id, self._pos_mode, self._margin_mode, raw_mode,
                 )
             else:
                 resp = await self._request(
@@ -196,26 +210,29 @@ class NativeBitgetAdapter(NativeAdapter):
                     params={"productType": "USDT-FUTURES"},
                     signed=True,
                 )
-            data = resp.get("data", [])
-            if data:
-                raw_mode = data[0].get("posMode", "one_way_mode")
-                self._pos_mode = "hedge" if "hedge" in raw_mode.lower() else "one_way"
-                # BUG-107: also detect marginMode from same endpoint.
-                # Only override if config hasn't explicitly set it (default="crossed").
-                from src.core.config_loader import get_config as _gc2
-                _cfg_margin = _gc2("execution.bitget_futures_margin_mode", default=None)
-                if _cfg_margin is None:
-                    raw_margin = data[0].get("marginMode", "crossed")
-                    if raw_margin and raw_margin.lower() in ("crossed", "isolated"):
-                        self._margin_mode = raw_margin.lower()
-                logger.info(
-                    "bitget_pos_mode_detected exchange=%s pos_mode=%s margin_mode=%s (raw_pos=%s)",
-                    self.exchange_id, self._pos_mode, self._margin_mode, raw_mode,
-                )
+                data = resp.get("data", [])
+                if data:
+                    raw_mode = data[0].get("posMode", "one_way_mode")
+                    self._pos_mode = "hedge" if "hedge" in raw_mode.lower() else "one_way"
+                    # BUG-107: also detect marginMode from same endpoint.
+                    # Only override if config hasn't explicitly set it (default="crossed").
+                    from src.core.config_loader import get_config as _gc2
+                    _cfg_margin = _gc2("execution.bitget_futures_margin_mode", default=None)
+                    if _cfg_margin is None:
+                        raw_margin = data[0].get("marginMode", "crossed")
+                        if raw_margin and raw_margin.lower() in ("crossed", "isolated"):
+                            self._margin_mode = raw_margin.lower()
+                    logger.info(
+                        "bitget_pos_mode_detected exchange=%s pos_mode=%s margin_mode=%s (raw_pos=%s)",
+                        self.exchange_id, self._pos_mode, self._margin_mode, raw_mode,
+                    )
         except Exception as exc:
+            # BUG-172: UTA accounts default to hedge_mode — safer fallback than one_way.
+            _uta_fallback = "hedge" if self._is_uta() else "one_way"
+            self._pos_mode = _uta_fallback
             logger.warning(
-                "bitget_fetch_pos_mode_failed exchange=%s err=%s — assuming one_way",
-                self.exchange_id, exc,
+                "bitget_fetch_pos_mode_failed exchange=%s err=%s — assuming %s (UTA=%s)",
+                self.exchange_id, exc, _uta_fallback, self._is_uta(),
             )
 
     # ------------------------------------------------------------------
