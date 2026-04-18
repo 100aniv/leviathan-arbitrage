@@ -15,7 +15,7 @@ import time
 import urllib.parse
 from collections.abc import Callable
 from decimal import Decimal
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 import websockets
@@ -212,16 +212,36 @@ class NativeAdapter(abc.ABC):
     async def place_order(self, order: Order) -> Trade:
         await self._rate_limiter.acquire("order")
         start = time.monotonic()
+        # BUG-120 Phase 5b: feature-flagged WS order path. REST fallback on error.
+        _use_ws = False
         try:
-            trade = await self._rest_place_order(order)
+            from src.core.config_loader import get_config as _gc
+            _use_ws = bool(_gc("execution.ws_order_enabled", default=False))
+        except Exception:
+            pass
+        try:
+            trade: Optional[Trade] = None
+            if _use_ws and hasattr(self, "_ws_place_order"):
+                try:
+                    trade = await self._ws_place_order(order)
+                    _path = "ws"
+                except Exception as _ws_exc:
+                    logger.warning(
+                        "ws_place_order failed exchange=%s symbol=%s — falling back to REST: %s",
+                        self.exchange_id, order.symbol, _ws_exc,
+                    )
+                    trade = None
+            if trade is None:
+                trade = await self._rest_place_order(order)
+                _path = "rest"
             latency_ms = (time.monotonic() - start) * 1000
             self._health.record_api_latency(latency_ms)
             self._health.record_order_fill(True)
             logger.info(
-                "order_placed exchange=%s order_id=%s symbol=%s side=%s qty=%s price=%s fee=%s latency_ms=%.1f",
+                "order_placed exchange=%s order_id=%s symbol=%s side=%s qty=%s price=%s fee=%s latency_ms=%.1f path=%s",
                 self.exchange_id, trade.trade_id, order.symbol,
                 order.side.value if hasattr(order.side, 'value') else order.side,
-                str(trade.amount), str(trade.price), str(trade.fee), latency_ms,
+                str(trade.amount), str(trade.price), str(trade.fee), latency_ms, _path,
             )
             return trade
         except Exception as e:
