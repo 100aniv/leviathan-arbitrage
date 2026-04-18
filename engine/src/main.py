@@ -3710,16 +3710,21 @@ class Engine:
             try:
                 await asyncio.sleep(interval)
 
-                # Only reconcile when paper_mode balance tracker and Redis are available
-                if self._paper_mode is None or self._redis_client is None:
-                    continue
+                # BUG-155: balance reconcile needs paper_mode (snapshot source).
+                # In live mode, skip balance snapshot but still run PositionReconciler below.
+                current: dict[str, str] = {}
+                if self._paper_mode is not None and self._redis_client is not None:
+                    try:
+                        current = self._paper_mode._balance_tracker.summary()
+                    except Exception:
+                        current = {}
 
-                current: dict[str, str] = self._paper_mode._balance_tracker.summary()
-                if not current:
-                    continue
-
+                # BUG-155: balance snapshot only when both current + redis available
+                _can_snapshot = bool(current) and self._redis_client is not None
                 # Read last saved snapshot from Redis
-                raw = await self._redis_client.hgetall("leviathan:recovery:balances")
+                raw = None
+                if _can_snapshot:
+                    raw = await self._redis_client.hgetall("leviathan:recovery:balances")
                 if raw:
                     recovery = {
                         (k.decode() if isinstance(k, bytes) else k):
@@ -3749,9 +3754,10 @@ class Engine:
                             except Exception:
                                 pass
 
-                # Save current state as the new recovery snapshot
-                await self._redis_client.hset("leviathan:recovery:balances", current)
-                logger.debug("Position reconciliation tick — snapshot saved (%d exchanges)", len(current))
+                # Save current state as the new recovery snapshot (only if valid)
+                if _can_snapshot:
+                    await self._redis_client.hset("leviathan:recovery:balances", current)
+                    logger.debug("Position reconciliation tick — snapshot saved (%d exchanges)", len(current))
 
                 # US-250: PositionReconciler — compare engine vs exchange positions
                 # NOTE: _position_manager must be populated for this to be meaningful.
