@@ -219,8 +219,13 @@ class BitgetWSTrade:
             if client_oid:
                 args_inner["clientOid"] = client_oid
             # BUG-169: hedge mode posSide ("long" | "short")
+            # BUG-174: one_way mode requires explicit reduceOnly field
             if pos_side:
-                args_inner["posSide"] = pos_side
+                args_inner["posSide"] = pos_side  # hedge mode
+            else:
+                # one_way mode: "no" = open position, "yes" = close position
+                _reduce_only = extra.get("reduceOnly", False)
+                args_inner["reduceOnly"] = "yes" if _reduce_only else "no"
             # UTA 는 marginMode/marginCoin 불필요 (자동 관리)
             for k, v in extra.items():
                 if v is not None and k not in ("marginMode", "marginCoin"):

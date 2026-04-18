@@ -198,11 +198,11 @@ class NativeBitgetAdapter(NativeAdapter):
                 # data is a single dict for /settings endpoint
                 if isinstance(data, list):
                     data = data[0] if data else {}
-                raw_mode = data.get("posMode", "hedge_mode")
+                raw_mode = data.get("posMode", "one_way_mode")  # BUG-174: default one_way not hedge
                 self._pos_mode = "hedge" if "hedge" in raw_mode.lower() else "one_way"
                 logger.info(
-                    "bitget_pos_mode_detected exchange=%s pos_mode=%s margin_mode=%s (raw_pos=%s) [UTA V3 /settings]",
-                    self.exchange_id, self._pos_mode, self._margin_mode, raw_mode,
+                    "bitget_pos_mode_detected exchange=%s pos_mode=%s margin_mode=%s (raw_pos=%s) [UTA V3 /settings] full_data=%s",
+                    self.exchange_id, self._pos_mode, self._margin_mode, raw_mode, data,
                 )
             else:
                 resp = await self._request(
@@ -227,8 +227,8 @@ class NativeBitgetAdapter(NativeAdapter):
                         self.exchange_id, self._pos_mode, self._margin_mode, raw_mode,
                     )
         except Exception as exc:
-            # BUG-172: UTA accounts default to hedge_mode — safer fallback than one_way.
-            _uta_fallback = "hedge" if self._is_uta() else "one_way"
+            # BUG-174: fallback to one_way (실계정은 unilateral). hedge fallback은 40774 에러 유발.
+            _uta_fallback = "one_way"
             self._pos_mode = _uta_fallback
             logger.warning(
                 "bitget_fetch_pos_mode_failed exchange=%s err=%s — assuming %s (UTA=%s)",
