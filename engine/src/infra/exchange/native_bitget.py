@@ -1223,9 +1223,12 @@ class NativeBitgetAdapter(NativeAdapter):
         if not symbol:
             # Bitget fills API does not support all-symbol queries
             return []
+        # BUG-183: V3 /api/v3/trade/fills max limit is 100 (not 500 like V2).
+        # Sending limit>100 returns 40020 'Parameter {0} error' (empirically verified).
+        _max_limit = 100 if self._is_uta() else 500
         params: dict = {
             "productType": "USDT-FUTURES",
-            "limit": str(min(limit, 500)),  # Bitget v2 supports up to 500 per page
+            "limit": str(min(limit, _max_limit)),
             "symbol": _normalize_symbol(symbol).upper(),
         }
         if start_time_ms:
