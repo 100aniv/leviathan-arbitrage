@@ -140,7 +140,12 @@ class RecoveryManager:
                 if hasattr(client, "get_positions"):
                     positions = await client.get_positions()
                     _p = next((p for p in positions if getattr(p, "symbol", None) == symbol), None)
-                    exchange_qty = Decimal(str(getattr(_p, "quantity", 0))) if _p else Decimal("0")
+                    # BUG-97.2: native Position uses `size` (signed), legacy dict used `quantity`
+                    _raw = getattr(_p, "size", None) if _p else None
+                    if _raw is None and _p is not None:
+                        _raw = getattr(_p, "quantity", 0)
+                    # Signed size (-24 SHORT, +24 LONG) — compare absolute to WAL quantity
+                    exchange_qty = abs(Decimal(str(_raw or 0)))
                 else:
                     exchange_position = await client.fetch_position(symbol)
                     exchange_qty = Decimal(str(exchange_position.get("quantity", 0)))
