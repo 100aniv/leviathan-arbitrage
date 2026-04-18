@@ -134,7 +134,9 @@ class TriangularStrategy(BaseStrategy):
         # US-241: Sanity check — reject obviously fake spreads BEFORE cost estimation
         # (moved up from post-cost-calc position — avoids unnecessary estimate_cost calls)
         if signal.spread_pct > Decimal("0.05"):  # 5%
-            logger.warning(
+            # BUG-150: DEBUG — fake spread filter 76/runtime at WARNING causing spam.
+            # Small-cap coins with thin books routinely produce unrealistic spreads.
+            logger.debug(
                 "triangular.fake_spread_rejected spread_pct=%.4f path=%s",
                 float(signal.spread_pct),
                 path,
