@@ -97,9 +97,11 @@ class NativeBitgetAdapter(NativeAdapter):
         inst_id = order.symbol.replace("/", "")
         side = "buy" if order.side == OrderSide.BUY else "sell"
         otype = "limit" if order.order_type == OrderType.LIMIT else "market"
-        # BUG-121/123: Bitget V2 futures WS needs marginMode + marginCoin
+        # BUG-162: account_mode 에 따라 payload 구조 선택
+        _account_mode = _gc("execution.bitget_account_mode", default="classic")
+        # BUG-121/123: Classic V2 futures WS는 marginMode + marginCoin 필수
         extra_params: dict[str, Any] = {}
-        if self._market_type == "futures":
+        if _account_mode == "classic" and self._market_type == "futures":
             extra_params["marginMode"] = getattr(self, "_margin_mode", "crossed")
             extra_params["marginCoin"] = "USDT"  # USDT-M futures
         resp = await client.place_order(
@@ -110,6 +112,7 @@ class NativeBitgetAdapter(NativeAdapter):
             size=order.amount,
             price=order.price if otype == "limit" else None,
             force="gtc",
+            account_mode=_account_mode,
             **extra_params,
         )
         # BUG-136: 40026 "User is disabled" → Bitget WS permissions not granted.

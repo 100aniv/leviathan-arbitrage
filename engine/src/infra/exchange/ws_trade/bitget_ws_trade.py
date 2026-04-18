@@ -133,9 +133,11 @@ class BitgetWSTrade:
                     if msg.get("event") == "error":
                         logger.warning("BitgetWSTrade error event: %s", msg)
                         # Still try to route by id so waiting place_order raises quickly
-                    # Trade responses have arg[0].id
-                    args = msg.get("arg") or []
-                    req_id = args[0].get("id") if args else None
+                    # Trade responses: Classic has arg[0].id, UTA has top-level id
+                    req_id = msg.get("id")  # BUG-162: UTA 응답
+                    if not req_id:
+                        args = msg.get("arg") or []
+                        req_id = args[0].get("id") if args else None
                     if req_id:
                         fut = self._futures.pop(req_id, None)
                         if fut and not fut.done():
@@ -165,9 +167,17 @@ class BitgetWSTrade:
         force: str = "gtc",
         client_oid: Optional[str] = None,
         marginMode: Optional[str] = None,
+        account_mode: str = "classic",  # BUG-162: "classic" | "unified" (UTA V3)
         **extra: Any,
     ) -> dict[str, Any]:
-        """Send order via WS. Returns parsed response dict (event=trade or error)."""
+        """Send order via WS. Returns parsed response dict (event=trade or error).
+
+        BUG-162: account_mode="unified" 일 때 UTA V3 payload 사용:
+          - instType → category
+          - channel → topic
+          - size → qty
+          - force → timeInForce
+        """
         # BUG-125: auto-reconnect if WS dropped (listener exited or ws closed)
         if (
             not self._logged_in
@@ -184,32 +194,59 @@ class BitgetWSTrade:
             self._logged_in = False
             await self.connect()
         req_id = str(uuid.uuid4())
-        params: dict[str, Any] = {
-            "orderType": order_type.lower(),
-            "side": side.lower(),
-            "size": str(size),
-            "force": force,
-        }
-        if order_type.lower() == "limit":
-            params["price"] = str(price)
-        if client_oid:
-            params["clientOid"] = client_oid
-        if marginMode:
-            params["marginMode"] = marginMode
-        for k, v in extra.items():
-            if v is not None:
-                params[k] = v
-
-        msg = {
-            "op": "trade",
-            "args": [{
+        # BUG-162: UTA V3 payload uses different field names
+        if account_mode == "unified":
+            # UTA: category, topic, qty, timeInForce, symbol
+            _category = "futures" if inst_type == "USDT-FUTURES" else "spot"
+            args_inner = {
+                "symbol": inst_id,
+                "orderType": order_type.lower(),
+                "side": side.lower(),
+                "qty": str(size),  # ← size 대신 qty
+                "timeInForce": force,  # ← force 대신 timeInForce
+            }
+            if order_type.lower() == "limit":
+                args_inner["price"] = str(price)
+            if client_oid:
+                args_inner["clientOid"] = client_oid
+            # UTA 는 marginMode/marginCoin 불필요 (자동 관리)
+            for k, v in extra.items():
+                if v is not None and k not in ("marginMode", "marginCoin"):
+                    args_inner[k] = v
+            msg = {
+                "op": "trade",
                 "id": req_id,
-                "instType": inst_type,
-                "instId": inst_id,
-                "channel": "place-order",
-                "params": params,
-            }],
-        }
+                "category": _category,  # ← instType 대체
+                "topic": "place-order",  # ← channel 대체
+                "args": [args_inner],
+            }
+        else:
+            # Classic V2 (기존)
+            params: dict[str, Any] = {
+                "orderType": order_type.lower(),
+                "side": side.lower(),
+                "size": str(size),
+                "force": force,
+            }
+            if order_type.lower() == "limit":
+                params["price"] = str(price)
+            if client_oid:
+                params["clientOid"] = client_oid
+            if marginMode:
+                params["marginMode"] = marginMode
+            for k, v in extra.items():
+                if v is not None:
+                    params[k] = v
+            msg = {
+                "op": "trade",
+                "args": [{
+                    "id": req_id,
+                    "instType": inst_type,
+                    "instId": inst_id,
+                    "channel": "place-order",
+                    "params": params,
+                }],
+            }
         fut: asyncio.Future = asyncio.Future()
         self._futures[req_id] = fut
         # BUG-136: log request body for diagnostics (redact nothing — internal log)
