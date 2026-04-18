@@ -198,7 +198,9 @@ class NativeBitgetAdapter(NativeAdapter):
                 # data is a single dict for /settings endpoint
                 if isinstance(data, list):
                     data = data[0] if data else {}
-                raw_mode = data.get("posMode", "one_way_mode")  # BUG-174: default one_way not hedge
+                # BUG-175: UTA /settings 실제 필드명은 `holdMode` (not `posMode`).
+                # 실측 응답: {holdMode: "hedge_mode", accountMode: "unified", assetMode: "multi_assets", ...}
+                raw_mode = data.get("holdMode") or data.get("posMode", "one_way_mode")
                 self._pos_mode = "hedge" if "hedge" in raw_mode.lower() else "one_way"
                 logger.info(
                     "bitget_pos_mode_detected exchange=%s pos_mode=%s margin_mode=%s (raw_pos=%s) [UTA V3 /settings] full_data=%s",
