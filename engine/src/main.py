@@ -3771,10 +3771,12 @@ class Engine:
                         if self._position_manager is not None:
                             for p in self._position_manager.get_all_positions():
                                 key = f"{p.exchange_id}:{p.symbol}"
+                                # BUG-157: Position requires entry_price field
                                 engine_positions[key] = Position(
                                     exchange_id=p.exchange_id,
                                     symbol=p.symbol,
                                     size=p.quantity,
+                                    entry_price=getattr(p, "entry_price", None) or getattr(p, "avg_price", Decimal("0")),
                                 )
                         result = await self._position_reconciler.reconcile(engine_positions)
                         if result.has_discrepancy:
