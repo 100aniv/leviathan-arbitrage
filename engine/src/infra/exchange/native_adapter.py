@@ -246,9 +246,11 @@ class NativeAdapter(abc.ABC):
                         self._ws_skip_logged = True
                     trade = None
                 except Exception as _ws_exc:
+                    # BUG-179 defense: surface full exception (ValidationError body, etc.)
+                    # instead of just type + repr. Silent fallback masks schema bugs.
                     logger.warning(
-                        "ws_place_order failed exchange=%s symbol=%s type=%s — falling back to REST: %r",
-                        self.exchange_id, order.symbol, type(_ws_exc).__name__, _ws_exc,
+                        "ws_place_order failed exchange=%s symbol=%s type=%s err=%s — falling back to REST",
+                        self.exchange_id, order.symbol, type(_ws_exc).__name__, str(_ws_exc)[:500],
                     )
                     trade = None
             if trade is None:
