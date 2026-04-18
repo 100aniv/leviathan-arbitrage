@@ -211,6 +211,7 @@ min_trade_notional_usd: $5
 | **v178** | 2026-04-18 | FF+FR+SF+XE | 4 | 0 | **BUG-136 자동 처리 완성**: 40026 감지 → session disable → 후속 시도 1회로 제한 |
 | **v179** | 2026-04-18 | FF+FR+SF+XE | **4** | **+$0.03** | **🎯 순수 fill-based PnL 첫 양수** (+$0.0126 + $0.0190). BUG-132 FR entry spread guard 실질 효과 증명 |
 | **v180** | 2026-04-18 | FF+FR+SF+XE | **4** | **+$0.16** | BUG-138 로그 -75% + **세션 최대 PnL** (API3 $0.15 + BARD $0.01, BUG-132 효과 강화) |
+| **v181** | 2026-04-18 | FF+FR+SF+XE | **4** | **+$0.10** | BUG-139 INFO 스팸 -92% + 3연속 양수 (API3 $0.10 + $0.01). **누적 fill-based +$0.29** (6 wins 0 loss) |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
