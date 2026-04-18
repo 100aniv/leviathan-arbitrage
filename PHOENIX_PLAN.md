@@ -289,6 +289,21 @@ min_trade_notional_usd: $5
 | **BUG-138** | SF reject 4885회/4min + FF reject 744회/4min INFO 로그 스팸. DEBUG로 전환 → v179 2.97MB → v180 192KB (-75% 로그 크기, CPU format 비용 감소) | ✅ v180 |
 | **BUG-139** | real_signal_producer.funding_rate_signal 3633회/2min + outlier_rejected INFO. DEBUG 전환 → -100% INFO 로그 스팸 추가 | ✅ v181 |
 | **BUG-142** | TCA expected vs actual 9-10x 괴리 — FR은 8h funding cycle 수익 vs immediate fill PnL 차이. 로그에 `expected_type` 추가 (funding_cycle_8h / immediate_fill) → 소비자 해석 오류 방지 | ✅ v182 |
+
+### 📋 8 전략 코드 완성도 검증 (v182 기준)
+
+| # | 전략 | 등록 | 코드 | 검증 상태 |
+|---|-----|-----|-----|----------|
+| 1 | **FR** (funding_rate) | main.py:1274 | 494 LOC | ✅ **+$0.29/6trades** |
+| 2 | **FF** (futures_futures) | main.py:1263 | 785 LOC | ⚠️ Bitget 승인 대기 |
+| 3 | **SF** (spot_futures) | manager | 421 LOC | ⚠️ 시장 basis <15bps |
+| 4 | **XE** (cross_exchange) | manager | 238 LOC | ⚠️ 자본 $120 부족 |
+| 5 | **triangular** | main.py:1275 | 255 LOC | ✅ 코드 완성 |
+| 6 | **statistical_arb** | main.py:1280 | 1079 LOC | ⚠️ 72h 데이터 필요 |
+| 7 | **cex_dex** | main.py:1301 | 413 LOC | ⚠️ DEX adapter 필요 |
+| 8 | **latency_arb** | deprecated wrapper | 58 LOC | ⚪ CrossExchange merged |
+
+**결론**: 엔진 측 8 전략 코드 **100% 완성**. 실거래 검증은 외부 조건 (Bitget 승인 / 시장 / 자본 / DEX / 데이터) 의존.
 | **ccxt deprecation** | ccxt_adapter.py / okx.py / bybit.py / upbit.py / bithumb.py = dead code (runtime 사용 0). 문서화 완료. | ✅ v163+ |
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
