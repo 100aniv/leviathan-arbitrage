@@ -160,3 +160,99 @@ class TestBitgetWSTimeoutErrorContract:
         payload = _j.loads(sent_messages[0])
         assert payload["args"][0]["params"]["marginMode"] == "crossed"
         assert payload["args"][0]["params"]["marginCoin"] == "USDT"
+
+
+class TestBitgetUTAPayload:
+    """BUG-162: account_mode='unified' UTA V3 payload 검증."""
+
+    @pytest.mark.asyncio
+    async def test_uta_payload_structure(self):
+        """UTA 모드: category/topic/qty/timeInForce 사용 (instType/channel/size/force 아님)."""
+        client = BitgetWSTrade("k", "s", "p")
+        client._logged_in = True
+        client._running = True
+        sent_messages: list[str] = []
+
+        class FakeWS:
+            closed = False
+            async def send(self, msg):
+                sent_messages.append(msg)
+
+        client._ws = FakeWS()
+        import asyncio as _a
+        _orig_wait = _a.wait_for
+
+        async def fake_wait(fut, timeout):
+            raise _a.TimeoutError
+
+        _a.wait_for = fake_wait  # type: ignore
+        try:
+            with pytest.raises(RuntimeError, match="BitgetWSTrade timeout"):
+                await client.place_order(
+                    inst_type="USDT-FUTURES", inst_id="BTCUSDT",
+                    order_type="market", side="buy", size=Decimal("0.001"),
+                    account_mode="unified",
+                )
+        finally:
+            _a.wait_for = _orig_wait
+
+        import json as _j
+        payload = _j.loads(sent_messages[0])
+        # UTA 구조 검증
+        assert payload["op"] == "trade"
+        assert payload["category"] == "futures"  # USDT-FUTURES → futures
+        assert payload["topic"] == "place-order"
+        assert "instType" not in payload  # Classic 전용
+        assert "channel" not in payload   # Classic 전용
+        # args[0] 내부 UTA 필드
+        args0 = payload["args"][0]
+        assert args0["symbol"] == "BTCUSDT"
+        assert args0["qty"] == "0.001"       # size 대신 qty
+        assert args0["timeInForce"] == "gtc"  # force 대신 timeInForce
+        # UTA 는 marginMode/marginCoin 자동 관리
+        assert "marginMode" not in args0
+        assert "marginCoin" not in args0
+
+    @pytest.mark.asyncio
+    async def test_classic_payload_structure(self):
+        """Classic 모드: 기존 instType/channel/size/force 유지."""
+        client = BitgetWSTrade("k", "s", "p")
+        client._logged_in = True
+        client._running = True
+        sent_messages: list[str] = []
+
+        class FakeWS:
+            closed = False
+            async def send(self, msg):
+                sent_messages.append(msg)
+
+        client._ws = FakeWS()
+        import asyncio as _a
+        _orig_wait = _a.wait_for
+
+        async def fake_wait(fut, timeout):
+            raise _a.TimeoutError
+
+        _a.wait_for = fake_wait  # type: ignore
+        try:
+            with pytest.raises(RuntimeError, match="BitgetWSTrade timeout"):
+                await client.place_order(
+                    inst_type="USDT-FUTURES", inst_id="BTCUSDT",
+                    order_type="market", side="buy", size=Decimal("0.001"),
+                    marginMode="crossed", marginCoin="USDT",
+                    # account_mode 미지정 → 기본 "classic"
+                )
+        finally:
+            _a.wait_for = _orig_wait
+
+        import json as _j
+        payload = _j.loads(sent_messages[0])
+        # Classic 구조 검증
+        assert payload["op"] == "trade"
+        assert "category" not in payload  # UTA 전용
+        assert "topic" not in payload     # UTA 전용
+        args0 = payload["args"][0]
+        assert args0["instType"] == "USDT-FUTURES"
+        assert args0["channel"] == "place-order"
+        assert args0["params"]["size"] == "0.001"  # size 사용
+        assert args0["params"]["force"] == "gtc"   # force 사용
