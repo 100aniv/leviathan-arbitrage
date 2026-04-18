@@ -149,17 +149,44 @@ class InventoryRebalancer:
             logger.info("Balance feed: simulation mode (no live exchange connection)")
             return
 
+        # BUG-146: KRW 거래소 (Upbit/Bithumb/Coinone) 는 USDT 잔고 없음.
+        # KRW 잔고를 USDT 환산하여 트래킹. FX는 krw_usdt_rate 사용.
+        _KRW_EXCHANGES = {"upbit", "bithumb", "coinone"}
+        try:
+            from src.core.config_loader import get_config
+            _fx = float(get_config("strategy_filters.krw_usdt_rate", default=0.000676))
+        except Exception:
+            _fx = 0.000676
         for name, adapter in exchanges.items():
             try:
                 balances = await adapter.get_balances()
                 usdt = balances.get("USDT")
+                total_usd = 0.0
+                free_usd = 0.0
+                used_usd = 0.0
                 if usdt:
+                    total_usd = float(usdt.total)
+                    free_usd = float(usdt.free)
+                    used_usd = float(usdt.used)
+                # BUG-146: KRW exchanges → convert KRW balance to USD via FX rate
+                if name.lower() in _KRW_EXCHANGES or "coinone" in name.lower() or "upbit" in name.lower() or "bithumb" in name.lower():
+                    krw = balances.get("KRW")
+                    if krw:
+                        total_usd += float(krw.total) * _fx
+                        free_usd += float(krw.free) * _fx
+                        used_usd += float(krw.used) * _fx
+                if total_usd > 0:
                     self.tracker.record_balance(
                         exchange_id=name,
-                        total_usd=float(usdt.total),
-                        available_usd=float(usdt.free),
-                        locked_usd=float(usdt.used),
+                        total_usd=total_usd,
+                        available_usd=free_usd,
+                        locked_usd=used_usd,
                     )
-                    logger.info("Balance feed connected: %s total=%.2f USDT", name, float(usdt.total))
+                    logger.info(
+                        "Balance feed connected: %s total=%.2f USD (USDT+KRW*%.6f)",
+                        name, total_usd, _fx,
+                    )
+                else:
+                    logger.info("Balance feed connected: %s total=0.00 USD (empty)", name)
             except Exception as exc:
                 logger.warning("Balance feed failed for %s: %s", name, exc)
