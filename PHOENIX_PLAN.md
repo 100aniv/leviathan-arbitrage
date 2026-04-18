@@ -312,6 +312,7 @@ min_trade_notional_usd: $5
 | **BUG-159** | position_manager 미wire로 모든 exchange position을 'engine has no record' CRITICAL 판정. position_manager 비어있을 때 reconcile skip | ✅ v197 |
 | **BUG-160** | **긴급**: reconciler auto_close 체결 직후 포지션을 'orphan' 판정 → 자동 청산 위험. auto_close 비활성화, WARNING 로그만 유지 | ✅ v198 |
 | **BUG-161** | PG WAL timeout 1500ms 도 부족 → 3000ms 상향 | ✅ v198 |
+| **BUG-162** | Bitget UTA V3 API 듀얼 모드 지원. `bitget_account_mode: classic/unified` config 플래그. BitgetWSTrade: account_mode 파라미터 + Classic/UTA payload 분기 (instType/channel/size/force ↔ category/topic/qty/timeInForce). `_listen` UTA id 추출. orderId 파싱 양방향. Native adapter config 기반 분기. 사장님 전환 완료 후 config 1줄 변경으로 활성화. | ✅ 코드 준비 (활성화 대기) |
 
 ### 🎯 Bitget WS 권한 해결 경로 확정 (2026-04-18)
 
