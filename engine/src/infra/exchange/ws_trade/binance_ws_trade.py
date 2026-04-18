@@ -107,8 +107,19 @@ class BinanceWSTrade:
 
         Raises TimeoutError after _RESPONSE_TIMEOUT_S if no response.
         """
-        if self._ws is None or not self._running:
-            raise RuntimeError("BinanceWSTrade not connected")
+        # BUG-125: auto-reconnect if WS dropped
+        if (
+            self._ws is None
+            or not self._running
+            or (self._ws is not None and getattr(self._ws, "closed", False))
+        ):
+            logger.info("BinanceWSTrade reconnecting before place_order")
+            try:
+                await self.close()
+            except Exception:
+                pass
+            self._ws = None
+            await self.connect()
         req_id = str(uuid.uuid4())
         ts = int(time.time() * 1000)
         params: dict[str, Any] = {

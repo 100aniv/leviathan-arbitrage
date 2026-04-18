@@ -128,6 +128,7 @@ class BitgetWSTrade:
         except Exception as exc:
             logger.warning("BitgetWSTrade listener closed: %s", exc)
             self._running = False
+            self._logged_in = False
 
     async def place_order(
         self,
@@ -143,8 +144,21 @@ class BitgetWSTrade:
         **extra: Any,
     ) -> dict[str, Any]:
         """Send order via WS. Returns parsed response dict (event=trade or error)."""
-        if not self._logged_in:
-            raise RuntimeError("BitgetWSTrade not authenticated")
+        # BUG-125: auto-reconnect if WS dropped (listener exited or ws closed)
+        if (
+            not self._logged_in
+            or self._ws is None
+            or (self._ws is not None and getattr(self._ws, "closed", False))
+            or not self._running
+        ):
+            logger.info("BitgetWSTrade reconnecting before place_order")
+            try:
+                await self.close()
+            except Exception:
+                pass
+            self._ws = None
+            self._logged_in = False
+            await self.connect()
         req_id = str(uuid.uuid4())
         params: dict[str, Any] = {
             "orderType": order_type.lower(),

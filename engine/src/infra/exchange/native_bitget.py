@@ -60,6 +60,14 @@ class NativeBitgetAdapter(NativeAdapter):
         self._pos_mode: str = "one_way"
         # BUG-120 Phase 5c: WS trade client (lazy)
         self._ws_trade: Any = None
+        # BUG-107: margin mode for USDT-FUTURES orders. Detected at connect() via
+        # /api/v2/mix/account/accounts (same endpoint as posMode). Default "crossed"
+        # (USDT-M cross-margin is the Bitget default). Can be overridden via config
+        # key "execution.bitget_futures_margin_mode" for accounts using isolated mode.
+        from src.core.config_loader import get_config as _gc
+        self._margin_mode: str = _gc("execution.bitget_futures_margin_mode", default="crossed")
+        # BUG-104: map internal UUID order_id → Bitget's numeric orderId for cancel
+        self._exchange_order_id_map: dict[str, str] = {}
 
     async def _get_ws_trade(self) -> Any:
         """Lazy-connect Bitget V2 WS trade client (BUG-120)."""
@@ -109,14 +117,6 @@ class NativeBitgetAdapter(NativeAdapter):
             fee=Decimal("0"),
             timestamp=datetime.now(timezone.utc),
         )
-        # BUG-107: margin mode for USDT-FUTURES orders. Detected at connect() via
-        # /api/v2/mix/account/accounts (same endpoint as posMode). Default "crossed"
-        # (USDT-M cross-margin is the Bitget default). Can be overridden via config
-        # key "execution.bitget_futures_margin_mode" for accounts using isolated mode.
-        from src.core.config_loader import get_config as _gc
-        self._margin_mode: str = _gc("execution.bitget_futures_margin_mode", default="crossed")
-        # BUG-104: map internal UUID order_id → Bitget's numeric orderId for cancel
-        self._exchange_order_id_map: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Connection lifecycle
