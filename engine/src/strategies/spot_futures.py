@@ -177,7 +177,8 @@ class SpotFuturesStrategy(BaseStrategy):
             _outlier_cap, _ = self._adaptive_threshold.thresholds  # p95
             if float(abs_basis_bps) > _outlier_cap:
                 self._metrics.signals_filtered += 1
-                logger.info(
+                # BUG-139: DEBUG — outlier cap is routine filter, not alert
+                logger.debug(
                     "strategy.outlier_rejected strategy=spot_futures reason=outlier_cap "
                     "symbol=%s basis_bps=%.2f cap_bps=%.2f",
                     signal.symbol, float(abs_basis_bps), _outlier_cap,

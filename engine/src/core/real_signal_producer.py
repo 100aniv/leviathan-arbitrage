@@ -1194,7 +1194,8 @@ class RealDataSignalProducer:
                 price=Decimal(str(ref_bid)),
             )
             if signal is not None:
-                logger.info(
+                # BUG-139: DEBUG — FR signal generation fires 30/sec at INFO
+                logger.debug(
                     "real_signal_producer.funding_rate_signal",
                     extra={
                         "symbol": symbol,
