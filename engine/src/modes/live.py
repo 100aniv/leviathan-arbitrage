@@ -1756,14 +1756,18 @@ class LiveMode(BaseMode):
                     logger.debug("live_mode.slippage_feedback_failed error=%s", _fb_exc)
 
             # TCA: expected vs actual PnL comparison — critical monitoring for profit leakage
+            # BUG-142: FR expected = 8h funding cycle projection, actual = immediate fill PnL.
+            # Flag expected_type so TCA consumers don't interpret the gap as slippage leakage.
             _expected_profit = float(trade_request.expected_profit_usdt)
             _actual_pnl = float(pnl)
             _pnl_slippage_usd = _expected_profit - _actual_pnl
+            _is_fr = "funding_rate" in sid
+            _expected_type = "funding_cycle_8h" if _is_fr else "immediate_fill"
             logger.info(
                 "live_mode.tca_pnl_compare strategy=%s expected=%.4f actual=%.4f "
-                "slippage_usd=%.4f slippage_bps=%.1f latency_ms=%.1f",
+                "slippage_usd=%.4f slippage_bps=%.1f latency_ms=%.1f expected_type=%s",
                 sid, _expected_profit, _actual_pnl, _pnl_slippage_usd,
-                _slippage_bps_est, (time.monotonic() - t0) * 1000,
+                _slippage_bps_est, (time.monotonic() - t0) * 1000, _expected_type,
             )
 
             # Slippage > Alpha auto-kill: track cumulative slippage and halt strategy.
