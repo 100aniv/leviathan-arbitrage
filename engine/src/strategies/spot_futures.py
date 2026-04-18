@@ -186,7 +186,8 @@ class SpotFuturesStrategy(BaseStrategy):
 
         if abs_basis_bps < _min_basis:
             self._metrics.signals_filtered += 1
-            logger.info(
+            # BUG-138: DEBUG level — SF rejects 4885/4min at INFO causing log spam
+            logger.debug(
                 "strategy.rejected strategy=spot_futures reason=min_basis symbol=%s "
                 "basis_bps=%.2f threshold_bps=%.2f",
                 signal.symbol, float(abs_basis_bps), float(_min_basis),

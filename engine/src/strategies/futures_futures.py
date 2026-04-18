@@ -591,7 +591,8 @@ class FuturesFuturesStrategy(BaseStrategy):
 
         if combined_score < min_spread_bps_effective:
             self._metrics.signals_filtered += 1
-            logger.info(
+            # BUG-138: DEBUG — FF rejects 744/4min at INFO with 300bps threshold
+            logger.debug(
                 "strategy.rejected strategy=futures_futures reason=min_spread symbol=%s "
                 "score_bps=%.2f threshold_bps=%.2f",
                 signal.symbol, float(combined_score), float(min_spread_bps_effective),
