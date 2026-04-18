@@ -46,6 +46,7 @@
 | BUG-103 | `dict changed size during iteration` — BUG-100 fix 후 race condition 발생, shallow copy로 해결 | v147 | — |
 | BUG-103.2 | Inner dict race (SF/FF) — producer 내 `dict(all_books.get(symbol, {}))` inner snapshot 추가 | v148 | 13 pass |
 | BUG-103.3 | Inner race 확장 (FR/LatencyArb/XE-KRW) — 모든 evaluator inner snapshot 적용 | v149 | 13 pass |
+| **BUG-104** | SF fut_ex에 futures 필터 없음 → spot-spot 잘못된 basis signal 생성 | v150 | 13 pass |
 | **v146 실증** | BUG-100 fix 후 **3분 SF 11,087 signals** (이전 v145 0건) → Step 2-1.5 활성 확인 | v146 | 175 exec tests |
 | Redis client | retry_on_timeout, health_check_interval=30, socket_keepalive, pool=100, transient ERR→WARNING | v141~ | 20 pass |
 | FF freshness | 3s→5s (fresh_drop 70%→35% 증명, v143) | v143 | — |

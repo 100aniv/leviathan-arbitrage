@@ -329,8 +329,15 @@ class RealDataSignalProducer:
 
         # BUG-103.2: snapshot inner dicts to prevent concurrent collector mutation
         # during iteration (outer shallow-copy in live.py:1002 only protects outer keys).
+        # BUG-104: filter fut_books to futures exchanges only — caller passes full
+        # {exchange: book} dict, so without filter fut_ex includes spot exchanges,
+        # producing invalid spot-spot "basis" signals (belongs to cross_exchange strategy).
         spot_books = dict(all_books.get(symbol, {}))
-        fut_books = dict(futures_books.get(symbol, {}))
+        fut_books = {
+            ex_id: book
+            for ex_id, book in futures_books.get(symbol, {}).items()
+            if ex_id in self._futures_exchanges
+        }
 
         if not spot_books or not fut_books:
             return signals
