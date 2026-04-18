@@ -21,7 +21,10 @@ from src.risk.kill_switch import halt_local
 logger = logging.getLogger(__name__)
 
 # Timeouts (seconds)
-_PG_TIMEOUT: float = 0.100   # 100ms (was 5ms — caused trade rejections)
+# BUG-114: 100ms still rejected v161 FR trades (Docker PG + TimescaleDB hypertable
+# writes typically 200-300ms). Raised to 500ms — well under trade latency budget (2s)
+# but tolerant of burst write contention.
+_PG_TIMEOUT: float = 0.500   # 500ms
 _REDIS_TIMEOUT: float = 0.050  # 50ms (was 2ms)
 
 
