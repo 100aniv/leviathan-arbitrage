@@ -1158,6 +1158,33 @@ class RealDataSignalProducer:
             if ref_bid is None or ref_bid <= 0:
                 continue
 
+            # BUG-132: FR entry spread guard.
+            # Funding rate profit can only cover small adverse cross-exchange
+            # price spread. If buy_price (low_rate_ex ask) > sell_price
+            # (high_rate_ex bid) by more than 10bps, entry is structurally
+            # unprofitable regardless of funding rate.
+            _buy_book = sym_books.get(low_ex)
+            _sell_book = sym_books.get(high_ex)
+            if _buy_book is not None and _sell_book is not None:
+                _buy_ask = _buy_book.best_ask()
+                _sell_bid = _sell_book.best_bid()
+                if _buy_ask and _sell_bid and _buy_ask > 0 and _sell_bid > 0:
+                    _mid = (float(_buy_ask) + float(_sell_bid)) / 2.0
+                    _entry_spread_bps = (float(_sell_bid) - float(_buy_ask)) / _mid * 10000
+                    _max_adverse_bps = float(
+                        get_config(
+                            "strategy_filters.funding_max_entry_adverse_bps",
+                            default=-10,
+                        )
+                    )
+                    if _entry_spread_bps < _max_adverse_bps:
+                        logger.info(
+                            "fr_signal_rejected_entry_spread symbol=%s spread_bps=%.1f "
+                            "min_allowed=%.1f buy_ex=%s sell_ex=%s",
+                            symbol, _entry_spread_bps, _max_adverse_bps, low_ex, high_ex,
+                        )
+                        continue
+
             signal = await self._producer.produce_funding_rate_signal(
                 symbol=symbol,
                 high_rate_exchange=high_ex,

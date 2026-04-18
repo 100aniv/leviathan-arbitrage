@@ -74,6 +74,7 @@
     "cross_exchange_min_book_depth_usd": 1,
     "funding_zscore_threshold": -1,
     "funding_min_diff_bps": 2.0,
+    "funding_max_entry_adverse_bps": -10,
     "funding_rate_max_positions": 2,
     "enable_stale_guard": false,
     "stat_arb_z_threshold": 2.0,
