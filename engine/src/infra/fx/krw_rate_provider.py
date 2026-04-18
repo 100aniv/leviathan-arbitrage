@@ -56,7 +56,11 @@ class KRWRateProvider:
             try:
                 await self._fetch_rate()
             except Exception as exc:
-                logger.warning("KRWRateProvider.fetch_failed: %s", exc)
+                # BUG-145: empty str(exc) on some network errors — use repr + type
+                logger.warning(
+                    "KRWRateProvider.fetch_failed type=%s detail=%r",
+                    type(exc).__name__, exc,
+                )
             try:
                 await asyncio.sleep(_POLL_INTERVAL_S)
             except asyncio.CancelledError:
