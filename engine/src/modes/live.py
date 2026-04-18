@@ -1776,7 +1776,13 @@ class LiveMode(BaseMode):
                     )
                 self._strategy_slippage_window[sid].append(_slippage_bps_est)
                 _cum_slip = sum(self._strategy_slippage_window[sid])
-                if _cum_slip > self._max_cumulative_slippage_bps:
+                # BUG-129: require min sample size before halting (statistical noise guard).
+                # 2-4 trades with 50-70bps each triggers false halt before true alpha is measurable.
+                _min_slip_samples = 5
+                if (
+                    len(self._strategy_slippage_window[sid]) >= _min_slip_samples
+                    and _cum_slip > self._max_cumulative_slippage_bps
+                ):
                     logger.critical(
                         "live_mode.slippage_exceeds_alpha strategy=%s cumulative_bps=%.1f "
                         "threshold=%.1f window=%d — HALTING STRATEGY",
