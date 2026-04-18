@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 # BUG-114: 100ms still rejected v161 FR trades (Docker PG + TimescaleDB hypertable
 # writes typically 200-300ms). Raised to 500ms — well under trade latency budget (2s)
 # but tolerant of burst write contention.
-_PG_TIMEOUT: float = 0.500   # 500ms
+# BUG-149: v185에서 500ms도 기동 초기 burst 때 3건 timeout → 1500ms로 상향.
+# Trade latency 예산 2s 내에서 안전하게 수용.
+_PG_TIMEOUT: float = 1.500   # 1500ms
 _REDIS_TIMEOUT: float = 0.050  # 50ms (was 2ms)
 
 
