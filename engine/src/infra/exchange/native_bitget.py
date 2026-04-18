@@ -824,7 +824,7 @@ class NativeBitgetAdapter(NativeAdapter):
                     # BUG-169: UTA V3 fills-history endpoint
                     if self._is_uta():
                         _fills_resp = await self._request(
-                            "GET", "/api/v3/trade/fills-history",
+                            "GET", "/api/v3/trade/fills",
                             params={
                                 "category": "USDT-FUTURES",
                                 "symbol": sym,
@@ -886,7 +886,7 @@ class NativeBitgetAdapter(NativeAdapter):
                     # BUG-169: UTA V3 fills-history endpoint (time-window)
                     if self._is_uta():
                         _fb_resp = await self._request(
-                            "GET", "/api/v3/trade/fills-history",
+                            "GET", "/api/v3/trade/fills",
                             params={
                                 "category": "USDT-FUTURES",
                                 "symbol": sym,
@@ -1204,7 +1204,7 @@ class NativeBitgetAdapter(NativeAdapter):
             if self._is_uta():
                 v3_params = {k: v for k, v in params.items() if k != "productType"}
                 v3_params["category"] = "USDT-FUTURES"
-                resp = await self._request("GET", "/api/v3/trade/fills-history", params=v3_params, signed=True)
+                resp = await self._request("GET", "/api/v3/trade/fills", params=v3_params, signed=True)
             else:
                 resp = await self._request("GET", "/api/v2/mix/order/fills", params=params, signed=True)
             fill_list = []
