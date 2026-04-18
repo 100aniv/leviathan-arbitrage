@@ -327,7 +327,7 @@ class TradingSettings(BaseSettings):
     use_native_adapters: bool = Field(
         default=False,
         alias="USE_NATIVE_ADAPTERS",
-        description="Use native (native) exchange adapters when True",
+        description="[DEPRECATED BUG-151] Obsolete — native adapters always used. Field retained for backward compat but value ignored.",
     )
 
 
