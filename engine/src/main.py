@@ -1207,11 +1207,15 @@ class Engine:
         from src.core.config_loader import get_config
         sf_p = tuned.get("spot_futures", {})
         _sf_max_hold_s = get_config("strategy_filters.spot_futures_max_hold_seconds", default=1800)
+        # BUG-110: always create sf_config so max_position_size is enforced.
+        # Previously gated on status ∈ (READY, MONITOR) → None fallback used SF
+        # default max_position_size=50000 → risk_guardian rejected all trades
+        # (notional=$100 vs max=$12.60 = 10.5% of $120 capital).
         sf_config = SpotFuturesConfig(
             min_basis_bps=Decimal(str(sf_p.get("min_basis_bps", 15))),
             max_position_size=_strategy_max_pos("spot_futures"),
             max_holding_hours=_sf_max_hold_s / 3600.0,
-        ) if sf_p.get("status") in ("READY", "MONITOR") else None
+        )
 
         fr_p = tuned.get("funding_rate", {})
         # Use percentage-based _max_pos_usd (capital × per_trade_pct %).
