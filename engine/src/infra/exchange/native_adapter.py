@@ -225,6 +225,16 @@ class NativeAdapter(abc.ABC):
                 try:
                     trade = await self._ws_place_order(order)
                     _path = "ws"
+                except NotImplementedError:
+                    # BUG-127: expected skip (e.g. Bitget BD/RM unapproved).
+                    # Debug-level + no repeat for same exchange to avoid log noise.
+                    if not getattr(self, "_ws_skip_logged", False):
+                        logger.info(
+                            "ws_place_order skipped exchange=%s — using REST (expected)",
+                            self.exchange_id,
+                        )
+                        self._ws_skip_logged = True
+                    trade = None
                 except Exception as _ws_exc:
                     logger.warning(
                         "ws_place_order failed exchange=%s symbol=%s type=%s — falling back to REST: %r",
@@ -253,7 +263,24 @@ class NativeAdapter(abc.ABC):
 
     async def cancel_order(self, order_id: str, symbol: str | None = None) -> bool:
         await self._rate_limiter.acquire("order")
+        # BUG-127: feature-flagged WS cancel path. REST fallback on error.
+        _use_ws = False
         try:
+            from src.core.config_loader import get_config as _gc
+            _use_ws = bool(_gc("execution.ws_order_enabled", default=False))
+        except Exception:
+            pass
+        try:
+            if _use_ws and hasattr(self, "_ws_cancel_order") and symbol:
+                try:
+                    return await self._ws_cancel_order(order_id, symbol)
+                except NotImplementedError:
+                    pass  # expected skip (e.g. unapproved exchange)
+                except Exception as _ws_exc:
+                    logger.warning(
+                        "ws_cancel_order failed exchange=%s symbol=%s type=%s — fallback REST: %r",
+                        self.exchange_id, symbol, type(_ws_exc).__name__, _ws_exc,
+                    )
             return await self._rest_cancel_order(order_id, symbol)
         except Exception as e:
             self._health.record_error()

@@ -146,3 +146,55 @@ class BinanceWSTrade:
         except asyncio.TimeoutError:
             self._futures.pop(req_id, None)
             raise
+
+    async def cancel_order(
+        self,
+        symbol: str,
+        order_id: Optional[str] = None,
+        client_order_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Cancel order via WS (BUG-127). Returns parsed response dict.
+
+        Either order_id (exchange orderId) or client_order_id must be provided.
+        Raises RuntimeError on timeout.
+        """
+        # BUG-125 reconnect logic mirrored from place_order
+        if (
+            self._ws is None
+            or not self._running
+            or (self._ws is not None and getattr(self._ws, "closed", False))
+        ):
+            logger.info("BinanceWSTrade reconnecting before cancel_order")
+            try:
+                await self.close()
+            except Exception:
+                pass
+            self._ws = None
+            await self.connect()
+        if not order_id and not client_order_id:
+            raise ValueError("cancel_order requires order_id or client_order_id")
+        req_id = str(uuid.uuid4())
+        ts = int(time.time() * 1000)
+        params: dict[str, Any] = {
+            "apiKey": self._api_key,
+            "symbol": symbol.upper(),
+            "timestamp": ts,
+        }
+        if order_id:
+            params["orderId"] = order_id
+        else:
+            params["origClientOrderId"] = client_order_id
+        params_str = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+        params["signature"] = self._sign(params_str)
+        msg = {"id": req_id, "method": "order.cancel", "params": params}
+        fut: asyncio.Future = asyncio.Future()
+        self._futures[req_id] = fut
+        await self._ws.send(json.dumps(msg))
+        try:
+            return await asyncio.wait_for(fut, timeout=_RESPONSE_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            self._futures.pop(req_id, None)
+            raise RuntimeError(
+                f"BinanceWSTrade cancel timeout after {_RESPONSE_TIMEOUT_S}s "
+                f"symbol={symbol} order_id={order_id}"
+            )

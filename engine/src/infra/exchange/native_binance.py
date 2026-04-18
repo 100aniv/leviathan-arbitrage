@@ -129,6 +129,22 @@ class BinanceNativeAdapter(NativeAdapter):
             timestamp=datetime.now(timezone.utc),
         )
 
+    async def _ws_cancel_order(self, order_id: str, symbol: str) -> bool:
+        """Cancel order via WS (BUG-127). Raises on failure for REST fallback."""
+        client = await self._get_ws_trade()
+        if client is None:
+            raise RuntimeError("ws_trade unavailable for cancel market_type=%s" % self._market_type)
+        _bsym = _symbol_to_binance(symbol)
+        resp = await client.cancel_order(symbol=_bsym, order_id=order_id)
+        status = resp.get("status")
+        if status == 200:
+            return True
+        # -2011 "Unknown order" — already cancelled/filled, treat as success
+        err = resp.get("error", {})
+        if isinstance(err, dict) and err.get("code") == -2011:
+            return True
+        raise RuntimeError(f"ws_cancel_order rejected: {resp}")
+
     # ------------------------------------------------------------------
     # URL / header overrides
     # ------------------------------------------------------------------
