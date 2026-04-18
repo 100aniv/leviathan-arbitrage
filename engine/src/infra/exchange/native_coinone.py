@@ -1,4 +1,4 @@
-"""Native Coinone adapter — Korean KRW exchange via direct REST + WebSocket (no ccxt)."""
+"""Native Coinone adapter — Korean KRW exchange via direct REST + WebSocket."""
 from __future__ import annotations
 
 import base64
@@ -35,7 +35,7 @@ def _normalize_symbol(symbol: str) -> str:
 
 
 class NativeCoinoneAdapter(NativeAdapter):
-    """Native Coinone spot adapter — direct HTTP/WebSocket, no ccxt.
+    """Native Coinone spot adapter — direct HTTP/WebSocket.
 
     Coinone uses HMAC-SHA512 authentication with base64-encoded payload.
     All pairs are KRW-denominated (e.g., BTC/KRW).
@@ -257,7 +257,7 @@ class NativeCoinoneAdapter(NativeAdapter):
             req_headers["X-COINONE-PAYLOAD"] = payload_b64
             req_headers["X-COINONE-SIGNATURE"] = signature
 
-            # Send payload_b64 as body (ccxt 방식) or no body (공식 문서)
+            # Send payload_b64 as body (old style) or no body (공식 문서)
             resp = await self._http.request(
                 method,
                 path,

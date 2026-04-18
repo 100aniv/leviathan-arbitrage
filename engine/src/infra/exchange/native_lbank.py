@@ -1,4 +1,4 @@
-"""Native LBank adapter — Spot trading via direct REST (no ccxt). US-360."""
+"""Native LBank adapter — Spot trading via direct REST. US-360."""
 from __future__ import annotations
 
 import hashlib

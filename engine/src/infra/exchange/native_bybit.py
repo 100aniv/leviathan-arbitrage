@@ -1,4 +1,4 @@
-"""Bybit native adapter — replaces ccxt for Bybit exchange.
+"""Bybit native adapter — replaces  for Bybit exchange.
 
 REST base: https://api.bybit.com (sandbox: https://api-testnet.bybit.com)
 WS: wss://stream.bybit.com/v5/public/spot
@@ -27,7 +27,7 @@ _RECV_WINDOW = 5000
 
 
 class NativeBybitAdapter(NativeAdapter):
-    """Bybit native adapter using httpx + websockets (no ccxt)."""
+    """Bybit native adapter using httpx + websockets."""
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(exchange_id="bybit", **kwargs)

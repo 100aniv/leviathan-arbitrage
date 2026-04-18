@@ -1,4 +1,4 @@
-"""Native Bithumb adapter — Korean KRW exchange via direct REST + WebSocket (no ccxt).
+"""Native Bithumb adapter — Korean KRW exchange via direct REST + WebSocket.
 
 Bithumb API v2: JWT HS256 인증 (Authorization: Bearer {token})
   payload = {access_key, nonce(UUID), timestamp(ms), [query_hash, query_hash_alg]}

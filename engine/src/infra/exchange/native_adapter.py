@@ -1,7 +1,7 @@
-"""Native exchange adapter base — replaces ccxt with websockets + httpx.
+"""Native exchange adapter base — replaces  with websockets + httpx.
 
 Provides HMAC signing, auto-reconnect WebSocket, and REST client using
-only standard libraries + httpx + websockets (no ccxt dependency).
+only standard libraries + httpx + websockets (no  dependency).
 """
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Binance native adapter — REST + WebSocket, no ccxt dependency.
+"""Binance native adapter — REST + WebSocket.
 
 Auth: HMAC-SHA256 via timestamp + recvWindow query params.
 Spot:   https://api.binance.com  /  wss://stream.binance.com:9443

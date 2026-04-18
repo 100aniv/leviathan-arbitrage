@@ -1,4 +1,4 @@
-"""Native Upbit adapter — Korean KRW exchange via direct REST + WebSocket (no ccxt)."""
+"""Native Upbit adapter — Korean KRW exchange via direct REST + WebSocket."""
 from __future__ import annotations
 
 import base64
@@ -61,7 +61,7 @@ def _make_jwt(access_key: str, secret_key: str, query_params: dict | None = None
 
 
 class NativeUpbitAdapter(NativeAdapter):
-    """Native Upbit spot adapter — direct HTTP/WebSocket, no ccxt.
+    """Native Upbit spot adapter — direct HTTP/WebSocket.
 
     Upbit uses JWT (HS256) authentication, not HMAC headers.
     All pairs are KRW-denominated (e.g., BTC/KRW).

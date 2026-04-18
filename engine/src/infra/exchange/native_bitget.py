@@ -1,4 +1,4 @@
-"""Native Bitget adapter — Spot trading via direct REST + WebSocket (no ccxt)."""
+"""Native Bitget adapter — Spot trading via direct REST + WebSocket."""
 from __future__ import annotations
 
 import base64
@@ -44,7 +44,7 @@ def _denormalize_symbol(symbol: str) -> str:
 
 
 class NativeBitgetAdapter(NativeAdapter):
-    """Native Bitget spot adapter — direct HTTP/WebSocket, no ccxt."""
+    """Native Bitget spot adapter — direct HTTP/WebSocket."""
 
     def __init__(self, exchange_id: str = "bitget", **kwargs: Any) -> None:
         kwargs.setdefault("rate_limits", _BITGET_RATE_LIMITS)

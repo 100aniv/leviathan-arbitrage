@@ -1,4 +1,4 @@
-"""OKX native adapter — replaces ccxt for OKX exchange.
+"""OKX native adapter — replaces  for OKX exchange.
 
 REST base: https://www.okx.com (sandbox: same URL + x-simulated-trading: 1 header)
 WS: wss://ws.okx.com:8443/ws/v5/public
@@ -31,7 +31,7 @@ from src.infra.exchange.native_adapter import NativeAdapter
 
 
 class NativeOKXAdapter(NativeAdapter):
-    """OKX native adapter using httpx + websockets (no ccxt)."""
+    """OKX native adapter using httpx + websockets."""
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(exchange_id="okx", **kwargs)
