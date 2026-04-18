@@ -553,6 +553,23 @@ class LiveMode(BaseMode):
                 if _stranded:
                     _is_last = (_pf_attempt == _PREFLIGHT_RETRIES - 1)
                     if _is_last:
+                        # BUG-167 (Codex SHOULD FIX): preflight_auto_close_enabled=false 시
+                        # "수동 청산 대기"가 "live 기동 불가"로 작동하던 문제 해결.
+                        # halt_local() 로 halt 플래그 설정 → 엔진은 살리되 거래만 차단 (paused-live).
+                        # 사용자가 close_positions.py 수동 실행 후 재기동하여 halt 해제.
+                        from src.core.config_loader import get_config as _gc_pf2
+                        _ac_final = bool(_gc_pf2("execution.preflight_auto_close_enabled", default=True))
+                        if not _ac_final:
+                            from src.risk.kill_switch import halt_local
+                            halt_local()
+                            _pmsg = (
+                                f"PAUSED-LIVE: stranded positions persist: {_stranded}. "
+                                f"Engine running in halt state — no new orders. "
+                                f"Manual cleanup: `python -m engine.scripts.close_positions --execute` "
+                                f"then restart engine to clear halt."
+                            )
+                            logger.critical("live_preflight_PAUSED %s", _pmsg)
+                            break  # exit preflight loop without raising
                         _msg = f"pre-existing positions detected: {_stranded}. Run close_positions.py --execute first."
                         logger.critical("live_preflight_ABORT %s", _msg)
                         raise LiveGateFailed(_msg)
