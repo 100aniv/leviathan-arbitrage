@@ -1,7 +1,7 @@
 # PHOENIX v3 — 카나리 실행 계획 (단일 SSOT)
 
 > 400줄 이내. §1~6 = 영구 계획. §7 = 카나리 이력 요약 테이블.  
-> 최종 수정: 2026-04-19 (v223 BUG-199 기준)
+> 최종 수정: 2026-04-19 (v226)
 
 ---
 
@@ -20,7 +20,7 @@
 **설정**: max_hold=1800s, edge=10bps, FF min_spread=300bps (BUG-135), 7d orderbook retention (BUG-185)  
 **v217 상태**: ERROR 0, FR signals=3~4, BUG-184/185/186 all applied, migration_runner iterative(sql+py)  
 **Bitget UTA V3**: Classic V2 → UTA V3 전환 완료 (BUG-169~183 cascade 15건). 1000 USDT 입금 전환 후 V3 stable  
-**120+ commits, 60+ bugs fixed (BUG-73~199)** (v94~v223)
+**140+ commits, 65+ bugs fixed (BUG-73~208)** (v94~v226)
 
 ### 구조 리팩토링 결과 (2026-04-17, 5개 감사 → 4개 워크스트림 + BUG-93~96)
 | WS / BUG | 내용 | 커밋 | 테스트 |
@@ -235,6 +235,9 @@ min_trade_notional_usd: $5
 | **v221** | 2026-04-19 | 8 거래소 | — | — | BUG-194 applied — launched but 체결 기회 없이 kill |
 | **v222** | 2026-04-19 | 8 거래소 | — | **stranded $20.97** | BUG-195/196/197/198 applied — orjson bytes→Binance WS 1003 거부. REST fallback 5500ms. 회계상 stranded (실 position 0) |
 | **v223** | 2026-04-19 | 8 거래소 | — | — | BUG-199 fix — WS text frames 복구. Binance 44ms, Bitget 52.9ms. ERROR 0. 2자리 복구 |
+| **v224** | 2026-04-19 | 8 거래소 | 4 | +$0.04 | BUG-200 적용 (FF min_spread 300→27bps). FF 첫 체결 4건 (ZBT/CYBER/API3/FF) |
+| **v225** | 2026-04-19 | 8 거래소 | — | — | BUG-203/204/205 summary 로그 발견 — SF signals=1~14/cycle pass_basis but downstream filter 거절, triangular total_scanned=0 |
+| **v226** | 2026-04-19 | 8 거래소 | 6 | +$0.19 누적 | BUG-207/208 완료. FF/FR 6건. HALT 0. Grafana 실데이터 연결 |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
@@ -455,12 +458,26 @@ min_trade_notional_usd: $5
 | **BUG-196** | 주문 경로 WS 클라이언트 TCP_NODELAY 설정 (Nagle 알고리즘 비활성화) | ✅ 7d0a6b3 |
 | **BUG-197/198** | TCA + ghost + reconciler 메트릭 Prometheus export (observability 강화) | ✅ 57830eb |
 | **BUG-199** | orjson.dumps().decode() — WS send는 text 프레임 필수. BUG-195 bytes 문제 수정. Binance 44ms, Bitget 52.9ms, ERROR 0 복구 | ✅ 591163a |
+| **BUG-200** | FF min_spread 300bps → 27bps 복원 (BUG-135 latency 기준 폐물 — v223 97ms 달성으로 300bps 근거 소멸) | ✅ 03dd9f1 |
+| **BUG-202** | reconciler 2-cycle guard를 unrecorded 타입까지 확장 (기존 orphan 타입만 적용) | ✅ 72ced53 |
+| **BUG-203** | SF signal summary 로그 추가 — pass_basis/downstream_filter 거절 진단 gap 해소 | ✅ 2c579c4 |
+| **BUG-204** | XE-KRW signal summary 로그 추가 — cross_exchange KRW 경로 관측 gap 해소 | ✅ 2c579c4 |
+| **BUG-205** | triangular signal summary 로그 추가 (total_scanned=0 진단 가능) — 3각 차익 관측 gap 해소 | ✅ 2c579c4 |
+| **BUG-207** | Redis dual_write timeout 50ms → 500ms (Docker Redis 100-300ms spike 정상, 50ms 임계값이 HALT cascade 유발) | ✅ 8dfdfbd |
+| **BUG-208** | Prometheus scrape config Docker DNS `engine:8000` → host-gateway alias (개발 로컬 Grafana 실데이터 unblock) | ✅ 20d6a5e |
 
 ### §5.2 세션 교훈 (2026-04-19)
 
 - **BUG-195 orjson bytes**: `orjson.dumps()`는 `bytes`를 반환한다. Binance WebSocket은 RFC 6455 표준에 따라 text 프레임만 허용하며 binary 프레임(opcode 0x2)을 close code 1003으로 거부한다. 라이브러리 스펙과 거래소 공식 문서를 사전에 교차 검증하지 않아 v222 stranded 사태 발생. 신규 직렬화 라이브러리 적용 전 WS 프레임 타입 요구사항 반드시 확인할 것.
 - **BUG-194 newOrderRespType=RESULT**: Binance MARKET 주문에만 존재하는 파라미터. Bitget V3/Upbit/Bithumb/Coinone의 ACK 응답은 orderId만 반환하며 RESULT 타입을 지원하지 않음. exa.ai 공식 문서 확인으로 사전 검증 가능했던 오류.
 - **BUG-189 userData stream이 핵심**: WS fill confirmation latency 개선의 실질 기여는 BUG-189 userData stream (REST 폴링 제거, 45ms→43ms). BUG-193(compression 제거)/BUG-194(RESULT 응답)/BUG-196(TCP_NODELAY)은 marginal 5-10% 기여에 그침. 핵심 병목은 항상 왕복 횟수이지 개별 최적화가 아님.
+
+### §5.3 세션 2 교훈 (v223→v226)
+
+- **BUG-200: min_spread 폐물 config**: BUG-135에서 설정한 300bps는 당시 2.2s 레이턴시 기반. v223에서 97ms 달성 후 이 근거가 소멸했음에도 config는 300bps 그대로였다. 27bps 복원 즉시 FF 체결 4건 발생. 로직 수정이 시장 기회를 즉시 복구한다. "시장 문제"와 "로직 문제"를 구분하려면 signal summary 로그가 필수 — 신호가 생성되는지, 어느 필터에서 거절되는지 관측할 수 없으면 진단 불가능하다.
+- **BUG-203~205: 관측 gap이 디버깅을 막는다**: SF/XE-KRW/triangular 3개 전략 모두 summary 로그가 없어 "신호 0건인가, 아니면 필터에서 거절되는가"를 구분할 수 없었다. BUG-203~205로 로그 추가 후 SF는 1~14 signals/cycle이 downstream 필터에서 거절되는 것, triangular는 total_scanned=0인 것이 즉시 확인됐다. 새 전략 추가 시 entry/filter/reject 각 단계의 summary 로그를 반드시 포함할 것.
+- **BUG-207: timeout 임계값은 실측 기반이어야 한다**: Docker Redis의 실측 스파이크는 100-300ms이다. 50ms 임계값은 정상 spike를 HALT cascade로 오판한다. timeout 설정은 p99 실측값 이상으로 잡되, 거래소 API timeout과 혼동하지 말 것 (거래소 REST는 5s 별개).
+- **BUG-208: 개발 로컬 Docker DNS 함정**: Prometheus scrape config에 `engine:8000`을 쓰면 Prometheus 컨테이너 내부에서 Docker DNS로 해석되어 로컬호스트 엔진에 닿지 않는다. 개발 환경에서는 `host-gateway` alias를 사용해야 한다. Docker Compose `extra_hosts: host-gateway:host-gateway` 설정과 scrape target `host.docker.internal:8000` 조합이 표준 패턴.
 
 ### §5.1 미해결 클래스 (재발 주의)
 
