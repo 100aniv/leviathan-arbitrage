@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-04-19 (PHOENIX 카나리 v228 동기화 — WS-0 + WS-A commercial-grade TCA 전환, BUG-73~217, 70+ bugs fixed) | Last PHOENIX sync: 2026-04-19 | PRD: `.omc/prd.json` (437개 US, 429 passes:true / 8 passes:false)
+> 마지막 업데이트: 2026-04-19 (PHOENIX 카나리 v230 동기화 — WS-A/B/C/D commercial-grade 전환 **완료**, BUG-73~219, 75+ bugs fixed, 15+ commits) | Last PHOENIX sync: 2026-04-19 | PRD: `.omc/prd.json` (437개 US, 429 passes:true / 8 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | **SIT-3 플랜: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오)**
 > **Phase K 플랜**: `.claude/plans/radiant-cooking-forest.md` (Backtest→Paper→Live 종합 23케이스, 2026-04-02 v4)
 > **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → J ✅ → K(72/80) → **L ✅** → M → N(TF Final → Live)
@@ -33,8 +33,8 @@
 > Team roster: `.omc/state/team-roster.json`
 
 **Phase**: L (K✅ 완료 | Phase L 진입 — Shadow→Paper 리네임 + 대시보드 재설계, 2026-04-04)
-**PHOENIX 트랙 (병행)**: v228 canary, 145+ commits, 70+ bugs fixed (BUG-73~217), 2자리수 latency 달성 (Binance 41ms / Bitget 45ms warm), Docker engine build ✅, WS-0 close script + WS-A commercial-grade TCA 전환 (2026-04-19)
-**§2.2 TCA 계층 진화**: 2 layer (gross + fee) → **4 layer** (gross + fee + slippage + funding) + exchange `realizedPnl` primary source (WS-A1/A2/A3/A5), `Trade.realized_pnl` field + 4-branch priority (exchange → engine sim fallback), `ExchangeIncomeFetcher` 30s polling (Binance `/fapi/v1/income` + Bitget `/account/bill`). WS-C/D에서 7-layer 확장 예정.
+**PHOENIX 트랙 (병행)**: v229 → **v230 canary** (최종 검증 가동), 160+ commits, 75+ bugs fixed (BUG-73~219), 2자리수 latency 달성 (Binance 41ms / Bitget 45ms warm), Docker engine build ✅, **Commercial-grade transition 완료** (WS-A/B/C/D all shipped, 2026-04-19)
+**§2.2 TCA 계층 진화**: 2 layer (gross + fee) → 4 layer (WS-A) → **7 layer** (gross + fee + slippage + funding + basis + reconciliation_variance + exchange_realized — WS-D 완료). Exchange `realizedPnl` primary source (WS-A1/A2/A3/A5), `Trade.realized_pnl` field + 4-branch priority, `ExchangeIncomeFetcher` 30s polling (Binance `/fapi/v1/income` + Bitget `/account/bill`). **WS-B**: dynamic min_spread = fee + p95_slippage + funding_buffer + profit_margin. **WS-D**: divergence 5% rule 자동 HALT + toxicity filter + Sharpe/MDD 30-day rolling + daily TCA CSV.
 **Tests**: 5,508 collected (from `pytest --co -q` on 2026-04-19)
 **Coverage**: 74%
 **PRD**: 429/437 passes:true (passes:false 8개 — US-055, US-056, US-373, US-425, US-426, US-427, US-428, US-429)
@@ -56,7 +56,8 @@
 - **futures_futures**: ✅ WR 87-93%, 정상 — PHOENIX: v224 BUG-200 config min_spread 300→27bps 수정 후 4건 체결 + PnL 양수 (세션). **BUG-214 fix**: reconciler hedge_mode 2x netting 제거로 position size 정확도 복구 (c1a4c05, 148+9 regression pass)
 - **statistical_arb**: ✅ WR 100%, cap $10 (Shadow 구조 한계 — expected_profit 기반)
 - **triangular**: ⚠️ Bithumb 공개 WS 데이터 품질 문제 (fake spread 304만%). 코드+가드 정상. Live 인증 API 사용 시 해결 — PHOENIX: v225에서도 `triangular_scanner.total_scanned=0` 재발, BUG-205 signal summary 로그로 로직 진단 중
-- **cross_exchange**: ⚠️ 리테일 수수료(20bps) > 스프레드(0-3bps). 한국 IP 저수수료 거래소 없음 (MEXC 차단, Gate.io 20bps). **VIP 등급 달성이 유일한 해결책**. 코드 자체는 정상 — PHOENIX: BUG-204 XE-KRW signal summary 로그 추가 (diagnostic gap 해소). **BUG-209 fix** (4bc7c28): XE-KRW evaluator 경로 복구 — live.py pre-normalization에서 `/KRW`→USDT stripped 문제를 raw `/KRW` parallel dispatch로 해결 (live canary 58,006 events / 2min 증명)
+- **cross_exchange**: ⚠️ 리테일 수수료(20bps) > 스프레드(0-3bps). 한국 IP 저수수료 거래소 없음 (MEXC 차단, Gate.io 20bps). **VIP 등급 달성이 유일한 해결책**. 코드 자체는 정상 — PHOENIX: BUG-204 XE-KRW signal summary 로그 추가 (diagnostic gap 해소). **BUG-209 fix** (4bc7c28): XE-KRW evaluator 경로 복구 — live.py pre-normalization에서 `/KRW`→USDT stripped 문제를 raw `/KRW` parallel dispatch로 해결. **BUG-219 fix** (81c8180): `ce_config=None` when DISABLED_PHASE2 default 50000 leak → 2130 risk rejects 제거, KRW pair 주문 경로 unblock
+- **전체 공통 (WS-D)**: divergence alert 5% rule 자동 HALT — engine PnL vs exchange realized_pnl 5%+ 괴리 시 즉시 거래 중단 + Telegram 알림 → 거짓 PnL 재발 방지 (5770746, 26 new tests)
 - **cex_dex**: DEX 미연동. Live 후 Uniswap V3 연동 시 활성화
 - **AutoTuner**: `TUNER_DATA_SOURCE=timescaledb` (실 데이터 26K+). synthetic 결과가 real params 덮어쓰기 방지
 
@@ -343,31 +344,94 @@ periods_per_year = 8760 (1시간 윈도우)
 MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 ```
 
-### 4.7 TCA 7-Layer 모델 (WS-A 부분 도입, WS-C/D 확장 예정)
+### 4.7 TCA 7-Layer 모델 (WS-A/B/C/D 완료 — commercial-grade transition 종료)
 
-> 2026-04-19 WS-A 스프린트로 2-layer → 4-layer 전환. 목표는 7-layer 완결.
+> 2026-04-19 Sprint: 2-layer → 4-layer (WS-A) → **7-layer (WS-D) 완결**.
 
-**현재 구현 (4 layer)**:
+**현재 구현 (7 layer — WS-D ship 2026-04-19)**:
 ```
-TCA_PnL = Gross_Spread            # (1) 원시 스프레드
-        - Commission              # (2) 거래소 수수료 (taker/maker)
-        - Slippage                # (3) 실 체결가 - 의도가 (WS-A5 deduction 활성화)
-        - Funding_Accrual         # (4) 8h UTC settlement (WS-A3, UTC 00/08/16)
+TCA_PnL = Gross_Spread                      # (1) 원시 스프레드
+        - Commission                        # (2) 거래소 수수료 (taker/maker)
+        - Slippage                          # (3) 실 체결가 - 의도가 (WS-A5 deduction)
+        - Funding_Accrual                   # (4) 8h UTC settlement (WS-A3, UTC 00/08/16)
+        - Basis_Cost                        # (5) spot-futures basis drift (WS-D)
+        - Reconciliation_Variance           # (6) engine state vs exchange state 괴리 (WS-D)
+        + Exchange_Realized_Adjustment      # (7) exchange realizedPnl reconciliation (WS-A2/D)
 ```
-- **Primary source**: Exchange `realizedPnl` (Binance `/fapi/v1/income` + Bitget `/account/bill`, 30s polling via `ExchangeIncomeFetcher` — WS-A2)
+- **Primary source**: Exchange `realizedPnl` (Binance `/fapi/v1/income` + Bitget `/account/bill`, 30s polling via `ExchangeIncomeFetcher` — WS-A2, BUG-218 endpoint fix 103d619)
 - **Fallback chain**: 4-branch priority
   1. exchange `realizedPnl` (authoritative)
   2. `Trade.realized_pnl` field (engine-filled from exchange msg, WS-A1)
-  3. engine sim (gross - commission - slippage - funding)
+  3. engine sim (gross - commission - slippage - funding - basis - recon_variance)
   4. legacy `gross_spread - commission`
 - **Feedback**: `TCAAdaptiveFeedback` observation layer (WS-A4) — adaptive sizing 입력 시그널로 연결 (write path only, decision layer 미구현)
 
-**미구현 (WS-B/C/D 로드맵)**:
+**§4.8 Dynamic min_spread (WS-B 2e0abe2)**:
 ```
-        - Basis_Cost              # (5) spot-futures basis drift
-        - Market_Impact           # (6) 주문 크기 기반 impact (현재 CEXOrderbookSlippage 필터만, fill 반영 안 됨)
-        - Reconciliation_Variance # (7) engine state vs exchange state 괴리
+min_spread_bps = fee_total_bps
+               + slippage_p95_bps          # observed rolling p95 from cost_feedback_loop
+               + funding_buffer_bps         # per-strategy (FF/FR 별도)
+               + profit_margin_bps          # 설정값 (default 5 bps)
 ```
+- `cost_feedback_loop.compute_dynamic_min_spread()` — 전략별 slippage p95 observe → FF/FR/SignalGenerator 주입
+- Prometheus: `leviathan_dynamic_min_spread_bps{strategy=...}` metric export
+- Static min_spread config 폐기 → observed friction 기반 자동 조정
+
+**§4.9 위험 메트릭 확장 (WS-D 5770746)**:
+```
+Sharpe_30d = (mu_30d - rf) / sigma_30d * sqrt(8760)   # 30-day rolling 창
+MDD_30d = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t } over 30d window
+Divergence_Alert: |engine_pnl - exchange_realized| / |exchange_realized| > 5% → auto HALT + Telegram
+Toxicity_Filter: adverse_selection_score > threshold → signal reject
+Daily_TCA_CSV: end-of-day export per symbol/strategy/exchange (audit trail)
+```
+
+---
+
+## §5. 관측성 + 경보 스택 (WS-C/D 2026-04-19)
+
+> Commercial-grade transition sprint 최종 계층. 엔진 내부 계산과 거래소 실현 PnL 간 괴리를 실시간으로 감지/차단하고, 기관급 TCA 감사 추적을 제공한다.
+
+### §5.1 Prometheus 신규 메트릭 (15+)
+- `leviathan_dynamic_min_spread_bps{strategy}` — WS-B 동적 임계값 (FF/FR/XE/SF 별도)
+- `leviathan_slippage_p95_bps{strategy,exchange}` — 30-trade 롤링 p95
+- `leviathan_funding_buffer_bps{strategy}` — per-strategy funding 보정
+- `leviathan_tca_layer_pnl{layer,symbol,strategy}` — 7-layer 분해 (gross/fee/slip/funding/basis/recon/exchange_realized)
+- `leviathan_exchange_realized_pnl{exchange,symbol}` — 30s polling income
+- `leviathan_pnl_divergence_pct{symbol,strategy}` — engine vs exchange 괴리율
+- `leviathan_toxicity_score{symbol,strategy}` — adverse selection 필터
+- `leviathan_sharpe_30d`, `leviathan_mdd_30d` — 30-day rolling risk
+- `leviathan_halt_divergence_total{reason}` — divergence HALT 발동 카운터
+- `leviathan_hedge_pair_status{exchange,symbol}` — WS-C2 hedge 상태
+
+### §5.2 Grafana 대시보드 (institutional-observability)
+- 7-layer TCA breakdown (누적/일별/전략별)
+- Sharpe/MDD 30-day rolling + LiveGate 6-check live
+- Divergence heatmap (engine vs exchange realized PnL)
+- Hedge pair status + dynamic min_spread 추이
+
+### §5.3 Divergence 자동 HALT + Telegram
+- 규칙: `|engine_pnl - exchange_realized| / |exchange_realized| > 5%` → KillSwitch Tier-1 즉시 발동
+- Telegram: TradeBot/InfraBot 동시 알림, 5분 쿨다운
+- 거짓 PnL 재발 방지 (WS-A 도입 후 첫 실증 가드)
+
+### §5.4 Toxicity 필터
+- adverse selection score 실시간 계산 → 신호 생성 단계에서 reject
+- 근거: post-fill 시장 불리 이동 30s lookback 기반
+
+### §5.5 APIs (WS-C 완료, b20300a)
+- `GET /api/v1/pnl/attributed` — 7-layer TCA breakdown JSON (by strategy/symbol/exchange)
+- `GET /api/v1/positions/hedge-pairs` — hedge pair 상태 + 위험 지표
+- 14 unit tests pass (C1+C2 API contract 검증)
+
+### §5.6 Daily TCA CSV (WS-D)
+- end-of-day export: `engine/logs/tca/daily_YYYY-MM-DD.csv`
+- 컬럼: timestamp, symbol, strategy, exchange, layer_1~7, engine_pnl, exchange_realized, divergence_pct
+- 감사 추적 + backtester 재생 데이터 소스
+
+### §5.7 회귀 테스트 가드
+- `tests/test_tca_regression.py` — 7-layer 합산 invariant + divergence alert threshold + toxicity filter 동작 검증
+- 26 new tests (WS-D 5770746) — CI 필수 통과 조건
 
 ---
 

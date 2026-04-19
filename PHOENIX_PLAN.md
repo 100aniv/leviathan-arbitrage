@@ -239,7 +239,9 @@ min_trade_notional_usd: $5
 | **v225** | 2026-04-19 | 8 거래소 | — | — | BUG-203/204/205 summary 로그 발견 — SF signals=1~14/cycle pass_basis but downstream filter 거절, triangular total_scanned=0 |
 | **v226** | 2026-04-19 | 8 거래소 | 6 | +$0.19 누적 | BUG-207/208 완료. FF/FR 6건. HALT 0. Grafana 실데이터 연결 |
 | **v227** | 2026-04-19 | 8 거래소 | — | — | WS-0-1 close_open_positions.py 도입 (dry-run 검증, 포지션 0 확인). BUG-209 XE-KRW evaluator unreachable fix (live canary 58,006 events 2min 실증) + BUG-214 reconciler 2x position size in hedge_mode fix (native adapter double-count 제거, 148 + 9 신규 regression pass) |
-| **v228** | 2026-04-19 | 8 거래소 | 진행중 | 검증 대기 | **WS-A commercial-grade TCA 전환 검증**: Exchange realized_pnl wire (WS-A1) + slippage deduction (WS-A5) + funding accrual (WS-A3) + TCA adaptive feedback observation (WS-A4) + ExchangeIncomeFetcher 30s polling (WS-A2). 2-layer(gross+fee) → 4-layer(gross+fee+slippage+funding) + exchange realized_pnl 우선 소스 |
+| **v228** | 2026-04-19 | 8 거래소 | — | -$0.06/10min | **WS-A 검증** — ExchangeIncomeFetcher 404 (Bitget UTA V3 bill path 불일치), engine PnL -$0.06/10min honest loss (이중 수수료 방지 작동). BUG-218 발견 |
+| **v229** | 2026-04-19 | 8 거래소 | — | — | **BUG-218 fix 검증** — Bitget `/api/v3/account/bills` → `/api/v3/account/financial-records` endpoint 복구. XE-KRW 750 summary events / session, 404 재발 없음 |
+| **v230** | 2026-04-19 | 8 거래소 | 가동중 | 검증 대기 | **Commercial-grade transition 최종 검증** — WS-B dynamic min_spread + WS-C1/C2 APIs + WS-D divergence/toxicity/Sharpe/MDD/daily CSV + BUG-219 ce_config fix 전체 반영. 15+ commits / 75+ bugs / 7-layer TCA 완결 |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
@@ -472,7 +474,13 @@ min_trade_notional_usd: $5
 | **BUG-215** | engine total_pnl이 `gross_spread - commission`만 반영 — slippage/funding/exchange realizedPnl 미차감. WS-A1+A5 수정: `Trade.realized_pnl` field + 4-branch priority (exchange primary → engine sim fallback) + slippage deduction 활성화. 5 unit tests pass | ✅ d43fc9c |
 | **BUG-216** | Funding accrual + TCA feedback 계층 미구현 — 8h UTC settlement 기반 funding PnL 자동 반영 누락. WS-A3+A4 수정: FundingAccrualTracker (UTC 00/08/16 settlement) + TCAAdaptiveFeedback (observation layer, adaptive sizing 입력 시그널 연결) | ✅ 52becd2 |
 | **BUG-217** | Exchange `realizedPnl` income polling 없음 — Binance `/fapi/v1/income` + Bitget `/account/bill` 30s 주기 폴링으로 TCA 정확도 보강. WS-A2 구현 | ✅ 2806414 |
+| **BUG-218** | Bitget UTA V3 bill endpoint 404 — `/api/v3/account/bills` 경로 오류. `/api/v3/account/financial-records`로 수정. v228에서 ExchangeIncomeFetcher 404 발견 후 v229에서 fix 검증 (XE-KRW 750 summary events / session) | ✅ 103d619 |
+| **BUG-219** | `cross_exchange ce_config=None` when DISABLED_PHASE2 — default 50000 position leak → RiskGuardian 2130 rejects. Guard로 None 분기 차단, KRW pair 주문 경로 unblock | ✅ 81c8180 |
 | **WS-0-1** | `close_open_positions.py` 도입 — 수동 청산 + slippage CSV dry-run 스크립트 (포지션 0 확인). crash/SIGKILL fallback 대비 | ✅ 502da71 |
+| **WS-B** | Dynamic min_spread from observed slippage p95 — cost_feedback_loop.compute_dynamic_min_spread() + Prometheus `leviathan_dynamic_min_spread_bps` + FF/FR/SignalGenerator 주입. Static config 폐기. unit tests pass | ✅ 2e0abe2 |
+| **WS-C1** | `/api/v1/pnl/attributed` route — 7-layer TCA breakdown JSON (by strategy/symbol/exchange) | ✅ b20300a |
+| **WS-C2** | `/api/v1/positions/hedge-pairs` route — hedge pair 상태 + 위험 지표. 14 unit tests pass (C1+C2) | ✅ b20300a |
+| **WS-D** | Divergence alert 5% rule 자동 HALT + toxicity filter + Sharpe/MDD 30-day rolling + regression test + daily TCA CSV export. 7-layer TCA 완결 (gross/fee/slip/funding/basis/recon_variance/exchange_realized). 26 new tests | ✅ 5770746 |
 
 ### §5.2 세션 교훈 (2026-04-19)
 
