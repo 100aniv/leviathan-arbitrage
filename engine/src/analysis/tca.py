@@ -2,13 +2,15 @@
 
 US-116: Measures execution quality via rolling percentile windows.
 US-329: Arrival Price, Timing decomposition, Per-strategy breakdown.
+WS-D3: RollingPerformance — 30-day rolling Sharpe + Max Drawdown.
 """
 from __future__ import annotations
 
 import logging
+import math
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -171,3 +173,145 @@ class TCAAnalyzer:
     def get_all_strategy_summaries(self) -> dict[str, dict]:
         """US-329: All strategies at once."""
         return {sid: self.get_strategy_summary(sid) for sid in self._strategy_is}
+
+
+# ---------------------------------------------------------------------------
+# WS-D3: 30-day rolling performance (Sharpe + MDD)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _DailyReturn:
+    date: datetime
+    pnl_usd: float  # realized PnL for the UTC day
+    equity: float   # cumulative equity AFTER this day closed
+
+
+class RollingPerformance:
+    """Maintains a 30-day rolling PnL series and exposes Sharpe + MDD.
+
+    Inputs:
+      - ``record_pnl(pnl_usd)``: accumulate PnL into the current UTC day.
+      - ``roll_day(now_utc)``: close the current day's bucket and start a new
+        one. Called by live.py at UTC 00:00 or when a new day is detected.
+
+    Outputs:
+      - ``sharpe_30d()``: annualized (×√365) Sharpe using daily returns.
+      - ``mdd_30d_pct()``: max drawdown percentage across the rolling window.
+
+    Empty/insufficient data returns 0.0 — callers can still push the gauge
+    without special-casing cold start.
+    """
+
+    WINDOW_DAYS = 30
+    PERIODS_PER_YEAR = 365
+
+    def __init__(self, initial_equity: float = 0.0, window_days: int = WINDOW_DAYS) -> None:
+        self._window_days = window_days
+        self._history: deque[_DailyReturn] = deque(maxlen=window_days)
+        self._current_day: datetime | None = None
+        self._current_pnl: float = 0.0
+        self._running_equity: float = float(initial_equity)
+
+    # -----------------------------------------------------------------------
+    # Ingestion
+    # -----------------------------------------------------------------------
+
+    def record_pnl(self, pnl_usd: float, now_utc: datetime | None = None) -> None:
+        """Add PnL to the current UTC day bucket. Auto-rolls if the day advanced."""
+        now = now_utc or datetime.now(timezone.utc)
+        day = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+        if self._current_day is None:
+            self._current_day = day
+        elif day > self._current_day:
+            # A UTC day rolled over while we weren't looking — commit the
+            # pending day and start a new bucket before accumulating.
+            self._commit_current()
+            self._current_day = day
+        self._current_pnl += float(pnl_usd)
+
+    def roll_day(self, now_utc: datetime | None = None) -> None:
+        """Explicitly close the current day and start a fresh one (scheduler path)."""
+        now = now_utc or datetime.now(timezone.utc)
+        day = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+        if self._current_day is None:
+            self._current_day = day
+            return
+        self._commit_current()
+        self._current_day = day
+
+    def _commit_current(self) -> None:
+        if self._current_day is None:
+            return
+        self._running_equity += self._current_pnl
+        self._history.append(
+            _DailyReturn(
+                date=self._current_day,
+                pnl_usd=self._current_pnl,
+                equity=self._running_equity,
+            )
+        )
+        self._current_pnl = 0.0
+
+    # -----------------------------------------------------------------------
+    # Metrics
+    # -----------------------------------------------------------------------
+
+    def _daily_returns(self) -> list[float]:
+        """Daily return fractions relative to prior equity. Cold-start uses pnl/1."""
+        out: list[float] = []
+        prev_equity = self._history[0].equity - self._history[0].pnl_usd if self._history else 0.0
+        for rec in self._history:
+            base = prev_equity if prev_equity not in (0.0, 0) else 1.0
+            out.append(rec.pnl_usd / base)
+            prev_equity = rec.equity
+        return out
+
+    def sharpe_30d(self, risk_free: float = 0.0) -> float:
+        """Annualized Sharpe. Requires >= 2 committed days (std needs >=2 samples)."""
+        if len(self._history) < 2:
+            return 0.0
+        returns = self._daily_returns()
+        n = len(returns)
+        mean = sum(returns) / n
+        var = sum((r - mean) ** 2 for r in returns) / n
+        std = math.sqrt(var)
+        if std == 0:
+            return 0.0
+        return ((mean - risk_free) / std) * math.sqrt(self.PERIODS_PER_YEAR)
+
+    def mdd_30d_pct(self) -> float:
+        """Max drawdown as a positive percentage (0-100)."""
+        if not self._history:
+            return 0.0
+        peak = self._history[0].equity
+        max_dd = 0.0
+        for rec in self._history:
+            if rec.equity > peak:
+                peak = rec.equity
+            if peak > 0:
+                dd = (peak - rec.equity) / peak
+                if dd > max_dd:
+                    max_dd = dd
+        return max_dd * 100.0
+
+    def push_metrics(self) -> None:
+        """Emit Prometheus gauges. Safe to call every tick — graceful on missing metrics."""
+        try:
+            from src.infra.metrics import SHARPE_30D, MDD_30D_PCT
+            SHARPE_30D.set(self.sharpe_30d())
+            MDD_30D_PCT.set(self.mdd_30d_pct())
+        except Exception:
+            pass
+
+    # -----------------------------------------------------------------------
+    # Introspection (tests + dashboards)
+    # -----------------------------------------------------------------------
+
+    @property
+    def history(self) -> list[_DailyReturn]:
+        return list(self._history)
+
+    @property
+    def current_equity(self) -> float:
+        return self._running_equity + self._current_pnl

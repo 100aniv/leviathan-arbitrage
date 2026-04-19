@@ -415,6 +415,64 @@ OBSERVED_SLIPPAGE_P95_BPS = Gauge(
 )
 
 
+# ---------------------------------------------------------------------------
+# WS-B: dynamic min_spread threshold exposure + rejection counter
+# ---------------------------------------------------------------------------
+
+DYNAMIC_MIN_SPREAD_BPS = Gauge(
+    "leviathan_dynamic_min_spread_bps",
+    "Dynamic pre-trade min_spread threshold (bps) = fee + p95_slippage + funding + margin",
+    ["strategy", "exchange_pair"],
+)
+
+SIGNALS_REJECTED_BY_COST_MODEL = Counter(
+    "leviathan_signals_rejected_by_cost_model_total",
+    "Signals rejected because expected_spread_bps < dynamic_min_spread_bps",
+    ["strategy", "exchange_pair"],
+)
+
+
+# ---------------------------------------------------------------------------
+# WS-D1: engine vs exchange PnL divergence HALT counter
+# ---------------------------------------------------------------------------
+
+PNL_DIVERGENCE_HALT_TRIGGERED = Counter(
+    "leviathan_pnl_divergence_halt_triggered_total",
+    "Number of HALT events triggered because engine total_pnl diverged from exchange 24h income by >= threshold",
+)
+
+PNL_DIVERGENCE_PCT = Gauge(
+    "leviathan_pnl_divergence_pct",
+    "Current rolling divergence percentage between engine total_pnl and exchange-reported 24h income sum",
+)
+
+
+# ---------------------------------------------------------------------------
+# WS-D2: pre-execution toxicity filter rejections
+# ---------------------------------------------------------------------------
+
+SIGNALS_REJECTED_TOXICITY = Counter(
+    "leviathan_signals_rejected_toxicity_total",
+    "Signals rejected by pre-execution toxicity filter (orderbook imbalance / depth volatility)",
+    ["strategy", "exchange", "reason"],  # reason: imbalance / depth_volatility / empty_book
+)
+
+
+# ---------------------------------------------------------------------------
+# WS-D3: Sharpe + Max Drawdown (30-day rolling)
+# ---------------------------------------------------------------------------
+
+SHARPE_30D = Gauge(
+    "leviathan_sharpe_30d",
+    "Annualized Sharpe ratio over the last 30 daily returns",
+)
+
+MDD_30D_PCT = Gauge(
+    "leviathan_mdd_30d_pct",
+    "Maximum drawdown percentage over the last 30-day rolling equity curve",
+)
+
+
 def start_metrics_server(port: int = 8000) -> None:
     """Start Prometheus metrics HTTP server on the given port."""
     start_http_server(port)

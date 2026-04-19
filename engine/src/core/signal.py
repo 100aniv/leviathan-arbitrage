@@ -98,6 +98,7 @@ class SignalGenerator:
         slippage_feedback: Any | None = None,  # US-283: SlippageFeedbackCollector
         market_impact_enabled: bool | None = None,  # US-284: toggle (default from env)
         cost_feedback: Any | None = None,  # WS-B: TCAAdaptiveFeedback for dynamic min_spread
+        toxicity_filter: Any | None = None,  # WS-D2: pre-execution toxicity filter
     ) -> None:
         self._hub = price_hub
         self._calc = cost_calculator
@@ -113,6 +114,15 @@ class SignalGenerator:
         self._adaptive_threshold = adaptive_threshold  # US-255: per-strategy threshold
         self._slippage_feedback = slippage_feedback  # US-283
         self._cost_feedback = cost_feedback  # WS-B: dynamic min_spread
+        # WS-D2: toxicity filter — auto-instantiate a default if none injected so
+        # every new SignalGenerator gets protection without DI ceremony.
+        if toxicity_filter is None:
+            try:
+                from src.risk.toxicity_filter import ToxicityFilter
+                toxicity_filter = ToxicityFilter()
+            except Exception:
+                toxicity_filter = None
+        self._toxicity_filter = toxicity_filter
         _op = get_settings().operational
         self._market_impact_enabled = (
             market_impact_enabled
@@ -292,6 +302,21 @@ class SignalGenerator:
                 symbol, buy_exchange, sell_exchange,
             )
             return None
+
+        # WS-D2: pre-execution toxicity — reject when the orderbook is
+        # imbalanced or depth is volatile. Applied AFTER empty-book guard so
+        # the filter gets real depth samples, BEFORE friction calc so we don't
+        # waste work on signals that would be filled in a toxic book.
+        if self._toxicity_filter is not None:
+            for _label, _ob in (("buy", buy_book), ("sell", sell_book)):
+                _reason = self._toxicity_filter.check(
+                    book=_ob,
+                    exchange=_ob.exchange,
+                    symbol=symbol,
+                    strategy_id=self._config.strategy_id,
+                )
+                if _reason is not None:
+                    return None
 
         # Staleness gate — reject if either orderbook hasn't updated recently
         now_mono = time.monotonic()

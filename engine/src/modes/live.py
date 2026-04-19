@@ -207,6 +207,7 @@ class LiveMode(BaseMode):
         tca_analyzer: Any | None = None,
         slippage_feedback_collector: Any | None = None,
         position_manager: Any | None = None,
+        cost_feedback: Any | None = None,  # WS-B: shared TCAAdaptiveFeedback from main.py
     ) -> None:
         self._signal_generator = signal_generator
         self._executor = executor
@@ -230,14 +231,19 @@ class LiveMode(BaseMode):
         self._tca_analyzer = tca_analyzer  # TCAAnalyzer (US-116) — injected from main.py
         self._slippage_feedback_collector = slippage_feedback_collector  # US-283: SlippageFeedbackCollector
 
-        # WS-A4: TCA adaptive feedback observation layer (no threshold adjustment yet).
-        # record_observation() is called from the TCA compare path in _execute_trade_request.
-        try:
-            from src.friction.cost_feedback_loop import TCAAdaptiveFeedback
-            self._tca_feedback: Any = TCAAdaptiveFeedback(window=100)
-        except Exception as _tca_fb_exc:
-            logger.warning("live_mode.tca_feedback_init_failed error=%s", _tca_fb_exc)
-            self._tca_feedback = None
+        # WS-A4 + WS-B: TCA adaptive feedback observation layer.
+        # Prefer the shared instance injected from main.py (same object backing
+        # FF/FR dynamic min_spread + SignalGenerator cost-model gate). Fall back
+        # to a local instance only when main.py could not construct it.
+        if cost_feedback is not None:
+            self._tca_feedback: Any = cost_feedback
+        else:
+            try:
+                from src.friction.cost_feedback_loop import TCAAdaptiveFeedback
+                self._tca_feedback: Any = TCAAdaptiveFeedback(window=100)
+            except Exception as _tca_fb_exc:
+                logger.warning("live_mode.tca_feedback_init_failed error=%s", _tca_fb_exc)
+                self._tca_feedback = None
 
         # WS-A3: Funding accrual state.
         # _funding_accrual: (strategy_id, exchange, symbol) -> accrued cost (USDT, signed).
@@ -375,6 +381,22 @@ class LiveMode(BaseMode):
         self._margin_refresh_task: asyncio.Task | None = None
         # WS-A2: ExchangeIncomeFetcher (realized_pnl/commission/funding_fee polling)
         self._exchange_income_fetcher: Any | None = None
+        # WS-D1: PnL divergence monitor state + loop task
+        self._pnl_divergence_task: asyncio.Task | None = None
+        self._pnl_divergence_breach_count: int = 0  # consecutive breaches
+        # WS-D3: Rolling performance (Sharpe + MDD) task + tracker
+        self._perf_task: asyncio.Task | None = None
+        try:
+            from src.analysis.tca import RollingPerformance
+            self._rolling_perf: Any = RollingPerformance()
+        except Exception:
+            self._rolling_perf = None
+        # WS-D5: daily TCA CSV writer
+        try:
+            from src.analysis.tca_csv_writer import TCACsvWriter
+            self._tca_csv_writer: Any = TCACsvWriter()
+        except Exception:
+            self._tca_csv_writer = None
 
         # Collision detection: (symbol, exchange_pair) -> last_trade_time
         from src.execution.dedup import DeduplicationGate
@@ -794,6 +816,14 @@ class LiveMode(BaseMode):
         # BUG-18 fix: margin cache refresh loop (every 60s)
         self._margin_refresh_task = asyncio.create_task(self._margin_refresh_loop(), name="live_margin_refresh")
 
+        # WS-D1: PnL divergence monitor (engine vs exchange 24h income) every 30s
+        self._pnl_divergence_task = asyncio.create_task(
+            self._pnl_divergence_monitor_loop(), name="live_pnl_divergence"
+        )
+
+        # WS-D3: Rolling Sharpe + MDD gauge refresher (daily roll + per-tick gauge push)
+        self._perf_task = asyncio.create_task(self._perf_loop(), name="live_perf_loop")
+
         # WS-A2: ExchangeIncomeFetcher — poll /fapi/v1/income + /account/bill every 30s
         try:
             from src.infra.exchange.exchange_income_fetcher import ExchangeIncomeFetcher
@@ -977,6 +1007,7 @@ class LiveMode(BaseMode):
         for task in [
             self._daily_task, self._funding_rate_task, self._krw_rate_task,
             self._dedup_cleanup_task, self._trade_reconciler_task, self._margin_refresh_task,
+            self._pnl_divergence_task, self._perf_task,
         ]:
             if task is not None and not task.done():
                 task.cancel()
@@ -2019,6 +2050,59 @@ class LiveMode(BaseMode):
             except Exception as _tca_metric_exc:
                 logger.debug("live_mode.tca_metric_export_failed error=%s", _tca_metric_exc)
 
+            # WS-D5: append a row to today's TCA CSV — 7 layer attribution.
+            if self._tca_csv_writer is not None and trade_request.legs:
+                try:
+                    _buy_ex_csv = next(
+                        (l.exchange_id for l in trade_request.legs if l.side == OrderSide.BUY),
+                        "unknown",
+                    )
+                    _sell_ex_csv = next(
+                        (l.exchange_id for l in trade_request.legs if l.side == OrderSide.SELL),
+                        "unknown",
+                    )
+                    _first_leg_csv = trade_request.legs[0]
+                    _gross_bps_csv = float(_gross_spread_bps) if _gross_spread_bps is not None else 0.0
+                    _commission_bps_csv = 0.0
+                    _notional_csv = 0.0
+                    try:
+                        for _lg in trade_request.legs:
+                            if _lg.price and _lg.size:
+                                _notional_csv += float(_lg.price) * float(_lg.size)
+                        if _notional_csv > 0 and _fee_total > 0:
+                            _commission_bps_csv = float(_fee_total) / _notional_csv * 10_000.0
+                    except Exception:
+                        _commission_bps_csv = 0.0
+                    _slip_bps_csv = float(_slippage_bps_est) if _slippage_bps_est else 0.0
+                    _funding_bps_csv = 0.0  # WS-A3 realized funding is booked at position close
+                    _realized_usd_csv = float(pnl)
+                    _exchange_usd_csv = _realized_usd_csv if pnl_source == "exchange_realized_pnl" else 0.0
+                    _net_usd_csv = _realized_usd_csv
+                    _divergence_csv = 0.0
+                    try:
+                        if abs(_expected_profit) > 1e-9:
+                            _divergence_csv = (
+                                (_expected_profit - _actual_pnl) / abs(_expected_profit)
+                            ) * 100.0
+                    except Exception:
+                        _divergence_csv = 0.0
+                    self._tca_csv_writer.write_row({
+                        "strategy": sid,
+                        "symbol": _first_leg_csv.symbol if _first_leg_csv else "unknown",
+                        "exchange_pair": f"{_buy_ex_csv}:{_sell_ex_csv}",
+                        "gross_bps": f"{_gross_bps_csv:.4f}",
+                        "commission_bps": f"{_commission_bps_csv:.4f}",
+                        "slippage_bps": f"{_slip_bps_csv:.4f}",
+                        "funding_bps": f"{_funding_bps_csv:.4f}",
+                        "realized_pnl_usd": f"{_realized_usd_csv:.6f}",
+                        "exchange_pnl_usd": f"{_exchange_usd_csv:.6f}",
+                        "net_pnl_usd": f"{_net_usd_csv:.6f}",
+                        "divergence_pct": f"{_divergence_csv:.4f}",
+                        "pnl_source": pnl_source,
+                    })
+                except Exception as _csv_exc:
+                    logger.debug("live_mode.tca_csv_write_failed err=%s", _csv_exc)
+
             # WS-A4: Feed IS slippage (bps) into TCAAdaptiveFeedback for p95 exposure.
             # Keyed per (strategy, exchange). For 2-leg trades we record one observation
             # per exchange so the gauge reflects per-exchange execution quality.
@@ -2587,6 +2671,144 @@ class LiveMode(BaseMode):
     # -----------------------------------------------------------------------
     # Background tasks
     # -----------------------------------------------------------------------
+
+    async def _pnl_divergence_monitor_loop(self) -> None:
+        """WS-D1: every 30s, compare engine total_pnl vs exchange 24h income sum.
+
+        Rolls an internal breach counter — once 3 consecutive polls exceed the
+        5% threshold, we halt_local() and fire a CRITICAL Telegram. This avoids
+        flapping on single-tick API hiccups.
+        """
+        from src.risk.kill_switch import halt_local, is_halted
+        try:
+            from src.infra.metrics import (
+                PNL_DIVERGENCE_HALT_TRIGGERED,
+                PNL_DIVERGENCE_PCT,
+                EXCHANGE_INCOME_TOTAL,
+            )
+        except Exception:
+            PNL_DIVERGENCE_HALT_TRIGGERED = None  # type: ignore
+            PNL_DIVERGENCE_PCT = None  # type: ignore
+            EXCHANGE_INCOME_TOTAL = None  # type: ignore
+
+        DIVERGENCE_THRESHOLD_PCT = 5.0
+        CONSECUTIVE_BREACHES_REQUIRED = 3
+        POLL_INTERVAL_S = 30.0
+
+        def _sum_exchange_income() -> float:
+            """Sum the EXCHANGE_INCOME_TOTAL counter across all (exchange, income_type) labels."""
+            if EXCHANGE_INCOME_TOTAL is None:
+                return 0.0
+            total = 0.0
+            try:
+                for metric in EXCHANGE_INCOME_TOTAL.collect():
+                    for sample in metric.samples:
+                        if sample.name.endswith("_total"):
+                            total += float(sample.value)
+            except Exception:
+                return 0.0
+            return total
+
+        try:
+            while self._running:
+                try:
+                    engine_pnl = float(self._stats.total_pnl)
+                    exchange_pnl = _sum_exchange_income()
+                    denom = max(abs(engine_pnl), 1.0)
+                    divergence_pct = abs(engine_pnl - exchange_pnl) / denom * 100.0
+
+                    if PNL_DIVERGENCE_PCT is not None:
+                        try:
+                            PNL_DIVERGENCE_PCT.set(divergence_pct)
+                        except Exception:
+                            pass
+
+                    if divergence_pct >= DIVERGENCE_THRESHOLD_PCT:
+                        self._pnl_divergence_breach_count += 1
+                        logger.warning(
+                            "live_mode.pnl_divergence_breach engine=%.4f exchange=%.4f "
+                            "divergence_pct=%.2f consecutive=%d/%d",
+                            engine_pnl, exchange_pnl, divergence_pct,
+                            self._pnl_divergence_breach_count,
+                            CONSECUTIVE_BREACHES_REQUIRED,
+                        )
+                        if (
+                            self._pnl_divergence_breach_count >= CONSECUTIVE_BREACHES_REQUIRED
+                            and not is_halted()
+                        ):
+                            halt_local()
+                            if PNL_DIVERGENCE_HALT_TRIGGERED is not None:
+                                try:
+                                    PNL_DIVERGENCE_HALT_TRIGGERED.inc()
+                                except Exception:
+                                    pass
+                            logger.critical(
+                                "live_mode.pnl_divergence_halt engine=%.4f exchange=%.4f "
+                                "divergence_pct=%.2f — HALT triggered",
+                                engine_pnl, exchange_pnl, divergence_pct,
+                            )
+                            if self._telegram is not None:
+                                try:
+                                    await self._telegram.send_alert(
+                                        f"🚨 PnL divergence HALT\n"
+                                        f"engine: ${engine_pnl:.4f}\n"
+                                        f"exchange: ${exchange_pnl:.4f}\n"
+                                        f"divergence: {divergence_pct:.2f}%",
+                                        level="CRITICAL",
+                                        mode=self._execution_mode,
+                                    )
+                                except Exception as _tg_exc:
+                                    logger.warning(
+                                        "live_mode.pnl_divergence_telegram_failed err=%s",
+                                        _tg_exc,
+                                    )
+                    else:
+                        # Reset breach counter on a clean poll.
+                        if self._pnl_divergence_breach_count > 0:
+                            logger.info(
+                                "live_mode.pnl_divergence_recovered divergence_pct=%.2f",
+                                divergence_pct,
+                            )
+                        self._pnl_divergence_breach_count = 0
+                except Exception as exc:
+                    logger.debug("live_mode.pnl_divergence_loop_error err=%s", exc)
+                await asyncio.sleep(POLL_INTERVAL_S)
+        except asyncio.CancelledError:
+            pass
+
+    async def _perf_loop(self) -> None:
+        """WS-D3: update rolling Sharpe/MDD gauges + roll UTC day at 00:00."""
+        if self._rolling_perf is None:
+            return
+        last_day: int = datetime.now(timezone.utc).toordinal()
+        try:
+            while self._running:
+                try:
+                    now_utc = datetime.now(timezone.utc)
+                    # Day rollover detection — commits yesterday's bucket.
+                    current_day = now_utc.toordinal()
+                    if current_day != last_day:
+                        self._rolling_perf.roll_day(now_utc=now_utc)
+                        last_day = current_day
+                        logger.info(
+                            "live_mode.perf_day_rolled equity=%.4f history_len=%d",
+                            self._rolling_perf.current_equity,
+                            len(self._rolling_perf.history),
+                        )
+                    # Feed today's accumulated delta into the in-progress bucket.
+                    # We track delta from total_pnl to avoid double-counting.
+                    delta = float(self._stats.total_pnl) - float(
+                        getattr(self, "_perf_last_pnl", 0.0)
+                    )
+                    if delta != 0.0:
+                        self._rolling_perf.record_pnl(delta, now_utc=now_utc)
+                        self._perf_last_pnl = float(self._stats.total_pnl)
+                    self._rolling_perf.push_metrics()
+                except Exception as exc:
+                    logger.debug("live_mode.perf_loop_error err=%s", exc)
+                await asyncio.sleep(60.0)
+        except asyncio.CancelledError:
+            pass
 
     async def _funding_rate_loop(self) -> None:
         """Periodic funding rate fetch (every 60s) + WS-A3 per-position accrual at 8h boundaries."""

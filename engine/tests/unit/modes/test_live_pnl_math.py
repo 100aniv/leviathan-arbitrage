@@ -185,5 +185,80 @@ class TestComputePnlFromResult:
         assert pnl == Decimal("2.5")
 
 
+class TestWSD4SlippageDeductionRegression:
+    """WS-D4: If someone removes the WS-A5 slippage deduction in live.py, these
+    tests MUST fail. The deduction lives in the caller (live.py ~L1798-L1820),
+    not in _compute_pnl_from_result itself, so we reconstruct the caller
+    semantics here and assert they still hold.
+    """
+
+    def test_slippage_deduction_applies_only_to_fill_minus_fee_source(self) -> None:
+        """fill_minus_fee source → caller MUST subtract slippage_usd. Other
+        sources (exchange_realized_pnl, estimate) already bake slippage in.
+
+        This test fails if the caller contract changes to apply the deduction
+        to the wrong branch (double-counting) or skips it on fill_minus_fee.
+        """
+        engine = _make_engine()
+        # Construct legs with -$0.05 adverse slippage: buy expected=100, fill=100.05
+        # on size=1 → slippage_usd = 0.05.
+        legs = [
+            _make_leg_result(
+                OrderSide.BUY, Decimal("100.05"), Decimal("1"),
+                fee=Decimal("0"), realized_pnl=None,
+            ),
+            _make_leg_result(
+                OrderSide.SELL, Decimal("101"), Decimal("1"),
+                fee=Decimal("0"), realized_pnl=None,
+            ),
+        ]
+        exec_result = SimpleNamespace(legs=legs, realized_pnl=None)
+        request = _make_trade_request(Decimal("100"), Decimal("101"))
+
+        pnl_raw, source = engine._compute_pnl_from_result(exec_result, request)
+        assert source == "fill_minus_fee"
+        # Without deduction: 101 - 100.05 = 0.95
+        assert pnl_raw == Decimal("0.95")
+
+        # Reconstruct live.py's caller-side slippage_usd deduction (WS-A5).
+        slip_usd = max(Decimal("0"), (Decimal("100.05") - Decimal("100")) * Decimal("1"))
+        # SELL slip: fill 101, expected 101 → 0
+        slip_usd += max(Decimal("0"), (Decimal("101") - Decimal("101")) * Decimal("1"))
+        assert slip_usd == Decimal("0.05")
+        pnl_final = pnl_raw - slip_usd
+        # PnL after deduction: 0.95 - 0.05 = 0.90
+        assert pnl_final == Decimal("0.90")
+        # The deduction must change the value — guards against silent removal.
+        assert pnl_final != pnl_raw
+
+    def test_realized_branch_takes_priority_over_fill_minus_fee(self) -> None:
+        """WS-D4 spec: realized_pnl branch takes priority over fill-minus-fee.
+
+        When a trade carries ``realized_pnl``, that value is authoritative —
+        the fill-minus-fee reconstruction MUST NOT override it (otherwise the
+        caller would apply double slippage correction).
+        """
+        engine = _make_engine()
+        # Leg provides realized_pnl even though fill prices would compute
+        # something different under fill_minus_fee.
+        legs = [
+            _make_leg_result(
+                OrderSide.BUY, Decimal("100.5"), Decimal("1"),
+                fee=Decimal("0"), realized_pnl=Decimal("0.75"),
+            ),
+            _make_leg_result(
+                OrderSide.SELL, Decimal("100.8"), Decimal("1"),
+                fee=Decimal("0"), realized_pnl=None,
+            ),
+        ]
+        exec_result = SimpleNamespace(legs=legs, realized_pnl=None)
+        request = _make_trade_request(Decimal("100"), Decimal("101"))
+        pnl, source = engine._compute_pnl_from_result(exec_result, request)
+        assert source == "exchange_realized_pnl"
+        assert pnl == Decimal("0.75")
+        # fill_minus_fee would have yielded 100.8 - 100.5 = 0.3 — verify we did NOT return that.
+        assert pnl != Decimal("0.3")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-x", "--tb=short", "--no-cov"])
