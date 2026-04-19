@@ -1019,10 +1019,21 @@ class LiveMode(BaseMode):
 
         # KRW normalization: convert KRW prices to USDT
         ex_base = exchange_id.removeprefix("paper_").removeprefix("sandbox_")
-        if ex_base in self._krw_exchanges and "/KRW" in symbol:
+        _orig_krw_symbol: str | None = None
+        _orig_krw_bids: list[list[Any]] | None = None
+        _orig_krw_asks: list[list[Any]] | None = None
+        is_krw = ex_base in self._krw_exchanges and "/KRW" in symbol
+        if is_krw:
             if self._krw_stale or self._krw_rate <= 0:
                 logger.debug("live_mode.krw_stale_skip exchange=%s symbol=%s", exchange_id, symbol)
                 return
+            # BUG-209: preserve raw KRW data BEFORE normalization so we can also
+            # dispatch the raw /KRW book to real_signal_producer (XE-KRW evaluator
+            # gates on `symbol.endswith("/KRW")` and handles USDT normalization
+            # internally via _normalize_price_to_usdt()).
+            _orig_krw_symbol = symbol
+            _orig_krw_bids = list(bids)
+            _orig_krw_asks = list(asks)
             rate = self._krw_rate
             bids = [[str(float(b[0]) / rate), b[1]] for b in bids]
             asks = [[str(float(a[0]) / rate), a[1]] for a in asks]
@@ -1118,6 +1129,42 @@ class LiveMode(BaseMode):
                 for signal in (signals or []):
                     if self._strategy_manager is not None:
                         await self._route_signal_to_strategies(signal)
+
+                # BUG-209: ALSO dispatch raw KRW book so XE-KRW evaluator fires.
+                # real_signal_producer.on_orderbook_update() gates the XE-KRW
+                # branch on `symbol.endswith("/KRW")`; the USDT-normalized
+                # dispatch above starves that guard. The evaluator reads the
+                # matched USDT book internally via `all_books.get(usdt_symbol)`,
+                # which is already populated by the prior USDT dispatch.
+                if is_krw and _orig_krw_symbol is not None:
+                    try:
+                        krw_book = self._orderbook_cls(
+                            symbol=_orig_krw_symbol, exchange=exchange_id
+                        )
+                        krw_book.apply_snapshot(
+                            [(b[0], b[1]) for b in (_orig_krw_bids or [])],
+                            [(a[0], a[1]) for a in (_orig_krw_asks or [])],
+                        )
+                        # Store KRW book alongside USDT book for evaluator lookup
+                        if _orig_krw_symbol not in self._books:
+                            self._books[_orig_krw_symbol] = {}
+                        self._books[_orig_krw_symbol][exchange_id] = krw_book
+                        _books_snapshot_krw = dict(self._books)
+                        krw_signals = await self._real_signal_producer.on_orderbook_update(
+                            exchange_id=exchange_id,
+                            symbol=_orig_krw_symbol,
+                            book=krw_book,
+                            all_books=_books_snapshot_krw,
+                            futures_books=_books_snapshot_krw,
+                        )
+                        for signal in (krw_signals or []):
+                            if self._strategy_manager is not None:
+                                await self._route_signal_to_strategies(signal)
+                    except Exception as exc:
+                        logger.debug(
+                            "bug209_krw_dispatch_failed exchange=%s symbol=%s err=%s",
+                            ex_base, _orig_krw_symbol, exc,
+                        )
             except Exception as exc:
                 # BUG-45: was debug — any FF/SF evaluation exception silently lost
                 logger.warning("live_mode.real_signal_producer_error: %s", exc, exc_info=True)

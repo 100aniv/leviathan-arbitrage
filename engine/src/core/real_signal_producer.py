@@ -281,6 +281,14 @@ class RealDataSignalProducer:
         # + per-exchange KYC/TOS checks complete.
         from src.core.config_loader import get_config as _gc
         _xe_krw_enabled = bool(_gc("strategy_filters.xe_krw_enabled", default=False))
+        # BUG-209: temporary entry probe — remove after live canary confirms dispatch
+        import os as _os_bug209
+        if _os_bug209.environ.get("BUG_209_DEBUG") == "1":
+            logger.info(
+                "bug209_entry exchange=%s symbol=%s is_krw_ex=%s endswith_krw=%s xe_enabled=%s",
+                exchange_id, symbol, exchange_id in KRW_EXCHANGES,
+                symbol.endswith("/KRW"), _xe_krw_enabled,
+            )
         if (self._backtest_mode or _xe_krw_enabled) and exchange_id in KRW_EXCHANGES and symbol.endswith("/KRW"):
             signals.extend(
                 await self._evaluate_cross_exchange_krw(
