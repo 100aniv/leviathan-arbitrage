@@ -1,7 +1,7 @@
 # PHOENIX v3 — 카나리 실행 계획 (단일 SSOT)
 
 > 400줄 이내. §1~6 = 영구 계획. §7 = 카나리 이력 요약 테이블.  
-> 최종 수정: 2026-04-13 (v94 BUG-76 수정 기준 — adaptive exit threshold)
+> 최종 수정: 2026-04-19 (v217 BUG-184/185/186 기준)
 
 ---
 
@@ -16,11 +16,11 @@
 | 2 | 카나리 단계 확장 | 🔄 진행중 (Step 2-2) |
 | 3 | 풀 통합 72H + 튜너 | ⏳ 대기 |
 
-**현재**: Phase 2 Step 2-2 — FF(45bps) + FR(5bps) 동시 운영 (카나리 재개 대기)  
-**설정**: max_hold=1800s, edge=10bps, min_spread=45bps (v108 수익 설정)  
-**구조 리팩토링 v2/v3**: WS-1/2/3 + BUG-93/94/95/96/97/98 완료  
-**70+ commits** (v94~v145), 29 bugs fixed (BUG-73~98)  
-**v141~v145 인프라 튜닝**: Redis client(retry/keepalive/timeout 5s/pool 100), Freshness guard FF+SF 3s→5s, recovery.py native-adapter 호환 (duck-typing), ERROR→WARNING (transient timeout)
+**현재**: Phase 2 Step 2-3+ — FF+FR+SF+XE-USDT 4 전략 동시 운영 (v217 가동 중, PID 76069)  
+**설정**: max_hold=1800s, edge=10bps, FF min_spread=300bps (BUG-135), 7d orderbook retention (BUG-185)  
+**v217 상태**: ERROR 0, FR signals=3~4, BUG-184/185/186 all applied, migration_runner iterative(sql+py)  
+**Bitget UTA V3**: Classic V2 → UTA V3 전환 완료 (BUG-169~183 cascade 15건). 1000 USDT 입금 전환 후 V3 stable  
+**100+ commits** (v94~v217), 48+ bugs fixed (BUG-73~186)
 
 ### 구조 리팩토링 결과 (2026-04-17, 5개 감사 → 4개 워크스트림 + BUG-93~96)
 | WS / BUG | 내용 | 커밋 | 테스트 |
@@ -216,6 +216,19 @@ min_trade_notional_usd: $5
 | **v183** | 2026-04-18 | FF+FR+SF+XE+**KRW** | pending | — | **XE-KRW enable + triangular active** + BUG-145 KRW 로깅 |
 | **v184** | 2026-04-18 | 8 거래소 전부 | 7 | -$0.03 | **BUG-146 KRW 잔고 인식** ($0 → $96 인식 / total $180) |
 | **v185** | 2026-04-18 | 8 거래소 전부 | 4 | **+$0.23** | **🎯 BUG-148 동적 자본** ($120→$180) + **단일 trade 최고 +$0.24** (API3) |
+| v186~v199 | 2026-04-18~19 | 8 거래소 | — | — | BUG-149~161 (PG timeout 3000ms, reconciler series, 로그 스팸 정리, ccxt 완전 제거) |
+| **v200** | 2026-04-19 | 8 거래소 | — | — | BUG-163/165 applied (preflight flag + PM async err + dead code 제거 + Bithumb blacklist 순서) |
+| **v201** | 2026-04-19 | 8 거래소 | — | — | BUG-164/166/167 대비 (reconciler 2-cycle guard + WS FILLED 폴링 + paused-live halt) |
+| v202~v207 | 2026-04-19 | 8 거래소 | — | — | Bitget UTA 전환 준비 (BUG-162 듀얼 모드 코드 → 실제 전환 절차) |
+| **v208** | 2026-04-19 | 8 거래소 | — | — | 사장님 프롬프트 반영 — Bitget UTA V3 전환 착수 (BUG-168 dual_write JSONB) |
+| v209~v210 | 2026-04-19 | 8 거래소 | — | — | BUG-169 UTA V3 REST+WS 전면 전환 + BUG-170 preflight V2/balance/WS URL |
+| **v211** | 2026-04-19 | 8 거래소 | — | — | 사장님 프롬프트 — BUG-171 V3 place-order posSide + BUG-172 posMode hedge_mode |
+| v212 | 2026-04-19 | 8 거래소 | — | — | BUG-173 fills endpoint (fills-history → fills) |
+| **v213** | 2026-04-19 | 8 거래소 | — | — | 사장님 프롬프트 — BUG-174 WS one_way reduceOnly + BUG-175 holdMode 필드명 |
+| **v214** | 2026-04-19 | 8 거래소 | — | — | **Bitget UTA V3 stable 4.6h** 가동, 1 transient BUG-184 warning (Binance HTTP/2) |
+| **v215** | 2026-04-19 | 8 거래소 | — | — | BUG-184 reconciler fix applied, ~3min 가동 후 BUG-185 (orderbook retention) 위해 killed |
+| v216 | 2026-04-19 | 8 거래소 | — | — | source 컬럼 누락 (migration 006 미적용, old runner) → **~90 postgres errors/min** 수동 수정 전까지 |
+| **v217** | 2026-04-19 | 8 거래소 | **running** | — | **현재 (PID 76069)** — ERROR 0, FR signals=3~4, BUG-184/185/186 all applied |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
@@ -224,7 +237,7 @@ min_trade_notional_usd: $5
 
 ---
 
-## §5. 버그 이력 (v117 기준, 전부 수정완료)
+## §5. 버그 이력 (v117~v186 기록 — 동일 클래스 반복 재발 주의: reconciler 6회, WS order 11회, UTA V3 cascade 13회)
 
 | ID | 설명 | 상태 |
 |----|------|------|
@@ -361,7 +374,7 @@ min_trade_notional_usd: $5
 | 7 | **cex_dex** | main.py:1301 | 413 LOC | ⚠️ DEX adapter 필요 |
 | 8 | **latency_arb** | deprecated wrapper | 58 LOC | ⚪ CrossExchange merged |
 
-**결론**: 엔진 측 8 전략 코드 **100% 완성**. 실거래 검증은 외부 조건 (Bitget 승인 / 시장 / 자본 / DEX / 데이터) 의존.
+**결론**: 엔진 측 8 전략 코드는 **구현됨 (일부는 외부조건/시장조건 의존)**. 실거래 검증은 외부 조건 (Bitget 승인 / 시장 / 자본 / DEX / 데이터) 의존.
 | **ccxt deprecation** | ccxt_adapter.py / okx.py / bybit.py / upbit.py / bithumb.py = dead code (runtime 사용 0). 문서화 완료. | ✅ v163+ |
 
 ### 📡 거래소별 WS / Private API 지원 현황 (2026-04-18)
@@ -404,6 +417,31 @@ min_trade_notional_usd: $5
 | **BUG-167** | Codex 리뷰: preflight_auto_close_enabled=false 시 "수동 청산 대기"가 아닌 "live 기동 불가" 충돌. 수정: false 시 마지막 retry 에서 `halt_local()` 호출 (kill_switch HALT 플래그 설정) + "PAUSED-LIVE" CRITICAL 로그 + LiveGateFailed 제거. 엔진은 살리되 거래만 차단. 사용자 수동 청산 후 재기동하여 halt 해제. commit 023239b. | ✅ v201 대비 |
 | **BUG-164 후속** | Codex 제안 "2-cycle 대신 5~10초 재조회" 검증 결과: 기본 `reconciliation_interval_s=5s` (core/config.py:382) → BUG-164 2-cycle guard = 10초 지연. Codex 제안 범위와 일치 — 추가 수정 불필요. | ✅ 분석 완료 |
 | **recovery test** | BUG-97.3/BUG-134 이후 `_reconcile_with_exchange` 는 mismatch 발견 시 INFO 로그 + True 반환 (startup hard-halt 해결). 테스트 2건이 `False` 기대로 stale 상태. hasattr(AsyncMock, 'get_positions') 항상 True로 native 경로 착오. MagicMock `spec=['fetch_position']` 제한으로 legacy fallback 강제 + 기대값 True로 업데이트. | ✅ 커밋 |
+| **BUG-168** | dual_write JSONB metadata 직렬화 — realized_pnl dict → str 변환 누락으로 insert 실패 | ✅ b2b43b4 |
+| **BUG-169** | Bitget UTA V3 REST + WS 전면 전환 (Classic V2 → UTA V3 endpoint migration 착수) | ✅ 49720f7 |
+| **BUG-170** | UTA V3 잔여 이슈 — preflight V2 fallback + balance 파싱 + WS public URL 수정 | ✅ 74b5eac |
+| **BUG-171** | V3 place-order posSide/reduceOnly 매핑 + cancel-order orderId 매핑 | ✅ 3829865 |
+| **BUG-172** | UTA V3 posMode fetch hedge_mode 지원 (/v2/mix/account/set-position-mode 대응) | ✅ aa7835e |
+| **BUG-173** | Bitget V3 fills endpoint 수정 (fills-history → fills) — 404 방지 | ✅ 9248c9a |
+| **BUG-174** | UTA V3 WS place-order one_way reduceOnly 파라미터 추가 (41101 error 방지) | ✅ 51acc63 |
+| **BUG-175** | UTA /settings posMode → holdMode 필드명 수정 (V3 응답 필드 변경) | ✅ 4456bf6 |
+| **BUG-176** | Bitget WS reduceOnly='no' rejected (41101) + hedge_mode posSide missing 동시 수정 | ✅ b6e7ece |
+| **BUG-178** | preflight auto-close broken under Bitget UTA V3 response format (data key 변경) | ✅ bc38da6 |
+| **BUG-179** | Bitget WS Trade ValidationError → silent REST fallback → double-open orphans 방지 | ✅ 14d67b5 |
+| **BUG-179.1** | 방어 — WS→REST fallback 시 full exception surface (silent swallow 제거) | ✅ a6e4c73 |
+| **BUG-180** | _rest_get_positions broken under UTA V3 → reconciler false CRITICAL (position 0 판정) | ✅ 22221fa |
+| **BUG-181** | Bitget public WS reverted to V2 — V3 public endpoint does not exist (BUG-182 에서 재확인) | ⚠️ 62bad1c (REVERTED) |
+| **BUG-182** | Bitget public WS full V3 migration — topic/symbol/lowercase instType + b/a field rename | ✅ 13681c9 |
+| **BUG-183** | Bitget V3 /trade/fills max limit 100 (500 아님) — pagination 수정 | ✅ a57b14f |
+| **BUG-184** | reconciler false CRITICAL on Binance HTTP/2 termination — transient WARNING으로 완화 | ✅ 19d528f |
+| **BUG-185** | orderbook_snapshots retention 7d 복구 — 누락 시 disk fill 위험 (migration 006 소실) | ✅ 618c6f3 |
+| **BUG-186** | migration_runner가 migrations/*.sql 전부 스킵 (py 파일만 실행) → iterative(sql+py) 수정 | ✅ 4a31a0b + ff17abf |
+
+### §5.1 미해결 클래스 (재발 주의)
+
+- **Reconciler false CRITICAL class**: BUG-156/158/159/160/164/180/184 — 각 fix는 point-level, class-level 해결 안 됨. 근본 원인(engine-state 와 exchange-state sync primitive 부재) 미해결.
+- **WS order path fragility**: BUG-120~131, 166, 174~179 — Bitget UTA V3 전환 후 11건 추가. VPS 이전 전까지 latency/connection drop 자주 발생. ws-fapi reconnect + FILLED 폴링으로 완화하나 근본 해결 아님.
+- **UTA V3 cascade**: BUG-169~183 (15건) — Classic V2→UTA V3 전환이 API 15개 endpoint 수정 요구. 추가 endpoint 발견 가능성 있음 (liquidation/margin-mode/funding-rate 등 미검증 경로 존재).
 
 ### BUG-74 수정 (v95 자동 적용 — 코드 이미 완료)
 ```python
