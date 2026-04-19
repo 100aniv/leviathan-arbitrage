@@ -91,9 +91,9 @@
     "max_market_impact_bps": 20
   },
   "risk": {
-    "_comment": "\ud37c\uc13c\ud2f0\uc9c0 \uae30\ubc18 \ub3d9\uc801 \ud55c\ub3c4 (\uc790\ubcf8 \ub300\ube44 %). BUG-22 2026-04-11: 3.0\u21926.0 (base_position_pct=5%\uc640 \uc815\ub82c. $120\u00d73%=$3.60<$5 min_notional \u2192 trades \ubd88\uac00, 6%\ub85c $7.20 \uc5ec\uc720)",
+    "_comment": "퍼센티지 기반 동적 한도 (자본 대비 %). BUG-22 2026-04-11: 3.0→6.0. BUG-228 2026-04-19: 6.0→15.0 (live 자본 $200 감지, Binance futures min notional $20 → 6%=$12 부족. 15%=$30 ≥ $20 min).",
     "use_percentage": true,
-    "max_position_pct": 6.0,
+    "max_position_pct": 15.0,
     "max_daily_loss_pct": 50.0,
     "max_net_exposure_per_asset": 5000,
     "min_edge_bps": 0,
@@ -115,8 +115,8 @@
     "max_net_exposure_pct": 30
   },
   "dynamic_risk": {
-    "_comment": "v7: lowered to 5% \u2014 $120\u00d75%=$6/trade at 20x=margin $0.30. Prevents startup burst margin exhaustion.",
-    "base_position_pct": 5.0
+    "_comment": "BUG-228 2026-04-19: 5→15. live 자본 $200 감지, per_trade=5%=$10 < Binance futures min $20. 15%=$30 ≥ $20 가능. risk.max_position_pct 15과 정렬.",
+    "base_position_pct": 15.0
   },
   "execution": {
     "_comment": "PHOENIX v3: min_trade_notional lowered to $5 (futures exchange minimum)",
