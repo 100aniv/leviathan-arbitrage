@@ -105,6 +105,25 @@ class Engine:
         except Exception:
             self._active_exchanges = ["binance", "bitget", "binance_futures", "bitget_futures"]
 
+        # Path-B Day-5 fail-fast boot guard: validate engine.json against pydantic
+        # schema before any subsystem initializes. Catches config drift (BUG-228 class)
+        # at boot time rather than mid-trade. Opt-in via env var; if parse fails, logs
+        # but does not raise yet — Day 6 promotes to hard-fail.
+        try:
+            import os
+            if os.environ.get("LEVIATHAN_STRICT_CONFIG", "1") == "1":
+                from src.core.config_service import ConfigService
+                import pathlib
+                _cs_path = pathlib.Path(__file__).parent.parent / "config" / "engine.json"
+                _cs = ConfigService(_cs_path)
+                _cs.load()  # pydantic validation; raises ValueError if schema violation
+                logger.info("engine.config_service_validated path=%s mode=%s", _cs_path, _cs.current.mode)
+        except Exception as _cfg_err:
+            logger.warning(
+                "engine.config_service_validation_failed err=%s — Day-5 soft fail, Day-6 will hard-fail",
+                _cfg_err,
+            )
+
         # Subsystem references (populated during init)
         self._settings: Settings | None = None
         self._event_bus: Any = None
