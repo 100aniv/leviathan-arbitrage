@@ -111,10 +111,18 @@ async def test_reconcile_detects_size_discrepancy(reconciler: PositionReconciler
 
 @pytest.mark.asyncio
 async def test_reconcile_detects_missing_engine_position(reconciler: PositionReconciler) -> None:
-    """Discrepancy when exchange has position but engine doesn't."""
+    """Discrepancy when exchange has position but engine doesn't (after 2-cycle guard).
+
+    BUG-202: first cycle is transient (race window with PositionManager.register);
+    only persistent unrecorded keys on the second cycle escalate.
+    """
     engine_positions: dict = {}
-    result = await reconciler.reconcile(engine_positions)
-    assert result.has_discrepancy
+    # Cycle 1: transient — no discrepancy yet
+    result1 = await reconciler.reconcile(engine_positions)
+    assert not result1.has_discrepancy
+    # Cycle 2: persistent — now escalates
+    result2 = await reconciler.reconcile(engine_positions)
+    assert result2.has_discrepancy
 
 
 @pytest.mark.asyncio
@@ -203,7 +211,11 @@ async def test_reconcile_fetch_failure_sets_field_not_discrepancy() -> None:
 
 @pytest.mark.asyncio
 async def test_reconcile_fetch_failure_and_real_discrepancy_fires_callback() -> None:
-    """When both fetch failure AND real discrepancy, on_discrepancy still fires."""
+    """When both fetch failure AND real discrepancy, on_discrepancy still fires.
+
+    BUG-202: unrecorded-type discrepancies require 2 cycles to escalate. So we
+    reconcile twice; callback fires on cycle 2 when the orphan persists.
+    """
     mock_a = MagicMock()
     mock_a.exchange_id = "binance"
     mock_a.get_positions = AsyncMock(side_effect=Exception("timeout"))
@@ -220,9 +232,86 @@ async def test_reconcile_fetch_failure_and_real_discrepancy_fires_callback() -> 
         on_discrepancy=lambda result: callback_called.append(True),
     )
     engine_positions = {}  # okx has position, engine doesn't know about it
-    result = await r.reconcile(engine_positions)
-
-    assert result.has_discrepancy is True
-    assert "binance" in result.fetch_failed_exchanges
-    assert len(result.discrepancies) > 0
+    # Cycle 1: transient — no callback
+    result1 = await r.reconcile(engine_positions)
+    assert result1.has_discrepancy is False
+    assert "binance" in result1.fetch_failed_exchanges
+    assert callback_called == []
+    # Cycle 2: persistent — callback fires
+    result2 = await r.reconcile(engine_positions)
+    assert result2.has_discrepancy is True
+    assert "binance" in result2.fetch_failed_exchanges
+    assert len(result2.discrepancies) > 0
     assert callback_called == [True]  # on_discrepancy fires for real mismatch
+
+
+# ---------------------------------------------------------------------------
+# BUG-202: Race guard for unrecorded type (extends BUG-164)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bug202_unrecorded_first_cycle_is_transient() -> None:
+    """BUG-202: first-cycle unrecorded positions (exchange has, engine doesn't)
+    are treated as transient (race window between exchange fill and
+    PositionManager.register). No CRITICAL log, no callback. Only escalates
+    on the second cycle if the orphan persists.
+    """
+    mock_ex = MagicMock()
+    mock_ex.exchange_id = "bitget_futures"
+    _positions = [make_position("bitget_futures", "CYBER/USDT", Decimal("20.1"))]
+    mock_ex.get_positions = AsyncMock(return_value=_positions)
+    mock_ex.get_positions_strict = AsyncMock(return_value=_positions)
+
+    callback_called = []
+    r = PositionReconciler(
+        exchanges=[mock_ex],
+        on_discrepancy=lambda result: callback_called.append(True),
+    )
+
+    # Cycle 1: exchange reports position, engine hasn't registered yet (race)
+    result1 = await r.reconcile({})
+    assert result1.has_discrepancy is False, "First-cycle unrecorded must be transient"
+    assert result1.discrepancies == []
+    assert callback_called == [], "Callback must NOT fire on first cycle"
+
+    # Cycle 2: same orphan still present → persistent, escalate
+    result2 = await r.reconcile({})
+    assert result2.has_discrepancy is True, "Second-cycle unrecorded must escalate"
+    assert any("CYBER/USDT" in d for d in result2.discrepancies)
+    assert callback_called == [True], "Callback must fire on persistent orphan"
+
+
+@pytest.mark.asyncio
+async def test_bug202_unrecorded_resolved_before_second_cycle() -> None:
+    """BUG-202: if engine catches up between cycle 1 and cycle 2 (normal race
+    resolution), the orphan is cleared and never escalates. This is the
+    expected behavior for newly-opened positions: exchange fill precedes
+    PositionManager.register by a few seconds.
+    """
+    mock_ex = MagicMock()
+    mock_ex.exchange_id = "bitget_futures"
+    _positions = [make_position("bitget_futures", "CYBER/USDT", Decimal("20.1"))]
+    mock_ex.get_positions = AsyncMock(return_value=_positions)
+    mock_ex.get_positions_strict = AsyncMock(return_value=_positions)
+
+    callback_called = []
+    r = PositionReconciler(
+        exchanges=[mock_ex],
+        on_discrepancy=lambda result: callback_called.append(True),
+    )
+
+    # Cycle 1: race — exchange has, engine doesn't (yet)
+    result1 = await r.reconcile({})
+    assert result1.has_discrepancy is False
+    assert callback_called == []
+
+    # Cycle 2: engine caught up — position registered
+    engine_now = {
+        "bitget_futures:CYBER/USDT": make_position(
+            "bitget_futures", "CYBER/USDT", Decimal("20.1")
+        ),
+    }
+    result2 = await r.reconcile(engine_now)
+    assert result2.has_discrepancy is False, "Race resolved — no discrepancy"
+    assert callback_called == [], "No callback when race self-resolves"

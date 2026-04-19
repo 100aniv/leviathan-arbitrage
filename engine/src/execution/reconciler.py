@@ -56,6 +56,13 @@ class PositionReconciler:
         self.on_discrepancy = on_discrepancy
         self._size_tolerance = size_tolerance
         self._stranded: set[str] = set()
+        # BUG-202: extend BUG-164 2-cycle guard to ALSO cover the unrecorded type
+        # ("exchange has, engine doesn't" = position just filled, engine.register
+        # not yet complete). First-cycle unrecorded keys get INFO-level logging;
+        # second-cycle persistence escalates to CRITICAL + on_discrepancy callback.
+        # The guard at src/main.py suppresses Telegram but NOT the CRITICAL log
+        # line, so we have to downgrade the log here, at source.
+        self._prev_unrecorded_keys: set[str] = set()
 
     @property
     def stranded_positions(self) -> set[str]:
@@ -109,6 +116,9 @@ class PositionReconciler:
                 fetch_failed_exchanges.append(exchange_id)  # BUG-01/184: don't return false negative
 
         discrepancies: list[str] = []
+        # BUG-202: track unrecorded keys observed this cycle (for 2-cycle guard).
+        unrecorded_this_cycle: set[str] = set()
+        transient_unrecorded: list[str] = []  # first-cycle only — don't escalate
 
         # Check: positions exchange has that engine doesn't know about
         for key, ex_pos in exchange_positions.items():
@@ -123,10 +133,23 @@ class PositionReconciler:
                     f"{key}: engine has no record, "
                     f"exchange has size={ex_pos.size}"
                 )
-                discrepancies.append(msg)
-                logger.warning("reconciler_discrepancy %s", msg)
-                # BUG-198b: exchange has position, engine doesn't know.
-                _inc_discrepancy(ex_pos.exchange_id, "unrecorded")
+                unrecorded_this_cycle.add(key)
+                # BUG-202: first-cycle unrecorded = race window between exchange
+                # fill ACK and PositionManager.register. Treat as transient INFO
+                # on first observation; only escalate to discrepancies on the
+                # second cycle when the orphan persists.
+                if key in self._prev_unrecorded_keys:
+                    discrepancies.append(msg)
+                    logger.warning("reconciler_discrepancy %s (persistent)", msg)
+                    # BUG-198b: exchange has position, engine doesn't know.
+                    _inc_discrepancy(ex_pos.exchange_id, "unrecorded")
+                else:
+                    transient_unrecorded.append(msg)
+                    logger.info(
+                        "reconciler_unrecorded_transient %s "
+                        "(will escalate next cycle if persistent — BUG-202 race guard)",
+                        msg,
+                    )
 
         # Check: positions engine tracks that exchange doesn't have
         for key, eng_pos in engine_positions.items():
@@ -185,6 +208,9 @@ class PositionReconciler:
                 fetch_failed_exchanges,
             )
 
+        # BUG-202: roll unrecorded keys state forward for next cycle's guard.
+        self._prev_unrecorded_keys = unrecorded_this_cycle
+
         # API 조회 실패(fetch_failed_exchanges)는 실제 포지션 불일치가 아님 — has_discrepancy에서 제외
         has_discrepancy = len(discrepancies) > 0
 
@@ -206,5 +232,14 @@ class PositionReconciler:
             )
             if self.on_discrepancy:
                 self.on_discrepancy(result)
+        elif transient_unrecorded:
+            # BUG-202: first-cycle unrecorded positions observed — race with
+            # PositionManager.register. Log at INFO so operators can see the
+            # race window without false CRITICAL alerts. No callback.
+            logger.info(
+                "reconciler_unrecorded_transient_count=%d keys=%s",
+                len(transient_unrecorded),
+                list(unrecorded_this_cycle)[:5],
+            )
 
         return result
