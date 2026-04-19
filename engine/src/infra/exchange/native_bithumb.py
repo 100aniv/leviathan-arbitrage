@@ -13,8 +13,10 @@ import logging
 import time
 import uuid
 import urllib.parse
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import Any
+
+import httpx
 
 try:
     import jwt as _pyjwt
@@ -56,6 +58,78 @@ def _coin_from_symbol(symbol: str) -> str:
     if "/" in symbol:
         return symbol.split("/")[0]
     return symbol.split("_")[0]
+
+
+def _quote_from_symbol(symbol: str) -> str:
+    """'BTC/KRW' → 'KRW', 'KRW-BTC' → 'KRW', 'BTC_KRW' → 'KRW'."""
+    if "/" in symbol:
+        return symbol.split("/", 1)[1].upper()
+    if "-" in symbol:
+        return symbol.split("-", 1)[0].upper()
+    if "_" in symbol:
+        return symbol.split("_", 1)[1].upper()
+    return ""
+
+
+# Bithumb KRW market tick table — source: Bithumb 원화 마켓 거래 정책.
+# https://support.bithumb.com/hc/ko/articles/51036972377241
+# (price_lower_inclusive, tick_size). Sorted descending.
+_BITHUMB_KRW_TICK_TABLE: tuple[tuple[Decimal, Decimal], ...] = (
+    (Decimal("1000000"), Decimal("1000")),
+    (Decimal("500000"), Decimal("500")),
+    (Decimal("100000"), Decimal("100")),
+    (Decimal("50000"), Decimal("50")),
+    (Decimal("10000"), Decimal("10")),
+    (Decimal("5000"), Decimal("5")),
+    (Decimal("1000"), Decimal("1")),
+    (Decimal("100"), Decimal("1")),
+    (Decimal("10"), Decimal("0.01")),
+    (Decimal("1"), Decimal("0.001")),
+    (Decimal("0"), Decimal("0.0001")),
+)
+
+# Bithumb USDT market mirrors Upbit's published USDT tick policy; Bithumb
+# Open API v2 uses the same 호가 단위 as Upbit for USDT pairs.
+_BITHUMB_USDT_TICK_TABLE: tuple[tuple[Decimal, Decimal], ...] = (
+    (Decimal("10"), Decimal("0.01")),
+    (Decimal("1"), Decimal("0.001")),
+    (Decimal("0.1"), Decimal("0.0001")),
+    (Decimal("0.01"), Decimal("0.00001")),
+    (Decimal("0.001"), Decimal("0.000001")),
+    (Decimal("0.0001"), Decimal("0.0000001")),
+    (Decimal("0"), Decimal("0.00000001")),
+)
+
+
+def _bithumb_tick_size(symbol: str, price: Decimal) -> Decimal:
+    """Return the applicable tick size for the given (symbol, price)."""
+    quote = _quote_from_symbol(symbol)
+    if quote == "KRW":
+        table = _BITHUMB_KRW_TICK_TABLE
+    elif quote == "USDT":
+        table = _BITHUMB_USDT_TICK_TABLE
+    else:
+        return Decimal("0.00000001")
+    for threshold, tick in table:
+        if price >= threshold:
+            return tick
+    return table[-1][1]
+
+
+def _align_bithumb_price(symbol: str, price: Decimal) -> Decimal:
+    """Round price to a valid Bithumb tick for this symbol/price band.
+
+    BUG-222: Bithumb returns 400 Bad Request when prices are not aligned
+    to the published 호가 단위 grid. Truncate toward zero so BUY orders
+    never overpay and SELL orders never raise the ask above the request.
+    """
+    if price <= 0:
+        return price
+    tick = _bithumb_tick_size(symbol, price)
+    if tick <= 0:
+        return price
+    quantized = (price / tick).to_integral_value(rounding=ROUND_DOWN) * tick
+    return quantized.quantize(tick)
 
 
 class NativeBithumbAdapter(NativeAdapter):
@@ -255,9 +329,45 @@ class NativeBithumbAdapter(NativeAdapter):
             "ord_type": "limit",
         }
         if order.price:
-            body["price"] = str(int(order.price))
+            # BUG-222: Bithumb returns 400 when price is not on the 호가 단위 grid.
+            # KRW markets historically used integer prices, but USDT markets and
+            # some new KRW bands require sub-won precision — let the tick table
+            # decide and format accordingly.
+            aligned_price = _align_bithumb_price(order.symbol, order.price)
+            tick = _bithumb_tick_size(order.symbol, order.price)
+            if aligned_price != order.price:
+                logger.debug(
+                    "bithumb_price_tick_aligned",
+                    symbol=order.symbol,
+                    raw=str(order.price),
+                    aligned=str(aligned_price),
+                    tick=str(tick),
+                )
+            # KRW integer-tick (>=100원 band) → send as integer; else preserve decimals.
+            if tick >= 1:
+                body["price"] = str(int(aligned_price))
+            else:
+                body["price"] = format(aligned_price, "f").rstrip("0").rstrip(".") or "0"
 
-        resp = await self._request("POST", "/v1/orders", data=body, signed=True)
+        try:
+            resp = await self._request("POST", "/v1/orders", data=body, signed=True)
+        except httpx.HTTPStatusError as exc:
+            # BUG-222: surface the response body so we can diagnose 400s
+            # (invalid_price, invalid_volume, min_total_price, etc.).
+            if exc.response is not None and exc.response.status_code == 400:
+                try:
+                    detail = exc.response.text
+                except Exception:
+                    detail = "<no body>"
+                logger.error(
+                    "bithumb_order_400",
+                    symbol=order.symbol,
+                    side=side,
+                    price=body.get("price"),
+                    volume=body.get("volume"),
+                    body=detail,
+                )
+            raise
         order_id = str(resp.get("uuid", ""))
 
         # BUG-191: Event-driven fill confirmation via private WS myOrder stream.

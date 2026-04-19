@@ -13,6 +13,8 @@ import pytest
 from src.core.models import Order, OrderSide, OrderType
 from src.infra.exchange.native_bithumb import (
     NativeBithumbAdapter,
+    _align_bithumb_price,
+    _bithumb_tick_size,
     _coin_from_symbol,
     _normalize_symbol,
 )
@@ -373,3 +375,118 @@ class TestFeeAndPositions:
     async def test_positions_empty(self, adapter):
         positions = await adapter._rest_get_positions()
         assert positions == []
+
+
+# ---------------------------------------------------------------------------
+# BUG-222: Tick size alignment (KRW + USDT markets)
+# ---------------------------------------------------------------------------
+
+class TestBithumbTickSize:
+    """Bithumb 호가 단위 — source: support.bithumb.com 원화 마켓 거래 정책."""
+
+    def test_krw_above_1M(self):
+        assert _bithumb_tick_size("BTC/KRW", Decimal("50000000")) == Decimal("1000")
+
+    def test_krw_100k_to_500k(self):
+        assert _bithumb_tick_size("ETH/KRW", Decimal("200000")) == Decimal("100")
+
+    def test_krw_10k_to_50k(self):
+        assert _bithumb_tick_size("XRP/KRW", Decimal("25000")) == Decimal("10")
+
+    def test_krw_5k_to_10k(self):
+        assert _bithumb_tick_size("ADA/KRW", Decimal("7500")) == Decimal("5")
+
+    def test_krw_100_to_1000(self):
+        assert _bithumb_tick_size("DOGE/KRW", Decimal("500")) == Decimal("1")
+
+    def test_krw_10_to_100(self):
+        assert _bithumb_tick_size("SHIB/KRW", Decimal("50")) == Decimal("0.01")
+
+    def test_krw_sub_1(self):
+        assert _bithumb_tick_size("PEPE/KRW", Decimal("0.5")) == Decimal("0.0001")
+
+    def test_usdt_above_10(self):
+        assert _bithumb_tick_size("TAO/USDT", Decimal("450")) == Decimal("0.01")
+
+    def test_usdt_1_to_10(self):
+        assert _bithumb_tick_size("XRP/USDT", Decimal("2.5")) == Decimal("0.001")
+
+
+class TestAlignBithumbPrice:
+    """BUG-222: Bithumb 400 when price is off the 호가 단위 grid."""
+
+    def test_krw_truncates_to_1000(self):
+        assert _align_bithumb_price("BTC/KRW", Decimal("52345678.99")) == Decimal("52345000")
+
+    def test_krw_100k_band(self):
+        assert _align_bithumb_price("ETH/KRW", Decimal("234567")) == Decimal("234500")
+
+    def test_usdt_tao_tick(self):
+        # TAO/USDT @ 450 USDT → 0.01 tick
+        assert _align_bithumb_price("TAO/USDT", Decimal("450.12345")) == Decimal("450.12")
+
+    def test_usdt_sub_10(self):
+        assert _align_bithumb_price("XRP/USDT", Decimal("2.34567")) == Decimal("2.345")
+
+    def test_already_aligned(self):
+        assert _align_bithumb_price("BTC/KRW", Decimal("50000000")) == Decimal("50000000")
+
+    def test_zero_unchanged(self):
+        assert _align_bithumb_price("BTC/KRW", Decimal("0")) == Decimal("0")
+
+    def test_order_body_uses_aligned_int_for_krw(self):
+        """Bithumb KRW integer-tick bands must serialise as pure integers."""
+        import asyncio
+
+        captured: dict = {}
+
+        async def fake_request(self, method, path, params=None, data=None, signed=False, headers=None):  # noqa: ARG001
+            captured["body"] = data
+            return {"uuid": "bthm-42"}
+
+        rate_limits = {
+            "default": RateLimitConfig(requests_per_second=10000, burst=10000),
+            "order": RateLimitConfig(requests_per_second=10000, burst=10000),
+        }
+        a = NativeBithumbAdapter(api_key="k", api_secret="s", rate_limits=rate_limits)
+        order = Order(
+            exchange_id="bithumb",
+            symbol="BTC/KRW",
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            price=Decimal("52345678.999"),
+            amount=Decimal("0.001"),
+        )
+        with patch.object(NativeBithumbAdapter, "_request", fake_request):
+            trade = asyncio.run(a._rest_place_order(order))
+        # 50M KRW band → 1000원 tick → truncated to 52,345,000
+        assert captured["body"]["price"] == "52345000"
+        assert trade.trade_id == "bthm-42"
+
+    def test_order_body_uses_aligned_decimal_for_usdt(self):
+        """USDT pairs use sub-unit ticks and must NOT be cast to int."""
+        import asyncio
+
+        captured: dict = {}
+
+        async def fake_request(self, method, path, params=None, data=None, signed=False, headers=None):  # noqa: ARG001
+            captured["body"] = data
+            return {"uuid": "bthm-43"}
+
+        rate_limits = {
+            "default": RateLimitConfig(requests_per_second=10000, burst=10000),
+            "order": RateLimitConfig(requests_per_second=10000, burst=10000),
+        }
+        a = NativeBithumbAdapter(api_key="k", api_secret="s", rate_limits=rate_limits)
+        order = Order(
+            exchange_id="bithumb",
+            symbol="TAO/USDT",
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            price=Decimal("450.12345"),
+            amount=Decimal("0.1"),
+        )
+        with patch.object(NativeBithumbAdapter, "_request", fake_request):
+            asyncio.run(a._rest_place_order(order))
+        # 0.01 USDT tick → truncate to 450.12
+        assert captured["body"]["price"] == "450.12"

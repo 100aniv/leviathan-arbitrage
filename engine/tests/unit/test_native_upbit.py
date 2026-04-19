@@ -13,9 +13,11 @@ import pytest
 from src.core.models import Order, OrderSide, OrderType
 from src.infra.exchange.native_upbit import (
     NativeUpbitAdapter,
+    _align_upbit_price,
     _b64url,
     _make_jwt,
     _normalize_symbol,
+    _upbit_tick_size,
 )
 from src.infra.exchange.rate_limiter import RateLimitConfig
 
@@ -136,6 +138,93 @@ class TestMakeJwt:
         t2 = _make_jwt("key", "secret")
         # Nonce differs, so tokens differ
         assert t1 != t2
+
+
+# ---------------------------------------------------------------------------
+# BUG-221: Tick size alignment (USDT + KRW markets)
+# ---------------------------------------------------------------------------
+
+class TestUpbitTickSize:
+    """Upbit tick sizes — source: docs.upbit.com (호가 정책 / USDT Market Order Price Unit)."""
+
+    # USDT market bands
+    def test_usdt_above_10(self):
+        assert _upbit_tick_size("SOL/USDT", Decimal("84.79")) == Decimal("0.01")
+        assert _upbit_tick_size("BTC/USDT", Decimal("50000")) == Decimal("0.01")
+
+    def test_usdt_1_to_10(self):
+        assert _upbit_tick_size("XRP/USDT", Decimal("2.345")) == Decimal("0.001")
+
+    def test_usdt_0p1_to_1(self):
+        assert _upbit_tick_size("DOGE/USDT", Decimal("0.5")) == Decimal("0.0001")
+
+    def test_usdt_0p01_to_0p1(self):
+        assert _upbit_tick_size("PEPE/USDT", Decimal("0.05")) == Decimal("0.00001")
+
+    # KRW market
+    def test_krw_above_2M(self):
+        assert _upbit_tick_size("BTC/KRW", Decimal("50000000")) == Decimal("1000")
+
+    def test_krw_100k_to_500k(self):
+        assert _upbit_tick_size("ETH/KRW", Decimal("200000")) == Decimal("50")
+
+
+class TestAlignUpbitPrice:
+    """BUG-221: Upbit rejects prices not on the tick grid — must truncate down."""
+
+    def test_repro_bug_221(self):
+        # Literal price from the reported error log.
+        raw = Decimal("84.79138627187079407806191117")
+        aligned = _align_upbit_price("SOL/USDT", raw, OrderSide.SELL)
+        # ≥10 USDT → 0.01 tick, truncated
+        assert aligned == Decimal("84.79")
+
+    def test_usdt_truncates_down(self):
+        assert _align_upbit_price("SOL/USDT", Decimal("84.799999"), OrderSide.BUY) == Decimal("84.79")
+
+    def test_usdt_already_aligned(self):
+        assert _align_upbit_price("SOL/USDT", Decimal("84.79"), OrderSide.BUY) == Decimal("84.79")
+
+    def test_krw_large_price(self):
+        # 50,000,000 KRW band → 1,000원 tick
+        aligned = _align_upbit_price("BTC/KRW", Decimal("52345678.99"), OrderSide.BUY)
+        assert aligned == Decimal("52345000")
+
+    def test_small_usdt_micro_tick(self):
+        # < 0.0001 USDT → 0.00000001 tick
+        aligned = _align_upbit_price("MEME/USDT", Decimal("0.000009876543"), OrderSide.BUY)
+        assert aligned == Decimal("0.00000987")
+
+    def test_zero_or_negative_unchanged(self):
+        assert _align_upbit_price("SOL/USDT", Decimal("0"), OrderSide.BUY) == Decimal("0")
+
+    def test_order_body_uses_aligned_price(self):
+        """_rest_place_order must serialise the aligned price in the request body."""
+        import asyncio
+
+        captured: dict = {}
+
+        async def fake_request(self, method, path, params=None, data=None, signed=False, headers=None):  # noqa: ARG001
+            captured["params"] = params
+            return {"uuid": "abc-123"}
+
+        rate_limits = {
+            "default": RateLimitConfig(requests_per_second=10000, burst=10000),
+            "order": RateLimitConfig(requests_per_second=10000, burst=10000),
+        }
+        a = NativeUpbitAdapter(api_key="k", api_secret="s", rate_limits=rate_limits)
+        order = Order(
+            exchange_id="upbit",
+            symbol="SOL/USDT",
+            side=OrderSide.SELL,
+            order_type=OrderType.LIMIT,
+            price=Decimal("84.79138627187079407806191117"),
+            amount=Decimal("0.08"),
+        )
+        with patch.object(NativeUpbitAdapter, "_request", fake_request):
+            trade = asyncio.run(a._rest_place_order(order))
+        assert captured["params"]["price"] == "84.79"
+        assert trade.trade_id == "abc-123"
 
 
 # ---------------------------------------------------------------------------

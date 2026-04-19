@@ -9,7 +9,7 @@ import json
 import logging
 import urllib.parse
 import uuid
-from decimal import Decimal
+from decimal import ROUND_DOWN, ROUND_UP, Decimal
 from typing import Any
 
 from src.core.models import Balance, FeeRate, Order, OrderBook, OrderSide, Position, Trade
@@ -33,6 +33,87 @@ def _normalize_symbol(symbol: str) -> str:
         base, quote = symbol.split("/", 1)
         return f"{quote}-{base}"
     return symbol
+
+
+def _quote_from_symbol(symbol: str) -> str:
+    """'BTC/USDT' -> 'USDT', 'KRW-BTC' -> 'KRW'."""
+    if "/" in symbol:
+        return symbol.split("/", 1)[1].upper()
+    if "-" in symbol:
+        return symbol.split("-", 1)[0].upper()
+    return ""
+
+
+# Upbit KRW market tick table — source: Upbit docs (호가 정책).
+# (price_lower_inclusive, tick_size). Sorted descending by threshold.
+_UPBIT_KRW_TICK_TABLE: tuple[tuple[Decimal, Decimal], ...] = (
+    (Decimal("2000000"), Decimal("1000")),
+    (Decimal("1000000"), Decimal("500")),
+    (Decimal("500000"), Decimal("100")),
+    (Decimal("100000"), Decimal("50")),
+    (Decimal("10000"), Decimal("10")),
+    (Decimal("1000"), Decimal("1")),
+    (Decimal("100"), Decimal("1")),
+    (Decimal("10"), Decimal("0.1")),
+    (Decimal("1"), Decimal("0.01")),
+    (Decimal("0.1"), Decimal("0.001")),
+    (Decimal("0"), Decimal("0.0001")),
+)
+
+# Upbit USDT market tick table — source: Upbit docs (USDT Market Order Price Unit).
+# https://global-docs.upbit.com/docs/usdt-market-info
+_UPBIT_USDT_TICK_TABLE: tuple[tuple[Decimal, Decimal], ...] = (
+    (Decimal("10"), Decimal("0.01")),
+    (Decimal("1"), Decimal("0.001")),
+    (Decimal("0.1"), Decimal("0.0001")),
+    (Decimal("0.01"), Decimal("0.00001")),
+    (Decimal("0.001"), Decimal("0.000001")),
+    (Decimal("0.0001"), Decimal("0.0000001")),
+    (Decimal("0"), Decimal("0.00000001")),
+)
+
+
+def _upbit_tick_size(symbol: str, price: Decimal) -> Decimal:
+    """Return the applicable tick size for the given (symbol, price).
+
+    Upbit tick tables vary by quote currency and price band. BTC market
+    currently uses a fixed small tick (0.00000001 BTC).
+    """
+    quote = _quote_from_symbol(symbol)
+    if quote == "KRW":
+        table = _UPBIT_KRW_TICK_TABLE
+    elif quote == "USDT":
+        table = _UPBIT_USDT_TICK_TABLE
+    else:
+        # BTC market and fallback — smallest unit
+        return Decimal("0.00000001")
+    for threshold, tick in table:
+        if price >= threshold:
+            return tick
+    return table[-1][1]
+
+
+def _align_upbit_price(
+    symbol: str, price: Decimal, side: OrderSide | None = None
+) -> Decimal:
+    """Round price to the nearest valid Upbit tick for this symbol/band.
+
+    BUG-221: Upbit rejects orders with prices not aligned to the tick grid
+    (``invalid_price_ask``). Truncate BUY prices down (do not overpay) and
+    round SELL prices down as well — aligning to the lower tick preserves
+    the intended fill side without exceeding the quoted price.
+    """
+    if price <= 0:
+        return price
+    tick = _upbit_tick_size(symbol, price)
+    if tick <= 0:
+        return price
+    # Use ROUND_DOWN (truncate) — safe for both sides:
+    #   BUY: pay no more than requested
+    #   SELL: never raise the ask above the requested level
+    quantized = (price / tick).to_integral_value(rounding=ROUND_DOWN) * tick
+    # Normalise exponent to the tick's scale for a clean string repr.
+    return quantized.quantize(tick)
 
 
 def _b64url(data: bytes) -> str:
@@ -185,7 +266,15 @@ class NativeUpbitAdapter(NativeAdapter):
             "volume": str(order.amount),
         }
         if order.price:
-            body["price"] = str(order.price)
+            # BUG-221: Upbit rejects prices not aligned to the tick grid.
+            aligned_price = _align_upbit_price(order.symbol, order.price, order.side)
+            if aligned_price != order.price:
+                logger.debug(
+                    "upbit_price_tick_aligned symbol=%s raw=%s aligned=%s tick=%s",
+                    order.symbol, order.price, aligned_price,
+                    _upbit_tick_size(order.symbol, order.price),
+                )
+            body["price"] = str(aligned_price)
         if order.client_order_id:
             body["identifier"] = order.client_order_id
 
