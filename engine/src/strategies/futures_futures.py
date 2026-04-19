@@ -76,9 +76,13 @@ class FuturesFuturesStrategy(BaseStrategy):
         cost_calculator: CostCalculator,
         config: FuturesFuturesConfig | None = None,
         regime_detector: Any = None,
+        cost_feedback: Any = None,
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
         self._regime_detector = regime_detector
+        # WS-B: TCAAdaptiveFeedback for dynamic min_spread computation.
+        # May be None (cold-start engines). compute_dynamic_min_spread is cold-start safe.
+        self._cost_feedback = cost_feedback
         if config is None:
             from src.core.config_loader import get_config
             _at_bps_raw = get_config("strategy_filters.futures_adaptive_static_entry_bps", default=None)
@@ -565,7 +569,24 @@ class FuturesFuturesStrategy(BaseStrategy):
             self._metrics.signals_filtered += 1
             return None
         _spread_bps = float(signal.spread_pct) * 10000
+        # WS-B: dynamic min_spread from observed p95 + fee + funding + margin.
+        # Cold-start (<20 samples) falls back to static config.min_spread_bps.
         min_spread_bps_effective = self.config.min_spread_bps
+        if self._cost_feedback is not None:
+            try:
+                def _to_futures_id(eid: str) -> str:
+                    return eid if eid.endswith("_futures") else f"{eid}_futures"
+                _pair = (
+                    _to_futures_id(signal.buy_exchange),
+                    _to_futures_id(signal.sell_exchange),
+                )
+                min_spread_bps_effective = self._cost_feedback.compute_dynamic_min_spread(
+                    strategy_id=self.strategy_id,
+                    exchange_pair=_pair,
+                    static_fallback_bps=self.config.min_spread_bps,
+                )
+            except Exception as _dyn_exc:
+                logger.debug("ff.dynamic_min_spread_failed err=%s — using static", _dyn_exc)
         if self._adaptive_threshold is not None and self._adaptive_threshold.is_ready:
             _outlier_cap, _ = self._adaptive_threshold.thresholds  # p95
             if _spread_bps > _outlier_cap:

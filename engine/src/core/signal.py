@@ -97,6 +97,7 @@ class SignalGenerator:
         adaptive_threshold: Any | None = None,  # US-255: PerStrategyAdaptiveThreshold
         slippage_feedback: Any | None = None,  # US-283: SlippageFeedbackCollector
         market_impact_enabled: bool | None = None,  # US-284: toggle (default from env)
+        cost_feedback: Any | None = None,  # WS-B: TCAAdaptiveFeedback for dynamic min_spread
     ) -> None:
         self._hub = price_hub
         self._calc = cost_calculator
@@ -111,6 +112,7 @@ class SignalGenerator:
         self._ml_canary = ml_canary  # US-253
         self._adaptive_threshold = adaptive_threshold  # US-255: per-strategy threshold
         self._slippage_feedback = slippage_feedback  # US-283
+        self._cost_feedback = cost_feedback  # WS-B: dynamic min_spread
         _op = get_settings().operational
         self._market_impact_enabled = (
             market_impact_enabled
@@ -424,6 +426,37 @@ class SignalGenerator:
                 float(self._config.max_rollback_cost_usd),
             )
             return None
+
+        # WS-B: dynamic cost-model gate — reject signals where the expected spread
+        # (raw gross) does not clear `fee_roundtrip + p95_slippage + funding + margin`.
+        # Cold-start (<20 observations per leg) falls back to static config min_spread.
+        if self._cost_feedback is not None:
+            try:
+                expected_spread_bps = Decimal(str(raw_spread_frac)) * Decimal("10000")
+                _pair = (str(buy_exchange), str(sell_exchange))
+                dynamic_min_bps = self._cost_feedback.compute_dynamic_min_spread(
+                    strategy_id=self._config.strategy_id,
+                    exchange_pair=_pair,
+                )
+                if expected_spread_bps < dynamic_min_bps:
+                    try:
+                        from src.infra.metrics import SIGNALS_REJECTED_BY_COST_MODEL
+                        SIGNALS_REJECTED_BY_COST_MODEL.labels(
+                            strategy=self._config.strategy_id,
+                            exchange_pair=f"{buy_exchange}:{sell_exchange}",
+                        ).inc()
+                    except Exception:
+                        pass
+                    logger.debug(
+                        "signal_rejected_by_cost_model strategy=%s symbol=%s "
+                        "dynamic_min=%.2f expected=%.2f pair=%s",
+                        self._config.strategy_id, symbol,
+                        float(dynamic_min_bps), float(expected_spread_bps),
+                        f"{buy_exchange}:{sell_exchange}",
+                    )
+                    return None
+            except Exception as _dyn_exc:
+                logger.debug("signal.dynamic_min_spread_failed err=%s", _dyn_exc)
 
         # US-284: market impact check — filter if impact exceeds edge (signal filter only)
         # Only applies when reliable volume data is available (adv_usd >= 1000)

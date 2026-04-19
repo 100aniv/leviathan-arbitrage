@@ -62,9 +62,13 @@ class FundingRateStrategy(BaseStrategy):
         cost_calculator: CostCalculator,
         config: FundingRateConfig | None = None,
         regime_detector: Any = None,
+        cost_feedback: Any = None,
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
         self._regime_detector = regime_detector
+        # WS-B: TCAAdaptiveFeedback for dynamic min_spread computation (funding_rate).
+        # May be None. compute_dynamic_min_spread handles cold-start.
+        self._cost_feedback = cost_feedback
         self.config = config or FundingRateConfig()
         # US-239: Track open positions per symbol to prevent duplicate entries
         # BUG-74: value is now a dict {sell_exchange, buy_exchange, size} for settlement exits
@@ -268,6 +272,26 @@ class FundingRateStrategy(BaseStrategy):
                 signal.symbol, float(funding_diff_bps), float(self.config.min_funding_diff_bps),
             )
             return None
+
+        # WS-B: dynamic min_spread gate (per-pair observed slippage p95 + fee + margin).
+        # Falls back to static config.min_funding_diff_bps when <20 observations.
+        if self._cost_feedback is not None:
+            try:
+                _pair = (str(signal.buy_exchange), str(signal.sell_exchange))
+                _dyn_min = self._cost_feedback.compute_dynamic_min_spread(
+                    strategy_id=self.strategy_id,
+                    exchange_pair=_pair,
+                    static_fallback_bps=self.config.min_funding_diff_bps,
+                )
+                if funding_diff_bps < _dyn_min:
+                    self._metrics.signals_filtered += 1
+                    logger.info(
+                        "funding_rate.dynamic_min_spread_rejected sym=%s diff_bps=%.2f dynamic_min_bps=%.2f",
+                        signal.symbol, float(funding_diff_bps), float(_dyn_min),
+                    )
+                    return None
+            except Exception as _dyn_exc:
+                logger.debug("fr.dynamic_min_spread_failed err=%s — using static", _dyn_exc)
 
         # PHOENIX: max_position_size is USD notional cap (set in main.py).
         # Convert to base units using avg price so any coin works correctly.
