@@ -62,7 +62,7 @@
     "futures_min_spread_bps": 27,
     "futures_max_position_size_usdt": 20,
     "futures_adaptive_static_entry_bps": 60,
-    "futures_futures_max_position_usd": 12,
+    "futures_futures_max_position_usd": 25,
     "futures_excluded_symbols": [
       "BARD",
       "0G",
