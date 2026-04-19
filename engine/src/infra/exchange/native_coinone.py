@@ -1,6 +1,7 @@
 """Native Coinone adapter — Korean KRW exchange via direct REST + WebSocket."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -46,6 +47,46 @@ class NativeCoinoneAdapter(NativeAdapter):
     def __init__(self, **kwargs: Any) -> None:
         kwargs.setdefault("rate_limits", _COINONE_RATE_LIMITS)
         super().__init__(exchange_id="coinone", **kwargs)
+        # BUG-192: userData WS stream for event-driven MYORDER fills
+        self._user_stream: Any = None
+        self._user_stream_lock = asyncio.Lock()
+
+    async def _get_user_stream(self) -> Any:
+        """Lazy-start Coinone private userData stream (BUG-192).
+
+        Returns None if credentials missing or start() fails — callers fall
+        back to the REST-only path.
+        """
+        if not self._api_key or not self._api_secret:
+            return None
+        if self._user_stream is not None:
+            return self._user_stream
+        async with self._user_stream_lock:
+            if self._user_stream is not None:
+                return self._user_stream
+            try:
+                from src.infra.exchange.ws_trade import CoinoneUserDataStream
+                stream = CoinoneUserDataStream(self._api_key, self._api_secret)
+                await stream.start()
+                self._user_stream = stream
+                logger.info("coinone_user_data_stream_started")
+            except Exception as exc:
+                logger.warning(
+                    "coinone_user_data_stream_start_failed err=%s — REST fallback",
+                    exc,
+                )
+                self._user_stream = None
+        return self._user_stream
+
+    async def disconnect(self) -> None:
+        """Stop userData stream before the base adapter teardown."""
+        if self._user_stream is not None:
+            try:
+                await self._user_stream.stop()
+            except Exception as exc:
+                logger.debug("coinone_user_data_stop_failed err=%s", exc)
+            self._user_stream = None
+        await super().disconnect()
 
     # ------------------------------------------------------------------
     # Abstract implementations
@@ -145,12 +186,59 @@ class NativeCoinoneAdapter(NativeAdapter):
             raise RuntimeError(f"Coinone place_order failed: {error_msg}")
 
         order_id = str(resp.get("orderId", ""))
+
+        # BUG-192: Event-driven fill confirmation via private WS MYORDER stream.
+        # Coinone REST POST /v2.1/order returns success + orderId immediately;
+        # fills land asynchronously. Private WS MYORDER (status=trade/trade_done)
+        # surfaces actual executed volume/price. REST-only path preserved as
+        # fallback when WS is unavailable or the event times out.
+        _fill_price = order.price or Decimal("0")
+        _fill_amount = order.amount
+        if order_id:
+            try:
+                _user_stream = await self._get_user_stream()
+            except Exception as _us_err:
+                logger.debug("coinone_user_stream_unavailable err=%s", _us_err)
+                _user_stream = None
+            if _user_stream is not None:
+                try:
+                    _fill = await _user_stream.wait_for_order_fill(
+                        order_id, timeout=0.5
+                    )
+                except Exception as _wf_err:
+                    logger.debug(
+                        "coinone_user_stream_wait_failed order_id=%s err=%s",
+                        order_id, _wf_err,
+                    )
+                    _fill = None
+                if _fill is not None:
+                    _qty_str = _fill.get("executed_qty")
+                    _px_str = _fill.get("executed_price")
+                    try:
+                        if _qty_str:
+                            _q = Decimal(str(_qty_str))
+                            if _q > 0:
+                                _fill_amount = _q
+                        if _px_str:
+                            _p = Decimal(str(_px_str))
+                            if _p > 0:
+                                _fill_price = _p
+                        logger.debug(
+                            "coinone_user_data_fill_confirmed symbol=%s order_id=%s qty=%s px=%s",
+                            order.symbol, order_id, _fill_amount, _fill_price,
+                        )
+                    except Exception as _pe:
+                        logger.debug(
+                            "coinone_fill_parse_failed order_id=%s err=%s",
+                            order_id, _pe,
+                        )
+
         return self._build_trade(
             order,
             trade_id=order_id,
-            price=order.price or Decimal("0"),
-            amount=order.amount,
-            fee=order.amount * order.price * Decimal("0.0002") if order.price else Decimal("0"),
+            price=_fill_price,
+            amount=_fill_amount,
+            fee=_fill_amount * _fill_price * Decimal("0.0002") if _fill_price else Decimal("0"),
             fee_currency="KRW",
         )
 
