@@ -3,3 +3,11 @@ services:
     volumes:
       - ./engine:/app:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+  # BUG-208: Prometheus scrapes engine:8000 via Docker DNS. When engine runs
+  # locally (host python, not dockerized) the lookup fails. Alias engine →
+  # host.docker.internal so prometheus reaches the host port 8000 during dev.
+  # No effect in prod — dockerized engine service binds in-network and takes
+  # precedence over the extra_hosts entry.
+  prometheus:
+    extra_hosts:
+      - "engine:host-gateway"
