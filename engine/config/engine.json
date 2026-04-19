@@ -112,7 +112,9 @@
     "max_cumulative_slippage_bps": 100,
     "slippage_window_trades": 20,
     "warmup_seconds": 120.0,
-    "max_net_exposure_pct": 30
+    "max_net_exposure_pct": 30,
+    "per_strategy_daily_loss_budget_pct": 2.0,
+    "per_strategy_daily_loss_budget": {}
   },
   "dynamic_risk": {
     "_comment": "v7: lowered to 5% — $120×5%=$6/trade at 20x=margin $0.30. Prevents startup burst margin exhaustion. 사장님 지시 (2026-04-19): 하드코딩된 15% 롤백, 5% 유지 + 런타임 min-notional auto-bump으로 거래소 min 충족.",
