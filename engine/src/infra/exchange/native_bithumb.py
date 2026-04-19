@@ -6,6 +6,7 @@ Bithumb API v2: JWT HS256 인증 (Authorization: Bearer {token})
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -20,11 +21,13 @@ try:
 except ImportError:  # pragma: no cover
     _pyjwt = None  # type: ignore[assignment]
 
+import structlog
+
 from src.core.models import Balance, FeeRate, Order, OrderBook, OrderSide, Position, Trade
 from src.infra.exchange.native_adapter import NativeAdapter
 from src.infra.exchange.rate_limiter import RateLimitConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _BITHUMB_RATE_LIMITS: dict[str, RateLimitConfig] = {
     "default": RateLimitConfig(requests_per_second=5, burst=15),
@@ -61,6 +64,46 @@ class NativeBithumbAdapter(NativeAdapter):
     def __init__(self, **kwargs: Any) -> None:
         kwargs.setdefault("rate_limits", _BITHUMB_RATE_LIMITS)
         super().__init__(exchange_id="bithumb", **kwargs)
+        # BUG-191: userData WS stream for event-driven myOrder fills
+        self._user_stream: Any = None
+        self._user_stream_lock = asyncio.Lock()
+
+    async def _get_user_stream(self) -> Any:
+        """Lazy-start Bithumb private userData stream (BUG-191).
+
+        Returns None if credentials missing or start() fails — callers fall
+        back to the REST-only path.
+        """
+        if not self._api_key or not self._api_secret:
+            return None
+        if self._user_stream is not None:
+            return self._user_stream
+        async with self._user_stream_lock:
+            if self._user_stream is not None:
+                return self._user_stream
+            try:
+                from src.infra.exchange.ws_trade import BithumbUserDataStream
+                stream = BithumbUserDataStream(self._api_key, self._api_secret)
+                await stream.start()
+                self._user_stream = stream
+                logger.info("bithumb_user_data_stream_started")
+            except Exception as exc:
+                logger.warning(
+                    "bithumb_user_data_stream_start_failed",
+                    err=str(exc),
+                )
+                self._user_stream = None
+        return self._user_stream
+
+    async def disconnect(self) -> None:
+        """Stop userData stream before the base adapter teardown."""
+        if self._user_stream is not None:
+            try:
+                await self._user_stream.stop()
+            except Exception as exc:
+                logger.debug("bithumb_user_data_stop_failed", err=str(exc))
+            self._user_stream = None
+        await super().disconnect()
 
     # ------------------------------------------------------------------
     # Abstract implementations
@@ -210,11 +253,62 @@ class NativeBithumbAdapter(NativeAdapter):
 
         resp = await self._request("POST", "/v1/orders", data=body, signed=True)
         order_id = str(resp.get("uuid", ""))
+
+        # BUG-191: Event-driven fill confirmation via private WS myOrder stream.
+        # Bithumb REST POST /v1/orders returns immediately; fills land async.
+        # Private WS myOrder (state=done/trade) surfaces actual executed_volume/price.
+        # REST-only path preserved as fallback when WS is unavailable or times out.
+        _fill_price = order.price or Decimal("0")
+        _fill_amount = order.amount
+        if order_id:
+            try:
+                _user_stream = await self._get_user_stream()
+            except Exception as _us_err:
+                logger.debug("bithumb_user_stream_unavailable", err=str(_us_err))
+                _user_stream = None
+            if _user_stream is not None:
+                try:
+                    _fill = await _user_stream.wait_for_order_fill(
+                        order_id, timeout=0.5
+                    )
+                except Exception as _wf_err:
+                    logger.debug(
+                        "bithumb_user_stream_wait_failed",
+                        order_id=order_id,
+                        err=str(_wf_err),
+                    )
+                    _fill = None
+                if _fill is not None:
+                    _vol_str = _fill.get("executed_volume")
+                    _px_str = _fill.get("price")
+                    try:
+                        if _vol_str:
+                            _v = Decimal(str(_vol_str))
+                            if _v > 0:
+                                _fill_amount = _v
+                        if _px_str:
+                            _p = Decimal(str(_px_str))
+                            if _p > 0:
+                                _fill_price = _p
+                        logger.debug(
+                            "bithumb_user_data_fill_confirmed",
+                            symbol=order.symbol,
+                            order_id=order_id,
+                            qty=str(_fill_amount),
+                            px=str(_fill_price),
+                        )
+                    except Exception as _pe:
+                        logger.debug(
+                            "bithumb_fill_parse_failed",
+                            order_id=order_id,
+                            err=str(_pe),
+                        )
+
         return self._build_trade(
             order,
             trade_id=order_id,
-            price=order.price or Decimal("0"),
-            amount=order.amount,
+            price=_fill_price,
+            amount=_fill_amount,
         )
 
     async def _rest_cancel_order(self, order_id: str, symbol: str | None) -> bool:
