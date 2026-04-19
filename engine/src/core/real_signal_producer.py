@@ -180,6 +180,40 @@ class RealDataSignalProducer:
         _stale_threshold = get_settings().operational.exchange_stale_threshold_s
         self._exchange_stale_threshold: float = _stale_threshold if _env != "test" else 9999.0
 
+        # BUG-203/204/205: periodic signal summary counters (~1 INFO line / 60 cycles / strategy)
+        # SF (spot_futures) diagnostics — BUG-203
+        self._sf_cycle_counter: int = 0
+        self._sf_summary_interval: int = 60
+        self._sf_total: int = 0
+        self._sf_no_book: int = 0
+        self._sf_low_basis: int = 0
+        self._sf_pass_basis: int = 0
+        self._sf_rej_depth: int = 0
+        self._sf_rej_outlier: int = 0
+        self._sf_rej_freshness: int = 0
+        self._sf_rej_ts_sync: int = 0
+        self._sf_signals: int = 0
+        self._sf_basis_samples: deque[float] = deque(maxlen=2000)
+        # XE-KRW (cross_exchange_krw) diagnostics — BUG-204
+        self._xe_cycle_counter: int = 0
+        self._xe_summary_interval: int = 60
+        self._xe_total: int = 0
+        self._xe_no_book: int = 0
+        self._xe_low_premium: int = 0
+        self._xe_pass_premium: int = 0
+        self._xe_rej_fx_stale: int = 0
+        self._xe_rej_outlier: int = 0
+        self._xe_signals: int = 0
+        self._xe_premium_samples: deque[float] = deque(maxlen=2000)
+        # Triangular diagnostics — BUG-205
+        self._tri_cycle_counter: int = 0
+        self._tri_summary_interval: int = 60
+        self._tri_total_scanned: int = 0
+        self._tri_low_profit: int = 0
+        self._tri_pass_profit: int = 0
+        self._tri_fake_spread_rejected: int = 0
+        self._tri_signals: int = 0
+
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
@@ -302,6 +336,10 @@ class RealDataSignalProducer:
         signals: list[Signal] = []
         cycles = self._scanner.on_orderbook_update(exchange_id, symbol, book)
 
+        # BUG-205: track triangles scanned for summary; fake_spread rejection is
+        # inferred from produce_triangular_signal() returning None (stale/outlier).
+        self._tri_total_scanned += len(cycles)
+
         for cycle in cycles:
             signal = await self._producer.produce_triangular_signal(
                 exchange_id=cycle.exchange_id,
@@ -311,7 +349,9 @@ class RealDataSignalProducer:
                 prices=cycle.prices,
                 profit_pct=cycle.profit_pct,
             )
+            self._tri_pass_profit += 1
             if signal is not None:
+                self._tri_signals += 1
                 # BUG-152: DEBUG — triangular_signal 1025건/5min at INFO (초당 3+ 로그)
                 logger.debug(
                     "real_signal_producer.triangular_signal",
@@ -321,6 +361,27 @@ class RealDataSignalProducer:
                     },
                 )
                 signals.append(signal)
+            else:
+                # produce returned None → fake-spread/stale rejection inside producer
+                self._tri_fake_spread_rejected += 1
+
+        # BUG-205: periodic triangular summary (~1/min at 1Hz tick)
+        self._tri_cycle_counter += 1
+        if self._tri_cycle_counter >= self._tri_summary_interval:
+            logger.info(
+                "real_signal_producer.tri_arb_summary total_triangles_scanned=%d "
+                "pass_profit=%d fake_spread_rejected=%d signals=%d",
+                self._tri_total_scanned,
+                self._tri_pass_profit,
+                self._tri_fake_spread_rejected,
+                self._tri_signals,
+            )
+            self._tri_cycle_counter = 0
+            self._tri_total_scanned = 0
+            self._tri_low_profit = 0
+            self._tri_pass_profit = 0
+            self._tri_fake_spread_rejected = 0
+            self._tri_signals = 0
 
         return signals
 
@@ -350,7 +411,14 @@ class RealDataSignalProducer:
         }
 
         if not spot_books or not fut_books:
+            # BUG-203: no book for this symbol pair — count once and flush if due
+            self._sf_total += 1
+            self._sf_no_book += 1
+            self._maybe_flush_sf_summary(len(signals))
             return signals
+
+        # BUG-203: this symbol contributes to SF evaluation cycle
+        self._sf_total += 1
 
         for spot_ex, spot_book in spot_books.items():
             if spot_ex in self._futures_exchanges:
@@ -372,15 +440,20 @@ class RealDataSignalProducer:
                 _sf_age_spot = time.monotonic() - spot_book.last_update_time if getattr(spot_book, "last_update_time", 0) > 0 else 999.0
                 _sf_age_fut = time.monotonic() - fut_book.last_update_time if getattr(fut_book, "last_update_time", 0) > 0 else 999.0
                 if _sf_age_spot > 5.0 or _sf_age_fut > 5.0:
+                    self._sf_rej_freshness += 1
                     continue
 
                 # If futures > spot: buy spot, sell futures
                 if float(fut_bid) > float(spot_ask):
                     # US-229: min basis filter — skip trivially small spreads
                     _sf_basis_bps = (float(fut_bid) - float(spot_ask)) / float(spot_ask) * 10000
+                    # BUG-203: sample every positive basis (for p50/p95 diagnostic)
+                    self._sf_basis_samples.append(_sf_basis_bps)
                     _sf_min_bps = get_settings().operational.spot_futures_min_basis_bps
                     if _sf_basis_bps < _sf_min_bps:
+                        self._sf_low_basis += 1
                         continue
+                    self._sf_pass_basis += 1
                     # US-230: rolling median spread outlier filter
                     _sf_key = (symbol, min(spot_ex, fut_ex), max(spot_ex, fut_ex), "contango")
                     _sf_history = self._rolling_spread[_sf_key]
@@ -390,11 +463,13 @@ class RealDataSignalProducer:
                     _sf_ts_fut = getattr(fut_book, "last_update_time", 0)
                     if _sf_ts_spot > 0 and _sf_ts_fut > 0:
                         if abs(_sf_ts_spot - _sf_ts_fut) > self._spread_ts_max_diff_s:
+                            self._sf_rej_ts_sync += 1
                             continue
                     _sf_history.append(_sf_basis_bps)
                     if len(_sf_history) >= self._spread_filter_min_samples:
                         _sf_median = statistics.median(_sf_history)
                         if _sf_median > 0 and _sf_basis_bps > self._spread_filter_multiplier * _sf_median:
+                            self._sf_rej_outlier += 1
                             continue
                     spot_base = FUTURES_TO_SPOT.get(spot_ex, spot_ex)
                     # Bug 1-A: use cached funding rate from latest snapshot
@@ -408,6 +483,7 @@ class RealDataSignalProducer:
                         funding_rate=_funding_rate,
                     )
                     if signal is not None:
+                        self._sf_signals += 1
                         if signal.metadata is None:
                             signal.metadata = {}
                         signal.metadata["direction"] = "contango"
@@ -420,9 +496,13 @@ class RealDataSignalProducer:
                 # US-238: Backwardation path — spot > futures → sell spot, buy futures
                 if float(spot_bid) > float(fut_ask):
                     _sf_basis_bps_back = (float(spot_bid) - float(fut_ask)) / float(spot_ask) * 10000
+                    # BUG-203: sample backwardation basis too
+                    self._sf_basis_samples.append(_sf_basis_bps_back)
                     _sf_min_bps = get_settings().operational.spot_futures_min_basis_bps
                     if _sf_basis_bps_back < _sf_min_bps:
+                        self._sf_low_basis += 1
                         continue
+                    self._sf_pass_basis += 1
                     # Rolling median spread outlier filter
                     _sf_key_back = (symbol, min(spot_ex, fut_ex), max(spot_ex, fut_ex), "backwardation")
                     _sf_history_back = self._rolling_spread[_sf_key_back]
@@ -431,11 +511,13 @@ class RealDataSignalProducer:
                     _sf_ts_fut = getattr(fut_book, "last_update_time", 0)
                     if _sf_ts_spot > 0 and _sf_ts_fut > 0:
                         if abs(_sf_ts_spot - _sf_ts_fut) > self._spread_ts_max_diff_s:
+                            self._sf_rej_ts_sync += 1
                             continue
                     _sf_history_back.append(_sf_basis_bps_back)
                     if len(_sf_history_back) >= self._spread_filter_min_samples:
                         _sf_median_back = statistics.median(_sf_history_back)
                         if _sf_median_back > 0 and _sf_basis_bps_back > self._spread_filter_multiplier * _sf_median_back:
+                            self._sf_rej_outlier += 1
                             continue
                     spot_base = FUTURES_TO_SPOT.get(spot_ex, spot_ex)
                     _funding_rate = self._latest_rates.get(fut_ex, {}).get(symbol, 0.0)
@@ -448,6 +530,7 @@ class RealDataSignalProducer:
                         funding_rate=_funding_rate,
                     )
                     if signal is not None:
+                        self._sf_signals += 1
                         if signal.metadata is None:
                             signal.metadata = {}
                         signal.metadata["direction"] = "backwardation"
@@ -457,7 +540,56 @@ class RealDataSignalProducer:
                         )
                         signals.append(signal)
 
+        # BUG-203: periodic SF summary flush
+        self._maybe_flush_sf_summary(len(signals))
+
         return signals
+
+    def _maybe_flush_sf_summary(self, emitted_this_call: int) -> None:
+        """BUG-203: emit SF summary once every ~60 cycles with threshold + basis p50/p95."""
+        self._sf_cycle_counter += 1
+        if self._sf_cycle_counter < self._sf_summary_interval:
+            return
+        try:
+            _min_basis = float(get_settings().operational.spot_futures_min_basis_bps)
+        except Exception:
+            _min_basis = 0.0
+        _p50 = None
+        _p95 = None
+        if self._sf_basis_samples:
+            _samples = sorted(self._sf_basis_samples)
+            _n = len(_samples)
+            _p50 = round(_samples[_n // 2], 2)
+            _p95 = round(_samples[min(_n - 1, int(_n * 0.95))], 2)
+        logger.info(
+            "real_signal_producer.sf_arb_summary total_symbols=%d no_book=%d "
+            "low_basis=%d pass_basis=%d rejected_depth=%d rejected_outlier=%d "
+            "rejected_freshness=%d rejected_ts_sync=%d signals=%d "
+            "sf_min_basis_bps=%.2f actual_p50_bps=%s actual_p95_bps=%s",
+            self._sf_total,
+            self._sf_no_book,
+            self._sf_low_basis,
+            self._sf_pass_basis,
+            self._sf_rej_depth,
+            self._sf_rej_outlier,
+            self._sf_rej_freshness,
+            self._sf_rej_ts_sync,
+            self._sf_signals,
+            _min_basis,
+            _p50,
+            _p95,
+        )
+        self._sf_cycle_counter = 0
+        self._sf_total = 0
+        self._sf_no_book = 0
+        self._sf_low_basis = 0
+        self._sf_pass_basis = 0
+        self._sf_rej_depth = 0
+        self._sf_rej_outlier = 0
+        self._sf_rej_freshness = 0
+        self._sf_rej_ts_sync = 0
+        self._sf_signals = 0
+        self._sf_basis_samples.clear()
 
     async def _evaluate_futures_futures(
         self,
@@ -989,12 +1121,17 @@ class RealDataSignalProducer:
         """
         signals: list[Signal] = []
 
+        # BUG-204: this KRW symbol contributes to XE-KRW evaluation cycle
+        self._xe_total += 1
+
         usdt_symbol = _normalize_symbol(krw_symbol)  # BTC/KRW → BTC/USDT
 
         # KRW 오더북의 USDT 환산 가격
         krw_bid = krw_book.best_bid()
         krw_ask = krw_book.best_ask()
         if krw_bid is None or krw_ask is None:
+            self._xe_no_book += 1
+            self._maybe_flush_xe_summary()
             return signals
 
         _fx_rate = self._fx_provider.get_rate()
@@ -1004,6 +1141,10 @@ class RealDataSignalProducer:
         # USDT 거래소 오더북 조회
         # BUG-103.2: snapshot inner dict (concurrency safety)
         usdt_books = dict(all_books.get(usdt_symbol, {}))
+        if not usdt_books:
+            self._xe_no_book += 1
+            self._maybe_flush_xe_summary()
+            return signals
         for usdt_exchange, usdt_book in usdt_books.items():
             if usdt_exchange in KRW_EXCHANGES:
                 continue  # USDT 거래소만 비교
@@ -1016,15 +1157,24 @@ class RealDataSignalProducer:
             # 방향 1: KRW 거래소가 더 비쌈 → KRW 거래소에서 팔고 USDT 거래소에서 삼
             if float(krw_bid_usdt) > float(usdt_ask):
                 spread_bps = (float(krw_bid_usdt) - float(usdt_ask)) / float(usdt_ask) * 10000
+                # BUG-204: sample every positive premium (for p50/p95 diagnostic)
+                if spread_bps > 0:
+                    self._xe_premium_samples.append(spread_bps)
                 # 비합리적 스프레드 필터 (100bps 이상은 환율 오차로 간주)
                 if spread_bps <= 0 or spread_bps > 500:
+                    self._xe_rej_fx_stale += 1
                     continue
+                if spread_bps < 1.0:
+                    self._xe_low_premium += 1
+                    continue
+                self._xe_pass_premium += 1
                 _ce_key = (usdt_symbol, usdt_exchange, krw_exchange)
                 _ce_hist = self._rolling_spread[_ce_key]
                 _ce_hist.append(spread_bps)
                 if len(_ce_hist) >= self._spread_filter_min_samples:
                     _med = statistics.median(_ce_hist)
                     if _med > 0 and spread_bps > self._spread_filter_multiplier * _med:
+                        self._xe_rej_outlier += 1
                         continue
                 spread_pct = Decimal(str(spread_bps / 10000))
                 sig = Signal(
@@ -1054,19 +1204,29 @@ class RealDataSignalProducer:
                         "direction": "sell_krw",
                     },
                 )
+                self._xe_signals += 1
                 signals.append(sig)
 
             # 방향 2: USDT 거래소가 더 비쌈 → USDT 거래소에서 팔고 KRW 거래소에서 삼
             if float(usdt_bid) > float(krw_ask_usdt):
                 spread_bps = (float(usdt_bid) - float(krw_ask_usdt)) / float(krw_ask_usdt) * 10000
+                # BUG-204: sample reverse premium too
+                if spread_bps > 0:
+                    self._xe_premium_samples.append(spread_bps)
                 if spread_bps <= 0 or spread_bps > 500:
+                    self._xe_rej_fx_stale += 1
                     continue
+                if spread_bps < 1.0:
+                    self._xe_low_premium += 1
+                    continue
+                self._xe_pass_premium += 1
                 _ce_key2 = (usdt_symbol, krw_exchange, usdt_exchange)
                 _ce_hist2 = self._rolling_spread[_ce_key2]
                 _ce_hist2.append(spread_bps)
                 if len(_ce_hist2) >= self._spread_filter_min_samples:
                     _med2 = statistics.median(_ce_hist2)
                     if _med2 > 0 and spread_bps > self._spread_filter_multiplier * _med2:
+                        self._xe_rej_outlier += 1
                         continue
                 spread_pct2 = Decimal(str(spread_bps / 10000))
                 sig = Signal(
@@ -1096,9 +1256,51 @@ class RealDataSignalProducer:
                         "direction": "buy_krw",
                     },
                 )
+                self._xe_signals += 1
                 signals.append(sig)
 
+        # BUG-204: periodic XE-KRW summary flush
+        self._maybe_flush_xe_summary()
+
         return signals
+
+    def _maybe_flush_xe_summary(self) -> None:
+        """BUG-204: emit XE-KRW (kimchi premium) summary every ~60 cycles."""
+        self._xe_cycle_counter += 1
+        if self._xe_cycle_counter < self._xe_summary_interval:
+            return
+        _min_premium_bps = 1.0  # matches low_premium filter above
+        _p50 = None
+        _p95 = None
+        if self._xe_premium_samples:
+            _samples = sorted(self._xe_premium_samples)
+            _n = len(_samples)
+            _p50 = round(_samples[_n // 2], 2)
+            _p95 = round(_samples[min(_n - 1, int(_n * 0.95))], 2)
+        logger.info(
+            "real_signal_producer.xe_krw_arb_summary total_symbols=%d no_book=%d "
+            "low_premium=%d pass_premium=%d rejected_fx_stale=%d rejected_outlier=%d "
+            "signals=%d xe_min_premium_bps=%.2f actual_p50_bps=%s actual_p95_bps=%s",
+            self._xe_total,
+            self._xe_no_book,
+            self._xe_low_premium,
+            self._xe_pass_premium,
+            self._xe_rej_fx_stale,
+            self._xe_rej_outlier,
+            self._xe_signals,
+            _min_premium_bps,
+            _p50,
+            _p95,
+        )
+        self._xe_cycle_counter = 0
+        self._xe_total = 0
+        self._xe_no_book = 0
+        self._xe_low_premium = 0
+        self._xe_pass_premium = 0
+        self._xe_rej_fx_stale = 0
+        self._xe_rej_outlier = 0
+        self._xe_signals = 0
+        self._xe_premium_samples.clear()
 
     async def _evaluate_funding_rate_arb(
         self,
