@@ -230,6 +230,25 @@ class LiveMode(BaseMode):
         self._tca_analyzer = tca_analyzer  # TCAAnalyzer (US-116) — injected from main.py
         self._slippage_feedback_collector = slippage_feedback_collector  # US-283: SlippageFeedbackCollector
 
+        # WS-A4: TCA adaptive feedback observation layer (no threshold adjustment yet).
+        # record_observation() is called from the TCA compare path in _execute_trade_request.
+        try:
+            from src.friction.cost_feedback_loop import TCAAdaptiveFeedback
+            self._tca_feedback: Any = TCAAdaptiveFeedback(window=100)
+        except Exception as _tca_fb_exc:
+            logger.warning("live_mode.tca_feedback_init_failed error=%s", _tca_fb_exc)
+            self._tca_feedback = None
+
+        # WS-A3: Funding accrual state.
+        # _funding_accrual: (strategy_id, exchange, symbol) -> accrued cost (USDT, signed).
+        #   Positive = position PAYS funding (cost). Negative = position RECEIVES funding (income).
+        #   Accumulated at each UTC 00/08/16 boundary by _funding_rate_loop.
+        # _realized_funding_total: cumulative signed realized funding deducted from total_pnl.
+        # _last_funding_settlement_hour: sentinel to fire exactly once per cycle boundary.
+        self._funding_accrual: dict[tuple[str, str, str], float] = {}
+        self._realized_funding_total: float = 0.0
+        self._last_funding_settlement_hour: int = -1
+
         self._symbols = symbols or ["BTC/USDT"]
         self._exchanges = exchanges or ["binance"]
         self._running = False
@@ -354,6 +373,8 @@ class LiveMode(BaseMode):
         self._dedup_cleanup_task: asyncio.Task | None = None
         self._trade_reconciler_task: asyncio.Task | None = None
         self._margin_refresh_task: asyncio.Task | None = None
+        # WS-A2: ExchangeIncomeFetcher (realized_pnl/commission/funding_fee polling)
+        self._exchange_income_fetcher: Any | None = None
 
         # Collision detection: (symbol, exchange_pair) -> last_trade_time
         from src.execution.dedup import DeduplicationGate
@@ -773,6 +794,20 @@ class LiveMode(BaseMode):
         # BUG-18 fix: margin cache refresh loop (every 60s)
         self._margin_refresh_task = asyncio.create_task(self._margin_refresh_loop(), name="live_margin_refresh")
 
+        # WS-A2: ExchangeIncomeFetcher — poll /fapi/v1/income + /account/bill every 30s
+        try:
+            from src.infra.exchange.exchange_income_fetcher import ExchangeIncomeFetcher
+            _exchanges = getattr(self._executor, "_exchanges", {})
+            _adapter_list = list(_exchanges.values()) if isinstance(_exchanges, dict) else []
+            if _adapter_list:
+                self._exchange_income_fetcher = ExchangeIncomeFetcher(
+                    adapters=_adapter_list,
+                    engine_pnl_getter=lambda: self._stats.total_pnl,
+                )
+                await self._exchange_income_fetcher.start()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("live_mode.exchange_income_fetcher_start_failed: %s", exc)
+
         # Inject MarginTracker into futures_futures strategy
         if self._strategy_manager is not None:
             for sid in self._strategy_manager.list_strategies():
@@ -958,6 +993,13 @@ class LiveMode(BaseMode):
                     await _fx.stop()
                 except Exception:
                     pass
+
+        # WS-A2: stop ExchangeIncomeFetcher
+        if self._exchange_income_fetcher is not None:
+            try:
+                await self._exchange_income_fetcher.stop()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("live_mode.exchange_income_fetcher_stop_failed: %s", exc)
 
         # Drain in-flight settlement exit tasks (fire-and-forget closes that must complete
         # to avoid stranded one-legged positions on exchange shutdown).
@@ -1678,12 +1720,35 @@ class LiveMode(BaseMode):
                         # BUG-94 HIGH-1: elevated from DEBUG — silent swallowing masks promotion bugs
                         logger.warning("live_mode.success_notify_failed strategy=%s err=%s", sid, _se_err)
 
+                    # WS-A3: On successful exit of an FR position, realize accrued funding
+                    # and deduct from total_pnl. Only applies to funding_rate strategies
+                    # (spec constraint: non-FR strategies don't carry funding exposure).
+                    if _is_exit_succ and "funding_rate" in sid:
+                        try:
+                            _fr_exchanges = list({
+                                _leg.exchange_id for _leg in trade_request.legs
+                                if _leg.exchange_id and _leg.symbol == _success_symbol
+                            })
+                            if _fr_exchanges:
+                                self._realize_funding_on_close(
+                                    strategy_id=sid,
+                                    symbol=_success_symbol,
+                                    exchange_ids=_fr_exchanges,
+                                )
+                        except Exception as _fr_exc:
+                            logger.warning(
+                                "live_mode.funding_realize_failed strategy=%s symbol=%s err=%s",
+                                sid, _success_symbol, _fr_exc,
+                            )
+
             # --- Record trade result ---
             self._stats.trades_executed += 1
             strat_stats.trades += 1
 
-            # Compute PnL from ACTUAL fill prices (not estimates)
-            pnl = self._compute_pnl_from_result(exec_result, trade_request)
+            # Compute PnL from ACTUAL fill prices (not estimates). WS-A1: 4-branch
+            # priority exposed via `pnl_source` so operators can see which code path
+            # produced each PnL (exchange realized vs recompute vs estimate).
+            pnl, pnl_source = self._compute_pnl_from_result(exec_result, trade_request)
 
             # Extract actual fill prices + fees from exec_result for recording
             _buy_fill_price: Decimal | None = None
@@ -1718,6 +1783,47 @@ class LiveMode(BaseMode):
             if not _sell_fill_price:
                 _sl = [l for l in (trade_request.legs or []) if l.side == OrderSide.SELL]
                 _sell_fill_price = _sl[0].price if _sl and _sl[0].price else None
+
+            # WS-A5: deduct estimated slippage_usd from fill-based PnL so the final
+            # total_pnl accumulator reflects ``gross_spread − commission − slippage``.
+            # Exchange-realized branches already include slippage (fill gap vs mid is
+            # baked into Binance/Bitget realizedPnl); estimate branch uses expected
+            # prices with no slippage model. Only ``fill_minus_fee`` needs the hit.
+            if pnl_source == "fill_minus_fee" and trade_request.legs:
+                _slip_usd_pre = Decimal("0")
+                _exp_buy_pre = next(
+                    (l.price for l in trade_request.legs if l.side == OrderSide.BUY and l.price), None,
+                )
+                _exp_sell_pre = next(
+                    (l.price for l in trade_request.legs if l.side == OrderSide.SELL and l.price), None,
+                )
+                _buy_sz = next(
+                    (l.size for l in trade_request.legs if l.side == OrderSide.BUY and l.size), None,
+                )
+                _sell_sz = next(
+                    (l.size for l in trade_request.legs if l.side == OrderSide.SELL and l.size), None,
+                )
+                if _buy_fill_from_result and _buy_fill_price and _exp_buy_pre and _buy_sz:
+                    _slip_usd_pre += max(Decimal("0"), (_buy_fill_price - _exp_buy_pre) * _buy_sz)
+                if _sell_fill_from_result and _sell_fill_price and _exp_sell_pre and _sell_sz:
+                    _slip_usd_pre += max(Decimal("0"), (_exp_sell_pre - _sell_fill_price) * _sell_sz)
+                if _slip_usd_pre > 0:
+                    pnl = pnl - _slip_usd_pre
+                    logger.info(
+                        "live_mode.pnl_slippage_deducted strategy=%s usd=%.6f pnl_before=%.6f pnl_after=%.6f",
+                        sid, float(_slip_usd_pre), float(pnl + _slip_usd_pre), float(pnl),
+                    )
+
+            # WS-A1: structured log + Prometheus counter so operators see branch dist.
+            logger.info(
+                "live_mode.pnl_source strategy=%s source=%s pnl=%.6f",
+                sid, pnl_source, float(pnl),
+            )
+            try:
+                from src.infra.metrics import PNL_SOURCE_TOTAL
+                PNL_SOURCE_TOTAL.labels(strategy=sid or "unknown", source=pnl_source).inc()
+            except Exception as _pnl_metric_exc:
+                logger.debug("live_mode.pnl_source_metric_failed error=%s", _pnl_metric_exc)
             # Gross spread bps from signal or fill prices
             _signal = getattr(trade_request, 'signal', None)
             _spread_bps_val: float = 0.0
@@ -1912,6 +2018,27 @@ class LiveMode(BaseMode):
                 TCA_LATENCY_MS.labels(strategy=sid or "unknown").observe(_tca_latency_ms)
             except Exception as _tca_metric_exc:
                 logger.debug("live_mode.tca_metric_export_failed error=%s", _tca_metric_exc)
+
+            # WS-A4: Feed IS slippage (bps) into TCAAdaptiveFeedback for p95 exposure.
+            # Keyed per (strategy, exchange). For 2-leg trades we record one observation
+            # per exchange so the gauge reflects per-exchange execution quality.
+            # No threshold adjustment here — WS-B will read p95 from the Prometheus gauge.
+            if self._tca_feedback is not None:
+                try:
+                    _fb_exchanges = list({
+                        _leg.exchange_id for _leg in (trade_request.legs or [])
+                        if getattr(_leg, "exchange_id", None)
+                    })
+                    if not _fb_exchanges:
+                        _fb_exchanges = ["unknown"]
+                    for _fb_ex in _fb_exchanges:
+                        self._tca_feedback.record_observation(
+                            strategy=sid or "unknown",
+                            slippage_bps=float(_slippage_bps_est),
+                            exchange=str(_fb_ex),
+                        )
+                except Exception as _tca_fb_err:
+                    logger.debug("live_mode.tca_feedback_record_failed error=%s", _tca_fb_err)
 
             # Slippage > Alpha auto-kill: track cumulative slippage and halt strategy.
             # BUG-89: Only apply to spread-arb strategies (FF, cross_exchange).
@@ -2271,21 +2398,51 @@ class LiveMode(BaseMode):
         except Exception as exc:
             logger.warning("live_mode.first_trade_record_failed: %s", exc)
 
-    def _compute_pnl_from_result(self, exec_result: Any, trade_request: TradeRequest) -> Decimal:
-        """Compute PnL from ACTUAL execution result (fill prices from exchange).
+    def _compute_pnl_from_result(
+        self,
+        exec_result: Any,
+        trade_request: TradeRequest,
+    ) -> tuple[Decimal, str]:
+        """Compute PnL from ACTUAL execution result.
 
-        Priority:
-        1. exec_result.realized_pnl (if executor computed it)
-        2. exec_result.legs[].trade (actual fill prices from Binance)
-        3. Fallback to trade_request legs (estimates — last resort)
+        WS-A1 priority (highest → lowest):
+        1. ``exchange_realized_pnl`` — sum of ``trade.realized_pnl`` across legs
+           when any leg reports it. Exchange-truth (commission + slippage already
+           folded in by the exchange).
+        2. ``exec_result_realized`` — ``exec_result.realized_pnl`` set by executor.
+        3. ``fill_minus_fee`` — recompute ``notional − fee`` from actual fill
+           prices. Caller should ALSO deduct estimated slippage_usd on this
+           branch (WS-A5).
+        4. ``estimate`` — last-resort recompute from trade_request legs.
+
+        Returns ``(pnl, source)`` so the caller can (a) log which branch fired
+        and (b) decide whether to apply the extra slippage deduction (WS-A5).
         """
-        # 1. Direct PnL from executor
+        # 1. Exchange-reported realized PnL aggregated across legs (WS-A1 primary).
+        if exec_result is not None and hasattr(exec_result, 'legs'):
+            _exch_pnl = Decimal("0")
+            _has_exchange_rp = False
+            for _lr in exec_result.legs:
+                _t = getattr(_lr, 'trade', None)
+                if _t is None:
+                    continue
+                _rp = getattr(_t, 'realized_pnl', None)
+                if _rp is None:
+                    continue
+                _rp_dec = Decimal(str(_rp))
+                if _rp_dec != 0:
+                    _exch_pnl += _rp_dec
+                    _has_exchange_rp = True
+            if _has_exchange_rp:
+                return _exch_pnl, "exchange_realized_pnl"
+
+        # 2. Executor-computed realized PnL (fallback when adapter didn't tag trades).
         if exec_result is not None and hasattr(exec_result, 'realized_pnl'):
             rp = exec_result.realized_pnl
             if rp is not None and rp != 0:
-                return Decimal(str(rp))
+                return Decimal(str(rp)), "exec_result_realized"
 
-        # 2. Compute from actual Trade objects in ExecutionResult
+        # 3. Recompute from actual Trade objects in ExecutionResult (fill prices).
         if exec_result is not None and hasattr(exec_result, 'legs'):
             net_pnl = Decimal("0")
             has_trades = False
@@ -2320,13 +2477,13 @@ class LiveMode(BaseMode):
                     net_pnl -= notional + fill_fee
 
             if has_trades and not has_zero_price_leg:
-                return net_pnl
+                return net_pnl, "fill_minus_fee"
             if has_zero_price_leg:
                 # Return expected profit from trade request (0 for exits) rather than
                 # a misleading fill-price-based PnL that inflates to full position value.
-                return trade_request.expected_profit_usdt
+                return trade_request.expected_profit_usdt, "zero_price_abort"
 
-        # 3. Fallback: estimate from trade_request legs
+        # 4. Last-resort estimate from trade_request legs.
         net_pnl = Decimal("0")
         for leg in trade_request.legs:
             price = leg.price or Decimal("0")
@@ -2340,11 +2497,12 @@ class LiveMode(BaseMode):
                 net_pnl += notional - fee
             else:
                 net_pnl -= notional + fee
-        return net_pnl
+        return net_pnl, "estimate"
 
     def _compute_pnl(self, trade_request: TradeRequest, exec_result: Any) -> Decimal:
-        """Legacy wrapper — delegates to _compute_pnl_from_result."""
-        return self._compute_pnl_from_result(exec_result, trade_request)
+        """Legacy wrapper — delegates to _compute_pnl_from_result, drops source label."""
+        pnl, _ = self._compute_pnl_from_result(exec_result, trade_request)
+        return pnl
 
     def _update_pnl_stats(self, pnl: Decimal, strategy_id: str) -> None:
         """Update cumulative PnL, drawdown, and per-strategy stats."""
@@ -2431,7 +2589,7 @@ class LiveMode(BaseMode):
     # -----------------------------------------------------------------------
 
     async def _funding_rate_loop(self) -> None:
-        """Periodic funding rate fetch (every 60s)."""
+        """Periodic funding rate fetch (every 60s) + WS-A3 per-position accrual at 8h boundaries."""
         interval = get_settings().operational.funding_rate_interval_s
         try:
             while self._running:
@@ -2456,11 +2614,217 @@ class LiveMode(BaseMode):
                             for _fr_sig in (fr_signals or []):
                                 if self._strategy_manager is not None:
                                     await self._route_signal_to_strategies(_fr_sig)
+                        # WS-A3: Funding cycle accrual — fire exactly once per UTC 00/08/16 crossing.
+                        try:
+                            now_utc = datetime.now(timezone.utc)
+                            if (
+                                now_utc.hour in (0, 8, 16)
+                                and now_utc.hour != self._last_funding_settlement_hour
+                            ):
+                                self._last_funding_settlement_hour = now_utc.hour
+                                self._accrue_funding_cycle(rates or {})
+                        except Exception as _acc_exc:
+                            logger.warning(
+                                "live_mode.funding_accrual_failed error=%s", _acc_exc,
+                            )
                 except Exception as exc:
                     logger.warning("live_mode.funding_rate_fetch_error: %s", exc)
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
             pass
+
+    def _accrue_funding_cycle(self, rates: dict) -> None:
+        """WS-A3: Accrue projected funding cost for every open FR position.
+
+        At each UTC 00/08/16 boundary (per FR 8h settlement cadence):
+          funding_cost_leg = leg_size * mark_price * funding_rate_pct * side_sign
+
+        side_sign semantics:
+          * SELL leg (short) — positive funding_rate means the exchange PAYS us
+            (shorts receive). Cost to engine = -rate * size * mark.
+          * BUY leg (long) — positive funding_rate means the exchange CHARGES us
+            (longs pay). Cost to engine = +rate * size * mark.
+
+        We accumulate signed cost into `_funding_accrual` keyed by
+        (strategy_id, exchange, symbol) and update the FUNDING_ACCRUED_USDT gauge.
+        Realization (deduction from total_pnl) happens when the position closes.
+        """
+        if self._strategy_manager is None:
+            logger.debug("funding_accrual.skip reason=no_strategy_manager")
+            return
+        try:
+            from src.infra.metrics import FUNDING_ACCRUED_USDT
+        except Exception:
+            FUNDING_ACCRUED_USDT = None  # type: ignore[assignment]
+        total_accrued_this_cycle = 0.0
+        positions_touched = 0
+        for sid in self._strategy_manager.list_strategies():
+            # Scope: only strategies that carry delta-neutral funding exposure.
+            # Other strategies (cross_exchange / FF / stat_arb / triangular) do NOT
+            # hold funding-paying positions across 8h cycles, per WS-A3 constraint.
+            if "funding_rate" not in sid:
+                continue
+            strategy = self._strategy_manager.get_strategy(sid)
+            if strategy is None:
+                continue
+            open_positions = getattr(strategy, "_open_positions", None)
+            if not isinstance(open_positions, dict):
+                continue
+            for symbol, pos in list(open_positions.items()):
+                if not isinstance(pos, dict):
+                    continue
+                sell_exchange = pos.get("sell_exchange")
+                buy_exchange = pos.get("buy_exchange")
+                short_size = pos.get("size")
+                long_size = pos.get("long_size") or pos.get("size")
+                if not sell_exchange or not buy_exchange or short_size is None:
+                    continue
+                mark_price = self._lookup_mark_price(symbol, sell_exchange) or \
+                    self._lookup_mark_price(symbol, buy_exchange)
+                if mark_price is None or mark_price <= 0:
+                    logger.debug(
+                        "funding_accrual.skip symbol=%s reason=no_mark_price", symbol,
+                    )
+                    continue
+                rate_sell = self._lookup_funding_rate(rates, sell_exchange, symbol)
+                rate_buy = self._lookup_funding_rate(rates, buy_exchange, symbol)
+                # SHORT leg on sell_exchange: positive rate → shorts RECEIVE (income).
+                # cost_sell_leg = -rate_sell * short_size * mark (negative = income).
+                cost_sell_leg = -float(rate_sell) * float(short_size) * float(mark_price) \
+                    if rate_sell is not None else 0.0
+                # LONG leg on buy_exchange: positive rate → longs PAY (cost).
+                # cost_buy_leg = +rate_buy * long_size * mark.
+                cost_buy_leg = float(rate_buy) * float(long_size) * float(mark_price) \
+                    if rate_buy is not None else 0.0
+                # Accumulate per leg (per-exchange gauge granularity).
+                key_sell = (sid, str(sell_exchange), str(symbol))
+                key_buy = (sid, str(buy_exchange), str(symbol))
+                self._funding_accrual[key_sell] = \
+                    self._funding_accrual.get(key_sell, 0.0) + cost_sell_leg
+                self._funding_accrual[key_buy] = \
+                    self._funding_accrual.get(key_buy, 0.0) + cost_buy_leg
+                if FUNDING_ACCRUED_USDT is not None:
+                    try:
+                        FUNDING_ACCRUED_USDT.labels(
+                            strategy=sid, exchange=str(sell_exchange), symbol=str(symbol),
+                        ).set(self._funding_accrual[key_sell])
+                        FUNDING_ACCRUED_USDT.labels(
+                            strategy=sid, exchange=str(buy_exchange), symbol=str(symbol),
+                        ).set(self._funding_accrual[key_buy])
+                    except Exception:
+                        pass
+                total_accrued_this_cycle += cost_sell_leg + cost_buy_leg
+                positions_touched += 1
+                logger.info(
+                    "funding_accrued strategy=%s symbol=%s sell_ex=%s buy_ex=%s "
+                    "rate_sell=%s rate_buy=%s mark=%.6f short_size=%s long_size=%s "
+                    "cost_sell=%.6f cost_buy=%.6f cumulative_sell=%.6f cumulative_buy=%.6f",
+                    sid, symbol, sell_exchange, buy_exchange,
+                    rate_sell, rate_buy, float(mark_price),
+                    short_size, long_size,
+                    cost_sell_leg, cost_buy_leg,
+                    self._funding_accrual[key_sell], self._funding_accrual[key_buy],
+                )
+        logger.info(
+            "funding_accrual.cycle_summary positions_touched=%d total_accrued_usdt=%.6f hour_utc=%d",
+            positions_touched, total_accrued_this_cycle,
+            self._last_funding_settlement_hour,
+        )
+
+    def _lookup_mark_price(self, symbol: str, exchange_id: str) -> float | None:
+        """Best-effort mid-price lookup from the orderbook store for funding accrual."""
+        try:
+            sym_books = self._books.get(symbol)
+            if not sym_books:
+                return None
+            book = sym_books.get(exchange_id)
+            if book is None:
+                return None
+            bid = book.best_bid()
+            ask = book.best_ask()
+            if not bid or not ask:
+                return None
+            # OrderBook .best_bid/.best_ask may return (price, size) tuples or scalars.
+            bid_price = bid[0] if isinstance(bid, (tuple, list)) else bid
+            ask_price = ask[0] if isinstance(ask, (tuple, list)) else ask
+            if bid_price <= 0 or ask_price <= 0:
+                return None
+            return float((Decimal(str(bid_price)) + Decimal(str(ask_price))) / Decimal("2"))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _lookup_funding_rate(
+        rates: dict, exchange_id: str, symbol: str,
+    ) -> float | None:
+        """Resolve funding rate from FR poll dict, handling futures naming aliases."""
+        if not isinstance(rates, dict) or not rates:
+            return None
+        syms = rates.get(exchange_id)
+        if not syms:
+            # Collector keys by `<spot>_futures` (e.g. binance_futures); positions
+            # may carry either variant — try both directions.
+            alt = f"{exchange_id}_futures" if not exchange_id.endswith("_futures") \
+                else exchange_id.removesuffix("_futures")
+            syms = rates.get(alt)
+        if not syms:
+            return None
+        entry = syms.get(symbol)
+        if entry is None:
+            return None
+        return float(getattr(entry, "rate", entry))
+
+    def _realize_funding_on_close(
+        self,
+        strategy_id: str,
+        symbol: str,
+        exchange_ids: list[str],
+    ) -> float:
+        """WS-A3: At position close, realize accrued funding → deduct from total_pnl.
+
+        Returns the signed USDT realized from this close (positive = cost to engine,
+        negative = income). Also increments FUNDING_REALIZED_USDT_TOTAL per-exchange.
+        """
+        try:
+            from src.infra.metrics import FUNDING_ACCRUED_USDT, FUNDING_REALIZED_USDT_TOTAL
+        except Exception:
+            FUNDING_ACCRUED_USDT = None  # type: ignore[assignment]
+            FUNDING_REALIZED_USDT_TOTAL = None  # type: ignore[assignment]
+        realized = 0.0
+        for ex_id in exchange_ids:
+            key = (strategy_id, str(ex_id), str(symbol))
+            accrued = self._funding_accrual.pop(key, 0.0)
+            if accrued == 0.0:
+                continue
+            realized += accrued
+            if FUNDING_REALIZED_USDT_TOTAL is not None:
+                try:
+                    # Counter can only inc() by >= 0 — track magnitude.
+                    # Sign is preserved in total_pnl deduction + logs + accrued gauge history.
+                    FUNDING_REALIZED_USDT_TOTAL.labels(
+                        strategy=strategy_id, exchange=str(ex_id),
+                    ).inc(abs(accrued))
+                except Exception:
+                    pass
+            if FUNDING_ACCRUED_USDT is not None:
+                try:
+                    FUNDING_ACCRUED_USDT.labels(
+                        strategy=strategy_id, exchange=str(ex_id), symbol=str(symbol),
+                    ).set(0.0)
+                except Exception:
+                    pass
+        if realized != 0.0:
+            # Deduct from total_pnl: positive accrued = cost → subtract.
+            self._stats.total_pnl -= realized
+            self._stats.daily_pnl -= realized
+            self._realized_funding_total += realized
+            logger.info(
+                "funding_realized strategy=%s symbol=%s exchanges=%s amount=%.6f "
+                "cumulative_realized=%.6f total_pnl_after=%.6f",
+                strategy_id, symbol, exchange_ids, realized,
+                self._realized_funding_total, self._stats.total_pnl,
+            )
+        return realized
 
     async def _daily_summary_loop(self) -> None:
         """Send daily summary via Telegram at 00:00 UTC."""

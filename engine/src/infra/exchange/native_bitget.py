@@ -525,6 +525,8 @@ class NativeBitgetAdapter(NativeAdapter):
                     # Retrieve actual fill price for PnL accounting.
                     # close-positions is a market order so order.price=0; query fill history.
                     _close_fill_price = Decimal("0")
+                    # WS-A1: exchange realized profit on close fills (None → not reported).
+                    _close_realized_pnl: Decimal | None = None
                     if _order_id and not _order_id.startswith("close-"):
                         import asyncio as _asyncio_cp
                         for _cp_attempt in range(3):
@@ -542,16 +544,22 @@ class NativeBitgetAdapter(NativeAdapter):
                                 if isinstance(_cp_fills, list) and _cp_fills:
                                     _cp_qty = Decimal("0")
                                     _cp_wprice = Decimal("0")
+                                    # WS-A1: aggregate realized profit from close-fills.
+                                    _cp_realized: Decimal | None = None
                                     for _cpf in _cp_fills:
                                         _q = Decimal(str(_cpf.get("baseVolume") or _cpf.get("size") or _cpf.get("qty") or "0"))
                                         _p = Decimal(str(_cpf.get("price") or _cpf.get("priceAvg") or "0"))
                                         _cp_qty += _q
                                         _cp_wprice += _q * _p
+                                        _rp_raw = _cpf.get("profit") or _cpf.get("realizedPnl")
+                                        if _rp_raw is not None:
+                                            _cp_realized = (_cp_realized or Decimal("0")) + Decimal(str(_rp_raw))
                                     if _cp_qty > 0:
                                         _close_fill_price = _cp_wprice / _cp_qty
+                                        _close_realized_pnl = _cp_realized
                                         logger.info(
-                                            "bitget_futures_close_fill_price_recovered symbol=%s orderId=%s price=%s",
-                                            order.symbol, _order_id, _close_fill_price,
+                                            "bitget_futures_close_fill_price_recovered symbol=%s orderId=%s price=%s realized=%s",
+                                            order.symbol, _order_id, _close_fill_price, _close_realized_pnl,
                                         )
                                         break
                             except Exception as _cpfe:
@@ -561,6 +569,7 @@ class NativeBitgetAdapter(NativeAdapter):
                         trade_id=_order_id,
                         price=_close_fill_price if _close_fill_price > 0 else (order.price or Decimal("0")),
                         amount=order.amount,
+                        realized_pnl=_close_realized_pnl,
                     )
                 except Exception as _close_exc:
                     _close_str = str(_close_exc)
@@ -746,6 +755,8 @@ class NativeBitgetAdapter(NativeAdapter):
                     del self._exchange_order_id_map[_k]
         fill_price = order.price or Decimal("0")
         fill_fee = Decimal("0")  # BUG-C: initialized here, updated in poll/fill-history paths
+        # WS-A1: exchange-reported realized PnL for closing fills. None → not reported.
+        fill_realized_pnl: Decimal | None = None
         # BUG-93: fill_qty default depends on market type AND order type:
         # - Futures MARKET: default 0 → polling block may update it; 0 on poll failure → rollback
         # - Futures LIMIT:  default 0 → limit may not have filled (no polling block runs)
@@ -800,9 +811,16 @@ class NativeBitgetAdapter(NativeAdapter):
                             fill_fee = abs(Decimal(str(_fee_str)))
                         except Exception:
                             fill_fee = Decimal("0")
+                        # WS-A1: Bitget order-detail sometimes exposes aggregate profit for close fills.
+                        _rp_raw = _d.get("profit") or _d.get("realizedPnl")
+                        if _rp_raw is not None:
+                            try:
+                                fill_realized_pnl = Decimal(str(_rp_raw))
+                            except Exception:
+                                pass
                         logger.debug(
-                            "bitget_futures_fill_polled symbol=%s orderId=%s attempt=%d status=%s price=%s qty=%s fee=%s",
-                            order.symbol, trade_id, _attempt + 1, _status, fill_price, fill_qty, fill_fee,
+                            "bitget_futures_fill_polled symbol=%s orderId=%s attempt=%d status=%s price=%s qty=%s fee=%s realized=%s",
+                            order.symbol, trade_id, _attempt + 1, _status, fill_price, fill_qty, fill_fee, fill_realized_pnl,
                         )
                         if _status == "filled":
                             break  # stop polling on full fill; keep polling partial
@@ -872,6 +890,8 @@ class NativeBitgetAdapter(NativeAdapter):
                         _total_qty = Decimal("0")
                         _weighted_price = Decimal("0")
                         _total_fee = Decimal("0")
+                        # WS-A1: aggregate exchange realized PnL across partial fills.
+                        _total_realized: Decimal | None = None
                         for _f in _fills:
                             _fq = Decimal(str(_f.get("baseVolume") or _f.get("size") or _f.get("qty") or "0"))
                             _fp = Decimal(str(_f.get("price") or _f.get("priceAvg") or "0"))
@@ -879,13 +899,17 @@ class NativeBitgetAdapter(NativeAdapter):
                             _total_qty += _fq
                             _weighted_price += _fq * _fp
                             _total_fee += _ff
+                            _rp_raw = _f.get("profit") or _f.get("realizedPnl")
+                            if _rp_raw is not None:
+                                _total_realized = (_total_realized or Decimal("0")) + Decimal(str(_rp_raw))
                         if _total_qty > 0:
                             fill_qty = _total_qty
                             fill_price = _weighted_price / _total_qty
                             fill_fee = _total_fee
+                            fill_realized_pnl = _total_realized
                             logger.info(
-                                "bitget_futures_fill_recovered orderId=%s symbol=%s qty=%s price=%s attempt=%d",
-                                trade_id, order.symbol, fill_qty, fill_price, _fill_attempt + 1,
+                                "bitget_futures_fill_recovered orderId=%s symbol=%s qty=%s price=%s realized=%s attempt=%d",
+                                trade_id, order.symbol, fill_qty, fill_price, fill_realized_pnl, _fill_attempt + 1,
                             )
                             break
                     else:
@@ -937,6 +961,8 @@ class NativeBitgetAdapter(NativeAdapter):
                         _tb_total_qty = Decimal("0")
                         _tb_weighted_price = Decimal("0")
                         _tb_total_fee = Decimal("0")
+                        # WS-A1: aggregate exchange realized PnL across time-window fills.
+                        _tb_total_realized: Decimal | None = None
                         for _f in _fb_data:
                             if str(_f.get("orderId", "")) == trade_id:
                                 _fq = Decimal(str(_f.get("baseVolume") or _f.get("size") or _f.get("qty") or "0"))
@@ -945,13 +971,17 @@ class NativeBitgetAdapter(NativeAdapter):
                                 _tb_total_qty += _fq
                                 _tb_weighted_price += _fq * _fp
                                 _tb_total_fee += _ff
+                                _rp_raw = _f.get("profit") or _f.get("realizedPnl")
+                                if _rp_raw is not None:
+                                    _tb_total_realized = (_tb_total_realized or Decimal("0")) + Decimal(str(_rp_raw))
                         if _tb_total_qty > 0:
                             fill_qty = _tb_total_qty
                             fill_price = _tb_weighted_price / _tb_total_qty
                             fill_fee = _tb_total_fee
+                            fill_realized_pnl = _tb_total_realized
                             logger.info(
-                                "bitget_futures_fill_recovered_time_query orderId=%s symbol=%s qty=%s price=%s",
-                                trade_id, order.symbol, fill_qty, fill_price,
+                                "bitget_futures_fill_recovered_time_query orderId=%s symbol=%s qty=%s price=%s realized=%s",
+                                trade_id, order.symbol, fill_qty, fill_price, fill_realized_pnl,
                             )
                     if fill_qty == Decimal("0"):
                         logger.warning(
@@ -968,6 +998,7 @@ class NativeBitgetAdapter(NativeAdapter):
             price=fill_price,
             amount=fill_qty,
             fee=fill_fee,
+            realized_pnl=fill_realized_pnl,
         )
 
     async def place_ioc_limit(

@@ -543,8 +543,14 @@ class NativeAdapter(abc.ABC):
         amount: Decimal,
         fee: Decimal = Decimal("0"),
         fee_currency: str | None = None,
+        realized_pnl: Decimal | None = None,
     ) -> Trade:
-        """Build Trade model from fill data."""
+        """Build Trade model from fill data.
+
+        WS-A1: `realized_pnl` (if provided by adapter) is the exchange-reported
+        closed-position PnL (includes commission + slippage). Used as the primary
+        source in live._compute_pnl_from_result when non-None.
+        """
         return Trade(
             trade_id=trade_id,
             order_id=order.order_id or order.client_order_id,
@@ -555,6 +561,7 @@ class NativeAdapter(abc.ABC):
             amount=amount,
             fee=fee,
             fee_currency=fee_currency,
+            realized_pnl=realized_pnl,
         )
 
     # ------------------------------------------------------------------

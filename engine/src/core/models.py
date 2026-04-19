@@ -94,6 +94,10 @@ class Trade(BaseModel):
     amount: Decimal
     fee: Decimal = Decimal("0")
     fee_currency: str | None = None
+    # WS-A1: Exchange-reported realized PnL (includes commission + slippage).
+    # None → not reported by adapter; fall through to fill-based recompute.
+    # Non-None → use as authoritative PnL source in _compute_pnl_from_result.
+    realized_pnl: Decimal | None = None
     timestamp: datetime = Field(default_factory=_utcnow)
     metadata: dict[str, Any] = Field(default_factory=dict)
 

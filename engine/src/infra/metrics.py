@@ -132,6 +132,14 @@ ROLLBACKS_TOTAL = Counter(
     ["exchange", "reason"],
 )
 
+# WS-A1/A5: track which branch of _compute_pnl_from_result produced each PnL.
+# Exposes drift between exchange-reported realized PnL and engine recomputes.
+PNL_SOURCE_TOTAL = Counter(
+    "leviathan_pnl_source_total",
+    "PnL source distribution per strategy (which branch of _compute_pnl_from_result fired)",
+    ["strategy", "source"],
+)
+
 # ---------------------------------------------------------------------------
 # Phase 2: Rust hot-path observability
 # ---------------------------------------------------------------------------
@@ -346,6 +354,64 @@ RECONCILER_DISCREPANCY_TOTAL = Counter(
     #       size_mismatch
     #       stranded (rollback failed)
     ["exchange", "type"],
+)
+
+
+# ---------------------------------------------------------------------------
+# WS-A2: Exchange-reported income (Binance /fapi/v1/income + Bitget /account/bill)
+# ---------------------------------------------------------------------------
+
+EXCHANGE_INCOME_TOTAL = Counter(
+    "leviathan_exchange_income_total_usdt",
+    "Exchange-reported income by type (REALIZED_PNL / COMMISSION / FUNDING_FEE / TRANSFER)",
+    ["exchange", "income_type"],
+)
+
+EXCHANGE_INCOME_FETCH_LATENCY = Histogram(
+    "leviathan_exchange_income_fetch_latency_seconds",
+    "Latency of exchange income endpoint polls",
+    ["exchange"],
+    buckets=[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0],
+)
+
+EXCHANGE_INCOME_POLLS_TOTAL = Counter(
+    "leviathan_exchange_income_polls_total",
+    "Exchange income polling cycles (success/error)",
+    ["exchange", "result"],  # result: ok / error
+)
+
+PNL_RECONCILIATION_VARIANCE_PCT = Gauge(
+    "leviathan_pnl_reconciliation_variance_pct",
+    "Engine total_pnl vs exchange-reported 24h sum (realized+commission+funding) variance percent",
+    ["exchange"],
+)
+
+
+# ---------------------------------------------------------------------------
+# WS-A3: Funding accrual (engine-side per-position projected + realized at close)
+# ---------------------------------------------------------------------------
+
+FUNDING_ACCRUED_USDT = Gauge(
+    "leviathan_funding_accrued_usdt",
+    "Projected funding cost accrued on an open position (cumulative, signed USDT)",
+    ["strategy", "exchange", "symbol"],
+)
+
+FUNDING_REALIZED_USDT_TOTAL = Counter(
+    "leviathan_funding_realized_usdt_total",
+    "Realized funding cost deducted from total_pnl on position close (signed sum USDT)",
+    ["strategy", "exchange"],
+)
+
+
+# ---------------------------------------------------------------------------
+# WS-A4: TCA adaptive feedback observation layer (no threshold adjustment yet)
+# ---------------------------------------------------------------------------
+
+OBSERVED_SLIPPAGE_P95_BPS = Gauge(
+    "leviathan_observed_slippage_p95_bps",
+    "Observed slippage p95 (bps) from last N TCA observations per (strategy, exchange)",
+    ["strategy", "exchange"],
 )
 
 

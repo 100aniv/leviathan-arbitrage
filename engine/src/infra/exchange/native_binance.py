@@ -645,9 +645,16 @@ class BinanceNativeAdapter(NativeAdapter):
             )
         fee = Decimal("0")
         fee_currency: str | None = None
+        # WS-A1: accumulate realizedPnl from fills / userTrades for closing orders.
+        # None when no source reports it (opening orders, spot) → falls through to
+        # fill-based PnL recompute in live._compute_pnl_from_result.
+        realized_pnl: Decimal | None = None
         if raw.get("fills"):
             for _fill in raw["fills"]:
                 fee += Decimal(str(_fill.get("commission", "0")))
+                _rp = _fill.get("realizedPnl")
+                if _rp is not None:
+                    realized_pnl = (realized_pnl or Decimal("0")) + Decimal(str(_rp))
             fee_currency = raw["fills"][0].get("commissionAsset")
 
         # BUG-E: Polled futures orders (GET /fapi/v1/order) don't return fills array.
@@ -667,9 +674,17 @@ class BinanceNativeAdapter(NativeAdapter):
                 if isinstance(_trades, list) and _trades:
                     fee = sum((Decimal(str(t.get("commission", "0"))) for t in _trades), Decimal("0"))
                     fee_currency = _trades[0].get("commissionAsset")
+                    # WS-A1: aggregate realizedPnl across partial fills for this order.
+                    _rp_sum = sum(
+                        (Decimal(str(t.get("realizedPnl", "0"))) for t in _trades if t.get("realizedPnl") is not None),
+                        Decimal("0"),
+                    )
+                    # Preserve None when no fill reports realizedPnl (0 is valid for opens).
+                    if any(t.get("realizedPnl") is not None for t in _trades):
+                        realized_pnl = _rp_sum
                     logger.debug(
-                        "futures_fee_from_userTrades orderId=%s fee=%s currency=%s fills=%d",
-                        trade_id, fee, fee_currency, len(_trades),
+                        "futures_fee_from_userTrades orderId=%s fee=%s currency=%s fills=%d realized_pnl=%s",
+                        trade_id, fee, fee_currency, len(_trades), realized_pnl,
                     )
             except Exception as _fe:
                 logger.warning("futures_fee_fetch_failed orderId=%s: %s", trade_id, _fe)
@@ -681,6 +696,7 @@ class BinanceNativeAdapter(NativeAdapter):
             amount=filled_qty,
             fee=fee,
             fee_currency=fee_currency,
+            realized_pnl=realized_pnl,
         )
 
     async def _rest_cancel_order(self, order_id: str, symbol: str | None) -> bool:
