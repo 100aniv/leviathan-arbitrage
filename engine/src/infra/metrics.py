@@ -479,6 +479,24 @@ SIGNALS_AUTO_BUMPED_NOTIONAL = Counter(
     ["exchange", "symbol"],
 )
 
+# Phoenix Path-B Day-2: unified pre-trade rejection counter. Every gate in
+# PreTradeValidator MUST increment this instead of emitting a silent return —
+# closes BUG-227 class of silent-rollback regressions.
+SIGNAL_REJECTED_TOTAL = Counter(
+    "leviathan_signal_rejected_total",
+    "Signals rejected by pre-trade validator (unified vocabulary)",
+    ["reason_code", "strategy"],
+)
+
+# Phoenix Path-B Day-2: auto-bump success counter (single label set for the
+# controlled vocabulary path). Complements the legacy per-exchange/symbol
+# SIGNALS_AUTO_BUMPED_NOTIONAL for dashboard roll-ups.
+SIGNAL_AUTO_BUMPED_TOTAL = Counter(
+    "leviathan_signal_auto_bumped_total",
+    "Signals whose leg sizes were auto-bumped to satisfy min notional",
+    ["exchange"],
+)
+
 
 # ---------------------------------------------------------------------------
 # WS-D3: Sharpe + Max Drawdown (30-day rolling)

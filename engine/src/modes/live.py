@@ -231,6 +231,7 @@ class LiveMode(BaseMode):
         self._execution_mode = execution_mode
         self._tca_analyzer = tca_analyzer  # TCAAnalyzer (US-116) — injected from main.py
         self._slippage_feedback_collector = slippage_feedback_collector  # US-283: SlippageFeedbackCollector
+        self._pnl_ledger: Any | None = None  # Path-B Day-1: set post-__init__ by main.py; single source of operator PnL.
         # BUG-228c: runtime per-exchange min_notional fetcher (see MinNotionalRegistry).
         # Fail-safe: build a fallback-only registry when main.py forgets to inject.
         if min_notional_registry is not None:
@@ -482,6 +483,35 @@ class LiveMode(BaseMode):
         # Per-symbol cooldown (config: execution.symbol_cooldown_s)
         self._symbol_last_trade: dict[str, float] = {}
         self._symbol_cooldown_s: float = float(_get_cfg("execution.symbol_cooldown_s") or 30)
+
+        # Phoenix Path-B Day-2: typed PreTradeValidator replaces the inline
+        # 270-line pre-trade if-ladder. Every gate now emits a ReasonCode +
+        # leviathan_signal_rejected_total counter + live_mode.rejected_by_* INFO log.
+        from src.execution.pre_trade_validator import PreTradeValidator
+        self._pre_trade_validator = PreTradeValidator(
+            strategy_filter=self._strategy_filter,
+            strategy_disable_until=self._strategy_disable_until,
+            kill_switch=self._kill_switch,
+            circuit_breaker=self._circuit_breaker,
+            rate_buckets=(self._rate_buckets if self._has_rate_limiter else None),
+            flash_guard=self._flash_guard,
+            risk_guardian=self._risk_guardian,
+            dedup_gate=self._dedup_gate,
+            symbol_last_trade=self._symbol_last_trade,
+            symbol_cooldown_s=self._symbol_cooldown_s,
+            cached_margin=self._cached_margin,
+            min_notional_registry=self._min_notional_registry,
+            get_config=_get_cfg,
+            total_capital_usd=self._total_capital_usd,
+            max_session_loss_usd=self._max_session_loss_usd,
+            session_loss_supplier=lambda: -self._stats.total_pnl,
+            build_collision_key=self._build_collision_key,
+            is_reduceonly_request=self._is_reduceonly_request,
+            halt_local=self._halt_local,
+            telegram=self._telegram,
+            notify_session_loss=self._notify_session_loss_alert,
+            clear_pending_entry=self._clear_strategy_pending_entry,
+        )
 
         logger.info(
             "live_mode.init execution_mode=%s symbols=%s exchanges=%s executor=%s",
@@ -1338,266 +1368,39 @@ class LiveMode(BaseMode):
         self._stats.signals_detected += 1
         logger.info("live_mode.execute_trade_entry strategy=%s legs=%d", sid, len(trade_request.legs))
 
-        # --- Strategy filter allowlist ---
-        if self._strategy_filter is not None and sid not in self._strategy_filter:
-            # MEDIUM-1: exit/close orders must bypass strategy filter — stuck positions
-            # must always be closeable regardless of filter state (same pattern as cooldown).
-            _is_exit_filter = self._is_reduceonly_request(trade_request)
-            if not _is_exit_filter:
-                logger.info("live_mode.strategy_filtered strategy=%s", sid)
-                self._notify_pre_exec_rollback(trade_request, sid)
-                return
-            logger.debug("live_mode.strategy_filter_bypassed_exit strategy=%s", sid)
-
-        # --- Strategy loss cooldown (US-164) ---
-        if sid in self._strategy_disable_until:
-            if time.monotonic() < self._strategy_disable_until[sid]:
-                # CRITICAL: exit/close orders bypass cooldown — stuck positions must
-                # be closeable regardless of loss cooldown state. Only block new entries.
-                _is_exit_req = self._is_reduceonly_request(trade_request)
-                if not _is_exit_req:
-                    # BUG-227: promote to INFO so silent rollback is visible in canary.
-                    logger.info("live_mode.strategy_cooldown strategy=%s", sid)
-                    self._notify_pre_exec_rollback(trade_request, sid)
-                    return
-            else:
-                del self._strategy_disable_until[sid]
-
         # Ensure per-strategy stats exist
         if sid not in self._stats.by_strategy:
             self._stats.by_strategy[sid] = PerStrategyStats()
         strat_stats = self._stats.by_strategy[sid]
         strat_stats.signals += 1
 
-        # --- Kill switch check ---
-        if self._kill_switch is not None and hasattr(self._kill_switch, 'is_halted'):
-            if self._kill_switch.is_halted():
-                logger.warning("live_mode.kill_switch_active — skipping trade")
+        # Phoenix Path-B Day-2: all 11 pre-trade gates + BUG-228c auto-bump live in
+        # PreTradeValidator. Returns typed ValidationResult with ReasonCode +
+        # Prometheus counter + INFO log already fired by the validator itself.
+        # Bookkeeping (trades_risk_blocked, trades_margin_blocked, rejections) stays
+        # here so metrics remain authoritative inside live.py.
+        _validation_ctx: dict[str, Any] = {}
+        _validation = await self._pre_trade_validator.validate(
+            trade_request, sid, context=_validation_ctx,
+        )
+        if not _validation.approved:
+            # Mirror legacy stats counters (session-loss increments via _notify_session_loss_alert).
+            if _validation_ctx.get("risk_blocked"):
+                self._stats.trades_risk_blocked += 1
+                strat_stats.rejections += 1
+            if _validation_ctx.get("margin_blocked"):
+                self._stats.trades_margin_blocked += 1
+            # BUG-78 (margin_guard) + BUG-79 (dedup close) set skip_rollback_notify=True.
+            # All other gates fall through to the shared notify helper.
+            if not _validation.skip_rollback_notify:
                 self._notify_pre_exec_rollback(trade_request, sid)
-                return
-
-        # --- Circuit breaker check ---
-        if self._circuit_breaker is not None:
-            try:
-                if hasattr(self._circuit_breaker, 'is_open') and self._circuit_breaker.is_open():
-                    logger.warning("live_mode.circuit_breaker_open — skipping trade strategy=%s", sid)
-                    self._notify_pre_exec_rollback(trade_request, sid)
-                    return
-            except Exception as exc:
-                logger.debug("live_mode.circuit_breaker_check_error: %s", exc)
-
-        # --- Rate limiter check ---
-        if self._has_rate_limiter:
-            for leg in trade_request.legs:
-                ex = leg.exchange_id.removeprefix("paper_").removeprefix("sandbox_")
-                if ex not in self._rate_buckets:
-                    from src.infra.exchange.rate_limiter import TokenBucket
-                    self._rate_buckets[ex] = TokenBucket(rate=5.0, capacity=10.0)
-                if not self._rate_buckets[ex].try_acquire():
-                    logger.warning("live_mode.rate_limited exchange=%s strategy=%s", ex, sid)
-                    self._notify_pre_exec_rollback(trade_request, sid)
-                    return
-
-        # --- FlashGuard check ---
-        if self._flash_guard is not None:
-            try:
-                if hasattr(self._flash_guard, 'check'):
-                    blocked = self._flash_guard.check(trade_request)
-                    if blocked:
-                        logger.warning("live_mode.flash_guard_blocked strategy=%s", sid)
-                        self._notify_pre_exec_rollback(trade_request, sid)
-                        return
-            except Exception as exc:
-                logger.debug("live_mode.flash_guard_check_error: %s", exc)
-
-        # --- Session loss hard stop (max_daily_loss_pct from engine.json) ---
-        # Fires KillSwitch halt when cumulative session PnL exceeds the loss limit.
-        # CB auto-recovers after 5min but this check requires manual clear_halt() to resume.
-        _session_loss = -self._stats.total_pnl  # positive means loss
-        if _session_loss >= self._max_session_loss_usd:
-            from src.risk.kill_switch import halt_local
-            halt_local()
-            logger.critical(
-                "live_mode.session_loss_limit_exceeded loss=%.2f limit=%.2f — HALT",
-                _session_loss, self._max_session_loss_usd,
-            )
-            if self._telegram is not None:
-                try:
-                    await self._telegram.send_alert(
-                        f"🚨 SESSION LOSS LIMIT: ${_session_loss:.2f} >= ${self._max_session_loss_usd:.2f} — ENGINE HALTED"
-                    )
-                except Exception:
-                    pass
-            self._stats.trades_risk_blocked += 1
-            self._notify_pre_exec_rollback(trade_request, sid)
             return
 
-        # --- Risk guardian check ---
-        if self._risk_guardian is not None:
-            try:
-                approved = True
-                if hasattr(self._risk_guardian, 'check_trade_request'):
-                    approved = self._risk_guardian.check_trade_request(
-                        trade_request, self._total_capital_usd
-                    )
-                elif hasattr(self._risk_guardian, 'approve'):
-                    approved = self._risk_guardian.approve(trade_request)
-                if not approved:
-                    self._stats.trades_risk_blocked += 1
-                    strat_stats.rejections += 1
-                    # BUG-109: add trade context to risk_rejected log for debugging
-                    _sym = trade_request.legs[0].symbol if trade_request.legs else "?"
-                    _exs = "/".join(_leg.exchange_id for _leg in trade_request.legs)
-                    logger.info(
-                        "live_mode.risk_rejected strategy=%s symbol=%s legs=%s",
-                        sid, _sym, _exs,
-                    )
-                    self._notify_pre_exec_rollback(trade_request, sid)
-                    return
-            except Exception as exc:
-                logger.warning("live_mode.risk_check_error: %s", exc)
-
-        # --- Per-symbol cooldown (v7: prevent same-symbol burst) ---
-        # BUG-36: skip cooldown for close/exit orders so rapid exits aren't blocked
-        # FIX: check ALL leg symbols — spot_futures has different symbols per leg
-        # (legs[0]=spot, legs[1]=futures); only checking legs[0] left futures leg
-        # unprotected after ROLLBACK_FAILED cooldown was set on both legs.
-        # HIGH-1: use all() (consistent with trade_consumer + line 894). any() would
-        # bypass cooldown for mixed orders where only one leg is reduceOnly.
         _is_close_req = self._is_reduceonly_request(trade_request)
-        _sym_keys = [l.symbol for l in trade_request.legs if l.symbol]
-        if _sym_keys and not _is_close_req:
-            _now = time.monotonic()
-            for _sk in _sym_keys:
-                _last = self._symbol_last_trade.get(_sk, 0.0)
-                if _now - _last < self._symbol_cooldown_s:
-                    # BUG-227: promote to INFO — silent rollback masked FF/FR entry blockers.
-                    logger.info(
-                        "live_mode.symbol_cooldown symbol=%s strategy=%s cooldown_s=%.0f remaining=%.1f",
-                        _sk, sid, self._symbol_cooldown_s, self._symbol_cooldown_s - (_now - _last),
-                    )
-                    self._notify_pre_exec_rollback(trade_request, sid)
-                    return
-            for _sk in _sym_keys:
-                self._symbol_last_trade[_sk] = _now
-
-        # --- BUG-74: Margin guard — block new ENTRY trades on margin-exhausted futures exchanges ---
-        # Prevents -2019 retry loops (e.g. FR 0G/USDT 185+ rollbacks when Binance margin < $1).
-        # Reduce-only (exit) trades are exempt: they don't consume margin.
-        # BUG-78: Do NOT call _notify_pre_exec_rollback — that clears the strategy's
-        # _open_positions entry, allowing the same symbol to pass duplicate_guard and
-        # generate a new TradeRequest on the next signal (hot retry loop, JTO 12+x in v95).
-        # Instead, leave the phantom entry in _open_positions as a soft block.
-        # It will be cleaned at next settlement (_check_settlement_release clears all).
-        if not _is_close_req:
-            for _leg in trade_request.legs:
-                if _leg.exchange_id and "futures" in _leg.exchange_id:
-                    _cached = float(self._cached_margin.get(_leg.exchange_id, float("inf")))
-                    if _cached < self._MIN_MARGIN_ENTRY_USD:
-                        logger.warning(
-                            "live_mode.entry_blocked_margin_low ex=%s margin=%.2f < %.2f",
-                            _leg.exchange_id, _cached, self._MIN_MARGIN_ENTRY_USD,
-                        )
-                        self._stats.trades_margin_blocked += 1
-                        # BUG-96 GAP#1: clear pre-exec pending state (FF _pending_position_metadata)
-                        # but NOT _open_positions (BUG-78 soft block preserved).
-                        if self._strategy_manager is not None:
-                            _strat_mg = self._strategy_manager.get_strategy(sid)
-                            if _strat_mg is not None:
-                                for _mg_leg in trade_request.legs:
-                                    if _mg_leg.symbol:
-                                        try:
-                                            _strat_mg.clear_pending_entry(_mg_leg.symbol)
-                                        except Exception as _mg_err:
-                                            logger.debug(
-                                                "live_mode.margin_guard_clear_failed sym=%s err=%s",
-                                                _mg_leg.symbol, _mg_err,
-                                            )
-                        return
-
-        # --- Collision detection (DeduplicationGate: atomic check-and-register) ---
-        collision_key = self._build_collision_key(trade_request)
-        if not await self._dedup_gate.check_and_register(collision_key):
-            # BUG-79: For close/exit orders, dedup block means the first exit is still
-            # in flight and has already moved the position to _pending_exits.
-            # Calling _notify_pre_exec_rollback would erroneously restore the position
-            # from _pending_exits → thrash loop. Only notify rollback for entry orders.
-            # HIGH-1: use all() consistent with line 894 and trade_consumer.
-            _is_close_req = self._is_reduceonly_request(trade_request)
-            if _is_close_req:
-                logger.warning("live_mode.dedup_blocked_close key=%s — first exit still in flight", collision_key)
-            else:
-                # BUG-227: promote to INFO — silent rollback masked FF entry blockers in v233.
-                logger.info("live_mode.dedup_blocked key=%s strategy=%s", collision_key, sid)
-                self._notify_pre_exec_rollback(trade_request, sid)
-            return
 
         # --- Execute via DI executor (v7: global semaphore — max 2 concurrent) ---
         await self._trade_semaphore.acquire()
         try:
-            # BUG-228c: Runtime min_notional fetch + auto-bump.
-            # Replaces hardcoded execution.exchange_min_notional.
-            # Each leg whose current notional < exchange-required min is bumped;
-            # trade only rejected when bumped size exceeds risk.max_position_pct cap.
-            from src.core.config_loader import get_config
-            _registry = self._min_notional_registry
-            _USD_QUOTES = {"USDT", "USDC", "USD", "BUSD", "DAI", "KRW"}
-            # leg, required_min, current_notional, bumped_size
-            _small_legs_data: list[tuple[Any, Decimal, Decimal, Decimal]] = []
-            for _leg in trade_request.legs:
-                if not (_leg.price and _leg.price > 0):
-                    continue
-                _quote = _leg.symbol.split("/")[-1].upper() if "/" in _leg.symbol else ""
-                if _quote not in _USD_QUOTES:
-                    continue
-                _required = await _registry.get(_leg.exchange_id, _leg.symbol)
-                _current_notional = _leg.size * _leg.price
-                if _current_notional < _required:
-                    _bumped_size = (_required / _leg.price).quantize(Decimal("0.00000001"))
-                    _small_legs_data.append((_leg, _required, _current_notional, _bumped_size))
-
-            if _small_legs_data:
-                # Risk check: would bump exceed max_position_pct × capital?
-                _risk_cap_usd = Decimal(str(self._total_capital_usd)) * (
-                    Decimal(str(get_config("risk.max_position_pct", default=6))) / Decimal("100")
-                )
-                _max_bumped_notional = max(
-                    _entry[3] * _entry[0].price for _entry in _small_legs_data
-                )
-                if _max_bumped_notional > _risk_cap_usd:
-                    try:
-                        from src.infra.metrics import SIGNALS_REJECTED_NOTIONAL as _m
-                        for _entry in _small_legs_data:
-                            _m.labels(exchange=_entry[0].exchange_id, symbol=_entry[0].symbol).inc()
-                    except Exception:
-                        pass
-                    logger.info(
-                        "live_mode.min_notional_bump_exceeds_risk_cap strategy=%s "
-                        "max_bumped=$%.2f risk_cap=$%.2f legs=[%s]",
-                        sid, float(_max_bumped_notional), float(_risk_cap_usd),
-                        ",".join(
-                            f"{e[0].exchange_id}:{e[0].symbol}:current=${float(e[2]):.2f}<min=${float(e[1]):.2f}"
-                            for e in _small_legs_data
-                        ),
-                    )
-                    self._notify_pre_exec_rollback(trade_request, sid)
-                    return
-                # Auto-bump: rewrite leg sizes in-place. trade_request is local to
-                # this invocation (single consumer) so mutation is safe.
-                for (_l, _required, _current, _bumped) in _small_legs_data:
-                    logger.info(
-                        "live_mode.min_notional_bump_applied strategy=%s exchange=%s "
-                        "symbol=%s size=%s->%s notional=$%.2f->$%.2f",
-                        sid, _l.exchange_id, _l.symbol, _l.size, _bumped,
-                        float(_current), float(_bumped * _l.price),
-                    )
-                    try:
-                        from src.infra.metrics import SIGNALS_AUTO_BUMPED_NOTIONAL as _mb
-                        _mb.labels(exchange=_l.exchange_id, symbol=_l.symbol).inc()
-                    except Exception:
-                        pass
-                    _l.size = _bumped
-
             orders = self._legs_to_orders(trade_request)
             if not orders:
                 logger.warning("live_mode.no_valid_orders strategy=%s", sid)
@@ -2486,6 +2289,38 @@ class LiveMode(BaseMode):
                     _strat.handle_entry_rollback(_sym)
             except Exception as _e:
                 logger.debug("live_mode.pre_exec_rollback_notify_failed strategy=%s sym=%s err=%s", sid, _sym, _e)
+
+    @staticmethod
+    def _halt_local() -> None:
+        """Phoenix Path-B Day-2: thin wrapper so PreTradeValidator can halt without importing kill_switch."""
+        from src.risk.kill_switch import halt_local  # noqa: PLC0415
+        halt_local()
+
+    async def _notify_session_loss_alert(self, loss: float, limit: float) -> None:
+        """Phoenix Path-B Day-2: Telegram alert on session-loss halt (invoked by validator)."""
+        self._stats.trades_risk_blocked += 1
+        if self._telegram is None:
+            return
+        try:
+            await self._telegram.send_alert(
+                f"🚨 SESSION LOSS LIMIT: ${loss:.2f} >= ${limit:.2f} — ENGINE HALTED"
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _clear_strategy_pending_entry(self, strategy_id: str, symbol: str) -> None:
+        """Phoenix Path-B Day-2: strategy_manager-aware clear_pending_entry for margin-guard path."""
+        if self._strategy_manager is None:
+            return
+        strat = self._strategy_manager.get_strategy(strategy_id)
+        if strat is None:
+            return
+        try:
+            strat.clear_pending_entry(symbol)
+        except Exception as err:  # noqa: BLE001
+            logger.debug(
+                "live_mode.margin_guard_clear_failed sym=%s err=%s", symbol, err
+            )
 
     def _build_collision_key(self, trade_request: TradeRequest) -> str:
         """Build collision detection key from trade request.
