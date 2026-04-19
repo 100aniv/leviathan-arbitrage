@@ -928,6 +928,31 @@ class Engine:
         except Exception as exc:
             logger.warning("CostCalculator init failed, using stub: %s", exc)
             self._cost_calculator = None
+            fee_model = None
+
+        # WS-B: shared TCAAdaptiveFeedback — consumed by SignalGenerator (gate),
+        # FF/FR strategies (dynamic min_spread), and live.py (record TCA observations).
+        try:
+            from src.friction.cost_feedback_loop import TCAAdaptiveFeedback
+            from src.core.config_loader import get_config as _gc_cf
+            _static_fb = Decimal(str(_gc_cf("strategy_filters.futures_min_spread_bps", default=27)))
+            _margin = Decimal(str(_gc_cf("strategy_filters.dynamic_min_spread_margin_bps", default=5)))
+            _funding = Decimal(str(_gc_cf("strategy_filters.dynamic_min_spread_funding_buffer_bps", default=5)))
+            self._cost_feedback: Any = TCAAdaptiveFeedback(
+                window=100,
+                fee_model=fee_model,
+                min_samples=20,
+                funding_buffer_bps=_funding,
+                margin_bps=_margin,
+                static_fallback_bps=_static_fb,
+            )
+            logger.info(
+                "TCAAdaptiveFeedback initialized static_fallback=%sbps margin=%sbps funding_buf=%sbps",
+                _static_fb, _margin, _funding,
+            )
+        except Exception as exc:
+            self._cost_feedback = None
+            logger.warning("TCAAdaptiveFeedback init failed (non-fatal): %s", exc)
 
         _op = get_settings().operational
         min_edge_bps = _op.min_edge_bps
@@ -1041,6 +1066,7 @@ class Engine:
             ml_canary=ml_canary,
             adaptive_threshold=self._adaptive_threshold,
             slippage_feedback=_slippage_fb_collector,
+            cost_feedback=getattr(self, "_cost_feedback", None),  # WS-B
         )
 
         # US-170: TriangularScanner
@@ -1250,11 +1276,19 @@ class Engine:
         ) if fr_p.get("status") in ("READY", "MONITOR") else None
 
         ce_p = tuned.get("cross_exchange", {})
+        # BUG-219: always create ce_config so max_position_size is enforced.
+        # Previously gated on status ∈ (READY, MONITOR) — with strategy_params
+        # status="DISABLED_PHASE2", ce_config=None → CrossExchangeStrategy used
+        # PHOENIX default max_position_size=50000 → XE-KRW signals produced
+        # notional ~$5300 which the RiskGuardian rejected as trade_too_large
+        # (max=$12.60 = 5% of capital). Same shape as BUG-110 for sf_config.
+        # XE-KRW (Upbit/Bithumb/Coinone) signals pass min_spread filter (5-99bps
+        # vs 10bps threshold) so 100% landed on the guardian → zero orders placed.
         ce_config = CrossExchangeConfig(
             min_spread_bps=Decimal(str(ce_p.get("min_spread_bps", 10))),
             max_position_size=_strategy_max_pos("cross_exchange"),
             min_book_depth_usd=_book_depth_usd,
-        ) if ce_p.get("status") in ("READY", "MONITOR") else None
+        )
 
         ff_p = tuned.get("futures_futures", {})
         from src.core.config_loader import get_config as _get_config
@@ -1293,11 +1327,13 @@ class Engine:
                 SpotFuturesStrategy("spot_futures_v1", cost_calc, config=sf_config,
                                     regime_detector=self._regime_detector),
                 FuturesFuturesStrategy("futures_futures_v1", cost_calc, config=ff_config,
-                                       regime_detector=self._regime_detector),
+                                       regime_detector=self._regime_detector,
+                                       cost_feedback=getattr(self, "_cost_feedback", None)),
                 TriangularStrategy("triangular_v1", cost_calc, config=tri_config,
                                    regime_detector=self._regime_detector),
                 FundingRateStrategy("funding_rate_v1", cost_calc, config=fr_config,
-                                    regime_detector=self._regime_detector),
+                                    regime_detector=self._regime_detector,
+                                    cost_feedback=getattr(self, "_cost_feedback", None)),
                 *(
                     [StatisticalArbStrategy("statistical_arb_v1", cost_calc,
                                             regime_detector=self._regime_detector)]
@@ -2904,6 +2940,7 @@ class Engine:
             tca_analyzer=getattr(self, "_tca_analyzer", None),
             slippage_feedback_collector=getattr(self, "_slippage_fb_collector", None),
             position_manager=self._position_manager,
+            cost_feedback=getattr(self, "_cost_feedback", None),  # WS-B: shared TCAAdaptiveFeedback
         )
 
         try:
