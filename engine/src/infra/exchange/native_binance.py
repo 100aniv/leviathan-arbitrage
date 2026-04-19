@@ -135,8 +135,12 @@ class BinanceNativeAdapter(NativeAdapter):
             and _order_id
             and (_status != _ORDER_STATUS_FILLED or _exec_qty <= 0 or _avg_px <= 0)
         ):
-            for _attempt in range(3):
-                await asyncio.sleep(0.1)
+            # BUG-188: 3x100ms (max 345ms) → 2x50ms (max 115ms). Binance MARKET
+            # typically FILLED within 30-50ms, so short intervals catch it on the
+            # first probe. Userspace WS stream migration (ORDER_TRADE_UPDATE) is the
+            # path to <50ms — tracked as BUG-189.
+            for _attempt in range(2):
+                await asyncio.sleep(0.05)
                 try:
                     _qp = {"symbol": _bsym, "orderId": _order_id}
                     _poll = await self._signed_request("GET", "/fapi/v1/order", params=_qp)
