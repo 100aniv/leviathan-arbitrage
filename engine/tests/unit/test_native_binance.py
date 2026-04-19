@@ -507,3 +507,70 @@ class TestSignedRequest:
         sig = params["signature"]
         assert isinstance(sig, str)
         assert len(sig) == 64  # HMAC-SHA256 hex = 64 chars
+
+
+# ---------------------------------------------------------------------------
+# BUG-214: hedge_mode (dualSidePosition) position netting regression tests
+# ---------------------------------------------------------------------------
+
+
+class TestBinanceFuturesHedgeModeNetting:
+    """BUG-214: Binance Futures hedge-mode (`dualSidePosition=true`) returns
+    separate rows for `positionSide=LONG` and `positionSide=SHORT`
+    (plus a zero-size `BOTH` row). Prior behaviour emitted two `Position`
+    objects with the same symbol, causing downstream dedup collisions
+    (PositionReconciler last-wins) and apparent 2× size doubling when
+    aggregation code summed by symbol. Now netted into a single signed
+    `Position` via positionAmt sum (LONG row positive, SHORT row negative)."""
+
+    @pytest.mark.asyncio
+    async def test_hedge_mode_both_sides_open_nets_to_single_position(self):
+        adp = _make_adapter(market_type="futures")
+        hedge_resp = [
+            {"symbol": "BLURUSDT", "positionSide": "BOTH", "positionAmt": "0",
+             "entryPrice": "0", "markPrice": "0.19",
+             "unRealizedProfit": "0", "leverage": "5"},
+            {"symbol": "BLURUSDT", "positionSide": "LONG", "positionAmt": "338",
+             "entryPrice": "0.20", "markPrice": "0.19",
+             "unRealizedProfit": "-5.0", "leverage": "5"},
+            {"symbol": "BLURUSDT", "positionSide": "SHORT", "positionAmt": "-339",
+             "entryPrice": "0.20", "markPrice": "0.19",
+             "unRealizedProfit": "3.0", "leverage": "5"},
+        ]
+        adp._signed_request = AsyncMock(return_value=hedge_resp)
+        positions = await adp._rest_get_positions()
+
+        assert len(positions) == 1, \
+            f"expected 1 netted position, got {len(positions)}: {positions}"
+        assert positions[0].symbol == "BLUR/USDT"
+        assert positions[0].size == Decimal("-1")  # 338 + (-339) = -1
+
+    @pytest.mark.asyncio
+    async def test_one_way_mode_single_row_unchanged(self):
+        """one-way mode: single `BOTH` row with signed amt — must match pre-fix."""
+        adp = _make_adapter(market_type="futures")
+        oneway_resp = [
+            {"symbol": "BLURUSDT", "positionSide": "BOTH", "positionAmt": "-339",
+             "entryPrice": "0.20", "markPrice": "0.19",
+             "unRealizedProfit": "3.0", "leverage": "5"},
+        ]
+        adp._signed_request = AsyncMock(return_value=oneway_resp)
+        positions = await adp._rest_get_positions()
+        assert len(positions) == 1
+        assert positions[0].size == Decimal("-339")
+
+    @pytest.mark.asyncio
+    async def test_perfectly_hedged_net_zero_returns_empty(self):
+        """Long 339 + Short 339 = net-zero exposure → no Position reported."""
+        adp = _make_adapter(market_type="futures")
+        netzero_resp = [
+            {"symbol": "BLURUSDT", "positionSide": "LONG", "positionAmt": "339",
+             "entryPrice": "0.20", "markPrice": "0.19",
+             "unRealizedProfit": "0", "leverage": "5"},
+            {"symbol": "BLURUSDT", "positionSide": "SHORT", "positionAmt": "-339",
+             "entryPrice": "0.20", "markPrice": "0.19",
+             "unRealizedProfit": "0", "leverage": "5"},
+        ]
+        adp._signed_request = AsyncMock(return_value=netzero_resp)
+        positions = await adp._rest_get_positions()
+        assert positions == []

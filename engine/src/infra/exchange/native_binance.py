@@ -762,23 +762,61 @@ class BinanceNativeAdapter(NativeAdapter):
         if self._market_type != "futures":
             return []
         raw = await self._signed_request("GET", "/fapi/v2/positionRisk")
-        positions: list[Position] = []
+        # BUG-214: Binance Futures hedge-mode (dualSidePosition=true) returns
+        # separate rows for positionSide=LONG and positionSide=SHORT (plus a
+        # 0-size BOTH row). Emitting two Position objects with the same symbol
+        # caused downstream dedup collisions (reconciler last-wins) and apparent
+        # size doubling when callers aggregated by symbol. Net the legs into a
+        # single Position using signed size (long: +, short: -); positionAmt is
+        # already signed per-row by Binance (LONG row positive, SHORT row
+        # negative) so summing is arithmetically correct.
+        by_symbol: dict[str, dict[str, Any]] = {}
         for pos in raw:
             size = Decimal(pos.get("positionAmt", "0"))
             if size == 0:
                 continue
-            positions.append(
-                Position(
-                    exchange_id=self.exchange_id,
-                    symbol=_symbol_from_binance(pos["symbol"]),
-                    size=size,
-                    entry_price=Decimal(pos.get("entryPrice", "0")),
-                    mark_price=Decimal(pos.get("markPrice", "0")),
-                    unrealized_pnl=Decimal(pos.get("unRealizedProfit", "0")),
-                    leverage=int(pos.get("leverage", 1)),
+            symbol = _symbol_from_binance(pos["symbol"])
+            entry_price = Decimal(pos.get("entryPrice", "0"))
+            mark_price = Decimal(pos.get("markPrice", "0"))
+            unrealized_pnl = Decimal(pos.get("unRealizedProfit", "0"))
+            leverage = int(pos.get("leverage", 1))
+
+            bucket = by_symbol.get(symbol)
+            if bucket is None:
+                by_symbol[symbol] = {
+                    "size": size,
+                    "entry_price": entry_price,
+                    "mark_price": mark_price,
+                    "unrealized_pnl": unrealized_pnl,
+                    "leverage": leverage,
+                    "abs_size": abs(size),
+                }
+            else:
+                bucket["size"] += size
+                bucket["unrealized_pnl"] += unrealized_pnl
+                if abs(size) > bucket["abs_size"]:
+                    bucket["entry_price"] = entry_price
+                    bucket["mark_price"] = mark_price
+                    bucket["leverage"] = leverage
+                    bucket["abs_size"] = abs(size)
+                logger.warning(
+                    "binance_hedge_mode_netting symbol=%s prior_size=%s new_leg=%s netted=%s",
+                    symbol, bucket["size"] - size,
+                    pos.get("positionSide", "?"), bucket["size"],
                 )
+        return [
+            Position(
+                exchange_id=self.exchange_id,
+                symbol=sym,
+                size=b["size"],
+                entry_price=b["entry_price"],
+                mark_price=b["mark_price"],
+                unrealized_pnl=b["unrealized_pnl"],
+                leverage=b["leverage"],
             )
-        return positions
+            for sym, b in by_symbol.items()
+            if b["size"] != 0
+        ]
 
     async def place_ioc_limit(
         self, symbol: str, side: str, price: Decimal, size: Decimal

@@ -1144,7 +1144,6 @@ class NativeBitgetAdapter(NativeAdapter):
                     params={"productType": "USDT-FUTURES", "marginCoin": "USDT"},
                     signed=True,
                 )
-            positions = []
             # BUG-180: V3 /current-position returns data={list,cursor} (dict), V2 returns list.
             # V3 field names differ: posSide/avgPrice/unrealisedPnl vs holdSide/averageOpenPrice/unrealizedPL.
             _raw = resp.get("data")
@@ -1154,14 +1153,25 @@ class NativeBitgetAdapter(NativeAdapter):
                 _items = _raw
             else:
                 _items = []
+            # BUG-214: hedge_mode can return TWO rows per symbol (long + short). Prior code
+            # emitted two Position objects with the same symbol, which caused downstream
+            # dedup-by-key collisions (reconciler last-wins) and apparent size doubling
+            # when callers aggregated sizes. Net the legs by symbol into a SINGLE Position
+            # using signed size (long: +, short: -). If only one side is open, behaviour
+            # matches pre-fix (single entry). If both sides are open (stranded/hedged),
+            # `size = long_total - short_total` is the true net exposure the reconciler
+            # needs to compare against engine state.
+            by_symbol: dict[str, dict[str, Any]] = {}
             for item in _items:
                 symbol_raw = item.get("symbol", "")
+                if not symbol_raw:
+                    continue
                 symbol = _denormalize_symbol(symbol_raw)
                 hold_side = item.get("holdSide") or item.get("posSide", "long")
                 total = Decimal(str(item.get("total", "0")))
                 if total == 0:
                     continue
-                size = total if hold_side == "long" else -total
+                signed = total if hold_side == "long" else -total
 
                 # Bug 28: averageOpenPrice can be null/None for recently-opened positions (Bitget REST stale).
                 # Use mark_price as fallback. These are REAL positions — do NOT filter them out.
@@ -1175,15 +1185,47 @@ class NativeBitgetAdapter(NativeAdapter):
                 unrealized_pnl = Decimal(str(item.get("unrealizedPL") or item.get("unrealisedPnl", "0")))
                 mark_price_str = item.get("markPrice") or item.get("averageOpenPrice") or item.get("avgPrice", "0")
                 mark_price = Decimal(str(mark_price_str))
-                positions.append(Position(
+                leverage = int(item.get("leverage", 1))
+
+                bucket = by_symbol.get(symbol)
+                if bucket is None:
+                    by_symbol[symbol] = {
+                        "size": signed,
+                        "entry_price": entry_price,
+                        "mark_price": mark_price,
+                        "unrealized_pnl": unrealized_pnl,
+                        "leverage": leverage,
+                        "abs_total": abs(total),
+                    }
+                else:
+                    # Net long+short into signed size. Use the larger-leg's entry/mark
+                    # as a representative (arbitrary but stable) since no single entry
+                    # price exists for a netted hedge.
+                    bucket["size"] += signed
+                    bucket["unrealized_pnl"] += unrealized_pnl
+                    if abs(total) > bucket["abs_total"]:
+                        bucket["entry_price"] = entry_price
+                        bucket["mark_price"] = mark_price
+                        bucket["leverage"] = leverage
+                        bucket["abs_total"] = abs(total)
+                    logger.warning(
+                        "bitget_hedge_mode_netting symbol=%s existing_size=%s new_leg_side=%s new_total=%s netted=%s",
+                        symbol, bucket["size"] - signed, hold_side, total, bucket["size"],
+                    )
+
+            positions = [
+                Position(
                     exchange_id=self.exchange_id,
-                    symbol=symbol,
-                    size=size,
-                    entry_price=entry_price,
-                    mark_price=mark_price,
-                    unrealized_pnl=unrealized_pnl,
-                    leverage=int(item.get("leverage", 1)),
-                ))
+                    symbol=sym,
+                    size=b["size"],
+                    entry_price=b["entry_price"],
+                    mark_price=b["mark_price"],
+                    unrealized_pnl=b["unrealized_pnl"],
+                    leverage=b["leverage"],
+                )
+                for sym, b in by_symbol.items()
+                if b["size"] != 0  # net-zero hedged position → no exposure to report
+            ]
             return positions
         except Exception as exc:
             logger.warning("bitget_get_positions_failed: %s", exc)

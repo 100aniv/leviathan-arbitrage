@@ -388,3 +388,73 @@ async def test_bug210_prev_unrecorded_preserved_on_fetch_failure() -> None:
     assert result2.has_discrepancy is True, "Persistent K_B must escalate"
     assert any("okx:ETH/USDT" in d for d in result2.discrepancies)
     assert callback_called == [True], "Callback must fire for persistent K_B"
+
+
+# ---------------------------------------------------------------------------
+# BUG-214: hedge_mode position netting — no false 2x size discrepancy
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bug_214_hedge_mode_adapter_returns_netted_size_not_doubled() -> None:
+    """BUG-214 regression: Bitget/Binance hedge_mode returns separate long+short
+    legs per symbol. Adapters now net these into a single Position; reconciler
+    must see that single signed size (not a summed absolute like 338+339=677)
+    and compare cleanly against engine state.
+
+    Scenario: engine tracks short -339 on BLUR/USDT. Exchange returned LONG 338
+    and SHORT 339 rows in hedge mode → adapter nets to -1. Reconciler sees
+    size_diff = |(-339) - (-1)| = 338 (real discrepancy), NOT a phantom 677.
+    Before fix the adapter emitted two Positions and downstream dedup could
+    surface size=-677 (absolute sum) depending on caller.
+    """
+    # Simulate adapter-level output post-fix: single netted Position
+    netted_pos = [
+        Position(
+            exchange_id="binance_futures",
+            symbol="BLUR/USDT",
+            size=Decimal("-1"),  # 338 + (-339)
+            entry_price=Decimal("0.20"),
+        )
+    ]
+    mock_ex = MagicMock()
+    mock_ex.exchange_id = "binance_futures"
+    mock_ex.get_positions = AsyncMock(return_value=netted_pos)
+    mock_ex.get_positions_strict = AsyncMock(return_value=netted_pos)
+
+    r = PositionReconciler(exchanges=[mock_ex])
+    engine_positions = {
+        "binance_futures:BLUR/USDT": Position(
+            exchange_id="binance_futures", symbol="BLUR/USDT",
+            size=Decimal("-339"), entry_price=Decimal("0.20"),
+        )
+    }
+
+    result = await r.reconcile(engine_positions)
+    assert result.has_discrepancy, "real -339 vs -1 net mismatch must surface"
+
+    # The discrepancy message must NOT mention 677 (the false-doubled number)
+    # and the exchange_positions dict must hold the NETTED single entry.
+    assert len(result.exchange_positions) == 1
+    ex_pos = result.exchange_positions["binance_futures:BLUR/USDT"]
+    assert ex_pos.size == Decimal("-1"), \
+        f"BUG-214: expected netted size=-1, got {ex_pos.size}"
+    joined = " ".join(result.discrepancies)
+    assert "677" not in joined, \
+        f"BUG-214: discrepancy must not contain doubled value 677: {joined}"
+
+
+@pytest.mark.asyncio
+async def test_bug_214_hedge_mode_perfectly_hedged_is_clean() -> None:
+    """Perfectly hedged position (long=339, short=339) nets to 0.
+    Adapter returns empty list → reconciler sees no exchange position.
+    If engine also has no record, no discrepancy.
+    """
+    mock_ex = MagicMock()
+    mock_ex.exchange_id = "bitget_futures"
+    mock_ex.get_positions = AsyncMock(return_value=[])  # net-zero → filtered out
+    mock_ex.get_positions_strict = AsyncMock(return_value=[])
+
+    r = PositionReconciler(exchanges=[mock_ex])
+    result = await r.reconcile({})
+    assert not result.has_discrepancy

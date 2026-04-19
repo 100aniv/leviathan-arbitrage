@@ -374,3 +374,119 @@ class TestFeeAndPositions:
     async def test_positions_empty(self, adapter):
         positions = await adapter._rest_get_positions()
         assert positions == []
+
+
+# ---------------------------------------------------------------------------
+# BUG-214: hedge_mode position netting regression tests
+# ---------------------------------------------------------------------------
+
+class TestHedgeModePositionNetting:
+    """BUG-214: Bitget V3 hedge_mode returns separate long + short rows per
+    symbol. Prior behaviour emitted two Position objects which caused
+    reconciler dedup collisions and apparent 2× size doubling when downstream
+    code aggregated by (exchange_id, symbol). Now netted into a single
+    Position with signed size (long positive, short negative)."""
+
+    @pytest.fixture
+    def futures_adapter(self):
+        rate_limits = {
+            "default": RateLimitConfig(requests_per_second=10000, burst=10000),
+            "order": RateLimitConfig(requests_per_second=10000, burst=10000),
+        }
+        adp = NativeBitgetAdapter(
+            api_key="k", api_secret="s", passphrase="p",
+            exchange_id="bitget_futures", rate_limits=rate_limits,
+        )
+        adp._market_type = "futures"
+        return adp
+
+    @pytest.mark.asyncio
+    async def test_v3_hedge_both_sides_open_nets_to_single_position(self, futures_adapter):
+        """When hedge-mode returns long=338 and short=339, net to size=-1 (single Position)."""
+        v3_resp = {
+            "code": "00000",
+            "data": {
+                "list": [
+                    {"symbol": "BLURUSDT", "posSide": "long", "total": "338",
+                     "avgPrice": "0.20", "markPrice": "0.19",
+                     "unrealisedPnl": "-5.0", "leverage": "5"},
+                    {"symbol": "BLURUSDT", "posSide": "short", "total": "339",
+                     "avgPrice": "0.20", "markPrice": "0.19",
+                     "unrealisedPnl": "3.0", "leverage": "5"},
+                ],
+                "cursor": "",
+            },
+        }
+        futures_adapter._request = AsyncMock(return_value=v3_resp)
+        with patch.object(futures_adapter, "_is_uta", return_value=True):
+            positions = await futures_adapter._rest_get_positions()
+
+        assert len(positions) == 1, \
+            f"expected 1 netted position, got {len(positions)}: {positions}"
+        assert positions[0].symbol == "BLUR/USDT"
+        assert positions[0].size == Decimal("-1")  # 338 + (-339) = -1 (net short)
+
+    @pytest.mark.asyncio
+    async def test_v3_hedge_single_side_unchanged(self, futures_adapter):
+        """Non-hedge / single-side case: behaviour matches pre-fix (-339)."""
+        v3_resp = {
+            "code": "00000",
+            "data": {
+                "list": [
+                    {"symbol": "BLURUSDT", "posSide": "short", "total": "339",
+                     "avgPrice": "0.20", "markPrice": "0.19",
+                     "unrealisedPnl": "3.0", "leverage": "5"},
+                ],
+                "cursor": "",
+            },
+        }
+        futures_adapter._request = AsyncMock(return_value=v3_resp)
+        with patch.object(futures_adapter, "_is_uta", return_value=True):
+            positions = await futures_adapter._rest_get_positions()
+
+        assert len(positions) == 1
+        assert positions[0].size == Decimal("-339")
+
+    @pytest.mark.asyncio
+    async def test_v3_hedge_perfectly_hedged_net_zero_returns_empty(self, futures_adapter):
+        """Long 339 + Short 339 = net-zero exposure → no Position reported."""
+        v3_resp = {
+            "code": "00000",
+            "data": {
+                "list": [
+                    {"symbol": "BLURUSDT", "posSide": "long", "total": "339",
+                     "avgPrice": "0.20", "markPrice": "0.19",
+                     "unrealisedPnl": "0", "leverage": "5"},
+                    {"symbol": "BLURUSDT", "posSide": "short", "total": "339",
+                     "avgPrice": "0.20", "markPrice": "0.19",
+                     "unrealisedPnl": "0", "leverage": "5"},
+                ],
+                "cursor": "",
+            },
+        }
+        futures_adapter._request = AsyncMock(return_value=v3_resp)
+        with patch.object(futures_adapter, "_is_uta", return_value=True):
+            positions = await futures_adapter._rest_get_positions()
+
+        assert positions == []
+
+    @pytest.mark.asyncio
+    async def test_v2_holdSide_hedge_netting(self, futures_adapter):
+        """V2 endpoint (holdSide field, data=list) also nets correctly."""
+        v2_resp = {
+            "code": "00000",
+            "data": [
+                {"symbol": "BLURUSDT", "holdSide": "long", "total": "338",
+                 "averageOpenPrice": "0.20", "markPrice": "0.19",
+                 "unrealizedPL": "-5.0", "leverage": "5"},
+                {"symbol": "BLURUSDT", "holdSide": "short", "total": "339",
+                 "averageOpenPrice": "0.20", "markPrice": "0.19",
+                 "unrealizedPL": "3.0", "leverage": "5"},
+            ],
+        }
+        futures_adapter._request = AsyncMock(return_value=v2_resp)
+        with patch.object(futures_adapter, "_is_uta", return_value=False):
+            positions = await futures_adapter._rest_get_positions()
+
+        assert len(positions) == 1
+        assert positions[0].size == Decimal("-1")
