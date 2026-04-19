@@ -1348,7 +1348,8 @@ class LiveMode(BaseMode):
                 # be closeable regardless of loss cooldown state. Only block new entries.
                 _is_exit_req = self._is_reduceonly_request(trade_request)
                 if not _is_exit_req:
-                    logger.debug("live_mode.strategy_cooldown strategy=%s", sid)
+                    # BUG-227: promote to INFO so silent rollback is visible in canary.
+                    logger.info("live_mode.strategy_cooldown strategy=%s", sid)
                     self._notify_pre_exec_rollback(trade_request, sid)
                     return
             else:
@@ -1462,9 +1463,10 @@ class LiveMode(BaseMode):
             for _sk in _sym_keys:
                 _last = self._symbol_last_trade.get(_sk, 0.0)
                 if _now - _last < self._symbol_cooldown_s:
-                    logger.debug(
-                        "live_mode.symbol_cooldown symbol=%s cooldown_s=%.0f",
-                        _sk, self._symbol_cooldown_s,
+                    # BUG-227: promote to INFO — silent rollback masked FF/FR entry blockers.
+                    logger.info(
+                        "live_mode.symbol_cooldown symbol=%s strategy=%s cooldown_s=%.0f remaining=%.1f",
+                        _sk, sid, self._symbol_cooldown_s, self._symbol_cooldown_s - (_now - _last),
                     )
                     self._notify_pre_exec_rollback(trade_request, sid)
                     return
@@ -1517,7 +1519,8 @@ class LiveMode(BaseMode):
             if _is_close_req:
                 logger.warning("live_mode.dedup_blocked_close key=%s — first exit still in flight", collision_key)
             else:
-                logger.debug("live_mode.dedup_blocked key=%s", collision_key)
+                # BUG-227: promote to INFO — silent rollback masked FF entry blockers in v233.
+                logger.info("live_mode.dedup_blocked key=%s strategy=%s", collision_key, sid)
                 self._notify_pre_exec_rollback(trade_request, sid)
             return
 
