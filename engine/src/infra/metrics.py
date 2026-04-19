@@ -132,6 +132,12 @@ ROLLBACKS_TOTAL = Counter(
     ["exchange", "reason"],
 )
 
+SIGNALS_REJECTED_SYMBOL_UNSUPPORTED = Counter(
+    "leviathan_signals_rejected_symbol_unsupported_total",
+    "Signals rejected because the target exchange does not list the symbol (BUG-225)",
+    ["strategy", "exchange"],
+)
+
 # WS-A1/A5: track which branch of _compute_pnl_from_result produced each PnL.
 # Exposes drift between exchange-reported realized PnL and engine recomputes.
 PNL_SOURCE_TOTAL = Counter(

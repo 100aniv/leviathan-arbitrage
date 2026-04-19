@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 from src.core.exchanges import KRW_EXCHANGES
 from src.core.models import OrderSide, OrderType, Signal, Trade
+from src.infra.metrics import SIGNALS_REJECTED_SYMBOL_UNSUPPORTED
 from src.strategies.base import BaseStrategy, CostCalculator, TradeLeg, TradeRequest
 
 
@@ -62,6 +63,7 @@ class CrossExchangeStrategy(BaseStrategy):
         config: CrossExchangeConfig | None = None,
         latency_tracker=None,
         regime_detector: Any = None,
+        exchange_registry: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(strategy_id, cost_calculator)
         self._regime_detector = regime_detector
@@ -73,6 +75,10 @@ class CrossExchangeStrategy(BaseStrategy):
             )
         self.config = config
         self._latency_tracker = latency_tracker
+        # BUG-225: per-exchange symbol availability gate
+        self._exchange_registry: dict[str, Any] = exchange_registry or {}
+        # Log-once guard: set of (symbol, exchange) already warned to avoid log flood
+        self._symbol_unsupported_logged: set[tuple[str, str]] = set()
 
         # US-260: Adaptive threshold — rolling percentile + volatility weight
         try:
@@ -120,6 +126,28 @@ class CrossExchangeStrategy(BaseStrategy):
             if signal.buy_exchange in KRW_EXCHANGES or signal.sell_exchange in KRW_EXCHANGES:
                 self._metrics.signals_filtered += 1
                 return None
+
+        # BUG-225: per-exchange symbol availability gate
+        # Prevents Korean-leg failures where Upbit/Bithumb don't list a USDT pair.
+        if self._exchange_registry:
+            for leg_exchange_id in (signal.buy_exchange, signal.sell_exchange):
+                adapter = self._exchange_registry.get(leg_exchange_id)
+                if adapter is not None and hasattr(adapter, "supports_symbol"):
+                    if not adapter.supports_symbol(signal.symbol):
+                        self._metrics.signals_filtered += 1
+                        SIGNALS_REJECTED_SYMBOL_UNSUPPORTED.labels(
+                            strategy=self.STRATEGY_TYPE,
+                            exchange=leg_exchange_id,
+                        ).inc()
+                        key = (signal.symbol, leg_exchange_id)
+                        if key not in self._symbol_unsupported_logged:
+                            self._symbol_unsupported_logged.add(key)
+                            logger.warning(
+                                "cross_exchange.symbol_unsupported symbol=%s exchange=%s — signal rejected",
+                                signal.symbol,
+                                leg_exchange_id,
+                            )
+                        return None
 
         # Spread threshold: use static min_spread_bps only.
         # Adaptive threshold disabled for cross_exchange — arbitrage should trade

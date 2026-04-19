@@ -142,6 +142,10 @@ class NativeBithumbAdapter(NativeAdapter):
         self._user_stream: Any = None
         self._user_stream_lock = asyncio.Lock()
         self._user_stream_start_failed_until: float = 0.0  # BUG-211: cooldown
+        # BUG-225: USDT symbol availability cache — populated lazily on first check.
+        # Bithumb lists only a subset of coins in USDT markets; the rest are KRW-only.
+        self._usdt_symbols: set[str] | None = None
+        self._usdt_symbols_lock = asyncio.Lock()
 
     async def _get_user_stream(self) -> Any:
         """Lazy-start Bithumb private userData stream (BUG-191).
@@ -462,6 +466,41 @@ class NativeBithumbAdapter(NativeAdapter):
 
     async def _rest_get_positions(self) -> list[Position]:
         return []
+
+    def supports_symbol(self, symbol: str) -> bool:
+        """Return True if Bithumb lists this symbol (BUG-225).
+
+        Bithumb exposes a partial USDT market in addition to its primary KRW
+        market. Symbols like TAO/USDT may not be listed even though TAO/KRW is.
+        The cache is populated on first call via a synchronous REST fetch
+        (acceptable: called once per symbol before any order is emitted).
+        If the fetch fails we allow the signal through (fail-open).
+        """
+        if "/USDT" not in symbol:
+            # KRW pairs — always delegate to the normal flow
+            return True
+        if self._usdt_symbols is None:
+            try:
+                import httpx
+                resp = httpx.get(
+                    f"{_REST_BASE}/v1/market/all",
+                    params={"isDetails": "false"},
+                    timeout=5.0,
+                )
+                resp.raise_for_status()
+                self._usdt_symbols = {
+                    m["market"].split("-")[1]
+                    for m in resp.json()
+                    if m["market"].startswith("USDT-")
+                }
+                logger.info(
+                    "bithumb_usdt_market_cache_populated count=%d", len(self._usdt_symbols)
+                )
+            except Exception as exc:
+                logger.warning("bithumb_usdt_market_cache_failed err=%s — fail-open", exc)
+                return True  # fail-open: don't block signals when cache unavailable
+        base = symbol.split("/")[0]
+        return base in self._usdt_symbols
 
     async def _rest_get_fee_rate(self, symbol: str) -> FeeRate:
         return FeeRate(

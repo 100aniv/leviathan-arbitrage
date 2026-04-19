@@ -1323,7 +1323,8 @@ class Engine:
             s for s in [
                 CrossExchangeStrategy("cross_exchange_v1", cost_calc, config=ce_config,
                                       latency_tracker=self._latency_tracker,
-                                      regime_detector=self._regime_detector),
+                                      regime_detector=self._regime_detector,
+                                      exchange_registry=self._exchanges),
                 SpotFuturesStrategy("spot_futures_v1", cost_calc, config=sf_config,
                                     regime_detector=self._regime_detector),
                 FuturesFuturesStrategy("futures_futures_v1", cost_calc, config=ff_config,

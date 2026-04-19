@@ -157,3 +157,113 @@ async def test_strategy_uses_precomputed_net_profit():
     result = await strategy.on_signal(signal)
     assert result is not None
     assert result.expected_profit_usdt == Decimal("42")
+
+
+# ---------------------------------------------------------------------------
+# BUG-225: per-exchange symbol availability gate
+# ---------------------------------------------------------------------------
+
+
+def make_mock_adapter(exchange_id: str, supported_symbols: set[str] | None = None) -> MagicMock:
+    """Return a mock adapter with supports_symbol() wired up."""
+    adapter = MagicMock()
+    adapter.exchange_id = exchange_id
+    if supported_symbols is None:
+        adapter.supports_symbol.return_value = True
+    else:
+        adapter.supports_symbol.side_effect = lambda sym: sym in supported_symbols
+    return adapter
+
+
+def make_signal_for_exchange(
+    buy_exchange: str,
+    sell_exchange: str,
+    symbol: str = "AAVE/USDT",
+) -> Signal:
+    return Signal(
+        strategy_id="cross_exchange_spot_v1",
+        symbol=symbol,
+        buy_exchange=buy_exchange,
+        sell_exchange=sell_exchange,
+        buy_price=Decimal("100"),
+        sell_price=Decimal("101"),
+        spread_pct=Decimal("0.01"),
+        confidence=0.9,
+        volume=Decimal("10"),
+        timestamp=datetime.now(timezone.utc),
+        metadata={"net_profit": "5"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_bug225_unsupported_symbol_on_sell_exchange_rejected():
+    """BUG-225: signal rejected when sell-leg exchange (e.g. upbit) does not list symbol."""
+    upbit = make_mock_adapter("upbit", supported_symbols={"BTC/USDT", "ETH/USDT"})  # AAVE/USDT not listed
+    registry = {"binance": make_mock_adapter("binance", supported_symbols={"AAVE/USDT", "BTC/USDT"}), "upbit": upbit}
+
+    strategy = CrossExchangeStrategy(
+        "cex_spot",
+        make_calculator(),
+        CrossExchangeConfig(min_spread_bps=Decimal("10")),
+        exchange_registry=registry,
+    )
+    await strategy.start()
+
+    signal = make_signal_for_exchange("binance", "upbit", "AAVE/USDT")
+    result = await strategy.on_signal(signal)
+
+    assert result is None
+    assert strategy.metrics.signals_filtered == 1
+
+
+@pytest.mark.asyncio
+async def test_bug225_supported_symbol_on_both_legs_passes():
+    """BUG-225: signal passes through when both leg exchanges list the symbol."""
+    registry = {
+        "binance": make_mock_adapter("binance", supported_symbols={"BTC/USDT", "AAVE/USDT"}),
+        "upbit": make_mock_adapter("upbit", supported_symbols={"BTC/USDT", "AAVE/USDT"}),
+    }
+
+    strategy = CrossExchangeStrategy(
+        "cex_spot",
+        make_calculator(),
+        CrossExchangeConfig(min_spread_bps=Decimal("10")),
+        exchange_registry=registry,
+    )
+    await strategy.start()
+
+    signal = make_signal_for_exchange("binance", "upbit", "AAVE/USDT")
+    result = await strategy.on_signal(signal)
+
+    assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_bug225_counter_increments_on_rejection():
+    """BUG-225: SIGNALS_REJECTED_SYMBOL_UNSUPPORTED counter increments on rejection."""
+    from src.infra.metrics import SIGNALS_REJECTED_SYMBOL_UNSUPPORTED
+
+    bithumb = make_mock_adapter("bithumb", supported_symbols={"BTC/USDT"})  # TAO/USDT not listed
+    registry = {"binance": make_mock_adapter("binance", supported_symbols={"TAO/USDT"}), "bithumb": bithumb}
+
+    strategy = CrossExchangeStrategy(
+        "cex_spot",
+        make_calculator(),
+        CrossExchangeConfig(min_spread_bps=Decimal("10")),
+        exchange_registry=registry,
+    )
+    await strategy.start()
+
+    before = SIGNALS_REJECTED_SYMBOL_UNSUPPORTED.labels(
+        strategy="cross_exchange_spot", exchange="bithumb"
+    )._value.get()
+
+    signal = make_signal_for_exchange("binance", "bithumb", "TAO/USDT")
+    result = await strategy.on_signal(signal)
+
+    after = SIGNALS_REJECTED_SYMBOL_UNSUPPORTED.labels(
+        strategy="cross_exchange_spot", exchange="bithumb"
+    )._value.get()
+
+    assert result is None
+    assert after == before + 1

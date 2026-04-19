@@ -67,3 +67,12 @@ class ExchangeAdapter(Protocol):
     def health_score(self) -> float:
         """Health score 0.0 (dead) to 1.0 (perfect)."""
         ...
+
+    def supports_symbol(self, symbol: str) -> bool:
+        """Return True if this exchange lists the given symbol (e.g. 'AAVE/USDT').
+
+        Default implementation returns True so existing adapters without an
+        override do not regress. KRW-first exchanges (Upbit, Bithumb) override
+        this to consult their cached USDT market list.
+        """
+        return True
