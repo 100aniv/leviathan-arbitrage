@@ -72,12 +72,22 @@ Config: `engine.json` `risk.per_strategy_daily_loss_budget_pct: 2.0` (default 2%
 | Day 3 daily_report | 14 |
 | **Total new** | **96 tests** |
 
-## Remaining Work (Days 4-10)
+## Remaining Work (Days 5-10)
 
-### Day 4 — Main.py split (part 1)
-- Extract `src/core/supervisor.py` — process lifecycle, health probes, SIGTERM handling (pull from `main.py:Engine.__init__` + background task wiring)
-- Extract `src/core/config_service.py` — single engine.json reader, schema validation (pydantic), hot-reload broadcast
-- Expected: main.py -400 LOC, +2 new modules
+### ✅ Day 4 — Parallel module build (NOT yet wired into main.py)
+**Commits `27eaa57`, `51f25cc`, `5617ecd`** | LOC: +1,603 src, +966 tests, 47 tests pass
+
+New modules (all opt-in, main.py untouched):
+- `src/core/config_service.py` (484 LOC) — pydantic `EngineConfig` schema with 15 nested models, cross-field validator, dotted-path accessor, asyncio `on_change` event, process-wide singleton. Real engine.json parses with 0 validation errors (16 tests pass).
+- `src/core/supervisor.py` (498 LOC) — `TradingSupervisor` + `SupervisorHealth`. Start sequence: DB → Redis → exchanges → strategy placeholder → UniverseMatrix → background tasks → signal handlers. Stop: idempotent, 30s timeout, disconnects cleanly (12 tests pass).
+- `src/core/strategy_registry.py` (621 LOC) — `StrategyRegistry` + `StrategyEntry`. Reads `strategy_activation.json`, binds UniverseMatrix, subscribes to BudgetLedger/CB events for runtime deactivation (19 tests pass).
+
+### Day 5 — Main.py integration (REPLACE old code)
+- main.py's Engine.__init__ replaced with `Supervisor.start()`
+- Scattered `get_config()`/`get_settings()` replaced with `ConfigService.current`
+- Strategy instantiation moved from main.py:1253-1340 → StrategyRegistry
+- Expected: main.py -600 to -800 LOC (4,202 → ~3,400)
+- Risk: HIGH — this is the cutover. Must gate behind full regression + 72H paper canary before merge.
 
 ### Day 5 — Main.py split (part 2)
 - Extract `src/core/strategy_registry.py` — strategy lifecycle, universe binding, activation lists
