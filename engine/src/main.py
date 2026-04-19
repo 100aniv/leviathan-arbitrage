@@ -1117,6 +1117,9 @@ class Engine:
 
         logger.info("StrategyManager initialized with %d strategies",
                      len(self._strategy_manager._strategies))
+        from src.core.universe_matrix import UniverseMatrix
+        self._universe_matrix = UniverseMatrix()
+        await self._universe_matrix.build(self._exchanges, self._strategy_manager._strategies.values())
 
     def _load_strategy_params(self) -> dict:
         """Load tuned strategy parameters from config/strategy_params.json."""
