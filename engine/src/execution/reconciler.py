@@ -81,6 +81,10 @@ class PositionReconciler:
                 if _strict is not None:
                     positions = await _strict()
                 else:
+                    logger.warning(
+                        "adapter %s lacks get_positions_strict — BUG-184 false-alert guard disabled",
+                        exchange_id,
+                    )
                     positions = await adapter.get_positions()
                 for pos in positions:
                     key = f"{pos.exchange_id}:{pos.symbol}"

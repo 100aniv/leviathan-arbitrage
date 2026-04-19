@@ -80,12 +80,13 @@ async def run_migrations(pool) -> None:
                             version, sql_path.stem,
                         )
                     applied += 1
+                    current = version  # advance so out-of-order prefixes still gate correctly
                     logger.info("Applied migration %d from %s", version, sql_path.name)
                 except Exception as exc:
                     logger.error("migration %s failed: %r", sql_path.name, exc)
                     raise
             if applied:
-                logger.info("applied %d migrations; schema_version=%d", applied, version)
+                logger.info("applied %d migrations; schema_version=%d", applied, current)
             else:
                 logger.debug("Schema already at version %d — no migrations needed", current)
         finally:
