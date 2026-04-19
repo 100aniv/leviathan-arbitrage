@@ -214,7 +214,7 @@ class BithumbUserDataStream:
                     set_tcp_nodelay(ws)  # BUG-196: disable Nagle
                     backoff = _RECONNECT_BACKOFF_INITIAL_S
                     # Send subscribe frame.
-                    await ws.send(orjson.dumps(self._build_subscribe_message()))
+                    await ws.send(orjson.dumps(self._build_subscribe_message()).decode())
                     logger.info("bithumb_user_data_ws_connected")
                     async for raw in ws:
                         try:

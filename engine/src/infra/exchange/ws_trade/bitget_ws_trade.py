@@ -84,7 +84,7 @@ class BitgetWSTrade:
             }],
         }
         self._login_future = asyncio.Future()
-        await self._ws.send(orjson.dumps(msg))
+        await self._ws.send(orjson.dumps(msg).decode())
         try:
             resp = await asyncio.wait_for(self._login_future, timeout=_LOGIN_TIMEOUT_S)
             # BUG-136: log full response for diagnostics
@@ -274,7 +274,7 @@ class BitgetWSTrade:
         self._futures[req_id] = fut
         # BUG-136: log request body for diagnostics (redact nothing — internal log)
         logger.info("BitgetWSTrade place_order req: %s", orjson.dumps(msg).decode())
-        await self._ws.send(orjson.dumps(msg))
+        await self._ws.send(orjson.dumps(msg).decode())
         try:
             resp = await asyncio.wait_for(fut, timeout=_RESPONSE_TIMEOUT_S)
             logger.info("BitgetWSTrade place_order resp: %s", resp)

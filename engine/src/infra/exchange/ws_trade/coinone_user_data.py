@@ -205,7 +205,7 @@ class CoinoneUserDataStream:
                                 "request_type": "SUBSCRIBE",
                                 "channel": "MYORDER",
                             }
-                        )
+                        ).decode()
                     )
                     logger.info("coinone_user_data_subscribed channel=MYORDER")
                     async for raw in ws:
@@ -242,7 +242,7 @@ class CoinoneUserDataStream:
             if self._ws is None:
                 continue
             try:
-                await self._ws.send(orjson.dumps({"request_type": "PING"}))
+                await self._ws.send(orjson.dumps({"request_type": "PING"}).decode())
                 logger.debug("coinone_user_data_ping_sent")
             except asyncio.CancelledError:
                 return

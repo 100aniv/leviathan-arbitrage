@@ -150,7 +150,7 @@ class BinanceWSTrade:
         msg = {"id": req_id, "method": "order.place", "params": params}
         fut: asyncio.Future = asyncio.Future()
         self._futures[req_id] = fut
-        await self._ws.send(orjson.dumps(msg))
+        await self._ws.send(orjson.dumps(msg).decode())
         try:
             return await asyncio.wait_for(fut, timeout=_RESPONSE_TIMEOUT_S)
         except asyncio.TimeoutError:
@@ -199,7 +199,7 @@ class BinanceWSTrade:
         msg = {"id": req_id, "method": "order.cancel", "params": params}
         fut: asyncio.Future = asyncio.Future()
         self._futures[req_id] = fut
-        await self._ws.send(orjson.dumps(msg))
+        await self._ws.send(orjson.dumps(msg).decode())
         try:
             return await asyncio.wait_for(fut, timeout=_RESPONSE_TIMEOUT_S)
         except asyncio.TimeoutError:
