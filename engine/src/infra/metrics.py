@@ -471,6 +471,14 @@ SIGNALS_REJECTED_NOTIONAL = Counter(
     ["exchange", "symbol"],
 )
 
+# BUG-228c: Auto-bump — leg size increased to meet exchange-specific min notional.
+# Incremented when live.py successfully raises leg size instead of rejecting.
+SIGNALS_AUTO_BUMPED_NOTIONAL = Counter(
+    "leviathan_signals_auto_bumped_notional_total",
+    "Legs whose size was auto-bumped to satisfy exchange-specific minimum notional",
+    ["exchange", "symbol"],
+)
+
 
 # ---------------------------------------------------------------------------
 # WS-D3: Sharpe + Max Drawdown (30-day rolling)

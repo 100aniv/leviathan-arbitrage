@@ -54,6 +54,9 @@ class NativeBitgetAdapter(NativeAdapter):
         self._qty_step_sizes: dict[str, Decimal] = {}  # symbol → step size (futures)
         self._spot_qty_decimals: dict[str, int] = {}  # symbol → base qty decimal places (spot)
         self._spot_price_decimals: dict[str, int] = {}  # symbol → price decimal places (spot)
+        # BUG-228c: min_notional cache — (symbol → (value, ts_monotonic)), TTL 1h.
+        self._min_notional_cache: dict[str, tuple[Decimal, float]] = {}
+        self._min_notional_ttl_s: float = 3600.0
         # Bug 31: hedge vs one-way mode — detected at connect() for futures accounts.
         # hedge_mode: BOTH open and close orders require posSide.
         # one_way_mode: no posSide, reduceOnly=True is sufficient for closes.
@@ -332,6 +335,51 @@ class NativeBitgetAdapter(NativeAdapter):
         )
         data = resp["data"]
         return self._build_orderbook(symbol, data["bids"], data["asks"])
+
+    async def get_min_notional(self, symbol: str) -> Decimal:
+        """BUG-228c: Runtime fetch of Bitget min notional for a symbol.
+
+        Futures: /api/v2/mix/market/contracts → minTradeUSDT
+        Spot: fall through to Decimal("5") (Bitget spot minimum is ~$1-5 dynamic).
+        Cache: 1 hour TTL. Fail-open to Decimal("5") on error.
+        """
+        import time as _t
+        cache_key = f"{self._market_type}_{symbol}"
+        _entry = self._min_notional_cache.get(cache_key)
+        if _entry is not None:
+            _val, _ts = _entry
+            if (_t.monotonic() - _ts) < self._min_notional_ttl_s:
+                return _val
+        _default = Decimal("5")
+        if self._market_type != "futures":
+            # Bitget spot has no authoritative minTradeUSDT field — use global fallback.
+            self._min_notional_cache[cache_key] = (_default, _t.monotonic())
+            return _default
+        try:
+            sym = _normalize_symbol(symbol)
+            resp = await self._request(
+                "GET",
+                "/api/v2/mix/market/contracts",
+                params={"productType": "usdt-futures"},
+            )
+            result: Decimal | None = None
+            for contract in resp.get("data", []):
+                if contract.get("symbol") == sym:
+                    _raw = contract.get("minTradeUSDT")
+                    if _raw is not None:
+                        result = Decimal(str(_raw))
+                    break
+            if result is None:
+                result = _default
+            self._min_notional_cache[cache_key] = (result, _t.monotonic())
+            return result
+        except Exception as exc:
+            logger.debug(
+                "bitget_min_notional_fetch_failed symbol=%s market=%s err=%s — fallback=%s",
+                symbol, self._market_type, exc, _default,
+            )
+            self._min_notional_cache[cache_key] = (_default, _t.monotonic())
+            return _default
 
     async def _fetch_contract_specs(self, symbol: str) -> None:
         """Fetch and cache price/qty precision for a futures symbol."""

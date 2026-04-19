@@ -1,6 +1,7 @@
 """ExchangeAdapter Protocol — defines the interface all exchange adapters must implement."""
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Callable, Protocol, runtime_checkable
 
 from src.core.models import Balance, FeeRate, Order, OrderBook, Position, Trade
@@ -62,6 +63,15 @@ class ExchangeAdapter(Protocol):
     async def get_fee_rate(self, symbol: str) -> FeeRate:
         """Fetch the trading fee rate for a given symbol."""
         ...
+
+    async def get_min_notional(self, symbol: str) -> Decimal:
+        """Return exchange-specific minimum notional for a symbol.
+
+        BUG-228c: Default to $5 (universal fallback). Subclasses override with
+        runtime API fetch (e.g. Binance exchangeInfo MIN_NOTIONAL filter,
+        Bitget /api/v2/mix/market/contracts minTradeUSDT).
+        """
+        return Decimal("5")
 
     @property
     def health_score(self) -> float:

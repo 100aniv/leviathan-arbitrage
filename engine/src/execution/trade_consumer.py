@@ -306,19 +306,15 @@ class TradeRequestConsumer:
             )
             return True  # 의도적 거부 — ack
 
-        # PHOENIX / BUG-220: Filter trades where any leg notional < exchange-specific min.
-        # Prevents imbalanced positions from per-adapter min_notional boosts and Binance
-        # futures -4164 rejections ("notional < 20").
+        # BUG-228c: Per-exchange min_notional enforcement + auto-bump now lives in
+        # live.py via MinNotionalRegistry. Here only the universal global floor
+        # applies as a safety net to catch pathological zero-size/near-zero trades.
         from src.core.config_loader import get_config
         _GLOBAL_MIN = Decimal(str(get_config("execution.min_trade_notional_usd") or 5))
-        _PER_EX_MIN = get_config("execution.exchange_min_notional") or {}
-
-        def _leg_min_notional(exchange_id: str) -> Decimal:
-            return Decimal(str(_PER_EX_MIN.get(exchange_id, _GLOBAL_MIN)))
 
         _small_legs = [
             leg for leg in trade_request.legs
-            if leg.price and leg.price > 0 and leg.size * leg.price < _leg_min_notional(leg.exchange_id)
+            if leg.price and leg.price > 0 and leg.size * leg.price < _GLOBAL_MIN
         ]
         if _small_legs:
             try:

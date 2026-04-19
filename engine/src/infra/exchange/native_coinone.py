@@ -52,6 +52,13 @@ class NativeCoinoneAdapter(NativeAdapter):
         self._user_stream_lock = asyncio.Lock()
         self._user_stream_start_failed_until: float = 0.0  # BUG-211: cooldown
 
+    async def get_min_notional(self, symbol: str) -> Decimal:
+        """BUG-228c: Coinone min order — KRW: 1000 KRW, USDT: $5 fallback."""
+        _quote = symbol.split("/")[-1].upper() if "/" in symbol else ""
+        if _quote == "KRW":
+            return Decimal("1000")
+        return Decimal("5")
+
     async def _get_user_stream(self) -> Any:
         """Lazy-start Coinone private userData stream (BUG-192).
 

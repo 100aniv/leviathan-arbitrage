@@ -62,7 +62,7 @@
     "futures_min_spread_bps": 27,
     "futures_max_position_size_usdt": 20,
     "futures_adaptive_static_entry_bps": 60,
-    "futures_futures_max_position_usd": 25,
+    "futures_futures_max_position_usd": 12,
     "futures_excluded_symbols": [
       "BARD",
       "0G",
@@ -91,9 +91,9 @@
     "max_market_impact_bps": 20
   },
   "risk": {
-    "_comment": "퍼센티지 기반 동적 한도 (자본 대비 %). BUG-22 2026-04-11: 3.0→6.0. BUG-228 2026-04-19: 6.0→15.0 (live 자본 $200 감지, Binance futures min notional $20 → 6%=$12 부족. 15%=$30 ≥ $20 min).",
+    "_comment": "퍼센티지 기반 동적 한도 (자본 대비 %). BUG-22 2026-04-11: 3.0→6.0. 사장님 지시 (2026-04-19): 하드코딩된 15% 제거, 6% 유지 + 런타임 거래소 min notional auto-bump 로직으로 해결.",
     "use_percentage": true,
-    "max_position_pct": 15.0,
+    "max_position_pct": 6.0,
     "max_daily_loss_pct": 50.0,
     "max_net_exposure_per_asset": 5000,
     "min_edge_bps": 0,
@@ -115,11 +115,11 @@
     "max_net_exposure_pct": 30
   },
   "dynamic_risk": {
-    "_comment": "BUG-228 2026-04-19: 5→15. live 자본 $200 감지, per_trade=5%=$10 < Binance futures min $20. 15%=$30 ≥ $20 가능. risk.max_position_pct 15과 정렬.",
-    "base_position_pct": 15.0
+    "_comment": "v7: lowered to 5% — $120×5%=$6/trade at 20x=margin $0.30. Prevents startup burst margin exhaustion. 사장님 지시 (2026-04-19): 하드코딩된 15% 롤백, 5% 유지 + 런타임 min-notional auto-bump으로 거래소 min 충족.",
+    "base_position_pct": 5.0
   },
   "execution": {
-    "_comment": "PHOENIX v3: min_trade_notional lowered to $5 (futures exchange minimum)",
+    "_comment": "PHOENIX v3: min_trade_notional_usd is a global safety floor. Per-exchange min notional is fetched at runtime from each exchange's API via MinNotionalRegistry (BUG-228c) — no hardcoded per-exchange values.",
     "_bug_120_note": "ws_order_enabled=true enables WebSocket order placement (Binance ws-fapi + Bitget v2 WS). REST fallback on exception. Expected: 2500ms → 800ms (-70%) and slippage 100bps → 20bps. Requires testnet validation before production activation.",
     "_bug_136_note": "v177 진단 결과: Bitget 계정이 40026 'User is disabled' 반환 → WS trading 권한 없음. Bitget BD/RM 연락 필요. 엔진은 40026 감지 시 자동 session-level disable.",
     "_bitget_account_mode": "classic = V2 API (/api/v2/mix/*, instType/channel/size/force). unified = V3 API (/api/v3/trade/*, category/topic/qty/timeInForce, UTA 모드). 사장님 Bitget 웹에서 Unified Account 전환 후 'unified' 로 변경.",
@@ -137,12 +137,7 @@
     "split_max_chunks": 3,
     "split_delay_ms": 200,
     "limit_fallback_spread_bps": 30,
-    "limit_fallback_timeout_ms": 5000,
-    "_bug_220_note": "Binance futures rejects orders with notional < $20 (code -4164). Bitget futures ~ $6. KRW exchanges ~ 5000 KRW. Values override min_trade_notional_usd when leg targets that exchange.",
-    "exchange_min_notional": {
-      "binance_futures": 20,
-      "bitget_futures": 6
-    }
+    "limit_fallback_timeout_ms": 5000
   },
   "backtest": {
     "latency_ms": 500

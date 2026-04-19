@@ -147,6 +147,13 @@ class NativeBithumbAdapter(NativeAdapter):
         self._usdt_symbols: set[str] | None = None
         self._usdt_symbols_lock = asyncio.Lock()
 
+    async def get_min_notional(self, symbol: str) -> Decimal:
+        """BUG-228c: Bithumb min order — KRW: 5000 KRW, USDT: $5 fallback."""
+        _quote = symbol.split("/")[-1].upper() if "/" in symbol else ""
+        if _quote == "KRW":
+            return Decimal("5000")
+        return Decimal("5")
+
     async def _get_user_stream(self) -> Any:
         """Lazy-start Bithumb private userData stream (BUG-191).
 

@@ -2917,6 +2917,12 @@ class Engine:
         # Phase H-2: execution mode from EngineMode (config/engine.json)
         execution_mode = self._engine_mode.value if hasattr(self, '_engine_mode') else "paper"
 
+        # BUG-228c: runtime per-exchange min_notional registry (replaces hardcoded
+        # execution.exchange_min_notional). Registry holds reference to self._exchanges
+        # so late-registered adapters are visible automatically.
+        from src.infra.exchange.min_notional_registry import MinNotionalRegistry
+        self._min_notional_registry = MinNotionalRegistry(self._exchanges)
+
         self._live_mode = LiveMode(
             signal_generator=self._signal_generator,
             executor=self._executor,
@@ -2942,6 +2948,7 @@ class Engine:
             slippage_feedback_collector=getattr(self, "_slippage_fb_collector", None),
             position_manager=self._position_manager,
             cost_feedback=getattr(self, "_cost_feedback", None),  # WS-B: shared TCAAdaptiveFeedback
+            min_notional_registry=self._min_notional_registry,  # BUG-228c: runtime min_notional
         )
 
         try:

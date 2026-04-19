@@ -208,6 +208,7 @@ class LiveMode(BaseMode):
         slippage_feedback_collector: Any | None = None,
         position_manager: Any | None = None,
         cost_feedback: Any | None = None,  # WS-B: shared TCAAdaptiveFeedback from main.py
+        min_notional_registry: Any | None = None,  # BUG-228c: runtime per-exchange min_notional
     ) -> None:
         self._signal_generator = signal_generator
         self._executor = executor
@@ -230,6 +231,13 @@ class LiveMode(BaseMode):
         self._execution_mode = execution_mode
         self._tca_analyzer = tca_analyzer  # TCAAnalyzer (US-116) — injected from main.py
         self._slippage_feedback_collector = slippage_feedback_collector  # US-283: SlippageFeedbackCollector
+        # BUG-228c: runtime per-exchange min_notional fetcher (see MinNotionalRegistry).
+        # Fail-safe: build a fallback-only registry when main.py forgets to inject.
+        if min_notional_registry is not None:
+            self._min_notional_registry: Any = min_notional_registry
+        else:
+            from src.infra.exchange.min_notional_registry import MinNotionalRegistry
+            self._min_notional_registry = MinNotionalRegistry()
 
         # WS-A4 + WS-B: TCA adaptive feedback observation layer.
         # Prefer the shared instance injected from main.py (same object backing
@@ -1527,41 +1535,68 @@ class LiveMode(BaseMode):
         # --- Execute via DI executor (v7: global semaphore — max 2 concurrent) ---
         await self._trade_semaphore.acquire()
         try:
-            # PHOENIX / BUG-220: Filter trades where any leg notional < exchange-specific min.
-            # Prevents imbalanced positions from per-adapter leg-level adjustments and
-            # Binance futures -4164 rejections (notional < $20).
+            # BUG-228c: Runtime min_notional fetch + auto-bump.
+            # Replaces hardcoded execution.exchange_min_notional.
+            # Each leg whose current notional < exchange-required min is bumped;
+            # trade only rejected when bumped size exceeds risk.max_position_pct cap.
             from src.core.config_loader import get_config
-            _GLOBAL_MIN = Decimal(str(get_config("execution.min_trade_notional_usd") or 5))
-            _PER_EX_MIN = get_config("execution.exchange_min_notional") or {}
-            _USD_QUOTES = {"USDT", "USDC", "USD", "BUSD", "DAI"}
+            _registry = self._min_notional_registry
+            _USD_QUOTES = {"USDT", "USDC", "USD", "BUSD", "DAI", "KRW"}
+            # leg, required_min, current_notional, bumped_size
+            _small_legs_data: list[tuple[Any, Decimal, Decimal, Decimal]] = []
+            for _leg in trade_request.legs:
+                if not (_leg.price and _leg.price > 0):
+                    continue
+                _quote = _leg.symbol.split("/")[-1].upper() if "/" in _leg.symbol else ""
+                if _quote not in _USD_QUOTES:
+                    continue
+                _required = await _registry.get(_leg.exchange_id, _leg.symbol)
+                _current_notional = _leg.size * _leg.price
+                if _current_notional < _required:
+                    _bumped_size = (_required / _leg.price).quantize(Decimal("0.00000001"))
+                    _small_legs_data.append((_leg, _required, _current_notional, _bumped_size))
 
-            def _leg_min(exchange_id: str) -> Decimal:
-                return Decimal(str(_PER_EX_MIN.get(exchange_id, _GLOBAL_MIN)))
-
-            _small_legs = [
-                leg for leg in trade_request.legs
-                if leg.price and leg.price > 0
-                and leg.symbol.split("/")[-1].upper() in _USD_QUOTES
-                and leg.size * leg.price < _leg_min(leg.exchange_id)
-            ]
-            if _small_legs:
-                try:
-                    from src.infra.metrics import SIGNALS_REJECTED_NOTIONAL as _m
-                    for _leg in _small_legs:
-                        _m.labels(exchange=_leg.exchange_id, symbol=_leg.symbol).inc()
-                except Exception:
-                    pass
-                # BUG-227: promote to INFO so silent notional reject is visible.
-                _leg_detail = ",".join(
-                    f"{l.exchange_id}:{l.symbol}:{float(l.size*l.price):.2f}"
-                    for l in _small_legs if l.price
+            if _small_legs_data:
+                # Risk check: would bump exceed max_position_pct × capital?
+                _risk_cap_usd = Decimal(str(self._total_capital_usd)) * (
+                    Decimal(str(get_config("risk.max_position_pct", default=6))) / Decimal("100")
                 )
-                logger.info(
-                    "live_mode.signal_rejected_notional_below_min strategy=%s small_legs=%d legs=[%s]",
-                    sid, len(_small_legs), _leg_detail,
+                _max_bumped_notional = max(
+                    _entry[3] * _entry[0].price for _entry in _small_legs_data
                 )
-                self._notify_pre_exec_rollback(trade_request, sid)
-                return
+                if _max_bumped_notional > _risk_cap_usd:
+                    try:
+                        from src.infra.metrics import SIGNALS_REJECTED_NOTIONAL as _m
+                        for _entry in _small_legs_data:
+                            _m.labels(exchange=_entry[0].exchange_id, symbol=_entry[0].symbol).inc()
+                    except Exception:
+                        pass
+                    logger.info(
+                        "live_mode.min_notional_bump_exceeds_risk_cap strategy=%s "
+                        "max_bumped=$%.2f risk_cap=$%.2f legs=[%s]",
+                        sid, float(_max_bumped_notional), float(_risk_cap_usd),
+                        ",".join(
+                            f"{e[0].exchange_id}:{e[0].symbol}:current=${float(e[2]):.2f}<min=${float(e[1]):.2f}"
+                            for e in _small_legs_data
+                        ),
+                    )
+                    self._notify_pre_exec_rollback(trade_request, sid)
+                    return
+                # Auto-bump: rewrite leg sizes in-place. trade_request is local to
+                # this invocation (single consumer) so mutation is safe.
+                for (_l, _required, _current, _bumped) in _small_legs_data:
+                    logger.info(
+                        "live_mode.min_notional_bump_applied strategy=%s exchange=%s "
+                        "symbol=%s size=%s->%s notional=$%.2f->$%.2f",
+                        sid, _l.exchange_id, _l.symbol, _l.size, _bumped,
+                        float(_current), float(_bumped * _l.price),
+                    )
+                    try:
+                        from src.infra.metrics import SIGNALS_AUTO_BUMPED_NOTIONAL as _mb
+                        _mb.labels(exchange=_l.exchange_id, symbol=_l.symbol).inc()
+                    except Exception:
+                        pass
+                    _l.size = _bumped
 
             orders = self._legs_to_orders(trade_request)
             if not orders:

@@ -76,6 +76,9 @@ class BinanceNativeAdapter(NativeAdapter):
         )
         self._market_type = market_type  # "spot" or "futures"
         self._step_sizes: dict[str, Decimal] = {}  # PHOENIX: LOT_SIZE cache (symbol → stepSize)
+        # BUG-228c: MIN_NOTIONAL cache (symbol → (notional, ts_monotonic)), TTL 1h.
+        self._min_notional_cache: dict[str, tuple[Decimal, float]] = {}
+        self._min_notional_ttl_s: float = 3600.0
         # BUG-120 Phase 5: WS trade client (lazy, futures only for now)
         self._ws_trade: Any = None  # BinanceWSTrade instance when enabled
         # BUG-189: userData WS stream for event-driven ORDER_TRADE_UPDATE fills
@@ -394,6 +397,56 @@ class BinanceNativeAdapter(NativeAdapter):
                 computed,
                 expected,
             )
+
+    async def get_min_notional(self, symbol: str) -> Decimal:
+        """BUG-228c: Runtime fetch of exchange-specific min notional for a symbol.
+
+        Futures: /fapi/v1/exchangeInfo → filters[filterType=MIN_NOTIONAL].notional
+        Spot:    /api/v3/exchangeInfo  → filters[filterType=NOTIONAL].minNotional
+        Cache: 1 hour TTL. Fail-open to Decimal("5") on error.
+        """
+        import time as _t
+        binance_sym = _symbol_to_binance(symbol)
+        cache_key = f"{self._market_type}_{binance_sym}"
+        _entry = self._min_notional_cache.get(cache_key)
+        if _entry is not None:
+            _val, _ts = _entry
+            if (_t.monotonic() - _ts) < self._min_notional_ttl_s:
+                return _val
+        _default = Decimal("5")
+        try:
+            path = (
+                "/fapi/v1/exchangeInfo"
+                if self._market_type == "futures"
+                else "/api/v3/exchangeInfo"
+            )
+            await self._rate_limiter.acquire("default")
+            resp = await self._http.get(path, params={"symbol": binance_sym})
+            resp.raise_for_status()
+            info = resp.json()
+            result: Decimal | None = None
+            for s in info.get("symbols", []):
+                if s["symbol"] == binance_sym:
+                    for f in s.get("filters", []):
+                        ftype = f.get("filterType")
+                        if self._market_type == "futures" and ftype == "MIN_NOTIONAL":
+                            result = Decimal(str(f.get("notional", "5")))
+                            break
+                        if self._market_type != "futures" and ftype == "NOTIONAL":
+                            result = Decimal(str(f.get("minNotional", "5")))
+                            break
+                    break
+            if result is None:
+                result = _default
+            self._min_notional_cache[cache_key] = (result, _t.monotonic())
+            return result
+        except Exception as exc:
+            logger.debug(
+                "binance_min_notional_fetch_failed symbol=%s market=%s err=%s — fallback=%s",
+                symbol, self._market_type, exc, _default,
+            )
+            self._min_notional_cache[cache_key] = (_default, _t.monotonic())
+            return _default
 
     async def _get_lot_step(self, symbol: str) -> Decimal:
         """Fetch and cache LOT_SIZE stepSize for futures symbol."""
