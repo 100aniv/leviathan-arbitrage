@@ -74,19 +74,26 @@ class NativeUpbitAdapter(NativeAdapter):
         # BUG-190: userData WS stream for event-driven myOrder fills
         self._user_stream: Any = None
         self._user_stream_lock = asyncio.Lock()
+        self._user_stream_start_failed_until: float = 0.0  # BUG-211: cooldown
 
     async def _get_user_stream(self) -> Any:
         """Lazy-start Upbit private userData stream (BUG-190).
 
         Returns None if start() fails — callers fall back to REST-only path.
+        BUG-211: 30s cooldown after start() failure to avoid retry storm.
         """
+        import time
         if not self._api_key or not self._api_secret:
+            return None
+        if time.monotonic() < self._user_stream_start_failed_until:
             return None
         if self._user_stream is not None:
             return self._user_stream
         async with self._user_stream_lock:
             if self._user_stream is not None:
                 return self._user_stream
+            if time.monotonic() < self._user_stream_start_failed_until:
+                return None
             try:
                 from src.infra.exchange.ws_trade import UpbitUserDataStream
                 stream = UpbitUserDataStream(self._api_key, self._api_secret)
@@ -95,10 +102,11 @@ class NativeUpbitAdapter(NativeAdapter):
                 logger.info("upbit_user_data_stream_started")
             except Exception as exc:
                 logger.warning(
-                    "upbit_user_data_stream_start_failed err=%s — REST fallback",
+                    "upbit_user_data_stream_start_failed err=%s — REST fallback for 30s",
                     exc,
                 )
                 self._user_stream = None
+                self._user_stream_start_failed_until = time.monotonic() + 30.0
         return self._user_stream
 
     async def disconnect(self) -> None:
@@ -211,7 +219,13 @@ class NativeUpbitAdapter(NativeAdapter):
                     )
                     _fill = None
                 if _fill is not None:
-                    _vol_str = _fill.get("volume")
+                    # BUG-213: Upbit spec — `volume` is the original requested
+                    # size (주문량); `executed_volume` is the actual cumulative
+                    # filled quantity (체결량). Use executed_volume to match the
+                    # sibling KRW adapters (Bithumb `executed_volume`, Coinone
+                    # `executed_qty`). Fallback to `volume` preserves behaviour
+                    # for payloads that omit the executed field.
+                    _vol_str = _fill.get("executed_volume") or _fill.get("volume")
                     _px_str = _fill.get("price")
                     try:
                         if _vol_str:

@@ -8,8 +8,12 @@ Flow:
      authentication headers (same scheme as Coinone REST private API).
   2. Send SUBSCRIBE request_type for the MYORDER channel (no topic filter →
      all symbols). Optionally SUBSCRIBE MYASSET for balance updates.
-  3. Consume DATA messages on MYORDER; route fill payloads (status=``trade``
-     or ``trade_done``) to awaiters registered via ``wait_for_order_fill``.
+  3. Consume DATA messages on MYORDER; route fill payloads (status
+     ==``trade_done``, terminal) to awaiters registered via
+     ``wait_for_order_fill``. BUG-213: prior implementation also matched
+     ``status == "trade"`` but Coinone emits one ``trade`` event per partial
+     execution — resolving on the first partial caused subsequent fills to
+     become ghost inventory.
   4. Send ``{"request_type":"PING"}`` every 20 minutes to keep the session
      alive (server disconnects after 30 min idle).
   5. On disconnect/error, reconnect with exponential backoff and reuse the
@@ -45,8 +49,11 @@ _RECONNECT_BACKOFF_MAX_S = 30.0
 _WS_PING_INTERVAL_S = 180
 _WS_PING_TIMEOUT_S = 60
 
-# MYORDER status values that indicate a terminal fill (see docs §"주문 진행 상태")
-_FILL_STATUSES = frozenset({"trade", "trade_done"})
+# BUG-213: Only resolve waiter on terminal "trade_done" status. "trade"
+# events fire per-execution for partial fills — resolving the waiter on the
+# first trade event causes subsequent partials to become ghost inventory.
+# Mirrors Upbit/Bithumb pattern (_FILL_STATE_DONE).
+_FILL_STATE_DONE: str = "trade_done"
 
 
 class CoinoneUserDataStream:
@@ -125,9 +132,13 @@ class CoinoneUserDataStream:
     ) -> Optional[dict]:
         """Wait up to ``timeout`` seconds for a MYORDER fill event.
 
-        Returns the MYORDER ``data`` dict on fill (status in trade/trade_done),
-        or ``None`` on timeout. If the matching event already arrived (buffered
-        within TTL), returns immediately.
+        Returns the MYORDER ``data`` dict on fill (status == ``trade_done``,
+        terminal), or ``None`` on timeout. If the matching event already
+        arrived (buffered within TTL), returns immediately.
+
+        BUG-213: ``trade`` events (per-execution partial fills) are ignored —
+        only the terminal ``trade_done`` event carries the final cumulative
+        fill. See Upbit/Bithumb siblings for the same pattern.
         """
         key = str(order_id)
         # Fast path: already-buffered event
@@ -271,7 +282,7 @@ class CoinoneUserDataStream:
         # Normalize SHORT → DEFAULT field names so callers see a consistent dict.
         normalized = _normalize_short_fields(data)
         status = normalized.get("status")
-        if status not in _FILL_STATUSES:
+        if status != _FILL_STATE_DONE:
             return
         order_id = normalized.get("order_id")
         if order_id is None:

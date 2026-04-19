@@ -220,6 +220,110 @@ class TestJwtAuth:
 # ---------------------------------------------------------------------------
 
 
+class TestUpbitExecutedVolumeFieldSelection:
+    """BUG-213: NativeUpbitAdapter._rest_place_order must prefer Upbit's
+    ``executed_volume`` (cumulative filled 체결량) over ``volume`` (original
+    requested 주문량) when reading a myOrder fill payload. The sibling KRW
+    adapters (Bithumb ``executed_volume``, Coinone ``executed_qty``) already
+    read the executed field; this test guards the Upbit parity fix.
+    """
+
+    @pytest.mark.asyncio
+    async def test_rest_place_order_prefers_executed_volume(self, monkeypatch):
+        from decimal import Decimal as _Dec
+
+        from src.core.models import (
+            Order as _Order,
+            OrderSide as _Side,
+            OrderType as _Type,
+        )
+        from src.infra.exchange.native_upbit import NativeUpbitAdapter
+
+        adapter = NativeUpbitAdapter(api_key="ak", api_secret="sk")
+
+        # Short-circuit networking.
+        async def _fake_request(method, path, params=None, data=None, signed=False):
+            return {"uuid": "order-exec-vol"}
+
+        monkeypatch.setattr(adapter, "_request", _fake_request)
+
+        # Stub a user_stream whose fill payload sets executed_volume != volume.
+        class _StubStream:
+            async def wait_for_order_fill(self, uuid_, timeout=0.3):
+                return {
+                    "uuid": uuid_,
+                    "state": "done",
+                    "volume": "1.0",           # original 주문량 — must NOT be used
+                    "executed_volume": "0.40", # actual cumulative 체결량 — MUST be used
+                    "price": "63000000",
+                }
+
+        async def _fake_get_stream():
+            return _StubStream()
+
+        monkeypatch.setattr(adapter, "_get_user_stream", _fake_get_stream)
+
+        order = _Order(
+            exchange_id="upbit",
+            symbol="BTC/KRW",
+            side=_Side.BUY,
+            order_type=_Type.LIMIT,
+            amount=_Dec("1.0"),
+            price=_Dec("63000000"),
+        )
+        trade = await adapter._rest_place_order(order)
+
+        # The resulting Trade must reflect executed_volume (0.40), not volume (1.0).
+        assert trade.amount == _Dec("0.40")
+        assert trade.price == _Dec("63000000")
+
+    @pytest.mark.asyncio
+    async def test_rest_place_order_falls_back_to_volume(self, monkeypatch):
+        """When ``executed_volume`` is absent/empty, fall back to ``volume``."""
+        from decimal import Decimal as _Dec
+
+        from src.core.models import (
+            Order as _Order,
+            OrderSide as _Side,
+            OrderType as _Type,
+        )
+        from src.infra.exchange.native_upbit import NativeUpbitAdapter
+
+        adapter = NativeUpbitAdapter(api_key="ak", api_secret="sk")
+
+        async def _fake_request(method, path, params=None, data=None, signed=False):
+            return {"uuid": "order-fallback"}
+
+        monkeypatch.setattr(adapter, "_request", _fake_request)
+
+        class _StubStream:
+            async def wait_for_order_fill(self, uuid_, timeout=0.3):
+                return {
+                    "uuid": uuid_,
+                    "state": "done",
+                    "volume": "0.25",
+                    # executed_volume intentionally omitted
+                    "price": "63000000",
+                }
+
+        async def _fake_get_stream():
+            return _StubStream()
+
+        monkeypatch.setattr(adapter, "_get_user_stream", _fake_get_stream)
+
+        order = _Order(
+            exchange_id="upbit",
+            symbol="BTC/KRW",
+            side=_Side.BUY,
+            order_type=_Type.LIMIT,
+            amount=_Dec("1.0"),
+            price=_Dec("63000000"),
+        )
+        trade = await adapter._rest_place_order(order)
+
+        assert trade.amount == _Dec("0.25")
+
+
 class TestReconnectAndLifecycle:
     @pytest.mark.asyncio
     async def test_stop_cancels_pending_waiters(self):

@@ -11,8 +11,11 @@ Flow:
      passed via the ``authorization`` header (Bithumb v2 spec).
   3. Subscribe with ``[{ticket}, {type:"myOrder", codes:[...]}]`` — a batch
      request identical in shape to Upbit's private WS.
-  4. Consume ``myOrder`` messages; route events with ``state in {done, trade}``
-     to awaiters registered via ``wait_for_order_fill(order_uuid)``.
+  4. Consume ``myOrder`` messages; route events with ``state == "done"``
+     (terminal) to awaiters registered via ``wait_for_order_fill(order_uuid)``.
+     BUG-213: prior implementation also matched ``state == "trade"`` but
+     Bithumb emits one ``trade`` event per partial execution — resolving on
+     the first partial caused subsequent fills to become ghost inventory.
   5. Emit a PING frame every ~120 s to satisfy keepalive requirements.
   6. On disconnect/error, reconnect with exponential backoff and reuse the
      buffered late-arrival events (5 s TTL).
@@ -47,9 +50,11 @@ _RECONNECT_BACKOFF_MAX_S = 30.0
 _WS_PING_INTERVAL_S = 120  # match Upbit cadence; Bithumb accepts standard WS ping
 _WS_PING_TIMEOUT_S = 30
 # Bithumb state values: wait | trade | done | cancel.
-# "done" = fully filled, "trade" = execution reported (may be partial on route
-# to done). Both indicate a fill has occurred for the order.
-_FILL_STATES: frozenset[str] = frozenset({"done", "trade"})
+# BUG-213: Only resolve waiter on terminal "done" state. "trade" events fire
+# per-execution for partial fills — resolving the waiter on the first trade
+# event causes subsequent partials to become ghost inventory (only the first
+# partial fill amount is recorded). Mirrors Upbit pattern (_FILL_STATE_DONE).
+_FILL_STATE_DONE: str = "done"
 
 
 class BithumbUserDataStream:
@@ -128,9 +133,13 @@ class BithumbUserDataStream:
     ) -> Optional[dict]:
         """Wait up to ``timeout`` seconds for a fill myOrder event.
 
-        Returns the payload dict when a ``state in {done, trade}`` event is
+        Returns the payload dict when a ``state == "done"`` (terminal) event is
         observed, or ``None`` on timeout. If the matching event already
         arrived (buffered within TTL), returns immediately.
+
+        BUG-213: "trade" events (per-execution partial fills) are ignored —
+        only the terminal "done" event carries the final cumulative fill. See
+        Upbit sibling for the same pattern.
         """
         key = str(order_uuid)
         # Fast path: already-buffered event
@@ -253,7 +262,7 @@ class BithumbUserDataStream:
         if event_type != "myOrder":
             return
         state = msg.get("state")
-        if state not in _FILL_STATES:
+        if state != _FILL_STATE_DONE:
             return
         order_uuid = msg.get("uuid")
         if not order_uuid:

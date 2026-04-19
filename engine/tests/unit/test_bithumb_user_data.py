@@ -72,7 +72,7 @@ class TestWaitForOrderFillResolves:
 
         async def _fire() -> None:
             await asyncio.sleep(0.005)
-            raw = _make_fill_event("uuid-2", state="trade").encode("utf-8")
+            raw = _make_fill_event("uuid-2", state="done").encode("utf-8")
             stream._dispatch_event(raw)
 
         task = asyncio.create_task(_fire())
@@ -81,23 +81,39 @@ class TestWaitForOrderFillResolves:
 
         assert result is not None
         assert result["uuid"] == "uuid-2"
-        assert result["state"] == "trade"
+        assert result["state"] == "done"
 
     @pytest.mark.asyncio
-    async def test_resolves_on_trade_state(self):
-        """state='trade' (partial fill toward done) must also resolve."""
+    async def test_trade_state_ignored_only_done_resolves(self):
+        """BUG-213: ``state='trade'`` (per-execution partial) MUST NOT resolve
+        the waiter. Only the terminal ``state='done'`` carries the final
+        cumulative fill. Resolving on the first partial causes subsequent
+        executions to become ghost inventory.
+        """
         stream = BithumbUserDataStream("access-key", "secret-key")
 
-        async def _fire() -> None:
+        async def _fire_partial_then_done() -> None:
+            # Partial fill first — must be ignored.
             await asyncio.sleep(0.01)
-            stream._dispatch_event(_make_fill_event("uuid-trade", state="trade"))
+            stream._dispatch_event(
+                _make_fill_event("uuid-seq", state="trade",
+                                 executed_volume="0.4", price="63000000")
+            )
+            # Terminal fill with the full cumulative qty — must resolve.
+            await asyncio.sleep(0.01)
+            stream._dispatch_event(
+                _make_fill_event("uuid-seq", state="done",
+                                 executed_volume="1.0", price="63000000")
+            )
 
-        task = asyncio.create_task(_fire())
-        result = await stream.wait_for_order_fill("uuid-trade", timeout=0.5)
+        task = asyncio.create_task(_fire_partial_then_done())
+        result = await stream.wait_for_order_fill("uuid-seq", timeout=0.5)
         await task
 
         assert result is not None
-        assert result["state"] == "trade"
+        # Must see the terminal event's cumulative qty, NOT the first partial.
+        assert result["state"] == "done"
+        assert result["executed_volume"] == "1.0"
 
 
 # ---------------------------------------------------------------------------

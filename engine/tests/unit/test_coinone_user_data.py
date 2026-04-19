@@ -39,7 +39,7 @@ class TestWaitForOrderFillResolves:
                             "quote_currency": "KRW",
                             "target_currency": "BTC",
                             "order_id": "oid-1",
-                            "status": "trade",
+                            "status": "trade_done",
                             "side": "BID",
                             "executed_price": "63000000",
                             "executed_qty": "0.01",
@@ -55,7 +55,7 @@ class TestWaitForOrderFillResolves:
         assert result is not None
         assert result["executed_qty"] == "0.01"
         assert result["executed_price"] == "63000000"
-        assert result["status"] == "trade"
+        assert result["status"] == "trade_done"
 
     @pytest.mark.asyncio
     async def test_accepts_bytes_payload(self):
@@ -98,7 +98,7 @@ class TestWaitForOrderFillResolves:
                         "c": "MYORDER",
                         "d": {
                             "oi": "oid-short",
-                            "st": "trade",
+                            "st": "trade_done",
                             "eq": "0.5",
                             "ep": "2500",
                             "qc": "KRW",
@@ -114,9 +114,61 @@ class TestWaitForOrderFillResolves:
         assert result is not None
         # After normalization both SHORT and DEFAULT fields should resolve.
         assert result["order_id"] == "oid-short"
-        assert result["status"] == "trade"
+        assert result["status"] == "trade_done"
         assert result["executed_qty"] == "0.5"
         assert result["executed_price"] == "2500"
+
+    @pytest.mark.asyncio
+    async def test_trade_status_ignored_only_trade_done_resolves(self):
+        """BUG-213: ``status='trade'`` (per-execution partial) MUST NOT resolve
+        the waiter. Only the terminal ``status='trade_done'`` carries the final
+        cumulative fill. Resolving on the first partial causes subsequent
+        executions to become ghost inventory.
+        """
+        stream = CoinoneUserDataStream("access", "secret")
+
+        async def _fire_partial_then_done() -> None:
+            # Partial fill first — must be ignored.
+            await asyncio.sleep(0.01)
+            stream._dispatch_event(
+                json.dumps(
+                    {
+                        "response_type": "DATA",
+                        "channel": "MYORDER",
+                        "data": {
+                            "order_id": "oid-seq",
+                            "status": "trade",
+                            "executed_qty": "0.4",
+                            "executed_price": "63000000",
+                        },
+                    }
+                )
+            )
+            # Terminal fill with the full cumulative qty — must resolve.
+            await asyncio.sleep(0.01)
+            stream._dispatch_event(
+                json.dumps(
+                    {
+                        "response_type": "DATA",
+                        "channel": "MYORDER",
+                        "data": {
+                            "order_id": "oid-seq",
+                            "status": "trade_done",
+                            "executed_qty": "1.0",
+                            "executed_price": "63000000",
+                        },
+                    }
+                )
+            )
+
+        task = asyncio.create_task(_fire_partial_then_done())
+        result = await stream.wait_for_order_fill("oid-seq", timeout=0.5)
+        await task
+
+        assert result is not None
+        # Must see the terminal event's cumulative qty, NOT the first partial.
+        assert result["status"] == "trade_done"
+        assert result["executed_qty"] == "1.0"
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +283,7 @@ class TestOutOfOrderBuffering:
                     "channel": "MYORDER",
                     "data": {
                         "order_id": "fresh",
-                        "status": "trade",
+                        "status": "trade_done",
                         "executed_qty": "1",
                         "executed_price": "10",
                     },
@@ -333,7 +385,7 @@ class TestNormalizeShortFields:
     def test_short_fields_mapped_to_default(self):
         short = {
             "oi": "oid-x",
-            "st": "trade",
+            "st": "trade_done",
             "eq": "0.1",
             "ep": "100",
             "qc": "KRW",
@@ -341,7 +393,7 @@ class TestNormalizeShortFields:
         }
         out = _normalize_short_fields(short)
         assert out["order_id"] == "oid-x"
-        assert out["status"] == "trade"
+        assert out["status"] == "trade_done"
         assert out["executed_qty"] == "0.1"
         assert out["executed_price"] == "100"
         assert out["quote_currency"] == "KRW"
