@@ -1,7 +1,7 @@
 # PHOENIX v3 — 카나리 실행 계획 (단일 SSOT)
 
 > 400줄 이내. §1~6 = 영구 계획. §7 = 카나리 이력 요약 테이블.  
-> 최종 수정: 2026-04-19 (v217 BUG-184/185/186 기준)
+> 최종 수정: 2026-04-19 (v223 BUG-199 기준)
 
 ---
 
@@ -20,7 +20,7 @@
 **설정**: max_hold=1800s, edge=10bps, FF min_spread=300bps (BUG-135), 7d orderbook retention (BUG-185)  
 **v217 상태**: ERROR 0, FR signals=3~4, BUG-184/185/186 all applied, migration_runner iterative(sql+py)  
 **Bitget UTA V3**: Classic V2 → UTA V3 전환 완료 (BUG-169~183 cascade 15건). 1000 USDT 입금 전환 후 V3 stable  
-**100+ commits** (v94~v217), 48+ bugs fixed (BUG-73~186)
+**120+ commits, 60+ bugs fixed (BUG-73~199)** (v94~v223)
 
 ### 구조 리팩토링 결과 (2026-04-17, 5개 감사 → 4개 워크스트림 + BUG-93~96)
 | WS / BUG | 내용 | 커밋 | 테스트 |
@@ -229,6 +229,12 @@ min_trade_notional_usd: $5
 | **v215** | 2026-04-19 | 8 거래소 | — | — | BUG-184 reconciler fix applied, ~3min 가동 후 BUG-185 (orderbook retention) 위해 killed |
 | v216 | 2026-04-19 | 8 거래소 | — | — | source 컬럼 누락 (migration 006 미적용, old runner) → **~90 postgres errors/min** 수동 수정 전까지 |
 | **v217** | 2026-04-19 | 8 거래소 | **running** | — | **현재 (PID 76069)** — ERROR 0, FR signals=3~4, BUG-184/185/186 all applied |
+| **v218** | 2026-04-19 | 8 거래소 | — | — | BUG-188 applied — 폴링 345ms→115ms. warm Binance 142ms |
+| **v219** | 2026-04-19 | 8 거래소 | — | — | BUG-189 userData stream applied — warm Binance 43.3ms, Bitget 50.7ms. **2자리수 최초 달성** |
+| **v220** | 2026-04-19 | 8 거래소 | — | — | BUG-190/191/192/193 applied — Binance 46.6ms, Bitget 50.6ms |
+| **v221** | 2026-04-19 | 8 거래소 | — | — | BUG-194 applied — launched but 체결 기회 없이 kill |
+| **v222** | 2026-04-19 | 8 거래소 | — | **stranded $20.97** | BUG-195/196/197/198 applied — orjson bytes→Binance WS 1003 거부. REST fallback 5500ms. 회계상 stranded (실 position 0) |
+| **v223** | 2026-04-19 | 8 거래소 | — | — | BUG-199 fix — WS text frames 복구. Binance 44ms, Bitget 52.9ms. ERROR 0. 2자리 복구 |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
@@ -436,6 +442,25 @@ min_trade_notional_usd: $5
 | **BUG-184** | reconciler false CRITICAL on Binance HTTP/2 termination — transient WARNING으로 완화 | ✅ 19d528f |
 | **BUG-185** | orderbook_snapshots retention 7d 복구 — 누락 시 disk fill 위험 (migration 006 소실) | ✅ 618c6f3 |
 | **BUG-186** | migration_runner가 migrations/*.sql 전부 스킵 (py 파일만 실행) → iterative(sql+py) 수정 | ✅ 4a31a0b + ff17abf |
+| **BUG-188** | Binance post-ACK 폴링 간격 345ms → 115ms (3회×115ms 상한 재계산) | ✅ 4736846 |
+| **BUG-188.1** | 폴링 간격 50ms → 30ms (추가 미세 조정) | ✅ 06c9853 |
+| **BUG-189** | Binance userData WS stream — executionReport 이벤트 기반 fill 확인. REST 폴링 대체. warm latency 43.3ms (2자리 최초) | ✅ 36efe92 |
+| **BUG-190** | Upbit private WS stream — 이벤트 기반 fill 확인 (REST polling 대체) | ✅ e96a85a |
+| **BUG-191** | Bithumb private WS stream — 이벤트 기반 fill 확인 (REST polling 대체) | ✅ 0f23af5 |
+| **BUG-191.1** | Bithumb user_data 모듈 export + 단위 테스트 + native adapter 통합 | ✅ 273f911 |
+| **BUG-192** | Coinone private WS stream — MYORDER/MYASSET 채널 이벤트 기반 fill 확인 | ✅ 499062c |
+| **BUG-193** | 주문 경로 WS 클라이언트 permessage-deflate 비활성화 (압축 오버헤드 제거) | ✅ 058ca65 |
+| **BUG-194** | Binance MARKET 주문 newOrderRespType=RESULT — ACK inline fill 응답 (폴링 왕복 제거). Binance 전용 파라미터 (Bitget V3/Upbit/Bithumb/Coinone 미지원) | ✅ 0903b1a |
+| **BUG-195** | WS 거래 hot path orjson 적용 (3-5x JSON parse 속도). orjson.dumps()는 bytes 반환 → Binance WS text 프레임 요구와 충돌 → 1003 binary frame 거부 유발 (BUG-199에서 수정) | ✅ 551aa69 |
+| **BUG-196** | 주문 경로 WS 클라이언트 TCP_NODELAY 설정 (Nagle 알고리즘 비활성화) | ✅ 7d0a6b3 |
+| **BUG-197/198** | TCA + ghost + reconciler 메트릭 Prometheus export (observability 강화) | ✅ 57830eb |
+| **BUG-199** | orjson.dumps().decode() — WS send는 text 프레임 필수. BUG-195 bytes 문제 수정. Binance 44ms, Bitget 52.9ms, ERROR 0 복구 | ✅ 591163a |
+
+### §5.2 세션 교훈 (2026-04-19)
+
+- **BUG-195 orjson bytes**: `orjson.dumps()`는 `bytes`를 반환한다. Binance WebSocket은 RFC 6455 표준에 따라 text 프레임만 허용하며 binary 프레임(opcode 0x2)을 close code 1003으로 거부한다. 라이브러리 스펙과 거래소 공식 문서를 사전에 교차 검증하지 않아 v222 stranded 사태 발생. 신규 직렬화 라이브러리 적용 전 WS 프레임 타입 요구사항 반드시 확인할 것.
+- **BUG-194 newOrderRespType=RESULT**: Binance MARKET 주문에만 존재하는 파라미터. Bitget V3/Upbit/Bithumb/Coinone의 ACK 응답은 orderId만 반환하며 RESULT 타입을 지원하지 않음. exa.ai 공식 문서 확인으로 사전 검증 가능했던 오류.
+- **BUG-189 userData stream이 핵심**: WS fill confirmation latency 개선의 실질 기여는 BUG-189 userData stream (REST 폴링 제거, 45ms→43ms). BUG-193(compression 제거)/BUG-194(RESULT 응답)/BUG-196(TCP_NODELAY)은 marginal 5-10% 기여에 그침. 핵심 병목은 항상 왕복 횟수이지 개별 최적화가 아님.
 
 ### §5.1 미해결 클래스 (재발 주의)
 
