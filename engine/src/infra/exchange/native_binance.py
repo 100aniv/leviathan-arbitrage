@@ -81,6 +81,7 @@ class BinanceNativeAdapter(NativeAdapter):
         # BUG-189: userData WS stream for event-driven ORDER_TRADE_UPDATE fills
         self._user_stream: Any = None  # BinanceUserDataStream (futures only)
         self._user_stream_lock = asyncio.Lock()
+        self._user_stream_start_failed_until: float = 0.0  # BUG-211: cooldown
 
     async def _get_ws_trade(self) -> Any:
         """Lazy-connect Binance Futures WS trade client (BUG-120)."""
@@ -98,14 +99,20 @@ class BinanceNativeAdapter(NativeAdapter):
 
         Futures only. Returns None for spot or if start() fails. Failure is
         non-fatal — callers fall back to REST polling (BUG-166/188 path).
+        BUG-211: 30s cooldown after start() failure to avoid retry storm.
         """
+        import time
         if self._market_type != "futures":
+            return None
+        if time.monotonic() < self._user_stream_start_failed_until:
             return None
         if self._user_stream is not None:
             return self._user_stream
         async with self._user_stream_lock:
             if self._user_stream is not None:
                 return self._user_stream
+            if time.monotonic() < self._user_stream_start_failed_until:
+                return None
             try:
                 from src.infra.exchange.ws_trade import BinanceUserDataStream
                 stream = BinanceUserDataStream(self._api_key, self._signed_request)
@@ -114,10 +121,11 @@ class BinanceNativeAdapter(NativeAdapter):
                 logger.info("binance_user_data_stream_started (futures)")
             except Exception as exc:
                 logger.warning(
-                    "binance_user_data_stream_start_failed err=%s — REST fallback",
+                    "binance_user_data_stream_start_failed err=%s — REST fallback for 30s",
                     exc,
                 )
                 self._user_stream = None
+                self._user_stream_start_failed_until = time.monotonic() + 30.0
         return self._user_stream
 
     async def disconnect(self) -> None:

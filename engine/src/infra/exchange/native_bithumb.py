@@ -67,20 +67,25 @@ class NativeBithumbAdapter(NativeAdapter):
         # BUG-191: userData WS stream for event-driven myOrder fills
         self._user_stream: Any = None
         self._user_stream_lock = asyncio.Lock()
+        self._user_stream_start_failed_until: float = 0.0  # BUG-211: cooldown
 
     async def _get_user_stream(self) -> Any:
         """Lazy-start Bithumb private userData stream (BUG-191).
 
         Returns None if credentials missing or start() fails — callers fall
-        back to the REST-only path.
+        back to REST-only path. BUG-211: 30s cooldown after start() failure.
         """
         if not self._api_key or not self._api_secret:
+            return None
+        if time.monotonic() < self._user_stream_start_failed_until:
             return None
         if self._user_stream is not None:
             return self._user_stream
         async with self._user_stream_lock:
             if self._user_stream is not None:
                 return self._user_stream
+            if time.monotonic() < self._user_stream_start_failed_until:
+                return None
             try:
                 from src.infra.exchange.ws_trade import BithumbUserDataStream
                 stream = BithumbUserDataStream(self._api_key, self._api_secret)
@@ -89,10 +94,11 @@ class NativeBithumbAdapter(NativeAdapter):
                 logger.info("bithumb_user_data_stream_started")
             except Exception as exc:
                 logger.warning(
-                    "bithumb_user_data_stream_start_failed",
-                    err=str(exc),
+                    "bithumb_user_data_stream_start_failed err=%s — REST fallback for 30s",
+                    str(exc),
                 )
                 self._user_stream = None
+                self._user_stream_start_failed_until = time.monotonic() + 30.0
         return self._user_stream
 
     async def disconnect(self) -> None:
