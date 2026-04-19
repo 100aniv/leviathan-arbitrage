@@ -275,7 +275,9 @@ class ExchangeIncomeFetcher:
             is_uta = False
 
         if is_uta:
-            path = "/api/v3/account/bills"
+            # Bitget UTA V3 official endpoint (BUG-218 fix — was /api/v3/account/bills
+            # which returns 404; official docs: https://www.bitget.com/api-doc/uta/account/Get-Financial-Records).
+            path = "/api/v3/account/financial-records"
             params: dict[str, Any] = {
                 "category": "USDT-FUTURES",
                 "startTime": now_ms - POLL_WINDOW_MS,
