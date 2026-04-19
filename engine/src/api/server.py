@@ -161,6 +161,11 @@ def create_app(context: EngineContext | None = None) -> FastAPI:
     app.include_router(paper_router)
     from src.api.routes.config import router as config_router
     app.include_router(config_router)
+    # WS-C: Commercial-grade PnL + hedge-pair views
+    from src.api.routes.pnl_attributed import router as pnl_attributed_router
+    app.include_router(pnl_attributed_router)
+    from src.api.routes.positions_hedge import router as positions_hedge_router
+    app.include_router(positions_hedge_router)
 
     # ---------------------------------------------------------------------------
     # Prometheus short-path alias
