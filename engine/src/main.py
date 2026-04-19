@@ -3829,21 +3829,10 @@ class Engine:
                             # No engine positions tracked → skip reconcile cycle
                             continue
                         if self._position_manager is not None:
-                            for p in _all_pos:
-                                key = f"{p.exchange_id}:{p.symbol}"
-                                # BUG-157: Position requires entry_price field
-                                # BUG-158: sign quantity by side — exchange returns signed size.
-                                # LONG → +qty, SHORT → -qty. Without sign, reconciler
-                                # reports false discrepancies on hedged FR positions.
-                                _side_str = str(getattr(p, "side", "")).upper()
-                                _qty = abs(Decimal(str(p.quantity)))
-                                _signed = -_qty if ("SHORT" in _side_str or "SELL" in _side_str) else _qty
-                                engine_positions[key] = Position(
-                                    exchange_id=p.exchange_id,
-                                    symbol=p.symbol,
-                                    size=_signed,
-                                    entry_price=getattr(p, "entry_price", None) or getattr(p, "avg_price", Decimal("0")),
-                                )
+                            # BUG-223: aggregate cross-strategy positions on same (exchange,symbol)
+                            # so engine total matches exchange-reported net. See reconciler.aggregate_engine_positions.
+                            from src.execution.reconciler import aggregate_engine_positions
+                            engine_positions = aggregate_engine_positions(_all_pos)
                         result = await self._position_reconciler.reconcile(engine_positions)
                         if result.has_discrepancy:
                             logger.warning(

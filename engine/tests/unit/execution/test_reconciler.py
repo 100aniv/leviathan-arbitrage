@@ -8,7 +8,57 @@ import pytest
 import pytest_asyncio
 
 from src.core.models import Position
-from src.execution.reconciler import PositionReconciler, ReconciliationResult
+from src.execution.reconciler import (
+    PositionReconciler,
+    ReconciliationResult,
+    aggregate_engine_positions,
+)
+
+
+class _PR:
+    """Mimic risk.position_manager.PositionRecord for aggregation tests."""
+
+    def __init__(self, strategy_id, exchange_id, symbol, side, quantity, entry_price="0"):
+        self.strategy_id = strategy_id
+        self.exchange_id = exchange_id
+        self.symbol = symbol
+        self.side = side
+        self.quantity = Decimal(str(quantity))
+        self.entry_price = Decimal(str(entry_price))
+
+
+def test_bug223_aggregate_cross_strategy_same_side_sums():
+    """FR SHORT 0.42 + FF SHORT 0.42 on same exchange:symbol → engine=-0.84 matches exchange."""
+    records = [
+        _PR("funding_rate_v1", "binance_futures", "COMP/USDT", "SHORT", "0.420", "24.74"),
+        _PR("futures_futures_v1", "binance_futures", "COMP/USDT", "SHORT", "0.420", "24.72"),
+    ]
+    agg = aggregate_engine_positions(records)
+    assert "binance_futures:COMP/USDT" in agg
+    assert agg["binance_futures:COMP/USDT"].size == Decimal("-0.840")
+
+
+def test_bug223_aggregate_opposite_sides_net_to_zero():
+    """LONG 0.42 + SHORT 0.42 on same (exchange, symbol) → net 0 (closed via hedge)."""
+    records = [
+        _PR("s1", "binance_futures", "ETH/USDT", "LONG", "0.42"),
+        _PR("s2", "binance_futures", "ETH/USDT", "SHORT", "0.42"),
+    ]
+    agg = aggregate_engine_positions(records)
+    assert agg["binance_futures:ETH/USDT"].size == Decimal("0")
+
+
+def test_bug223_aggregate_different_symbols_kept_separate():
+    """Different (exchange, symbol) pairs must not be merged."""
+    records = [
+        _PR("s1", "binance_futures", "COMP/USDT", "LONG", "0.42"),
+        _PR("s1", "bitget_futures", "COMP/USDT", "LONG", "0.42"),
+        _PR("s1", "binance_futures", "ETH/USDT", "SHORT", "0.01"),
+    ]
+    agg = aggregate_engine_positions(records)
+    assert agg["binance_futures:COMP/USDT"].size == Decimal("0.42")
+    assert agg["bitget_futures:COMP/USDT"].size == Decimal("0.42")
+    assert agg["binance_futures:ETH/USDT"].size == Decimal("-0.01")
 
 
 # ---------------------------------------------------------------------------

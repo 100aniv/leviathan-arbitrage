@@ -27,6 +27,39 @@ def _inc_discrepancy(exchange_id: str, discrepancy_type: str) -> None:
 _SIZE_TOLERANCE = Decimal("0.0001")
 
 
+def aggregate_engine_positions(records) -> dict[str, Position]:
+    """BUG-223: Sum signed quantities per (exchange_id, symbol) across strategies.
+
+    PositionManager keys by (strategy_id, exchange_id, symbol); two strategies on
+    the same symbol produce two records that the exchange sees as one net position.
+    Collapse to "{exchange_id}:{symbol}" and sum signed size so the reconciler's
+    engine-vs-exchange comparison is apples-to-apples.
+    """
+    agg: dict[str, Position] = {}
+    for p in records:
+        key = f"{p.exchange_id}:{p.symbol}"
+        side = str(getattr(p, "side", "")).upper()
+        qty = abs(Decimal(str(p.quantity)))
+        signed = -qty if ("SHORT" in side or "SELL" in side) else qty
+        entry = getattr(p, "entry_price", None) or getattr(p, "avg_price", Decimal("0"))
+        if key in agg:
+            existing = agg[key]
+            agg[key] = Position(
+                exchange_id=existing.exchange_id,
+                symbol=existing.symbol,
+                size=existing.size + signed,
+                entry_price=existing.entry_price,
+            )
+        else:
+            agg[key] = Position(
+                exchange_id=p.exchange_id,
+                symbol=p.symbol,
+                size=signed,
+                entry_price=entry,
+            )
+    return agg
+
+
 @dataclass
 class ReconciliationResult:
     has_discrepancy: bool
