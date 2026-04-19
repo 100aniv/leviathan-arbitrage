@@ -133,6 +133,13 @@ class BinanceWSTrade:
         if order_type.upper() == "LIMIT":
             params["price"] = str(price)
             params["timeInForce"] = time_in_force
+        # BUG-194: ask Binance to return the FILLED result in the ACK itself.
+        # Binance docs (developers.binance.com/docs/derivatives/usds-margined-futures/
+        # trade/rest-api/New-Order): "If newOrderRespType is sent as RESULT → MARKET
+        # order: the final FILLED result of the order will be returned directly."
+        # This removes the need for userData wait / REST polling on the happy path.
+        if order_type.upper() == "MARKET":
+            params["newOrderRespType"] = "RESULT"
         # Build signature string (sorted params, ampersand-separated, no signature)
         params_str = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
         params["signature"] = self._sign(params_str)
