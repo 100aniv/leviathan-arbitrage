@@ -60,7 +60,7 @@ class BitgetWSTrade:
     async def connect(self) -> None:
         if self._ws is not None and self._logged_in:
             return
-        self._ws = await websockets.connect(_WS_URL, ping_interval=20, ping_timeout=10)
+        self._ws = await websockets.connect(_WS_URL, ping_interval=20, ping_timeout=10, compression=None)
         self._running = True
         self._listener_task = asyncio.create_task(self._listen())
         await self._login()

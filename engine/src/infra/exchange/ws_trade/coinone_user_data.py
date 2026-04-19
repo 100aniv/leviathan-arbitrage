@@ -191,6 +191,7 @@ class CoinoneUserDataStream:
                     additional_headers=headers,
                     ping_interval=_WS_PING_INTERVAL_S,
                     ping_timeout=_WS_PING_TIMEOUT_S,
+                    compression=None,
                 ) as ws:
                     self._ws = ws
                     backoff = _RECONNECT_BACKOFF_INITIAL_S

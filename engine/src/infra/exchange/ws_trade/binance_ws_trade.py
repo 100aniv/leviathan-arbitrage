@@ -53,7 +53,7 @@ class BinanceWSTrade:
     async def connect(self) -> None:
         if self._ws is not None:
             return
-        self._ws = await websockets.connect(_WS_URL, ping_interval=180, ping_timeout=60)
+        self._ws = await websockets.connect(_WS_URL, ping_interval=180, ping_timeout=60, compression=None)
         self._running = True
         self._listener_task = asyncio.create_task(self._listen())
         logger.info("BinanceWSTrade connected: %s", _WS_URL)
