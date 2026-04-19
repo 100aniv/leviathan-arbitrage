@@ -1,7 +1,11 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-04-19 (PHOENIX 카나리 v230 동기화 — WS-A/B/C/D commercial-grade 전환 **완료**, BUG-73~219, 75+ bugs fixed, 15+ commits) | Last PHOENIX sync: 2026-04-19 | PRD: `.omc/prd.json` (437개 US, 429 passes:true / 8 passes:false)
+> **마지막 업데이트: 2026-04-19 19:40 KST — Path-B 구조 리팩토링 착수 (Day 1-3 완료)**
+> 이전 선언이었던 "commercial-grade 전환 완료"는 **철회**. 근거: v237 카나리에서 엔진 PnL +$0.09 vs 실제 Binance /fapi/v1/income -$4.92 확증 → 거짓 보고의 근본원인은 개별 버그가 아니라 `live.py` 3,476줄 + `main.py` 4,202줄 God-class 모놀리스 구조. architect + backend-architect + critic 3개 독립 에이전트 만장일치 Path B (점진적 구조 분리, 8-10주) 권고.
+> **Live 거래 정지 중** (mode=paper, commit `606c97b`). Binance 오픈 포지션 0건 확인됨. 거래소 잔고 $10.55 (입금 $16 - 손실 $4.92).
+> PHOENIX v230까지의 BUG-73~228 패치 75+건은 유지. 구조 리팩토링 플랜: `engine/docs/REFACTOR_PLAN.md`
+> PRD: `.omc/prd.json` (437 US)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | **SIT-3 플랜: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오)**
 > **Phase K 플랜**: `.claude/plans/radiant-cooking-forest.md` (Backtest→Paper→Live 종합 23케이스, 2026-04-02 v4)
 > **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → J ✅ → K(72/80) → **L ✅** → M → N(TF Final → Live)
@@ -32,8 +36,22 @@
 > Current stage: `.omc/state/leviathan-current-stage.json`
 > Team roster: `.omc/state/team-roster.json`
 
-**Phase**: L (K✅ 완료 | Phase L 진입 — Shadow→Paper 리네임 + 대시보드 재설계, 2026-04-04)
-**PHOENIX 트랙 (병행)**: v229 → **v230 canary** (최종 검증 가동), 160+ commits, 75+ bugs fixed (BUG-73~219), 2자리수 latency 달성 (Binance 41ms / Bitget 45ms warm), Docker engine build ✅, **Commercial-grade transition 완료** (WS-A/B/C/D all shipped, 2026-04-19)
+**Phase**: L (대기) | **Path-B 구조 리팩토링 진행 중** (2026-04-19 ~): Day 1-3 완료, Day 4-10 예정. live 거래 중단.
+**PHOENIX 트랙**: v237 canary에서 구조 결함 확증 → **중단**. 실제 Binance 24H -$4.92 loss (commission -$2.48 + realized -$2.33 + funding -$0.11) vs 엔진 보고 +$0.09 괴리. 근본 원인: engine internal `_stats.total_pnl`이 exchange income과 별개 경로로 계산·전시. **"Commercial-grade transition 완료" 선언 철회.**
+
+### Path-B 구조 리팩토링 현황 (commit tree)
+- `606c97b` — live → paper mode halt (Day 0)
+- `b32792e` — Day 1: PnLLedger + PnLReconciler + ExchangePnLSnapshot (single-source-of-truth PnL, 25 tests)
+- `3c45a3b` — Day 2: UniverseMatrix (부팅 시 (strategy, symbol, leg_a, leg_b) 유효성 검증, 12 tests, BUG-225 class 영구차단)
+- `0784c2b` — Day 2: PreTradeValidator (live.py 270줄 if-래더 → 단일 validate() 호출, 27 tests, 16 ReasonCode enum, live.py -227 LOC)
+- `974c1ad` — Day 3: StrategyBudgetLedger (전략별 독립 일일 손실예산 from exchange income only, 18 tests)
+- `5ff1cd9` — Day 3: DailyReconciliationReport (UTC 00:05 Telegram + 22-col CSV + variance decomposition 6항목, 14 tests)
+
+**Day 1-3 총계**: 새 모듈 +4,296 LOC / 새 테스트 +2,577 LOC / 96 테스트 전부 통과. `live.py` 3,476 → 3,249 LOC (-227). `main.py` 4,194 → 4,202 LOC (+8 injection only). 
+
+**Day 4-10 예정**: main.py 분해 (Supervisor/ConfigService/StrategyRegistry), live.py OrderRouter/Gateway 분리, trace_id 전파, CanaryStageController, 72H paper canary 회귀, live 재개 Gate는 Stage-1 ($10 × 48H continuous) 통과.
+
+**금지 사항 (refactor 기간 엄수)**: ❌ config bump으로 fix, ❌ live.py/main.py에 코드 추가 (monotonically shrinking only), ❌ exchange 대조 없이 "fixed" 선언.
 **§2.2 TCA 계층 진화**: 2 layer (gross + fee) → 4 layer (WS-A) → **7 layer** (gross + fee + slippage + funding + basis + reconciliation_variance + exchange_realized — WS-D 완료). Exchange `realizedPnl` primary source (WS-A1/A2/A3/A5), `Trade.realized_pnl` field + 4-branch priority, `ExchangeIncomeFetcher` 30s polling (Binance `/fapi/v1/income` + Bitget `/account/bill`). **WS-B**: dynamic min_spread = fee + p95_slippage + funding_buffer + profit_margin. **WS-D**: divergence 5% rule 자동 HALT + toxicity filter + Sharpe/MDD 30-day rolling + daily TCA CSV.
 **Tests**: 5,508 collected (from `pytest --co -q` on 2026-04-19)
 **Coverage**: 74%

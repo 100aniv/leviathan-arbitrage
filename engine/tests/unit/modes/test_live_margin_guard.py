@@ -121,34 +121,73 @@ class TestMarginGuardLogic:
 
 
 class TestMarginGuardSourcePresence:
-    def test_bug74_guard_present_in_live_module(self):
-        """live.py must contain the BUG-74 margin guard implementation."""
-        try:
-            from src.modes.live import LiveMode
-            source = inspect.getsource(LiveMode)
-        except ImportError:
-            import pathlib
-            p = pathlib.Path(__file__).parent.parent.parent.parent / "src/modes/live.py"
-            source = p.read_text()
+    """Path-B Day-2: BUG-74 margin guard migrated from live.py to PreTradeValidator.
+    These tests now validate presence in pre_trade_validator.py OR live.py
+    (fallback for partial rollbacks). The guard must exist somewhere in the
+    pre-trade gate pipeline — location is an implementation detail.
+    """
 
-        assert "BUG-74" in source, "BUG-74 guard comment not found in live.py"
-        assert "_MIN_MARGIN_ENTRY_USD" in source, "_MIN_MARGIN_ENTRY_USD not found"
-        assert "entry_blocked_margin_low" in source, "log key entry_blocked_margin_low not found"
+    @staticmethod
+    def _get_gate_source() -> str:
+        """Return concatenated source of live.py + pre_trade_validator.py."""
+        import pathlib
+        eng = pathlib.Path(__file__).parent.parent.parent.parent
+        live_src = (eng / "src/modes/live.py").read_text()
+        try:
+            ptv_src = (eng / "src/execution/pre_trade_validator.py").read_text()
+        except FileNotFoundError:
+            ptv_src = ""
+        return live_src + "\n" + ptv_src
+
+    def test_bug74_guard_present_in_gate_pipeline(self):
+        """BUG-74 guard must exist in either live.py or pre_trade_validator.py.
+        After Path-B Day-2 extraction the guard uses typed ReasonCode.MARGIN_INSUFFICIENT
+        instead of the legacy entry_blocked_margin_low log key.
+        """
+        source = self._get_gate_source()
+        assert "BUG-74" in source, "BUG-74 guard comment not found anywhere"
+        assert "MIN_MARGIN_ENTRY_USD" in source, (
+            "MIN_MARGIN_ENTRY_USD constant not found"
+        )
+        # legacy log key OR post-extraction reason-code either satisfies
+        assert (
+            "entry_blocked_margin_low" in source
+            or "MARGIN_INSUFFICIENT" in source
+        ), "Margin-insufficient gate emission not found"
 
     def test_close_request_exemption_is_first_check(self):
-        """Reduce-only exemption must appear BEFORE the per-leg margin check."""
-        try:
-            from src.modes.live import LiveMode
-            source = inspect.getsource(LiveMode)
-        except ImportError:
-            import pathlib
-            p = pathlib.Path(__file__).parent.parent.parent.parent / "src/modes/live.py"
-            source = p.read_text()
+        """Reduce-only exemption must appear BEFORE the per-leg margin check
+        inside the gate-owning function.
 
-        # _MIN_MARGIN_ENTRY_USD is a class constant — look for its runtime usage
-        # (self._MIN_MARGIN_ENTRY_USD) which only appears inside the guard block.
-        idx_close_check = source.find("if not _is_close_req")
-        idx_margin_loop = source.find("self._MIN_MARGIN_ENTRY_USD")
-        assert idx_close_check < idx_margin_loop, (
-            "Close-request exemption must appear before per-leg margin loop"
-        )
+        Path-B Day-2: guard moved to PreTradeValidator._check_margin_guard.
+        We locate that method and verify the close-exemption precedes the
+        margin-loop within the method body.
+        """
+        import pathlib
+        eng = pathlib.Path(__file__).parent.parent.parent.parent
+        ptv = (eng / "src/execution/pre_trade_validator.py").read_text() \
+            if (eng / "src/execution/pre_trade_validator.py").exists() else ""
+
+        if ptv and "BUG-74" in ptv:
+            # Post-extraction: test the validator method body.
+            import re
+            match = re.search(
+                r"def _check_margin_guard\(.*?\)\s*->.*?:(.*?)(?=\n    [a-zA-Z_]|\nclass |\Z)",
+                ptv, re.DOTALL,
+            )
+            assert match is not None, "_check_margin_guard method not found"
+            body = match.group(1)
+            idx_close = body.find("if is_close")
+            idx_margin = body.find("MIN_MARGIN_ENTRY_USD")
+            assert idx_close != -1, "is_close exemption not found in guard method"
+            assert idx_margin != -1, "MIN_MARGIN_ENTRY_USD not found in guard method"
+            assert idx_close < idx_margin, (
+                "Close-request exemption must precede margin loop inside the guard method"
+            )
+        else:
+            # Pre-extraction fallback: ordering within live.py.
+            src = (eng / "src/modes/live.py").read_text()
+            idx_close = src.find("if not _is_close_req")
+            idx_margin = src.find("self._MIN_MARGIN_ENTRY_USD")
+            assert idx_close != -1 and idx_margin != -1
+            assert idx_close < idx_margin
