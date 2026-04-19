@@ -25,6 +25,8 @@ from typing import Any, Awaitable, Callable, Optional
 
 import websockets
 
+from src.infra.exchange.ws_trade._socket_opts import set_tcp_nodelay
+
 logger = logging.getLogger(__name__)
 
 _LISTEN_KEY_PATH = "/fapi/v1/listenKey"
@@ -192,6 +194,7 @@ class BinanceUserDataStream:
                     compression=None,
                 ) as ws:
                     self._ws = ws
+                    set_tcp_nodelay(ws)  # BUG-196: disable Nagle
                     backoff = _RECONNECT_BACKOFF_INITIAL_S
                     async for raw in ws:
                         try:

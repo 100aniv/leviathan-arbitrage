@@ -33,6 +33,8 @@ from typing import Any, Optional
 
 import websockets
 
+from src.infra.exchange.ws_trade._socket_opts import set_tcp_nodelay
+
 logger = logging.getLogger(__name__)
 
 _WS_URL = "wss://stream.coinone.co.kr/v1/private"
@@ -194,6 +196,7 @@ class CoinoneUserDataStream:
                     compression=None,
                 ) as ws:
                     self._ws = ws
+                    set_tcp_nodelay(ws)  # BUG-196: disable Nagle
                     backoff = _RECONNECT_BACKOFF_INITIAL_S
                     # Subscribe MYORDER (no topic filter → all symbols).
                     await ws.send(

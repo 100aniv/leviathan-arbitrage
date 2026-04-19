@@ -25,6 +25,8 @@ from typing import Any, Optional
 
 import websockets
 
+from src.infra.exchange.ws_trade._socket_opts import set_tcp_nodelay
+
 logger = logging.getLogger(__name__)
 
 _WS_URL = "wss://ws-fapi.binance.com/ws-fapi/v1"
@@ -54,6 +56,7 @@ class BinanceWSTrade:
         if self._ws is not None:
             return
         self._ws = await websockets.connect(_WS_URL, ping_interval=180, ping_timeout=60, compression=None)
+        set_tcp_nodelay(self._ws)  # BUG-196: disable Nagle
         self._running = True
         self._listener_task = asyncio.create_task(self._listen())
         logger.info("BinanceWSTrade connected: %s", _WS_URL)

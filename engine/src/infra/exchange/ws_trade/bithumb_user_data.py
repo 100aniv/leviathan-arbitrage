@@ -36,6 +36,8 @@ import jwt
 import structlog
 import websockets
 
+from src.infra.exchange.ws_trade._socket_opts import set_tcp_nodelay
+
 logger = structlog.get_logger(__name__)
 
 _WS_PRIVATE_URL = "wss://ws-api.bithumb.com/websocket/v1/private"
@@ -209,6 +211,7 @@ class BithumbUserDataStream:
                     compression=None,
                 ) as ws:
                     self._ws = ws
+                    set_tcp_nodelay(ws)  # BUG-196: disable Nagle
                     backoff = _RECONNECT_BACKOFF_INITIAL_S
                     # Send subscribe frame.
                     await ws.send(orjson.dumps(self._build_subscribe_message()))
