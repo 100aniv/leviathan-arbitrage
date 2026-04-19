@@ -238,6 +238,8 @@ min_trade_notional_usd: $5
 | **v224** | 2026-04-19 | 8 거래소 | 4 | +$0.04 | BUG-200 적용 (FF min_spread 300→27bps). FF 첫 체결 4건 (ZBT/CYBER/API3/FF) |
 | **v225** | 2026-04-19 | 8 거래소 | — | — | BUG-203/204/205 summary 로그 발견 — SF signals=1~14/cycle pass_basis but downstream filter 거절, triangular total_scanned=0 |
 | **v226** | 2026-04-19 | 8 거래소 | 6 | +$0.19 누적 | BUG-207/208 완료. FF/FR 6건. HALT 0. Grafana 실데이터 연결 |
+| **v227** | 2026-04-19 | 8 거래소 | — | — | WS-0-1 close_open_positions.py 도입 (dry-run 검증, 포지션 0 확인). BUG-209 XE-KRW evaluator unreachable fix (live canary 58,006 events 2min 실증) + BUG-214 reconciler 2x position size in hedge_mode fix (native adapter double-count 제거, 148 + 9 신규 regression pass) |
+| **v228** | 2026-04-19 | 8 거래소 | 진행중 | 검증 대기 | **WS-A commercial-grade TCA 전환 검증**: Exchange realized_pnl wire (WS-A1) + slippage deduction (WS-A5) + funding accrual (WS-A3) + TCA adaptive feedback observation (WS-A4) + ExchangeIncomeFetcher 30s polling (WS-A2). 2-layer(gross+fee) → 4-layer(gross+fee+slippage+funding) + exchange realized_pnl 우선 소스 |
 
 > v94→v117: 34 commits, 20+ bugs (BUG-73~89), 구조 리팩토링 (Config 단일화 + FF exit 통합)
 > 10/10 상용급 슬리피지 제어 구현 + 독립 검증 15/15 PASS
@@ -465,6 +467,12 @@ min_trade_notional_usd: $5
 | **BUG-205** | triangular signal summary 로그 추가 (total_scanned=0 진단 가능) — 3각 차익 관측 gap 해소 | ✅ 2c579c4 |
 | **BUG-207** | Redis dual_write timeout 50ms → 500ms (Docker Redis 100-300ms spike 정상, 50ms 임계값이 HALT cascade 유발) | ✅ 8dfdfbd |
 | **BUG-208** | Prometheus scrape config Docker DNS `engine:8000` → host-gateway alias (개발 로컬 Grafana 실데이터 unblock) | ✅ 20d6a5e |
+| **BUG-209** | XE-KRW evaluator unreachable — `live.py` pre-normalization 단계에서 `/KRW` 심볼이 USDT로 stripped된 채 producer에 dispatch되어 XE-KRW branch 도달 불가. 수정: raw `/KRW` book을 USDT-normalized book과 parallel dispatch. live canary 58,006 events / 2min 증명 | ✅ 4bc7c28 |
+| **BUG-214** | PositionReconciler 2x position size in hedge_mode — native adapter가 long/short 포지션을 개별 row로 반환, engine이 sum 하면서 double-count. 수정: per-symbol netting을 native adapter 내부로 이동. 148 기존 + 9 신규 regression test pass | ✅ c1a4c05 |
+| **BUG-215** | engine total_pnl이 `gross_spread - commission`만 반영 — slippage/funding/exchange realizedPnl 미차감. WS-A1+A5 수정: `Trade.realized_pnl` field + 4-branch priority (exchange primary → engine sim fallback) + slippage deduction 활성화. 5 unit tests pass | ✅ d43fc9c |
+| **BUG-216** | Funding accrual + TCA feedback 계층 미구현 — 8h UTC settlement 기반 funding PnL 자동 반영 누락. WS-A3+A4 수정: FundingAccrualTracker (UTC 00/08/16 settlement) + TCAAdaptiveFeedback (observation layer, adaptive sizing 입력 시그널 연결) | ✅ 52becd2 |
+| **BUG-217** | Exchange `realizedPnl` income polling 없음 — Binance `/fapi/v1/income` + Bitget `/account/bill` 30s 주기 폴링으로 TCA 정확도 보강. WS-A2 구현 | ✅ 2806414 |
+| **WS-0-1** | `close_open_positions.py` 도입 — 수동 청산 + slippage CSV dry-run 스크립트 (포지션 0 확인). crash/SIGKILL fallback 대비 | ✅ 502da71 |
 
 ### §5.2 세션 교훈 (2026-04-19)
 
