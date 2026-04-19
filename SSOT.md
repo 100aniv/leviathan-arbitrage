@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> 마지막 업데이트: 2026-04-05 (Phase L 완료 — US-430~437 전부 passes:true, US-332/382 K-PT 24H 완료) | PRD: `.omc/prd.json` (437개 US, 429 passes:true / 8 passes:false)
+> 마지막 업데이트: 2026-04-19 (PHOENIX 카나리 v225 동기화 — BUG-73~205, 2자리수 latency 달성) | Last PHOENIX sync: 2026-04-19 | PRD: `.omc/prd.json` (437개 US, 429 passes:true / 8 passes:false)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | **SIT-3 플랜: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오)**
 > **Phase K 플랜**: `.claude/plans/radiant-cooking-forest.md` (Backtest→Paper→Live 종합 23케이스, 2026-04-02 v4)
 > **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → J ✅ → K(72/80) → **L ✅** → M → N(TF Final → Live)
@@ -33,11 +33,12 @@
 > Team roster: `.omc/state/team-roster.json`
 
 **Phase**: L (K✅ 완료 | Phase L 진입 — Shadow→Paper 리네임 + 대시보드 재설계, 2026-04-04)
-**Tests**: 5,473 passed / 0 failed / 12 skipped
+**PHOENIX 트랙 (병행)**: v225 canary, 120+ commits, 60+ bugs fixed (BUG-73~205), 2자리수 latency 달성 (Binance 41ms / Bitget 45ms warm), Docker engine build ✅ (2026-04-19)
+**Tests**: 5,478 collected (from `pytest --co -q` on 2026-04-19)
 **Coverage**: 74%
 **PRD**: 429/437 passes:true (passes:false 8개 — US-055, US-056, US-373, US-425, US-426, US-427, US-428, US-429)
 **TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → K ✅ → **L** → M → N(TF Final → Live)
-**Next**: US-436 (E2E 브라우저 검증) → Phase L 완료 → Phase M
+**Next**: US-436 (E2E 브라우저 검증) → Phase L 완료 → Phase M (PHOENIX: 24H 연속 가동 실증 → Phase M 진입)
 **모드 체계 (Phase I 확정)**: `backtest → paper → live` (shadow 명칭 폐기, EngineMode 단일 축)
 **Live 설정**: max_position=$10, daily_loss=$15, exchanges=binance+binance_futures
 **Live 파이프라인**: LiveMode 클래스 (직접 인-프로세스 라우팅, DI executor, KRW 정규화, circuit breaker, rate limiter)
@@ -48,13 +49,13 @@
   - H-2: EngineMode 4-모드 단일 축 + config/engine.json + BacktestMode + conftest 격리
 **API 키**: Binance ✅ Upbit ✅ Bithumb ✅ Coinone ✅ (OKX/Bybit/Bitget 미설정)
 
-**전략 현황 (SIT-3 검증):**
-- **funding_rate**: ✅ WR 100%, +$193 (USD sizing + carry sim)
-- **spot_futures**: ✅ WR 40-63%, 정상 수익 (소액 — Live 시 포지션 확대로 개선)
-- **futures_futures**: ✅ WR 87-93%, 정상
+**전략 현황 (SIT-3 검증 + PHOENIX 카나리 실증):**
+- **funding_rate**: ✅ WR 100%, +$193 (USD sizing + carry sim) — PHOENIX: v172/v179/v180 실증 수익 다수, 누적 +$0.29+ (6 wins / 0 loss)
+- **spot_futures**: ✅ WR 40-63%, 정상 수익 (소액 — Live 시 포지션 확대로 개선) — PHOENIX: SF signal summary 로그 (BUG-203) 추가. 시장 basis p50=6-8bps로 5bps threshold 통과하지만 downstream freshness/ts_sync filter가 대부분 거절
+- **futures_futures**: ✅ WR 87-93%, 정상 — PHOENIX: v224 BUG-200 config min_spread 300→27bps 수정 후 4건 체결 + PnL 양수 (세션)
 - **statistical_arb**: ✅ WR 100%, cap $10 (Shadow 구조 한계 — expected_profit 기반)
-- **triangular**: ⚠️ Bithumb 공개 WS 데이터 품질 문제 (fake spread 304만%). 코드+가드 정상. Live 인증 API 사용 시 해결
-- **cross_exchange**: ⚠️ 리테일 수수료(20bps) > 스프레드(0-3bps). 한국 IP 저수수료 거래소 없음 (MEXC 차단, Gate.io 20bps). **VIP 등급 달성이 유일한 해결책**. 코드 자체는 정상
+- **triangular**: ⚠️ Bithumb 공개 WS 데이터 품질 문제 (fake spread 304만%). 코드+가드 정상. Live 인증 API 사용 시 해결 — PHOENIX: v225에서도 `triangular_scanner.total_scanned=0` 재발, BUG-205 signal summary 로그로 로직 진단 중
+- **cross_exchange**: ⚠️ 리테일 수수료(20bps) > 스프레드(0-3bps). 한국 IP 저수수료 거래소 없음 (MEXC 차단, Gate.io 20bps). **VIP 등급 달성이 유일한 해결책**. 코드 자체는 정상 — PHOENIX: BUG-204 XE-KRW signal summary 로그 추가 (diagnostic gap 해소)
 - **cex_dex**: DEX 미연동. Live 후 Uniswap V3 연동 시 활성화
 - **AutoTuner**: `TUNER_DATA_SOURCE=timescaledb` (실 데이터 26K+). synthetic 결과가 real params 덮어쓰기 방지
 
@@ -103,6 +104,25 @@ Stage 6: 24H → LiveGate 6-check + Sharpe>2.0, MDD<5%, 일일 PnL 양수 (최�
 **TF SF Progressive Shadow 24H**: 위 기준 + Sharpe >= 2.0, Calmar > 0, 전략별 WR > 50%, Expected Edge > 0 bps
 
 **TF Final Canary 7일**: 위 기준 + Sharpe >= 2.5, Profit Factor > 1.2, 리콘실리에이션 오차 < 1%
+
+---
+
+## 2.1 PHOENIX 카나리 요약 (2026-04-05 ~ 2026-04-19)
+
+> 상세: `PHOENIX_PLAN.md` (카나리 단일 SSOT, §1~8)
+> 범위: v94 ~ v225 (132 버전), 120+ commits on main, 60+ bugs fixed (BUG-73 ~ BUG-205)
+
+**주요 마일스톤:**
+- **Docker 배포 준비 완료**: engine image build 검증 ✅ (2026-04-19)
+- **2자리 latency 달성**: Binance 41ms / Bitget 45ms warm (v219 최초 도달, v223 BUG-199 fix 후 복구)
+- **Private WebSocket 통합**: Binance userData (BUG-189), Upbit (BUG-190), Bithumb (BUG-191/191.1), Coinone MYORDER/MYASSET (BUG-192) — REST 폴링 대체로 fill confirmation 가속화
+- **Infra 안정화**: BUG-184 reconciler false CRITICAL on Binance HTTP/2 → transient WARNING, BUG-185 orderbook_snapshots 7d retention 복구, BUG-186 migration_runner sql+py iterative 수정
+- **실증 수익**: FR 누적 +$0.29 (6 wins / 0 loss, v179~v181), FF v224 BUG-200 min_spread 300→27bps 수정 후 4건 체결 + PnL 양수 (세션)
+- **진단 가시성**: BUG-203/204/205 SF/XE-KRW/triangular signal summary 로그 추가 (diagnostic gap 해소)
+
+**미해결 클래스 (재발 주의)**: reconciler false CRITICAL (7건), WS order path fragility (11건), Bitget UTA V3 cascade (15건), triangular `total_scanned=0` (Bithumb 공개 WS 품질 문제).
+
+**다음 마일스톤**: 24H 연속 가동 실증 (crash=0, KillSwitch=0, PnL 양수 3사이클+) → Phase M 진입
 
 ---
 
