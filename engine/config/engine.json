@@ -1,6 +1,6 @@
 {
-  "_comment": "LEVIATHAN Engine Configuration \u2014 Runtime settings (non-secret). Secrets stay in .env",
-  "mode": "live",
+  "_comment": "LEVIATHAN Engine Configuration — Runtime settings (non-secret). Secrets stay in .env. 사장님 지시 2026-04-19: 구조 리팩토링 완료까지 live 중단 → paper 강제 (critic/architect/backend-architect 만장일치 Path B).",
+  "mode": "paper",
   "env": "dev",
   "capital": {
     "allocation_mode": "percentage",
