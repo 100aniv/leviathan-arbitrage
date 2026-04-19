@@ -315,3 +315,76 @@ async def test_bug202_unrecorded_resolved_before_second_cycle() -> None:
     result2 = await r.reconcile(engine_now)
     assert result2.has_discrepancy is False, "Race resolved — no discrepancy"
     assert callback_called == [], "No callback when race self-resolves"
+
+
+# ---------------------------------------------------------------------------
+# BUG-210: per-exchange 2-cycle guard roll-forward (fetch-failure resilience)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bug210_prev_unrecorded_preserved_on_fetch_failure() -> None:
+    """BUG-210: when one exchange's fetch fails between cycles, its prior
+    unrecorded keys must be preserved (not wiped by the other exchange's
+    successful fetch). Meanwhile, persistent orphans on the successful
+    exchange must still escalate to CRITICAL on cycle 2.
+
+    Scenario:
+      Cycle 1: A succeeds with unrecorded K_A; B succeeds with unrecorded K_B.
+      Cycle 2: A's fetch fails (HTTP/2 RemoteProtocolError); B succeeds with
+               K_B still unrecorded.
+    Expected:
+      After cycle 2, _prev_unrecorded_keys still contains K_A (preserved,
+      since A failed) AND K_B escalated to CRITICAL discrepancy (persistent).
+    """
+    # Exchange A: binance
+    ex_a = MagicMock()
+    ex_a.exchange_id = "binance"
+    a_pos = [make_position("binance", "BTC/USDT", Decimal("0.1"))]
+    ex_a.get_positions_strict = AsyncMock(return_value=a_pos)
+    ex_a.get_positions = AsyncMock(return_value=a_pos)
+
+    # Exchange B: okx
+    ex_b = MagicMock()
+    ex_b.exchange_id = "okx"
+    b_pos = [make_position("okx", "ETH/USDT", Decimal("1.0"))]
+    ex_b.get_positions_strict = AsyncMock(return_value=b_pos)
+    ex_b.get_positions = AsyncMock(return_value=b_pos)
+
+    callback_called: list[bool] = []
+    r = PositionReconciler(
+        exchanges=[ex_a, ex_b],
+        on_discrepancy=lambda result: callback_called.append(True),
+    )
+
+    # Cycle 1: both exchanges succeed; engine has neither position
+    result1 = await r.reconcile({})
+    assert result1.has_discrepancy is False, "First-cycle unrecorded must be transient"
+    assert callback_called == [], "No callback on first cycle"
+    # Both keys tracked for next-cycle escalation
+    assert "binance:BTC/USDT" in r._prev_unrecorded_keys
+    assert "okx:ETH/USDT" in r._prev_unrecorded_keys
+
+    # Cycle 2: A fetch fails (HTTP/2 RemoteProtocolError), B still has K_B
+    ex_a.get_positions_strict = AsyncMock(
+        side_effect=RuntimeError("RemoteProtocolError: HTTP/2 peer closed connection"),
+    )
+    # B continues reporting its orphan
+    ex_b.get_positions_strict = AsyncMock(return_value=b_pos)
+
+    result2 = await r.reconcile({})
+
+    # A's prior entry must NOT be wiped by B's successful overwrite
+    assert "binance:BTC/USDT" in r._prev_unrecorded_keys, (
+        "BUG-210: prior entry for failed-fetch exchange must be preserved"
+    )
+    # A must be in fetch_failed_exchanges
+    assert "binance" in result2.fetch_failed_exchanges
+
+    # B's K_B must still be present (successful this cycle)
+    assert "okx:ETH/USDT" in r._prev_unrecorded_keys
+
+    # K_B escalates to CRITICAL discrepancy on cycle 2 (persistent)
+    assert result2.has_discrepancy is True, "Persistent K_B must escalate"
+    assert any("okx:ETH/USDT" in d for d in result2.discrepancies)
+    assert callback_called == [True], "Callback must fire for persistent K_B"

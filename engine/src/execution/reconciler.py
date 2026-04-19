@@ -209,7 +209,23 @@ class PositionReconciler:
             )
 
         # BUG-202: roll unrecorded keys state forward for next cycle's guard.
-        self._prev_unrecorded_keys = unrecorded_this_cycle
+        # BUG-210: per-exchange roll-forward. When an exchange's fetch fails
+        # (e.g. Binance HTTP/2 RemoteProtocolError), it contributes zero
+        # entries to unrecorded_this_cycle — unconditionally overwriting
+        # _prev_unrecorded_keys would wipe prior-cycle state for ALL
+        # exchanges, causing persistent ghosts to never escalate to CRITICAL
+        # under intermittent network conditions. Instead, update only entries
+        # belonging to successfully-fetched exchanges, and preserve prior
+        # entries for failed-fetch exchanges.
+        successful = set(self._exchanges) - set(fetch_failed_exchanges)
+        new_prev = {
+            k for k in unrecorded_this_cycle
+            if k.split(":", 1)[0] in successful
+        }
+        for k in self._prev_unrecorded_keys:
+            if k.split(":", 1)[0] not in successful:
+                new_prev.add(k)
+        self._prev_unrecorded_keys = new_prev
 
         # API 조회 실패(fetch_failed_exchanges)는 실제 포지션 불일치가 아님 — has_discrepancy에서 제외
         has_discrepancy = len(discrepancies) > 0
