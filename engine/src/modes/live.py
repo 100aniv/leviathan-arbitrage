@@ -1551,10 +1551,14 @@ class LiveMode(BaseMode):
                         _m.labels(exchange=_leg.exchange_id, symbol=_leg.symbol).inc()
                 except Exception:
                     pass
-                logger.debug(
-                    "signal_rejected_notional_below_min strategy=%s small_legs=%d max_notional=%.2f",
-                    sid, len(_small_legs),
-                    float(max(l.size * l.price for l in _small_legs if l.price)),
+                # BUG-227: promote to INFO so silent notional reject is visible.
+                _leg_detail = ",".join(
+                    f"{l.exchange_id}:{l.symbol}:{float(l.size*l.price):.2f}"
+                    for l in _small_legs if l.price
+                )
+                logger.info(
+                    "live_mode.signal_rejected_notional_below_min strategy=%s small_legs=%d legs=[%s]",
+                    sid, len(_small_legs), _leg_detail,
                 )
                 self._notify_pre_exec_rollback(trade_request, sid)
                 return
