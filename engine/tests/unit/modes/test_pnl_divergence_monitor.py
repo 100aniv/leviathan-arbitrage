@@ -96,6 +96,18 @@ class TestPnlDivergenceMonitor:
         assert live._telegram.send_alert.called
 
     @pytest.mark.asyncio
+    async def test_telegram_send_alert_no_mode_kwarg(self) -> None:
+        """BUG-224: send_alert must NOT receive mode= kwarg (TradeTelegramBot has no such param)."""
+        live = _make_live(total_pnl=10.0, exchange_pnl=0.0)
+        await _run_loop_once(live, iterations=3)
+        from src.risk.kill_switch import is_halted
+        assert is_halted()
+        assert live._telegram.send_alert.called
+        _, kwargs = live._telegram.send_alert.call_args
+        assert "mode" not in kwargs, f"send_alert must not receive mode= kwarg, got: {kwargs}"
+        assert kwargs.get("level") == "CRITICAL"
+
+    @pytest.mark.asyncio
     async def test_recovery_resets_counter(self) -> None:
         """Breach then recovery on next poll → counter back to 0."""
         # Two separate mock metrics: first poll diverges, second is clean

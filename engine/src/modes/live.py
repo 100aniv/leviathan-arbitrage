@@ -2755,7 +2755,6 @@ class LiveMode(BaseMode):
                                         f"exchange: ${exchange_pnl:.4f}\n"
                                         f"divergence: {divergence_pct:.2f}%",
                                         level="CRITICAL",
-                                        mode=self._execution_mode,
                                     )
                                 except Exception as _tg_exc:
                                     logger.warning(
