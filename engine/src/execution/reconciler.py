@@ -11,6 +11,18 @@ from src.infra.exchange.base import ExchangeAdapter
 
 logger = logging.getLogger(__name__)
 
+
+def _inc_discrepancy(exchange_id: str, discrepancy_type: str) -> None:
+    """BUG-198b: lazy import to avoid cycles; degrade silently if metrics unavailable."""
+    try:
+        from src.infra.metrics import RECONCILER_DISCREPANCY_TOTAL
+        RECONCILER_DISCREPANCY_TOTAL.labels(
+            exchange=exchange_id or "unknown",
+            type=discrepancy_type,
+        ).inc()
+    except Exception as _exc:
+        logger.debug("reconciler.metric_export_failed type=%s error=%s", discrepancy_type, _exc)
+
 # Tolerance for position size comparison (floating point rounding)
 _SIZE_TOLERANCE = Decimal("0.0001")
 
@@ -53,6 +65,9 @@ class PositionReconciler:
         """Mark a position as stranded (rollback failed, needs recovery)."""
         self._stranded.add(key)
         logger.critical("stranded_position_marked key=%s", key)
+        # BUG-198b: export stranded mark to Prometheus as a discrepancy type.
+        _exchange_id = key.split(":", 1)[0] if ":" in key else "unknown"
+        _inc_discrepancy(_exchange_id, "stranded")
 
     def clear_stranded(self, key: str) -> None:
         """Clear a stranded position after recovery."""
@@ -110,6 +125,8 @@ class PositionReconciler:
                 )
                 discrepancies.append(msg)
                 logger.warning("reconciler_discrepancy %s", msg)
+                # BUG-198b: exchange has position, engine doesn't know.
+                _inc_discrepancy(ex_pos.exchange_id, "unrecorded")
 
         # Check: positions engine tracks that exchange doesn't have
         for key, eng_pos in engine_positions.items():
@@ -126,6 +143,8 @@ class PositionReconciler:
                     )
                     discrepancies.append(msg)
                     logger.warning("reconciler_discrepancy %s", msg)
+                    # BUG-198b: engine tracks it, exchange doesn't — orphan.
+                    _inc_discrepancy(eng_exchange_id, "orphan")
             else:
                 # Check size mismatch
                 ex_pos = exchange_positions[key]
@@ -137,12 +156,27 @@ class PositionReconciler:
                     )
                     discrepancies.append(msg)
                     logger.warning("reconciler_discrepancy %s", msg)
+                    # BUG-198b: sizes don't match.
+                    _inc_discrepancy(eng_exchange_id, "size_mismatch")
 
         # Include stranded positions in discrepancies
         for stranded_key in self._stranded:
             msg = f"{stranded_key}: stranded position (rollback failed)"
             if msg not in discrepancies:
                 discrepancies.append(msg)
+
+        # BUG-198a: publish current stranded/ghost count per exchange as a Gauge
+        # so operators can alert when >0 for >N minutes.
+        try:
+            from src.infra.metrics import GHOST_POSITIONS_CURRENT
+            _counts: dict[str, int] = {ex_id: 0 for ex_id in self._exchanges}
+            for stranded_key in self._stranded:
+                _ex_id = stranded_key.split(":", 1)[0] if ":" in stranded_key else "unknown"
+                _counts[_ex_id] = _counts.get(_ex_id, 0) + 1
+            for _ex_id, _count in _counts.items():
+                GHOST_POSITIONS_CURRENT.labels(exchange=_ex_id).set(_count)
+        except Exception as _gauge_exc:
+            logger.debug("reconciler.ghost_gauge_failed error=%s", _gauge_exc)
 
         # BUG-01: API fetch failures = incomplete data — log separately, not as mismatch
         if fetch_failed_exchanges:

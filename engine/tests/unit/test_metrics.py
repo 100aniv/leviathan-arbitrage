@@ -120,3 +120,39 @@ class TestMetricsRecording:
         from src.infra.metrics import CAPITAL_AVAILABLE, CAPITAL_TOTAL
         CAPITAL_TOTAL.set(100000)
         CAPITAL_AVAILABLE.set(75000)
+
+
+class TestObservabilityMetrics:
+    """BUG-197/198: TCA + ghost + reconciler observability metrics."""
+
+    def test_tca_pnl_delta_registered_and_observable(self):
+        from src.infra.metrics import TCA_PNL_DELTA_BPS
+        assert TCA_PNL_DELTA_BPS is not None
+        TCA_PNL_DELTA_BPS.labels(
+            strategy="cross_exchange_spot", expected_type="immediate_fill",
+        ).observe(3.5)
+        TCA_PNL_DELTA_BPS.labels(
+            strategy="funding_rate", expected_type="funding_cycle_8h",
+        ).observe(-2.0)
+
+    def test_tca_latency_registered_and_observable(self):
+        from src.infra.metrics import TCA_LATENCY_MS
+        assert TCA_LATENCY_MS is not None
+        TCA_LATENCY_MS.labels(strategy="futures_futures").observe(45.0)
+
+    def test_ghost_positions_total_counter(self):
+        from src.infra.metrics import GHOST_POSITIONS_TOTAL
+        assert GHOST_POSITIONS_TOTAL is not None
+        GHOST_POSITIONS_TOTAL.labels(strategy="spot_futures", exchange="binance").inc()
+
+    def test_ghost_positions_current_gauge(self):
+        from src.infra.metrics import GHOST_POSITIONS_CURRENT
+        assert GHOST_POSITIONS_CURRENT is not None
+        GHOST_POSITIONS_CURRENT.labels(exchange="binance").set(0)
+        GHOST_POSITIONS_CURRENT.labels(exchange="bybit").set(2)
+
+    def test_reconciler_discrepancy_counter(self):
+        from src.infra.metrics import RECONCILER_DISCREPANCY_TOTAL
+        assert RECONCILER_DISCREPANCY_TOTAL is not None
+        for _type in ("orphan", "unrecorded", "size_mismatch", "stranded"):
+            RECONCILER_DISCREPANCY_TOTAL.labels(exchange="binance", type=_type).inc()

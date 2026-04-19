@@ -1843,12 +1843,28 @@ class LiveMode(BaseMode):
             _pnl_slippage_usd = _expected_profit - _actual_pnl
             _is_fr = "funding_rate" in sid
             _expected_type = "funding_cycle_8h" if _is_fr else "immediate_fill"
+            _tca_latency_ms = (time.monotonic() - t0) * 1000
             logger.info(
                 "live_mode.tca_pnl_compare strategy=%s expected=%.4f actual=%.4f "
                 "slippage_usd=%.4f slippage_bps=%.1f latency_ms=%.1f expected_type=%s",
                 sid, _expected_profit, _actual_pnl, _pnl_slippage_usd,
-                _slippage_bps_est, (time.monotonic() - t0) * 1000, _expected_type,
+                _slippage_bps_est, _tca_latency_ms, _expected_type,
             )
+            # BUG-197: export TCA to Prometheus (Histogram) for institutional post-trade analysis.
+            try:
+                from src.infra.metrics import TCA_LATENCY_MS, TCA_PNL_DELTA_BPS
+                # Delta in bps relative to expected profit. Avoid div-by-zero on
+                # strategies that report expected=0 (edge-evaporated, cold-start).
+                if abs(_expected_profit) > 1e-9:
+                    _tca_delta_bps = (_pnl_slippage_usd / abs(_expected_profit)) * 10000.0
+                else:
+                    _tca_delta_bps = 0.0
+                TCA_PNL_DELTA_BPS.labels(
+                    strategy=sid or "unknown", expected_type=_expected_type,
+                ).observe(_tca_delta_bps)
+                TCA_LATENCY_MS.labels(strategy=sid or "unknown").observe(_tca_latency_ms)
+            except Exception as _tca_metric_exc:
+                logger.debug("live_mode.tca_metric_export_failed error=%s", _tca_metric_exc)
 
             # Slippage > Alpha auto-kill: track cumulative slippage and halt strategy.
             # BUG-89: Only apply to spread-arb strategies (FF, cross_exchange).
@@ -2568,6 +2584,18 @@ class LiveMode(BaseMode):
                                                 # WS-2.8: Use clear_ghost() instead of direct dict access.
                                                 # clear_ghost removes ALL tracking state for the symbol.
                                                 _strat.clear_ghost(_sym)
+                                                # BUG-198a: export ghost clear to Prometheus.
+                                                try:
+                                                    from src.infra.metrics import GHOST_POSITIONS_TOTAL
+                                                    GHOST_POSITIONS_TOTAL.labels(
+                                                        strategy=_sid or "unknown",
+                                                        exchange=_ex_id or "unknown",
+                                                    ).inc()
+                                                except Exception as _ghost_metric_exc:
+                                                    logger.debug(
+                                                        "live_mode.ghost_metric_export_failed error=%s",
+                                                        _ghost_metric_exc,
+                                                    )
                                     except Exception as _pos_err:
                                         logger.warning("exit_position_check_failed: %s", _pos_err)
                                 if _skip_exit:

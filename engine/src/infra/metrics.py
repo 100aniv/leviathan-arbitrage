@@ -295,6 +295,60 @@ STALE_DATA_EVENTS = Counter(
 )
 
 
+# ---------------------------------------------------------------------------
+# BUG-197: Post-trade TCA (expected vs actual PnL, signal→fill latency)
+# ---------------------------------------------------------------------------
+
+TCA_PNL_DELTA_BPS = Histogram(
+    "leviathan_tca_pnl_delta_bps",
+    "TCA expected vs actual PnL delta in bps (positive = leakage)",
+    ["strategy", "expected_type"],  # expected_type: immediate_fill / funding_cycle_8h
+    buckets=(
+        -100, -50, -20, -10, -5, -2, -1, 0, 1, 2, 5, 10, 20, 50, 100, 500,
+        float("inf"),
+    ),
+)
+
+TCA_LATENCY_MS = Histogram(
+    "leviathan_tca_latency_ms",
+    "Signal-to-fill latency (ms) for TCA analysis",
+    ["strategy"],
+    buckets=(5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500, 1000, 2000, float("inf")),
+)
+
+
+# ---------------------------------------------------------------------------
+# BUG-198a: Ghost positions (exchange confirms no position, engine cleared)
+# ---------------------------------------------------------------------------
+
+GHOST_POSITIONS_TOTAL = Counter(
+    "leviathan_ghost_positions_total",
+    "Ghost position clears (engine state wiped when exchange had none)",
+    ["strategy", "exchange"],
+)
+
+GHOST_POSITIONS_CURRENT = Gauge(
+    "leviathan_ghost_positions_current",
+    "Current stranded/ghost positions awaiting recovery",
+    ["exchange"],
+)
+
+
+# ---------------------------------------------------------------------------
+# BUG-198b: Reconciler discrepancies (engine vs exchange position state)
+# ---------------------------------------------------------------------------
+
+RECONCILER_DISCREPANCY_TOTAL = Counter(
+    "leviathan_reconciler_discrepancy_total",
+    "Position reconciler discrepancies by type",
+    # type: orphan (engine has, exchange doesn't)
+    #       unrecorded (exchange has, engine doesn't)
+    #       size_mismatch
+    #       stranded (rollback failed)
+    ["exchange", "type"],
+)
+
+
 def start_metrics_server(port: int = 8000) -> None:
     """Start Prometheus metrics HTTP server on the given port."""
     start_http_server(port)
