@@ -73,13 +73,21 @@ class PositionReconciler:
         fetch_failed_exchanges: list[str] = []  # BUG-01: track API failures
         for exchange_id, adapter in self._exchanges.items():
             try:
-                positions = await adapter.get_positions()
+                # BUG-184: use strict variant so network errors (RemoteProtocolError,
+                # timeouts) raise instead of silently returning [], which previously
+                # triggered false CRITICAL "engine has position, exchange has no position"
+                # alerts when Binance HTTP/2 connections terminated mid-fetch.
+                _strict = getattr(adapter, "get_positions_strict", None)
+                if _strict is not None:
+                    positions = await _strict()
+                else:
+                    positions = await adapter.get_positions()
                 for pos in positions:
                     key = f"{pos.exchange_id}:{pos.symbol}"
                     exchange_positions[key] = pos
             except Exception as exc:
                 logger.error("reconciler_fetch_error exchange=%s error=%s", exchange_id, exc)
-                fetch_failed_exchanges.append(exchange_id)  # BUG-01: don't return false negative
+                fetch_failed_exchanges.append(exchange_id)  # BUG-01/184: don't return false negative
 
         discrepancies: list[str] = []
 

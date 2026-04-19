@@ -34,9 +34,9 @@ def make_position(
 def mock_exchange_a() -> MagicMock:
     ex = MagicMock()
     ex.exchange_id = "binance"
-    ex.get_positions = AsyncMock(return_value=[
-        make_position("binance", "BTC/USDT", Decimal("0.1"))
-    ])
+    _positions = [make_position("binance", "BTC/USDT", Decimal("0.1"))]
+    ex.get_positions = AsyncMock(return_value=_positions)
+    ex.get_positions_strict = AsyncMock(return_value=_positions)  # BUG-184
     return ex
 
 
@@ -44,9 +44,9 @@ def mock_exchange_a() -> MagicMock:
 def mock_exchange_b() -> MagicMock:
     ex = MagicMock()
     ex.exchange_id = "okx"
-    ex.get_positions = AsyncMock(return_value=[
-        make_position("okx", "BTC/USDT", Decimal("-0.1"))
-    ])
+    _positions = [make_position("okx", "BTC/USDT", Decimal("-0.1"))]
+    ex.get_positions = AsyncMock(return_value=_positions)
+    ex.get_positions_strict = AsyncMock(return_value=_positions)  # BUG-184
     return ex
 
 
@@ -123,6 +123,7 @@ async def test_reconcile_detects_missing_exchange_position(reconciler: PositionR
     mock_a = MagicMock()
     mock_a.exchange_id = "binance"
     mock_a.get_positions = AsyncMock(return_value=[])  # empty!
+    mock_a.get_positions_strict = AsyncMock(return_value=[])  # BUG-184
     r = PositionReconciler(exchanges=[mock_a])
     engine_positions = {
         "binance:BTC/USDT": make_position("binance", "BTC/USDT", Decimal("0.1")),
@@ -185,6 +186,7 @@ async def test_reconcile_fetch_failure_sets_field_not_discrepancy() -> None:
     mock_ex = MagicMock()
     mock_ex.exchange_id = "binance"
     mock_ex.get_positions = AsyncMock(side_effect=Exception("API timeout"))
+    mock_ex.get_positions_strict = AsyncMock(side_effect=Exception("API timeout"))  # BUG-184
 
     callback_called = []
     r = PositionReconciler(
@@ -205,11 +207,12 @@ async def test_reconcile_fetch_failure_and_real_discrepancy_fires_callback() -> 
     mock_a = MagicMock()
     mock_a.exchange_id = "binance"
     mock_a.get_positions = AsyncMock(side_effect=Exception("timeout"))
+    mock_a.get_positions_strict = AsyncMock(side_effect=Exception("timeout"))  # BUG-184
     mock_b = MagicMock()
     mock_b.exchange_id = "okx"
-    mock_b.get_positions = AsyncMock(return_value=[
-        make_position("okx", "BTC/USDT", Decimal("0.5"))
-    ])
+    _b_positions = [make_position("okx", "BTC/USDT", Decimal("0.5"))]
+    mock_b.get_positions = AsyncMock(return_value=_b_positions)
+    mock_b.get_positions_strict = AsyncMock(return_value=_b_positions)  # BUG-184
 
     callback_called = []
     r = PositionReconciler(

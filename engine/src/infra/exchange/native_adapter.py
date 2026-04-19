@@ -326,6 +326,19 @@ class NativeAdapter(abc.ABC):
             logger.error("Get positions error %s: %r", self.exchange_id, e)
             return []
 
+    async def get_positions_strict(self) -> list[Position]:
+        # BUG-184: reconciler needs to distinguish "exchange has no positions"
+        # from "failed to fetch positions". Swallowing the error + returning []
+        # made RemoteProtocolError look like an empty account, which fired
+        # false CRITICAL reconciler_discrepancy alerts on live Binance positions.
+        await self._rate_limiter.acquire("default")
+        try:
+            return await self._rest_get_positions()
+        except Exception as e:
+            self._health.record_error()
+            logger.error("get_positions_strict error %s: %r", self.exchange_id, e)
+            raise
+
     async def get_fee_rate(self, symbol: str) -> FeeRate:
         await self._rate_limiter.acquire("default")
         try:

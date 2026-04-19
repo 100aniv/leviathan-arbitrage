@@ -42,9 +42,9 @@ def _denormalize_symbol(inst_id: str) -> str:
 
 
 class BitgetFuturesCollector(BaseCollector):
-    """Collects Bitget USDT-M perpetual futures orderbook data via the public V2 WebSocket.
+    """Collects Bitget USDT-M perpetual futures orderbook via UTA V3 public WebSocket.
 
-    Subscribes to the "books15" channel using instType="USDT-FUTURES".
+    Subscribes to the "books5" topic using instType="usdt-futures".
     Both "snapshot" and "update" actions are treated as full orderbook replacements,
     sufficient for cross-exchange arbitrage and funding-rate strategies.
 
