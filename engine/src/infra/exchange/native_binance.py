@@ -135,12 +135,12 @@ class BinanceNativeAdapter(NativeAdapter):
             and _order_id
             and (_status != _ORDER_STATUS_FILLED or _exec_qty <= 0 or _avg_px <= 0)
         ):
-            # BUG-188: 3x100ms (max 345ms) → 2x50ms (max 115ms). Binance MARKET
-            # typically FILLED within 30-50ms, so short intervals catch it on the
-            # first probe. Userspace WS stream migration (ORDER_TRADE_UPDATE) is the
-            # path to <50ms — tracked as BUG-189.
+            # BUG-188.1: 2x50ms (max 115ms) → 2x30ms (max 75ms). v218 warm-state
+            # measurement showed 142ms with 50ms probes — tightening to 30ms keeps
+            # ghost-prevention while pushing warm-path below 100ms. BUG-189 remains
+            # the proper event-driven fix.
             for _attempt in range(2):
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.03)
                 try:
                     _qp = {"symbol": _bsym, "orderId": _order_id}
                     _poll = await self._signed_request("GET", "/fapi/v1/order", params=_qp)
