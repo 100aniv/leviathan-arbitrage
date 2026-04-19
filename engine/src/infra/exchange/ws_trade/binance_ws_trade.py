@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
-import json
+import orjson
 import logging
 import time
 import uuid
@@ -78,7 +78,7 @@ class BinanceWSTrade:
         try:
             async for raw in self._ws:
                 try:
-                    msg = json.loads(raw)
+                    msg = orjson.loads(raw)
                     req_id = msg.get("id")
                     fut = self._futures.pop(req_id, None) if req_id else None
                     if fut and not fut.done():
@@ -147,7 +147,7 @@ class BinanceWSTrade:
         msg = {"id": req_id, "method": "order.place", "params": params}
         fut: asyncio.Future = asyncio.Future()
         self._futures[req_id] = fut
-        await self._ws.send(json.dumps(msg))
+        await self._ws.send(orjson.dumps(msg))
         try:
             return await asyncio.wait_for(fut, timeout=_RESPONSE_TIMEOUT_S)
         except asyncio.TimeoutError:
@@ -196,7 +196,7 @@ class BinanceWSTrade:
         msg = {"id": req_id, "method": "order.cancel", "params": params}
         fut: asyncio.Future = asyncio.Future()
         self._futures[req_id] = fut
-        await self._ws.send(json.dumps(msg))
+        await self._ws.send(orjson.dumps(msg))
         try:
             return await asyncio.wait_for(fut, timeout=_RESPONSE_TIMEOUT_S)
         except asyncio.TimeoutError:

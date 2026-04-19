@@ -20,7 +20,7 @@ Reference:
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import time
 import uuid
 from typing import Any, Optional
@@ -194,7 +194,7 @@ class UpbitUserDataStream:
                     self._ws = ws
                     backoff = _RECONNECT_BACKOFF_INITIAL_S
                     # Send subscribe frame.
-                    await ws.send(json.dumps(self._build_subscribe_message()))
+                    await ws.send(orjson.dumps(self._build_subscribe_message()))
                     logger.info("upbit_user_data_ws_connected")
                     async for raw in ws:
                         try:
@@ -224,11 +224,9 @@ class UpbitUserDataStream:
     # ------------------------------------------------------------------
 
     def _dispatch_event(self, raw: Any) -> None:
-        if isinstance(raw, bytes):
-            raw = raw.decode("utf-8", errors="replace")
         if not raw:
             return
-        msg = json.loads(raw)
+        msg = orjson.loads(raw)
         if not isinstance(msg, dict):
             return
         event_type = msg.get("type")

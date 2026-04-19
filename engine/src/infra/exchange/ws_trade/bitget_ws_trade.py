@@ -17,7 +17,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
-import json
+import orjson
 import logging
 import time
 import uuid
@@ -81,7 +81,7 @@ class BitgetWSTrade:
             }],
         }
         self._login_future = asyncio.Future()
-        await self._ws.send(json.dumps(msg))
+        await self._ws.send(orjson.dumps(msg))
         try:
             resp = await asyncio.wait_for(self._login_future, timeout=_LOGIN_TIMEOUT_S)
             # BUG-136: log full response for diagnostics
@@ -122,7 +122,7 @@ class BitgetWSTrade:
         try:
             async for raw in self._ws:
                 try:
-                    msg = json.loads(raw)
+                    msg = orjson.loads(raw)
                     # BUG-136: log every inbound message at DEBUG (trade responses are rare)
                     logger.debug("BitgetWSTrade inbound: %s", raw[:500] if isinstance(raw, str) else raw)
                     # Login response has event=login (no id)
@@ -270,8 +270,8 @@ class BitgetWSTrade:
         fut: asyncio.Future = asyncio.Future()
         self._futures[req_id] = fut
         # BUG-136: log request body for diagnostics (redact nothing — internal log)
-        logger.info("BitgetWSTrade place_order req: %s", json.dumps(msg))
-        await self._ws.send(json.dumps(msg))
+        logger.info("BitgetWSTrade place_order req: %s", orjson.dumps(msg).decode())
+        await self._ws.send(orjson.dumps(msg))
         try:
             resp = await asyncio.wait_for(fut, timeout=_RESPONSE_TIMEOUT_S)
             logger.info("BitgetWSTrade place_order resp: %s", resp)

@@ -25,7 +25,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
-import json
+import orjson
 import logging
 import time
 import uuid
@@ -164,8 +164,8 @@ class CoinoneUserDataStream:
             "nonce": str(uuid.uuid4()),
             "timestamp": int(time.time() * 1000),
         }
-        payload_json = json.dumps(payload)
-        encoded_payload = base64.b64encode(payload_json.encode("utf-8")).decode("utf-8")
+        payload_json = orjson.dumps(payload)
+        encoded_payload = base64.b64encode(payload_json).decode("utf-8")
         signature = hmac.new(
             self._secret_key,
             encoded_payload.encode("utf-8"),
@@ -197,7 +197,7 @@ class CoinoneUserDataStream:
                     backoff = _RECONNECT_BACKOFF_INITIAL_S
                     # Subscribe MYORDER (no topic filter → all symbols).
                     await ws.send(
-                        json.dumps(
+                        orjson.dumps(
                             {
                                 "request_type": "SUBSCRIBE",
                                 "channel": "MYORDER",
@@ -239,7 +239,7 @@ class CoinoneUserDataStream:
             if self._ws is None:
                 continue
             try:
-                await self._ws.send(json.dumps({"request_type": "PING"}))
+                await self._ws.send(orjson.dumps({"request_type": "PING"}))
                 logger.debug("coinone_user_data_ping_sent")
             except asyncio.CancelledError:
                 return
@@ -251,11 +251,9 @@ class CoinoneUserDataStream:
     # ------------------------------------------------------------------
 
     def _dispatch_event(self, raw: Any) -> None:
-        if isinstance(raw, bytes):
-            raw = raw.decode("utf-8", errors="replace")
         if not raw:
             return
-        msg = json.loads(raw)
+        msg = orjson.loads(raw)
         if not isinstance(msg, dict):
             return
         # Response envelope uses either DEFAULT ("response_type"/"channel"/"data")

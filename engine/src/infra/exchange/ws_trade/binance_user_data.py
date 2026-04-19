@@ -18,7 +18,7 @@ Reference:
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import logging
 import time
 from typing import Any, Awaitable, Callable, Optional
@@ -239,11 +239,9 @@ class BinanceUserDataStream:
     # ------------------------------------------------------------------
 
     def _dispatch_event(self, raw: Any) -> None:
-        if isinstance(raw, bytes):
-            raw = raw.decode("utf-8", errors="replace")
         if not raw:
             return
-        msg = json.loads(raw)
+        msg = orjson.loads(raw)
         if not isinstance(msg, dict):
             return
         event_type = msg.get("e")

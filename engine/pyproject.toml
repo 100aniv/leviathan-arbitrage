@@ -30,6 +30,7 @@ dependencies = [
     "statsmodels>=0.14",
     "psutil>=5.9",
     "dynaconf>=3.2",
+    "orjson>=3.9",
 ]
 
 [project.optional-dependencies]
