@@ -78,6 +78,9 @@ class BinanceNativeAdapter(NativeAdapter):
         self._step_sizes: dict[str, Decimal] = {}  # PHOENIX: LOT_SIZE cache (symbol → stepSize)
         # BUG-120 Phase 5: WS trade client (lazy, futures only for now)
         self._ws_trade: Any = None  # BinanceWSTrade instance when enabled
+        # BUG-189: userData WS stream for event-driven ORDER_TRADE_UPDATE fills
+        self._user_stream: Any = None  # BinanceUserDataStream (futures only)
+        self._user_stream_lock = asyncio.Lock()
 
     async def _get_ws_trade(self) -> Any:
         """Lazy-connect Binance Futures WS trade client (BUG-120)."""
@@ -89,6 +92,49 @@ class BinanceNativeAdapter(NativeAdapter):
             await self._ws_trade.connect()
             logger.info("Binance WS trade connected (futures)")
         return self._ws_trade
+
+    async def _get_user_stream(self) -> Any:
+        """Lazy-start Binance Futures userData stream (BUG-189).
+
+        Futures only. Returns None for spot or if start() fails. Failure is
+        non-fatal — callers fall back to REST polling (BUG-166/188 path).
+        """
+        if self._market_type != "futures":
+            return None
+        if self._user_stream is not None:
+            return self._user_stream
+        async with self._user_stream_lock:
+            if self._user_stream is not None:
+                return self._user_stream
+            try:
+                from src.infra.exchange.ws_trade import BinanceUserDataStream
+                stream = BinanceUserDataStream(self._api_key, self._signed_request)
+                await stream.start()
+                self._user_stream = stream
+                logger.info("binance_user_data_stream_started (futures)")
+            except Exception as exc:
+                logger.warning(
+                    "binance_user_data_stream_start_failed err=%s — REST fallback",
+                    exc,
+                )
+                self._user_stream = None
+        return self._user_stream
+
+    async def disconnect(self) -> None:
+        """Stop userData stream + ws_trade before the base adapter teardown."""
+        if self._user_stream is not None:
+            try:
+                await self._user_stream.stop()
+            except Exception as exc:
+                logger.debug("binance_user_data_stop_failed err=%s", exc)
+            self._user_stream = None
+        if self._ws_trade is not None:
+            try:
+                await self._ws_trade.close()
+            except Exception as exc:
+                logger.debug("binance_ws_trade_close_failed err=%s", exc)
+            self._ws_trade = None
+        await super().disconnect()
 
     async def _ws_place_order(self, order: Order) -> Trade:
         """Place order via WebSocket (BUG-120). Raises on failure for REST fallback."""
@@ -135,28 +181,63 @@ class BinanceNativeAdapter(NativeAdapter):
             and _order_id
             and (_status != _ORDER_STATUS_FILLED or _exec_qty <= 0 or _avg_px <= 0)
         ):
-            # BUG-188.1: 2x50ms (max 115ms) → 2x30ms (max 75ms). v218 warm-state
-            # measurement showed 142ms with 50ms probes — tightening to 30ms keeps
-            # ghost-prevention while pushing warm-path below 100ms. BUG-189 remains
-            # the proper event-driven fix.
-            for _attempt in range(2):
-                await asyncio.sleep(0.03)
+            # BUG-189: event-driven fill confirmation via userData ORDER_TRADE_UPDATE.
+            # Falls back to REST polling (BUG-166/188) if stream unavailable, event
+            # times out, or any exception is raised. The REST path is preserved as
+            # defence against userData crashes.
+            _fill_confirmed = False
+            try:
+                _user_stream = await self._get_user_stream()
+            except Exception as _us_err:
+                logger.debug("user_stream_unavailable err=%s", _us_err)
+                _user_stream = None
+            if _user_stream is not None:
                 try:
-                    _qp = {"symbol": _bsym, "orderId": _order_id}
-                    _poll = await self._signed_request("GET", "/fapi/v1/order", params=_qp)
-                    if _poll.get("status") == _ORDER_STATUS_FILLED:
-                        _exec_qty = _pos_dec(_poll.get("executedQty"))
-                        _avg_px_p = _pos_dec(_poll.get("avgPrice"))
-                        if _avg_px_p > 0:
-                            _avg_px = _avg_px_p
-                            _px = _avg_px
-                        logger.debug(
-                            "ws_post_ack_fill_confirmed symbol=%s orderId=%s attempt=%d qty=%s px=%s",
-                            order.symbol, _order_id, _attempt + 1, _exec_qty, _px,
-                        )
-                        break
-                except Exception as _pe:
-                    logger.debug("ws_post_ack_poll_failed orderId=%s: %s", _order_id, _pe)
+                    _fill = await _user_stream.wait_for_order_fill(
+                        _order_id, timeout=0.3
+                    )
+                except Exception as _wf_err:
+                    logger.debug(
+                        "user_stream_wait_failed orderId=%s err=%s",
+                        _order_id, _wf_err,
+                    )
+                    _fill = None
+                if _fill is not None:
+                    _fill_exec_qty = _pos_dec(_fill.get("z"))
+                    _fill_avg_px = _pos_dec(_fill.get("ap"))
+                    if _fill_exec_qty > 0:
+                        _exec_qty = _fill_exec_qty
+                    if _fill_avg_px > 0:
+                        _avg_px = _fill_avg_px
+                        _px = _avg_px
+                    _fill_confirmed = True
+                    logger.debug(
+                        "ws_user_data_fill_confirmed symbol=%s orderId=%s qty=%s px=%s",
+                        order.symbol, _order_id, _exec_qty, _px,
+                    )
+            if not _fill_confirmed:
+                # BUG-188.1 fallback: 2x50ms (max 115ms) → 2x30ms (max 75ms). v218
+                # warm-state measurement showed 142ms with 50ms probes — tightening
+                # to 30ms keeps ghost-prevention while pushing warm-path below 100ms.
+                # Kept as defence when userData stream is unavailable.
+                for _attempt in range(2):
+                    await asyncio.sleep(0.03)
+                    try:
+                        _qp = {"symbol": _bsym, "orderId": _order_id}
+                        _poll = await self._signed_request("GET", "/fapi/v1/order", params=_qp)
+                        if _poll.get("status") == _ORDER_STATUS_FILLED:
+                            _exec_qty = _pos_dec(_poll.get("executedQty"))
+                            _avg_px_p = _pos_dec(_poll.get("avgPrice"))
+                            if _avg_px_p > 0:
+                                _avg_px = _avg_px_p
+                                _px = _avg_px
+                            logger.debug(
+                                "ws_post_ack_fill_confirmed symbol=%s orderId=%s attempt=%d qty=%s px=%s",
+                                order.symbol, _order_id, _attempt + 1, _exec_qty, _px,
+                            )
+                            break
+                    except Exception as _pe:
+                        logger.debug("ws_post_ack_poll_failed orderId=%s: %s", _order_id, _pe)
 
         _qty = _exec_qty if _exec_qty > 0 else (_orig_qty if _orig_qty > 0 else order.amount)
         if _qty <= 0:
