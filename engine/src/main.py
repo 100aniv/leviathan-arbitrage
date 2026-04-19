@@ -2953,6 +2953,11 @@ class Engine:
             cost_feedback=getattr(self, "_cost_feedback", None),  # WS-B: shared TCAAdaptiveFeedback
             min_notional_registry=self._min_notional_registry,  # BUG-228c: runtime min_notional
         )
+        from src.reconciliation import ExchangePnLSnapshot, PnLLedger, PnLReconciler  # Path-B Day-1
+        self._pnl_snapshot = ExchangePnLSnapshot(adapters=list(self._exchanges.values()), db_pool=self._db_pool)
+        self._pnl_ledger = PnLLedger(snapshot=self._pnl_snapshot, engine_pnl_getter=lambda: getattr(self._live_mode._stats, "total_pnl", 0.0))
+        self._pnl_reconciler = PnLReconciler(snapshot=self._pnl_snapshot, engine_pnl_getter=lambda: getattr(self._live_mode._stats, "total_pnl", 0.0), ledger=self._pnl_ledger, telegram=self._telegram)
+        self._live_mode._pnl_ledger = self._pnl_ledger  # inject post-init (frozen live.py contract)
 
         try:
             await self._live_mode.start()

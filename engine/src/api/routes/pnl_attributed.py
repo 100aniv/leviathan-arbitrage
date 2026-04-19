@@ -203,6 +203,27 @@ def _engine_total_pnl(ctx: Any) -> float:
         return 0.0
 
 
+async def _ledger_live_pnl(ctx: Any) -> dict[str, Any] | None:
+    """Read Path-B PnLLedger if injected; returns None when unavailable."""
+    engine = getattr(ctx, "engine", None)
+    ledger = getattr(engine, "_pnl_ledger", None) if engine is not None else None
+    if ledger is None:
+        return None
+    try:
+        raw = await ledger.get_live_pnl_usd()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("pnl_attributed.ledger_read_failed err=%s", exc)
+        return None
+    ts = raw.get("last_reconciled_ts")
+    return {
+        "exchange_pnl_usd": float(raw.get("exchange_pnl_usd", 0) or 0),
+        "engine_pnl_usd": float(raw.get("engine_pnl_usd", 0) or 0),
+        "divergence_usd": float(raw.get("divergence_usd", 0) or 0),
+        "status": str(raw.get("status", "pending")),
+        "last_reconciled_ts": ts.isoformat() if hasattr(ts, "isoformat") else ts,
+    }
+
+
 @router.get("/pnl/attributed", dependencies=[Depends(require_auth)])
 async def get_pnl_attributed(request: Request) -> JSONResponse:
     """Return 7-layer PnL attribution suitable for the dashboard /pnl page."""
@@ -215,7 +236,14 @@ async def get_pnl_attributed(request: Request) -> JSONResponse:
     slippage_est = _slippage_estimated(ctx)
     basis_capture: dict[str, float] = {}  # WS-D will populate
     recon_variance = _reconciliation_variance()
-    engine_total = _engine_total_pnl(ctx)
+    # Path-B Day-1: PnLLedger is the canonical operator-facing PnL source.
+    # engine_total_pnl remains as the diagnostic engine-TCA number.
+    ledger_live = await _ledger_live_pnl(ctx)
+    engine_total = (
+        round(ledger_live["engine_pnl_usd"], 4)
+        if ledger_live is not None
+        else _engine_total_pnl(ctx)
+    )
 
     # grand_total: sum the six accounting layers (variance is diagnostic only).
     grand = 0.0
@@ -236,4 +264,6 @@ async def get_pnl_attributed(request: Request) -> JSONResponse:
         "reconciliation_variance_pct": recon_variance,
         "engine_total_pnl": engine_total,
         "grand_total": round(grand, 4),
+        # Path-B Day-1: canonical operator PnL view fed by PnLLedger.
+        "ledger": ledger_live,
     })
