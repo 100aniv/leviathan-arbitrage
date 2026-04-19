@@ -457,6 +457,14 @@ SIGNALS_REJECTED_TOXICITY = Counter(
     ["strategy", "exchange", "reason"],  # reason: imbalance / depth_volatility / empty_book
 )
 
+# BUG-220: Reject orders below per-exchange minimum notional (e.g. Binance futures $20).
+# Incremented when the executor/trade_consumer filters a signal because notional < min.
+SIGNALS_REJECTED_NOTIONAL = Counter(
+    "leviathan_signals_rejected_notional_total",
+    "Signals rejected because leg notional is below the exchange-specific minimum",
+    ["exchange", "symbol"],
+)
+
 
 # ---------------------------------------------------------------------------
 # WS-D3: Sharpe + Max Drawdown (30-day rolling)

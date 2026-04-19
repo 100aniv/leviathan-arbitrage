@@ -976,16 +976,30 @@ class AtomicExecutor:
                     )
                     leg1_order = leg1_order.model_copy(update={"amount": _synced})
                     leg2_order = leg2_order.model_copy(update={"amount": _synced})
-                # BUG-71 Major #2: Reject if synced notional < exchange MIN_NOTIONAL.
+                # BUG-71 Major #2 / BUG-220: Reject if synced notional < exchange MIN_NOTIONAL.
                 # Each adapter independently bumps sub-notional qty using its own step size,
                 # desynchronizing the legs again. Reject here to prevent the desync.
+                # BUG-220: Binance futures rejects notional < $20 (-4164). Use per-exchange
+                # overrides from execution.exchange_min_notional (fallback = global default).
                 from src.core.config_loader import get_config as _gc
-                _min_notional = Decimal(str(_gc("execution.min_trade_notional_usd") or 5))
+                _global_min = Decimal(str(_gc("execution.min_trade_notional_usd") or 5))
+                _per_ex_map = _gc("execution.exchange_min_notional") or {}
+                _ex_a_min = Decimal(str(_per_ex_map.get(ex_a_id, _global_min)))
+                _ex_b_min = Decimal(str(_per_ex_map.get(ex_b_id, _global_min)))
+                _min_notional = max(_ex_a_min, _ex_b_min, _global_min)
                 _synced_notional = _synced * (leg1_order.price or Decimal("0"))
                 if Decimal("0") < _synced_notional < _min_notional:
+                    try:
+                        from src.infra.metrics import SIGNALS_REJECTED_NOTIONAL as _m
+                        _bind_ex = ex_a_id if _ex_a_min >= _ex_b_min else ex_b_id
+                        _m.labels(exchange=_bind_ex, symbol=leg1_order.symbol).inc()
+                    except Exception:
+                        pass
                     logger.warning(
-                        "lot_size_sync_sub_notional symbol=%s synced=%s notional=%.4f min=%.2f — rejecting",
+                        "signal_rejected_notional_below_min symbol=%s synced=%s notional=%.4f "
+                        "min=%.2f ex_a=%s min_a=%.2f ex_b=%s min_b=%.2f — rejecting",
                         leg1_order.symbol, _synced, float(_synced_notional), float(_min_notional),
+                        ex_a_id, float(_ex_a_min), ex_b_id, float(_ex_b_min),
                     )
                     if _margin_reserved_a:
                         await self._margin_tracker.release(ex_a_id, _required_a)

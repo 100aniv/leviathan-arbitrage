@@ -1524,20 +1524,32 @@ class LiveMode(BaseMode):
         # --- Execute via DI executor (v7: global semaphore — max 2 concurrent) ---
         await self._trade_semaphore.acquire()
         try:
-            # PHOENIX: Filter trades where any leg notional < min (config-driven)
-            # Prevents imbalanced positions from per-adapter leg-level adjustments.
+            # PHOENIX / BUG-220: Filter trades where any leg notional < exchange-specific min.
+            # Prevents imbalanced positions from per-adapter leg-level adjustments and
+            # Binance futures -4164 rejections (notional < $20).
             from src.core.config_loader import get_config
-            _MIN_TRADE_NOTIONAL = Decimal(str(get_config("execution.min_trade_notional_usd") or 5))
+            _GLOBAL_MIN = Decimal(str(get_config("execution.min_trade_notional_usd") or 5))
+            _PER_EX_MIN = get_config("execution.exchange_min_notional") or {}
             _USD_QUOTES = {"USDT", "USDC", "USD", "BUSD", "DAI"}
+
+            def _leg_min(exchange_id: str) -> Decimal:
+                return Decimal(str(_PER_EX_MIN.get(exchange_id, _GLOBAL_MIN)))
+
             _small_legs = [
                 leg for leg in trade_request.legs
                 if leg.price and leg.price > 0
                 and leg.symbol.split("/")[-1].upper() in _USD_QUOTES
-                and leg.size * leg.price < _MIN_TRADE_NOTIONAL
+                and leg.size * leg.price < _leg_min(leg.exchange_id)
             ]
             if _small_legs:
+                try:
+                    from src.infra.metrics import SIGNALS_REJECTED_NOTIONAL as _m
+                    for _leg in _small_legs:
+                        _m.labels(exchange=_leg.exchange_id, symbol=_leg.symbol).inc()
+                except Exception:
+                    pass
                 logger.debug(
-                    "live_mode.min_notional_filtered strategy=%s small_legs=%d max_notional=%.2f",
+                    "signal_rejected_notional_below_min strategy=%s small_legs=%d max_notional=%.2f",
                     sid, len(_small_legs),
                     float(max(l.size * l.price for l in _small_legs if l.price)),
                 )

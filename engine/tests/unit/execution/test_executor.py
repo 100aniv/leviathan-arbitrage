@@ -868,6 +868,69 @@ async def test_multi_leg_halted_rejects(executor: AtomicExecutor) -> None:
     assert result.legs == []
 
 
+# ---------------------------------------------------------------------------
+# BUG-220: per-exchange min_notional guard (Binance futures $20, -4164)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cross_exchange_rejects_below_binance_futures_min_notional(
+    exchange_a: MagicMock, exchange_b: MagicMock
+) -> None:
+    """BUG-220: $0.34 notional ETH order on binance_futures must be rejected.
+
+    The v230 canary saw Binance reject orders with quantity=0.004 on ETHUSDT
+    (~$0.34 notional) with error code -4164 'notional < 20'. The executor must
+    reject these pre-submit using execution.exchange_min_notional overrides.
+    """
+    exchange_a.exchange_id = "binance_futures"
+    exchange_b.exchange_id = "okx"
+
+    cfg = ExecutionConfig(
+        timeout_ms=500,
+        partial_fill_threshold=Decimal("0.8"),
+        post_reconcile_delay_s=0.01,
+        split_threshold_usd=Decimal("999999999"),
+    )
+    exec_ = AtomicExecutor(
+        exchanges={"binance_futures": exchange_a, "okx": exchange_b},
+        config=cfg,
+    )
+
+    # Stub the config loader to inject a $20 per-exchange override for binance_futures
+    from src.core import config_loader as _cfg
+
+    real_get_config = _cfg.get_config
+
+    def fake_get_config(key: str, default=None):
+        if key == "execution.exchange_min_notional":
+            return {"binance_futures": 20, "bitget_futures": 6}
+        if key == "execution.min_trade_notional_usd":
+            return 5
+        return real_get_config(key, default)
+
+    with patch.object(_cfg, "get_config", side_effect=fake_get_config):
+        # amount=0.004, price=$85 → notional = $0.34 ≪ $20 binance_futures min
+        leg1 = Order(
+            exchange_id="binance_futures", symbol="ETH/USDT", side=OrderSide.BUY,
+            order_type=OrderType.LIMIT, price=Decimal("85"), amount=Decimal("0.004"),
+        )
+        leg2 = Order(
+            exchange_id="okx", symbol="ETH/USDT", side=OrderSide.SELL,
+            order_type=OrderType.LIMIT, price=Decimal("85"), amount=Decimal("0.004"),
+        )
+        result = await exec_.execute_cross_exchange(
+            leg1_order=leg1, leg2_order=leg2,
+            strategy_id="bug220", min_edge=Decimal("0"),
+        )
+
+    assert result.status == ExecutionStatus.REJECTED
+    assert "notional" in (result.error or "").lower()
+    # No orders should have been submitted to either exchange.
+    exchange_a.place_order.assert_not_called()
+    exchange_b.place_order.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_multi_leg_health_rejects(
     executor: AtomicExecutor, exchange_a: MagicMock

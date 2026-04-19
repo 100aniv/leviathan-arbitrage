@@ -306,17 +306,29 @@ class TradeRequestConsumer:
             )
             return True  # 의도적 거부 — ack
 
-        # PHOENIX: Filter trades where any leg notional < min (config-driven)
-        # Prevents imbalanced positions from per-adapter min_notional boosts.
+        # PHOENIX / BUG-220: Filter trades where any leg notional < exchange-specific min.
+        # Prevents imbalanced positions from per-adapter min_notional boosts and Binance
+        # futures -4164 rejections ("notional < 20").
         from src.core.config_loader import get_config
-        _MIN_TRADE_NOTIONAL = Decimal(str(get_config("execution.min_trade_notional_usd") or 5))
+        _GLOBAL_MIN = Decimal(str(get_config("execution.min_trade_notional_usd") or 5))
+        _PER_EX_MIN = get_config("execution.exchange_min_notional") or {}
+
+        def _leg_min_notional(exchange_id: str) -> Decimal:
+            return Decimal(str(_PER_EX_MIN.get(exchange_id, _GLOBAL_MIN)))
+
         _small_legs = [
             leg for leg in trade_request.legs
-            if leg.price and leg.price > 0 and leg.size * leg.price < _MIN_TRADE_NOTIONAL
+            if leg.price and leg.price > 0 and leg.size * leg.price < _leg_min_notional(leg.exchange_id)
         ]
         if _small_legs:
+            try:
+                from src.infra.metrics import SIGNALS_REJECTED_NOTIONAL as _m
+                for _leg in _small_legs:
+                    _m.labels(exchange=_leg.exchange_id, symbol=_leg.symbol).inc()
+            except Exception:
+                pass
             logger.info(
-                "trade_consumer.min_notional_filtered strategy=%s legs=%d max_notional_usd=%.2f",
+                "signal_rejected_notional_below_min strategy=%s legs=%d max_notional_usd=%.2f",
                 trade_request.strategy_id,
                 len(_small_legs),
                 float(max((l.size * l.price for l in _small_legs if l.price), default=Decimal("0"))),

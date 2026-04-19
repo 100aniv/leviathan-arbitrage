@@ -138,8 +138,9 @@
     "split_delay_ms": 200,
     "limit_fallback_spread_bps": 30,
     "limit_fallback_timeout_ms": 5000,
+    "_bug_220_note": "Binance futures rejects orders with notional < $20 (code -4164). Bitget futures ~ $6. KRW exchanges ~ 5000 KRW. Values override min_trade_notional_usd when leg targets that exchange.",
     "exchange_min_notional": {
-      "binance_futures": 5,
+      "binance_futures": 20,
       "bitget_futures": 6
     }
   },
