@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Trade latency 예산 3s 내 수용. DB write가 trade critical path가 아니므로
 # 더 관대해도 괜찮음.
 _PG_TIMEOUT: float = 3.000   # 3000ms
-_REDIS_TIMEOUT: float = 0.050  # 50ms (was 2ms)
+_REDIS_TIMEOUT: float = 0.500  # BUG-207: 50ms → 500ms. v225 hit 50ms cap 4x in 13min causing HALT cascade on FF fills; Docker Redis occasional spikes to 100-300ms are normal, should not halt trading. PG WAL (3s) is the critical-path write; Redis is shadow state.
 
 
 class TradeRejectedError(Exception):
