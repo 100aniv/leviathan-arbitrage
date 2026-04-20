@@ -82,6 +82,54 @@ class AtomicOrderExecutor:
         for k in expired:
             del self._executed_keys[k]
 
+    async def try_ioc(
+        self,
+        exchange: ExchangeOrderAPI,
+        symbol: str,
+        side: str,
+        price: Decimal,
+        size: Decimal,
+        ttl_ms: float | None = None,
+    ) -> tuple[bool, Decimal, Decimal, float]:
+        """Pure IOC attempt — no market fallback, no idempotency, no depth sizing.
+
+        Path-B v2 Day 11: extracted primitive used by the parallel
+        cross-exchange executor. `execute()` below still calls this
+        internally so existing callers stay byte-compatible.
+
+        Args:
+            exchange: Adapter implementing `place_ioc_limit`.
+            symbol: Market symbol.
+            side: ``"buy"``/``"sell"`` (or ``"bid"``/``"ask"``).
+            price: Limit price for the IOC order.
+            size: Requested size.
+            ttl_ms: Hard timeout. Defaults to ``self._timeout_ms``.
+
+        Returns:
+            ``(filled, filled_size, avg_price, elapsed_ms)`` tuple.
+            ``filled`` is ``True`` iff ``filled_size >= size * IOC_MIN_FILL_RATIO``.
+            On timeout or exception: ``(False, Decimal("0"), price, elapsed_ms)``.
+        """
+        timeout_s = (ttl_ms if ttl_ms is not None else self._timeout_ms) / 1000
+        start = time.monotonic()
+        try:
+            result = await asyncio.wait_for(
+                exchange.place_ioc_limit(symbol, side, price, size),
+                timeout=timeout_s,
+            )
+        except asyncio.TimeoutError:
+            elapsed = (time.monotonic() - start) * 1000
+            logger.warning("ioc_order_timeout", symbol=symbol, side=side)
+            return False, Decimal("0"), price, elapsed
+        except Exception:
+            elapsed = (time.monotonic() - start) * 1000
+            logger.warning("ioc_order_error", symbol=symbol, side=side, exc_info=True)
+            return False, Decimal("0"), price, elapsed
+
+        elapsed = (time.monotonic() - start) * 1000
+        filled = result.filled_size >= size * self.IOC_MIN_FILL_RATIO
+        return filled, result.filled_size, result.avg_price, elapsed
+
     async def execute(
         self,
         exchange: ExchangeOrderAPI,
@@ -129,36 +177,28 @@ class AtomicOrderExecutor:
             self._executed_keys[idem_key] = time.time()
 
         start = time.monotonic()
-        remaining = size
 
-        try:
-            result = await asyncio.wait_for(
-                exchange.place_ioc_limit(symbol, side, price, size),
-                timeout=self._timeout_ms / 1000,
+        # Path-B v2 Day 11: delegate the IOC half to the reusable primitive.
+        # Keeps observable behaviour (metrics, return shape) byte-compatible.
+        filled, ioc_filled_size, ioc_avg_price, _ioc_elapsed_ms = await self.try_ioc(
+            exchange, symbol, side, price, size, ttl_ms=self._timeout_ms
+        )
+        if filled:
+            slippage = abs(float((ioc_avg_price - price) / price)) * 10_000 if price else 0.0
+            self._ioc_fills += 1
+            self._ioc_slippage_sum += slippage
+            self._update_metrics(slippage, via_ioc=True)
+            elapsed = (time.monotonic() - start) * 1000
+            return OrderResult(
+                filled_size=ioc_filled_size,
+                avg_price=ioc_avg_price,
+                order_type="ioc_limit",
+                latency_ms=elapsed,
             )
-            if result.filled_size >= size * self.IOC_MIN_FILL_RATIO:
-                slippage = abs(float((result.avg_price - price) / price)) * 10_000 if price else 0.0
-                self._ioc_fills += 1
-                self._ioc_slippage_sum += slippage
-                self._update_metrics(slippage, via_ioc=True)
-                elapsed = (time.monotonic() - start) * 1000
-                return OrderResult(
-                    filled_size=result.filled_size,
-                    avg_price=result.avg_price,
-                    order_type="ioc_limit",
-                    latency_ms=elapsed,
-                )
-            remaining = size - result.filled_size
-        except asyncio.TimeoutError:
-            logger.warning("ioc_order_timeout", symbol=symbol, side=side)
-            ioc_filled = Decimal("0")
-            remaining = size
-        except Exception:
-            logger.warning("ioc_order_error", symbol=symbol, side=side, exc_info=True)
-            ioc_filled = Decimal("0")
-            remaining = size
-        else:
-            ioc_filled = result.filled_size if remaining < size else Decimal("0")
+        # Partial fill / timeout / error: carry forward whatever IOC filled
+        # (can be Decimal("0")) and fall through to market fallback.
+        remaining = size - ioc_filled_size
+        ioc_filled = ioc_filled_size
 
         # Market fallback for remaining quantity (HIGH FIX: add timeout)
         try:
