@@ -17,6 +17,7 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
   - StrategyBudgetLedger (risk/)
   - DailyReconciliationReport (reconciliation/)
   - ConfigService + TradingSupervisor + StrategyRegistry (core/)
+- Day 10 — `MarketStats` real 24h ADV aggregator (`src/core/market_stats.py`). Rolling 24h USD-volume window per (exchange, symbol) sourced from WS trade events, behind feature flag `CORE_REAL_ADV_ENABLED` (default `false`). `signal.py::_compute_dynamic_adv` switches from the top-5 depth proxy to the real aggregate when the pair is warm (≥15min of data); falls back to proxy otherwise so behaviour is byte-identical by default.
 
 ### Changed
 - **`mode=live` → `mode=paper`** (commit `606c97b`) — halted live trading after v237 canary confirmed $5.01 engine-vs-Binance PnL divergence

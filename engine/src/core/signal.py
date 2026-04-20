@@ -148,7 +148,22 @@ class SignalGenerator:
         self._last_signal[key] = time.time()
 
     def _compute_dynamic_adv(self, symbol: str, buy_book: OrderBook, sell_book: OrderBook) -> Decimal:
-        """Estimate ADV from top-5 orderbook depth (bid+ask volume sum). US-248."""
+        """Estimate ADV from top-5 orderbook depth (bid+ask volume sum). US-248.
+
+        Day 10: when ``CORE_REAL_ADV_ENABLED=true`` and the MarketStats
+        aggregator is warm for both sides, prefer the real 24h USD volume
+        (min of buy/sell exchanges to stay conservative). Fall back to
+        the proxy otherwise so behaviour is unchanged by default.
+        """
+        if os.environ.get("CORE_REAL_ADV_ENABLED", "false").lower() == "true":
+            from src.core.market_stats import get_market_stats
+            ms = get_market_stats()
+            buy_ex = buy_book.exchange
+            sell_ex = sell_book.exchange
+            if ms.is_warm(buy_ex, symbol) and ms.is_warm(sell_ex, symbol):
+                real_adv = min(ms.get_adv_usd(buy_ex, symbol), ms.get_adv_usd(sell_ex, symbol))
+                if real_adv > Decimal("0"):
+                    return real_adv
         total_depth = Decimal("0")
         for book in (buy_book, sell_book):
             sorted_bids = sorted(book.bids.items(), reverse=True)[:5]
