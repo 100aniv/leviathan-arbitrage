@@ -199,6 +199,7 @@ class Engine:
         self._kill_switch: Any = None
         # US-351: BacktestMode result (populated by _backtest_mode_task)
         self._backtest_result: Any = None
+        self._supervisor: Any = None  # Day 15: SUPERVISOR_ACTIVE-gated
 
     # ------------------------------------------------------------------
     # Public API
@@ -232,10 +233,16 @@ class Engine:
                         self._engine_mode.value if hasattr(self, '_engine_mode') else (
                             self._settings.execution_mode if self._settings else "unknown"
                         ))
+            if os.environ.get("SUPERVISOR_ACTIVE", "false").lower() == "true":
+                from src.core.supervisor import TradingSupervisor  # noqa: PLC0415
+                self._supervisor = TradingSupervisor(self._settings)
             await self._shutdown_event.wait()
         except Exception as exc:
             logger.critical("Engine startup failed: %s", exc, exc_info=True)
         finally:
+            if self._supervisor is not None:
+                try: await self._supervisor.stop()  # Day 15: supervisor-owned stop
+                except Exception as e: logger.warning("supervisor_stop err=%r", e)
             await self.stop()
 
     async def stop(self) -> None:

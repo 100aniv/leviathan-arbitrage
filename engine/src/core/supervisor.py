@@ -141,6 +141,7 @@ class TradingSupervisor:
             await self._build_universe_matrix()
             await self._start_background_tasks()
             self._install_signal_handlers()
+            self._register_halt_forwarder()  # Day 15: STRANDED → halt_request()
 
             self._is_ready = True
             logger.info(
@@ -228,8 +229,9 @@ class TradingSupervisor:
                 )
         self._exchanges.clear()
 
-        # 6. Remove signal handlers.
+        # 6. Remove signal handlers + Day 15 halt forwarder.
         self._remove_signal_handlers()
+        self._deregister_halt_forwarder()
 
         # 7. Flush logs (best-effort).
         for handler in logging.getLogger().handlers:
@@ -276,6 +278,27 @@ class TradingSupervisor:
         logger.info("supervisor.shutdown_requested")
         self._shutdown_requested.set()
         await self.stop()
+
+    def halt_request(self, reason: str = "unspecified") -> None:
+        """Fire-and-forget halt request (Day-15) — safe to call from sync
+        code paths (e.g. :class:`StrandedPositionTracker` threshold breach).
+
+        Sets the shutdown event immediately and schedules ``stop()`` on the
+        running event loop. Never awaits; never raises. If no loop is
+        running, logs a warning and returns — callers that need guaranteed
+        stop semantics should use :meth:`shutdown_request` instead.
+        """
+        logger.warning("supervisor.halt_requested reason=%s", reason)
+        self._shutdown_requested.set()
+        try:
+            loop = asyncio.get_event_loop()
+            loop.create_task(
+                self.stop(), name=f"{self._TASK_NAME_PREFIX}halt_stop"
+            )
+        except RuntimeError:
+            logger.warning(
+                "supervisor.halt_no_loop reason=%s skipping_async_stop", reason
+            )
 
     @property
     def is_ready(self) -> bool:
@@ -447,6 +470,21 @@ class TradingSupervisor:
     # ------------------------------------------------------------------
     # Internal — signal handling
     # ------------------------------------------------------------------
+
+    def _register_halt_forwarder(self) -> None:
+        """Day 15: install stranded-threshold → halt_request() forwarder."""
+        try:
+            from src.execution.stranded import register_halt_forwarder  # noqa: PLC0415
+            register_halt_forwarder(self.halt_request)
+        except Exception as exc:
+            logger.warning("supervisor.halt_forwarder_register_failed err=%r", exc)
+
+    def _deregister_halt_forwarder(self) -> None:
+        try:
+            from src.execution.stranded import register_halt_forwarder  # noqa: PLC0415
+            register_halt_forwarder(None)
+        except Exception:
+            pass
 
     def _install_signal_handlers(self) -> None:
         """Install SIGTERM + SIGINT → stop(). Non-fatal if loop doesn't
