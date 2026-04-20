@@ -31,6 +31,10 @@ class TradeRequest(BaseModel):
     expected_profit_usdt: Decimal = Decimal("0")
     confidence: float = 1.0
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # Path-B v2 Day 9: originating Signal for post-trade feedback.
+    # None preserves backward compatibility with strategies that have not
+    # opted into the new wiring (live.py falls back to _pred_bps=0.0).
+    signal: Signal | None = None
 
 
 class StrategyMetrics(BaseModel):

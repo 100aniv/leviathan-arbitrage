@@ -24,6 +24,9 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 - `live.py` 3,476 → 3,249 LOC (−227, Day 2 PreTradeValidator extraction)
 - Migration order reversed per Codex: execution-boundary first, lifecycle shell last
 
+### Fixed
+- Day 9 — `_pred_bps=0.0` hardcoded wiring fix in `live.py:1863,1870` (enables Day 13 gamma calibration). Added `Signal.predicted_slippage_bps` and `TradeRequest.signal` fields.
+
 ### Deprecated
 - `_stats.total_pnl` as operator-facing PnL source (replaced by `PnLLedger.get_live_pnl_usd()` reading from exchange income)
 

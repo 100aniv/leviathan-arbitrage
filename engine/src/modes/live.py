@@ -1855,19 +1855,22 @@ class LiveMode(BaseMode):
                     logger.debug("live_mode.record_execution_failed error=%s", exc)
 
             # US-283: SlippageFeedbackCollector — record predicted vs actual slippage per leg
+            # Path-B v2 Day 9: _pred_bps now reads Signal.predicted_slippage_bps
+            # (fallback 0.0 preserves legacy behaviour when prediction absent).
             if self._slippage_feedback_collector is not None and trade_request.legs:
                 try:
+                    _sig = getattr(trade_request, "signal", None)
+                    _sig_pred = getattr(_sig, "predicted_slippage_bps", None) if _sig else None
+                    _pred_bps = float(_sig_pred) if _sig_pred is not None else 0.0
                     for _fb_leg in trade_request.legs:
                         _fb_expected = float(_fb_leg.price) if _fb_leg.price else 0.0
                         if _fb_leg.side == OrderSide.BUY and _buy_fill_from_result and _buy_fill_price and _fb_expected > 0:
-                            _pred_bps = 0.0  # predicted slippage (pre-trade estimate was 0 without feedback)
                             _act_bps = abs(float(_buy_fill_price) - _fb_expected) / _fb_expected * 10000
                             self._slippage_feedback_collector.record(
                                 exchange=_fb_leg.exchange_id, pair=_fb_leg.symbol,
                                 predicted_bps=_pred_bps, actual_bps=_act_bps,
                             )
                         elif _fb_leg.side == OrderSide.SELL and _sell_fill_from_result and _sell_fill_price and _fb_expected > 0:
-                            _pred_bps = 0.0
                             _act_bps = abs(float(_sell_fill_price) - _fb_expected) / _fb_expected * 10000
                             self._slippage_feedback_collector.record(
                                 exchange=_fb_leg.exchange_id, pair=_fb_leg.symbol,

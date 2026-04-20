@@ -125,6 +125,11 @@ class Signal(BaseModel):
     volume: Decimal
     timestamp: datetime = Field(default_factory=_utcnow)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # Path-B v2 Day 9: pre-trade slippage estimate (bps) produced by the
+    # signal generator's CEXOrderbookSlippage. Forwarded to the
+    # SlippageFeedbackCollector so Day 13 gamma calibration sees real data.
+    # None = no prediction available → downstream falls back to 0.0.
+    predicted_slippage_bps: Decimal | None = None
 
 
 class Ticker(BaseModel):
