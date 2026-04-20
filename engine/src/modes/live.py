@@ -1374,27 +1374,25 @@ class LiveMode(BaseMode):
         strat_stats = self._stats.by_strategy[sid]
         strat_stats.signals += 1
 
-        # Phoenix Path-B Day-2: all 11 pre-trade gates + BUG-228c auto-bump live in
-        # PreTradeValidator. Returns typed ValidationResult with ReasonCode +
-        # Prometheus counter + INFO log already fired by the validator itself.
-        # Bookkeeping (trades_risk_blocked, trades_margin_blocked, rejections) stays
-        # here so metrics remain authoritative inside live.py.
-        _validation_ctx: dict[str, Any] = {}
-        _validation = await self._pre_trade_validator.validate(
-            trade_request, sid, context=_validation_ctx,
-        )
-        if not _validation.approved:
-            # Mirror legacy stats counters (session-loss increments via _notify_session_loss_alert).
-            if _validation_ctx.get("risk_blocked"):
-                self._stats.trades_risk_blocked += 1
-                strat_stats.rejections += 1
-            if _validation_ctx.get("margin_blocked"):
-                self._stats.trades_margin_blocked += 1
-            # BUG-78 (margin_guard) + BUG-79 (dedup close) set skip_rollback_notify=True.
-            # All other gates fall through to the shared notify helper.
-            if not _validation.skip_rollback_notify:
-                self._notify_pre_exec_rollback(trade_request, sid)
-            return
+        # Phoenix Path-B Day-12: PreTradeValidator + BookWalk gate behind feature flag.
+        # Flag off (default) = bypass both gates — byte-identical to pre-Day-2 baseline.
+        # Flag on = all 11 gates + BUG-228c auto-bump; ReasonCode + Prometheus emitted
+        # by the validator itself; bookkeeping stays here so metrics are authoritative.
+        _pretrade_enabled = os.environ.get("EXECUTION_PRETRADE_VALIDATOR_ENABLED") == "true"
+        if _pretrade_enabled:
+            _validation_ctx: dict[str, Any] = {}
+            _validation = await self._pre_trade_validator.validate(
+                trade_request, sid, context=_validation_ctx,
+            )
+            if not _validation.approved:
+                if _validation_ctx.get("risk_blocked"):
+                    self._stats.trades_risk_blocked += 1
+                    strat_stats.rejections += 1
+                if _validation_ctx.get("margin_blocked"):
+                    self._stats.trades_margin_blocked += 1
+                if not _validation.skip_rollback_notify:
+                    self._notify_pre_exec_rollback(trade_request, sid)
+                return
 
         _is_close_req = self._is_reduceonly_request(trade_request)
 
@@ -1407,11 +1405,11 @@ class LiveMode(BaseMode):
                 self._notify_pre_exec_rollback(trade_request, sid)
                 return
 
-            # --- PRE-TRADE: BookWalk market impact check (live mode only) ---
+            # --- PRE-TRADE: BookWalk market impact check (live mode + flag only) ---
             # Walks the real L2 orderbook to estimate VWAP fill price before
             # submitting a MARKET order. Rejects if estimated slippage exceeds
             # max_market_impact_bps. Exit (reduceOnly) orders are exempt.
-            if self._execution_mode == "live" and not _is_close_req:
+            if _pretrade_enabled and self._execution_mode == "live" and not _is_close_req:
                 from src.core.config_loader import get_config as _gc_impact
                 _max_impact_bps = float(_gc_impact("strategy_filters.max_market_impact_bps", default=20))
                 _impact_rejected = False
