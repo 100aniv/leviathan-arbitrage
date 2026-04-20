@@ -15,9 +15,10 @@ alerting:
     - static_configs:
         - targets: ['alertmanager:9093']
 
-# Load alert rules
+# Load alert rules + recording rules (W4 infra audit)
 rule_files:
   - /etc/prometheus/alerts.yml
+  - /etc/prometheus/recording_rules.yml
 
 scrape_configs:
   # ---------------------------------------------------------------------------

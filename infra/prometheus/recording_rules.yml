@@ -1,0 +1,92 @@
+# =============================================================================
+# LEVIATHAN Prometheus Recording Rules — W4 Infra Audit
+# Evaluated every 30s. Pre-aggregates high-cardinality queries used in
+# Grafana dashboards and alert expressions to reduce query load.
+# =============================================================================
+
+groups:
+  - name: leviathan_recording_rules
+    interval: 30s
+    rules:
+
+      # -------------------------------------------------------------------------
+      # Rule 1: Signal rejection rate per reason_code (5m window)
+      # Pre-aggregates: leviathan:signal_rejected:rate5m{reason_code="..."}
+      # Used by: rejections-top.json dashboard, BUDGET_EXHAUSTED alert
+      # -------------------------------------------------------------------------
+      - record: leviathan:signal_rejected:rate5m
+        expr: >
+          sum by (reason_code) (
+            rate(leviathan_signal_rejected_total[5m])
+          )
+        labels:
+          aggregation: "5m"
+
+      # -------------------------------------------------------------------------
+      # Rule 2: Order placement rate per exchange (5m window)
+      # Pre-aggregates: leviathan:order_placed:rate5m{exchange="..."}
+      # Used by: strategy-health.json dashboard, execution-latency.json
+      # -------------------------------------------------------------------------
+      - record: leviathan:order_placed:rate5m
+        expr: >
+          sum by (exchange) (
+            rate(leviathan_order_placed_total[5m])
+          )
+        labels:
+          aggregation: "5m"
+
+      # -------------------------------------------------------------------------
+      # Rule 3: Execution latency p95 (histogram_quantile over 5m)
+      # Pre-aggregates: leviathan:execution_latency_p95:5m
+      # Used by: execution-latency.json — avoids expensive histogram_quantile
+      #          at dashboard query time
+      # -------------------------------------------------------------------------
+      - record: leviathan:execution_latency_p95:5m
+        expr: >
+          histogram_quantile(
+            0.95,
+            sum by (le, exchange) (
+              rate(leviathan_execution_latency_seconds_bucket[5m])
+            )
+          )
+        labels:
+          quantile: "0.95"
+          aggregation: "5m"
+
+      # -------------------------------------------------------------------------
+      # Rule 4: Execution latency p50 + p99 companions (same bucket, 5m)
+      # -------------------------------------------------------------------------
+      - record: leviathan:execution_latency_p50:5m
+        expr: >
+          histogram_quantile(
+            0.50,
+            sum by (le, exchange) (
+              rate(leviathan_execution_latency_seconds_bucket[5m])
+            )
+          )
+        labels:
+          quantile: "0.50"
+          aggregation: "5m"
+
+      - record: leviathan:execution_latency_p99:5m
+        expr: >
+          histogram_quantile(
+            0.99,
+            sum by (le, exchange) (
+              rate(leviathan_execution_latency_seconds_bucket[5m])
+            )
+          )
+        labels:
+          quantile: "0.99"
+          aggregation: "5m"
+
+      # -------------------------------------------------------------------------
+      # Rule 5: PnL divergence latest value (gauge snapshot)
+      # Pre-aggregates: leviathan:pnl_divergence_usd:latest
+      # Used by: divergence.json dashboard panels, PNL_DIVERGENCE_CRITICAL alert
+      # -------------------------------------------------------------------------
+      - record: leviathan:pnl_divergence_usd:latest
+        expr: >
+          leviathan_pnl_divergence_usd_gauge
+        labels:
+          aggregation: "instant"

@@ -34,7 +34,7 @@ storage_config:
     directory: /loki/chunks
 
 limits_config:
-  retention_period: 168h          # 7 days
+  retention_period: 720h          # 30 days (W4 infra audit: increased from 7d per plan §16.2)
   max_query_length: 721h
   max_query_parallelism: 2
   ingestion_rate_mb: 10

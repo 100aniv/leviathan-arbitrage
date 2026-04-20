@@ -1,0 +1,287 @@
+# =============================================================================
+# LEVIATHAN Alertmanager — W4 Infra Audit
+# 16 ReasonCode-based severity routing
+# ReasonCodes from engine/src/core/reason_code.py (PreTradeValidator enum)
+#
+# Severity tiers:
+#   critical  — KILL_SWITCH_HALT, EXECUTION_STRANDED, PNL_DIVERGENCE_CRITICAL
+#   warning   — BUDGET_EXHAUSTED, CIRCUIT_BREAKER_OPEN, NOTIONAL_BELOW_MIN, ...
+#   info      — TOXICITY_REJECTED, COOLDOWN, ...
+#
+# Receivers:
+#   telegram-critical  — Telegram webhook (operator paged immediately)
+#   discord-warning    — Discord webhook (warning channel)
+#   email-warning      — Email fallback for warning/info
+# =============================================================================
+
+global:
+  resolve_timeout: 5m
+  # Telegram rate limit: 30 msgs/sec burst, 20/min sustained
+  # Set http_config.follow_redirects globally
+  http_config:
+    follow_redirects: true
+
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# ---------------------------------------------------------------------------
+# Root route — default to critical receiver; sub-routes refine by reason_code
+# ---------------------------------------------------------------------------
+route:
+  receiver: telegram-critical
+  group_by: ['alertname', 'severity', 'reason_code']
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 1h
+
+  routes:
+    # =========================================================================
+    # CRITICAL — reason_codes that require immediate operator action
+    # =========================================================================
+
+    # KILL_SWITCH_HALT: engine halted, all trading suspended
+    - matchers:
+        - reason_code = "KILL_SWITCH_HALT"
+      receiver: telegram-critical
+      repeat_interval: 15m
+      continue: false
+
+    # EXECUTION_STRANDED: leg filled, counterleg failed — open exposure
+    - matchers:
+        - reason_code = "EXECUTION_STRANDED"
+      receiver: telegram-critical
+      repeat_interval: 15m
+      continue: false
+
+    # PNL_DIVERGENCE_CRITICAL: engine PnL vs exchange divergence > threshold
+    - matchers:
+        - reason_code = "PNL_DIVERGENCE_CRITICAL"
+      receiver: telegram-critical
+      repeat_interval: 30m
+      continue: false
+
+    # Catch-all severity=critical → telegram
+    - matchers:
+        - severity = "critical"
+      receiver: telegram-critical
+      repeat_interval: 30m
+      continue: false
+
+    # =========================================================================
+    # WARNING — actionable but not immediately blocking
+    # =========================================================================
+
+    # BUDGET_EXHAUSTED: strategy daily budget consumed
+    - matchers:
+        - reason_code = "BUDGET_EXHAUSTED"
+      receiver: discord-warning
+      group_wait: 30s
+      repeat_interval: 4h
+      continue: true
+
+    # CIRCUIT_BREAKER_OPEN: exchange circuit breaker tripped
+    - matchers:
+        - reason_code = "CIRCUIT_BREAKER_OPEN"
+      receiver: discord-warning
+      group_wait: 30s
+      repeat_interval: 2h
+      continue: false
+
+    # NOTIONAL_BELOW_MIN: trade size too small to execute
+    - matchers:
+        - reason_code = "NOTIONAL_BELOW_MIN"
+      receiver: discord-warning
+      group_wait: 60s
+      repeat_interval: 6h
+      continue: false
+
+    # DRAWDOWN_LIMIT: per-strategy drawdown limit hit
+    - matchers:
+        - reason_code = "DRAWDOWN_LIMIT"
+      receiver: discord-warning
+      group_wait: 30s
+      repeat_interval: 2h
+      continue: true
+
+    # MAX_POSITION_EXCEEDED: position size over risk limit
+    - matchers:
+        - reason_code = "MAX_POSITION_EXCEEDED"
+      receiver: discord-warning
+      group_wait: 30s
+      repeat_interval: 2h
+      continue: false
+
+    # EXCHANGE_HEALTH_LOW: exchange WS stale or error rate elevated
+    - matchers:
+        - reason_code = "EXCHANGE_HEALTH_LOW"
+      receiver: discord-warning
+      group_wait: 30s
+      repeat_interval: 4h
+      continue: false
+
+    # ROLLBACK_RATE_HIGH: excessive rollback frequency
+    - matchers:
+        - reason_code = "ROLLBACK_RATE_HIGH"
+      receiver: discord-warning
+      group_wait: 60s
+      repeat_interval: 4h
+      continue: false
+
+    # HIGH_SLIPPAGE: p95 execution slippage > 50bps
+    - matchers:
+        - reason_code = "HIGH_SLIPPAGE"
+      receiver: discord-warning
+      group_wait: 60s
+      repeat_interval: 4h
+      continue: false
+
+    # Catch-all severity=warning → discord + email
+    - matchers:
+        - severity = "warning"
+      receiver: discord-warning
+      group_wait: 60s
+      repeat_interval: 4h
+      continue: true
+
+    # =========================================================================
+    # INFO — low-priority, email/log only
+    # =========================================================================
+
+    # TOXICITY_REJECTED: signal rejected due to toxicity score
+    - matchers:
+        - reason_code = "TOXICITY_REJECTED"
+      receiver: email-info
+      group_wait: 5m
+      repeat_interval: 24h
+      continue: false
+
+    # COOLDOWN: strategy in post-loss cooldown window
+    - matchers:
+        - reason_code = "COOLDOWN"
+      receiver: email-info
+      group_wait: 5m
+      repeat_interval: 24h
+      continue: false
+
+    # EDGE_EVAPORATED: signal stale by the time execution reached it
+    - matchers:
+        - reason_code = "EDGE_EVAPORATED"
+      receiver: email-info
+      group_wait: 5m
+      repeat_interval: 24h
+      continue: false
+
+    # MIN_SPREAD_MISS: spread below minimum viable threshold
+    - matchers:
+        - reason_code = "MIN_SPREAD_MISS"
+      receiver: email-info
+      group_wait: 5m
+      repeat_interval: 24h
+      continue: false
+
+    # ADV_EXCEEDED: trade size exceeds ADV fraction limit
+    - matchers:
+        - reason_code = "ADV_EXCEEDED"
+      receiver: email-info
+      group_wait: 5m
+      repeat_interval: 24h
+      continue: false
+
+    # MARKET_IMPACT_TOO_HIGH: BookWalk VWAP impact above threshold
+    - matchers:
+        - reason_code = "MARKET_IMPACT_TOO_HIGH"
+      receiver: email-info
+      group_wait: 5m
+      repeat_interval: 24h
+      continue: false
+
+    # Catch-all severity=info
+    - matchers:
+        - severity = "info"
+      receiver: email-info
+      group_wait: 5m
+      repeat_interval: 24h
+      continue: false
+
+# ---------------------------------------------------------------------------
+# Inhibition rules — suppress lower-severity alerts when critical fires
+# ---------------------------------------------------------------------------
+inhibit_rules:
+  # Suppress all warning/info alerts when KILL_SWITCH_HALT is active
+  - source_matchers:
+      - reason_code = "KILL_SWITCH_HALT"
+    target_matchers:
+      - severity =~ "warning|info"
+    equal: []
+
+  # Suppress NOTIONAL_BELOW_MIN when BUDGET_EXHAUSTED fires on same strategy
+  - source_matchers:
+      - reason_code = "BUDGET_EXHAUSTED"
+    target_matchers:
+      - reason_code = "NOTIONAL_BELOW_MIN"
+    equal: ['strategy']
+
+# ---------------------------------------------------------------------------
+# Receivers
+# ---------------------------------------------------------------------------
+receivers:
+  # ---------------------------------------------------------------------------
+  # CRITICAL: Telegram (paged immediately, high repeat rate)
+  # Token injected at runtime via sed substitution in docker-compose entrypoint
+  # ---------------------------------------------------------------------------
+  - name: telegram-critical
+    telegram_configs:
+      - bot_token: 'INFRA_TELEGRAM_BOT_TOKEN_PLACEHOLDER'
+        chat_id: 0
+        parse_mode: 'HTML'
+        message: |
+          {{ range .Alerts }}
+          <b>{{ .Labels.severity | toUpper }} [{{ .Labels.reason_code }}]</b>
+          <b>{{ .Annotations.summary }}</b>
+          {{ .Annotations.description }}
+          Exchange: {{ .Labels.exchange | default "N/A" }}
+          Strategy: {{ .Labels.strategy | default "N/A" }}
+          Fired: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+          {{ end }}
+        send_resolved: true
+
+  # ---------------------------------------------------------------------------
+  # WARNING: Discord webhook + email fallback
+  # ---------------------------------------------------------------------------
+  - name: discord-warning
+    webhook_configs:
+      - url: '${DISCORD_WEBHOOK_URL}'
+        send_resolved: true
+        http_config:
+          follow_redirects: true
+        title: 'LEVIATHAN WARNING [{{ .GroupLabels.reason_code }}]'
+        text: |
+          {{ range .Alerts }}
+          **{{ .Labels.severity | toUpper }}** — {{ .Labels.reason_code }}
+          {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          Exchange: `{{ .Labels.exchange | default "N/A" }}`
+          {{ end }}
+    email_configs:
+      - to: '${ALERT_EMAIL_TO}'
+        from: 'leviathan-alerts@${ALERT_EMAIL_DOMAIN}'
+        smarthost: '${SMTP_HOST}:${SMTP_PORT}'
+        auth_username: '${SMTP_USER}'
+        auth_password: '${SMTP_PASSWORD}'
+        send_resolved: true
+        headers:
+          Subject: '[LEVIATHAN WARNING] {{ .GroupLabels.reason_code }} — {{ .CommonAnnotations.summary }}'
+
+  # ---------------------------------------------------------------------------
+  # INFO: Email only (daily digest cadence)
+  # ---------------------------------------------------------------------------
+  - name: email-info
+    email_configs:
+      - to: '${ALERT_EMAIL_TO}'
+        from: 'leviathan-alerts@${ALERT_EMAIL_DOMAIN}'
+        smarthost: '${SMTP_HOST}:${SMTP_PORT}'
+        auth_username: '${SMTP_USER}'
+        auth_password: '${SMTP_PASSWORD}'
+        send_resolved: false
+        headers:
+          Subject: '[LEVIATHAN INFO] {{ .GroupLabels.reason_code }}'

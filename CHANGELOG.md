@@ -5,6 +5,11 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 ## [Unreleased] — Path-B v2 refactor in progress
 
 ### Added
+- W4 Infra: Prometheus recording rules (5 rules, 30s eval interval) — `infra/prometheus/recording_rules.yml`: `leviathan:signal_rejected:rate5m` per reason_code, `leviathan:order_placed:rate5m` per exchange, `leviathan:execution_latency_p50/p95/p99:5m` (histogram_quantile pre-computed), `leviathan:pnl_divergence_usd:latest` gauge snapshot. Added to `prometheus.yml` rule_files + docker-compose volume mount.
+- W4 Infra: Alertmanager ReasonCode severity map (16 codes) — `infra/alertmanager/alertmanager.yml`: critical (KILL_SWITCH_HALT, EXECUTION_STRANDED, PNL_DIVERGENCE_CRITICAL) → Telegram; warning (BUDGET_EXHAUSTED, CIRCUIT_BREAKER_OPEN, NOTIONAL_BELOW_MIN, DRAWDOWN_LIMIT, MAX_POSITION_EXCEEDED, EXCHANGE_HEALTH_LOW, ROLLBACK_RATE_HIGH, HIGH_SLIPPAGE) → Discord + email; info (TOXICITY_REJECTED, COOLDOWN, EDGE_EVAPORATED, MIN_SPREAD_MISS, ADV_EXCEEDED, MARKET_IMPACT_TOO_HIGH) → email. Inhibit rules suppress lower-severity when KILL_SWITCH_HALT active.
+- W4 Infra: Grafana dashboards (5) — `infra/grafana/dashboards/`: `pnl-tca.json` (6 panels: gross/net PnL, 7-layer cost decomposition, per-strategy table, spread bps), `divergence.json` (4 panels: gauge + stat + 24h history), `strategy-health.json` (5 panels: signal rate, rejection rate, budget consumption, order rate, rejection %), `rejections-top.json` (4 panels: timeseries, donut, top-10 table, bar gauge), `execution-latency.json` (5 panels: p50/p95/p99 timeseries, stat cards, per-exchange p95). All use pre-computed recording rules. 6h default time range.
+- W4 Infra: TimescaleDB compression + retention policy SQL — `infra/timescaledb/compression_policy.sql`: compression after 7d (orderbook_updates), 14d (trades), 30d (execution_events); retention drop after 90d/365d/180d respectively. Segmented by exchange+symbol with time DESC orderby.
+- W4 Infra: Loki retention 7d → 30d (`infra/loki/loki-config.yaml` `retention_period: 720h`, per plan §16.2).
 - Path-B v2 structural refactor plan (Day 0 kickoff 2026-04-20)
 - `CHANGELOG.md` (this file) per Keep a Changelog 1.1.0
 - `engine/docs/OPERATOR_RUNBOOK.md` — daily operator checklist + 16 ReasonCode dictionary
