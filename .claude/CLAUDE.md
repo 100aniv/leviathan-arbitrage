@@ -274,3 +274,17 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **Docker**: Phase B + Phase C 진입 시 `docker compose up -d timescaledb redis && docker compose ps` 필수 (engine 컨테이너는 로컬 python과 port 8000 충돌)
 - **Chrome**: Phase D/H US → Rosé(Phase B) + Kazuha(Phase C)가 Chrome DevTools MCP로 실제 브라우저 검증. `npm run build`만으로 완료 선언 금지.
 - **멈춤 금지**: Phase 간 사용자 확인 요청 절대 금지. 모든 응답에 tool call 포함.
+
+---
+
+## Path-B v2 Refactor Rules (2026-04-20 active)
+
+- Mode: paper only until Gate passes (commit 606c97b enforcement)
+- Every new feature behind feature flag (default false, activated per Day)
+- 14-doc sync required on every Day completion
+- Stage A-H workflow per §17 of plan
+- HIGH risk Days (6/7/11/14): /freeze + /careful + worktree mandatory
+- Evidence A+B+C required before commit (§12.1)
+- Silent DEBUG reject logs FORBIDDEN (§12.3)
+- live.py + main.py monotonically shrinking (reject PRs that grow either)
+- Binance API cross-check on every pnl claim

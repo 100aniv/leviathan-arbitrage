@@ -110,3 +110,17 @@ periods_per_year = 8760 (1시간 윈도우)
 ```
 MDD = max_t { (Peak_t - Cumulative_PnL_t) / Peak_t }
 ```
+
+## 4.10 predicted_slippage_bps (Path-B v2, Day 9+)
+
+After Day 9 fix (`_pred_bps=0` bug resolved):
+
+```
+predicted_slippage_bps = BookWalkSlippage.predict(book, size).expected_bps
+```
+
+- Stored on `Signal.predicted_slippage_bps: Decimal | None` (None before Day 9 activation)
+- Forwarded to `TradeLeg.metadata["predicted_slippage_bps"]`
+- Recorded via `SlippageFeedbackCollector.record(predicted_bps=predicted_slippage_bps, actual_bps=...)`
+- Used for post-trade calibration: `actual_bps / predicted_bps` ratio tracked per exchange/symbol
+- Gate criterion: mean(|actual - predicted|) < 5 bps over 100-trade rolling window before Day 13 gamma calibration

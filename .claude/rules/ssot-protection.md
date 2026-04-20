@@ -33,3 +33,28 @@ globs: ["SSOT.md", ".omc/prd.json", "SSOT_COMPLETE.md"]
 
 세션 중 SSOT.md 수정 내용은 **현재 세션의 다른 에이전트에게 반영되지 않습니다**.
 수정 완료 후 세션을 재시작하거나 `/memory`를 호출하세요.
+
+## Path-B v2 14-Doc Sync Rule (2026-04-20)
+
+Every Day N commit MUST include updates to 4+ of the following 14 canonical docs:
+
+1. `SSOT.md` — via ssot-keeper agent only
+2. `REFACTOR_PLAN.md` — engine refactor progress
+3. `MODULE_DESIGN.md` — module interface contracts
+4. `OPERATOR_RUNBOOK.md` — operational procedures (requires 2 reviewer approval for changes)
+5. `README.md` — root project readme
+6. `engine/README.md` — engine-specific readme
+7. `dashboard/README.md` — dashboard readme
+8. `dashboard/docs/DESIGN.md` — dashboard design spec
+9. `docs/archive/PHOENIX_PLAN.md` — FROZEN 2026-04-20 (historical record, do not edit)
+10. `.env.example` — feature flag documentation
+11. `docker-compose.yml` — infra service definitions
+12. `infra/grafana/dashboards/*.json` — Grafana dashboard specs
+13. `.claude/CLAUDE.md` — project agent rules
+14. `.claude/rules/math-models.md` — math model SSOT mirror
+
+### Enforcement
+- Operator runbook changes (`OPERATOR_RUNBOOK.md`) require 2 reviewer approval before merge
+- SSOT.md changes go through ssot-keeper agent (direct Edit forbidden)
+- `docs/archive/PHOENIX_PLAN.md` is FROZEN — prepend freeze header if not present, never edit body
+- Day N commit message must reference which docs were updated (e.g. `docs: .env.example, docker-compose.yml, CLAUDE.md, math-models.md`)

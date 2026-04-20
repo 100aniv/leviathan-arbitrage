@@ -1,10 +1,10 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> **마지막 업데이트: 2026-04-19 19:40 KST — Path-B 구조 리팩토링 착수 (Day 1-3 완료)**
-> 이전 선언이었던 "commercial-grade 전환 완료"는 **철회**. 근거: v237 카나리에서 엔진 PnL +$0.09 vs 실제 Binance /fapi/v1/income -$4.92 확증 → 거짓 보고의 근본원인은 개별 버그가 아니라 `live.py` 3,476줄 + `main.py` 4,202줄 God-class 모놀리스 구조. architect + backend-architect + critic 3개 독립 에이전트 만장일치 Path B (점진적 구조 분리, 8-10주) 권고.
+> **마지막 업데이트: 2026-04-20 KST — Path-B v2 Day 0 kickoff (SSOT migration)**
+> 이전 선언이었던 "commercial-grade 전환 완료"는 **철회**. 근거: v237 카나리에서 엔진 PnL +$0.09 vs 실제 Binance /fapi/v1/income -$4.92 확증 → 거짓 보고의 근본원인은 개별 버그가 아니라 `live.py` 3,249줄 + `main.py` 4,221줄 God-class 모놀리스 구조. 4개 독립 리뷰(Codex/Gemini/exa.ai/external critic) 수렴 결과 Path-B v2 (ExecutionJournal + OrderStateMachine + OrderRouter 기반 10-day atomic 리팩토링) 채택, V4 Rust 전면 재작성 기각.
 > **Live 거래 정지 중** (mode=paper, commit `606c97b`). Binance 오픈 포지션 0건 확인됨. 거래소 잔고 $10.55 (입금 $16 - 손실 $4.92).
-> PHOENIX v230까지의 BUG-73~228 패치 75+건은 유지. 구조 리팩토링 플랜: `engine/docs/REFACTOR_PLAN.md`
+> PHOENIX v237까지의 BUG-73~228 패치 75+건은 유지. Path-B v2 통합 플랜: `/Users/100aniv/.claude/plans/hidden-cuddling-pascal.md` (유일한 플랜 소스).
 > PRD: `.omc/prd.json` (437 US)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | **SIT-3 플랜: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오)**
 > **Phase K 플랜**: `.claude/plans/radiant-cooking-forest.md` (Backtest→Paper→Live 종합 23케이스, 2026-04-02 v4)

@@ -1,0 +1,57 @@
+# Changelog
+
+All notable changes to LEVIATHAN are documented here per [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) spec.
+
+## [Unreleased] — Path-B v2 refactor in progress
+
+### Added
+- Path-B v2 structural refactor plan (Day 0 kickoff 2026-04-20)
+- `CHANGELOG.md` (this file) per Keep a Changelog 1.1.0
+- `engine/docs/OPERATOR_RUNBOOK.md` — daily operator checklist + 16 ReasonCode dictionary
+- `engine/docs/MODULE_DESIGN.md` — 832 LOC architecture design doc (§1-§5 complete)
+- `engine/docs/REFACTOR_PLAN.md` — Day-by-Day tracking
+- 11 new modules shipped during Day 1-5 (opt-in feature flags):
+  - PnLLedger + PnLReconciler + ExchangePnLSnapshot (reconciliation/)
+  - UniverseMatrix (core/)
+  - PreTradeValidator + ReasonCode enum (execution/ + core/)
+  - StrategyBudgetLedger (risk/)
+  - DailyReconciliationReport (reconciliation/)
+  - ConfigService + TradingSupervisor + StrategyRegistry (core/)
+
+### Changed
+- **`mode=live` → `mode=paper`** (commit `606c97b`) — halted live trading after v237 canary confirmed $5.01 engine-vs-Binance PnL divergence
+- **"Commercial-grade transition 완료" declaration retracted** — 4 independent reviews (Codex/Gemini/exa.ai/external critic) identified structural defects
+- `live.py` 3,476 → 3,249 LOC (−227, Day 2 PreTradeValidator extraction)
+- Migration order reversed per Codex: execution-boundary first, lifecycle shell last
+
+### Deprecated
+- `_stats.total_pnl` as operator-facing PnL source (replaced by `PnLLedger.get_live_pnl_usd()` reading from exchange income)
+
+## [v237] — 2026-04-19
+
+### Added
+- BUG-225 per-exchange symbol availability gate
+- BUG-223 cross-strategy position aggregation for reconciler
+- BUG-220 per-exchange min_notional guard
+- BUG-221+222 Upbit/Bithumb price tick alignment
+- WS-A/B/C/D commercial-grade transition (later retracted)
+- PnLLedger + divergence monitor + 7-layer TCA + daily report + toxicity filter
+
+### Fixed
+- 75+ bugs across BUG-73 to BUG-228 series
+- Cross-exchange stranded positions ($30.90 on Upbit/Coinone)
+- `_pred_bps=0.0` hardcoded in live.py:1863,1870 (still broken, Day 9 target)
+
+### Retracted
+- "Commercial-grade transition" label — engine reported `+$0.09` while Binance showed `-$4.92`
+
+## [v230] — 2026-04-19
+
+### Added
+- WS-A/B/C/D modules (ExchangeIncomeFetcher, dynamic min_spread, PnL attribution API, divergence alert + toxicity filter + Sharpe/MDD)
+
+## [Phase K] — 2026-04-02 ~ 2026-04-03
+
+Prior to Path-B refactor. 24H paper session, US-332/372 remaining, Phase L/M/N roadmap.
+
+See `SSOT.md §2` for full history prior to v237.
