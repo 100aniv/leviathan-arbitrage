@@ -22,10 +22,13 @@ from src.risk.kill_switch import halt_local, is_halted
 logger = logging.getLogger(__name__)
 
 
-# Day 14: lightweight forward type imports for optional DI (no cost when flag off).
-if False:  # pragma: no cover — type-check only
+# Day 14: import OrderState for state-machine call sites (no-op when state_machine=None).
+from src.execution.order_state import OrderState as _OS
+
+# Type-check-only imports (no runtime cost).
+if False:  # pragma: no cover
     from src.execution.journal import ExecutionJournal
-    from src.execution.order_state import OrderState, OrderStateMachine
+    from src.execution.order_state import OrderStateMachine
 
 
 def _async_log_info(msg: str, *args: Any) -> None:
@@ -557,16 +560,14 @@ class AtomicExecutor:
                     strategy_id=strategy_id,
                 )
             # Day 14: emit PENDING → SENT before submission (state-machine wiring).
-            if self._state_machine is not None:
-                from src.execution.order_state import OrderState as _OS
-                await self._maybe_transition(
-                    leg1_order.order_id, _OS.PENDING, _OS.SENT,
-                    {"exchange": exchange_id, "symbol": leg1_order.symbol, "side": str(leg1_order.side)},
-                )
-                await self._maybe_transition(
-                    leg2_order.order_id, _OS.PENDING, _OS.SENT,
-                    {"exchange": exchange_id, "symbol": leg2_order.symbol, "side": str(leg2_order.side)},
-                )
+            await self._maybe_transition(
+                leg1_order.order_id, _OS.PENDING, _OS.SENT,
+                {"exchange": exchange_id, "symbol": leg1_order.symbol, "side": str(leg1_order.side)},
+            )
+            await self._maybe_transition(
+                leg2_order.order_id, _OS.PENDING, _OS.SENT,
+                {"exchange": exchange_id, "symbol": leg2_order.symbol, "side": str(leg2_order.side)},
+            )
             # Submit both legs in parallel (split large orders into VWAP chunks)
             results = await asyncio.gather(
                 self._place_maybe_split(adapter, leg1_order),
@@ -593,30 +594,28 @@ class AtomicExecutor:
             )
 
             # Day 14: emit lifecycle transitions per leg.
-            if self._state_machine is not None:
-                from src.execution.order_state import OrderState as _OS
-                for _leg_trade, _leg_err, _leg_order in (
-                    (leg1_trade, leg1_err, leg1_order),
-                    (leg2_trade, leg2_err, leg2_order),
-                ):
-                    if _leg_err is not None:
-                        await self._maybe_transition(
-                            _leg_order.order_id, _OS.SENT, _OS.REJECTED,
-                            {"error": str(_leg_err), "exchange": exchange_id},
-                        )
-                    elif _leg_trade is not None:
-                        # SENT → ACKED → FILLED (combined emission; exchange ACK = fill here).
-                        await self._maybe_transition(
-                            _leg_order.order_id, _OS.SENT, _OS.ACKED,
-                            {"exchange": exchange_id, "trade_id": str(_leg_trade.trade_id)},
-                        )
-                        await self._maybe_transition(
-                            _leg_order.order_id, _OS.ACKED, _OS.FILLED,
-                            {
-                                "filled_amount": str(_leg_trade.amount),
-                                "fill_price": str(_leg_trade.price),
-                            },
-                        )
+            for _leg_trade, _leg_err, _leg_order in (
+                (leg1_trade, leg1_err, leg1_order),
+                (leg2_trade, leg2_err, leg2_order),
+            ):
+                if _leg_err is not None:
+                    await self._maybe_transition(
+                        _leg_order.order_id, _OS.SENT, _OS.REJECTED,
+                        {"error": str(_leg_err), "exchange": exchange_id},
+                    )
+                elif _leg_trade is not None:
+                    # SENT → ACKED → FILLED (combined emission; exchange ACK = fill here).
+                    await self._maybe_transition(
+                        _leg_order.order_id, _OS.SENT, _OS.ACKED,
+                        {"exchange": exchange_id, "trade_id": str(_leg_trade.trade_id)},
+                    )
+                    await self._maybe_transition(
+                        _leg_order.order_id, _OS.ACKED, _OS.FILLED,
+                        {
+                            "filled_amount": str(_leg_trade.amount),
+                            "fill_price": str(_leg_trade.price),
+                        },
+                    )
 
             # Check for failures
             has_failure = leg1_err is not None or leg2_err is not None
@@ -662,19 +661,17 @@ class AtomicExecutor:
                             )
                             should_halt = should_halt or _sh
                             # Day 14: ACKED → STRANDED on rollback failure.
-                            if self._state_machine is not None:
-                                from src.execution.order_state import OrderState as _OS
-                                await self._maybe_transition(
-                                    _fo.order_id, _OS.ACKED, _OS.STRANDED,
-                                    {
-                                        "exchange": exchange_id,
-                                        "symbol": _fo.symbol,
-                                        "side": str(_fo.side),
-                                        "size": float(_fo.amount),
-                                        "value_usd": float(_fo.amount * (_fo.price or Decimal("0"))),
-                                        "reason": _rb_reason,
-                                    },
-                                )
+                            await self._maybe_transition(
+                                _fo.order_id, _OS.ACKED, _OS.STRANDED,
+                                {
+                                    "exchange": exchange_id,
+                                    "symbol": _fo.symbol,
+                                    "side": str(_fo.side),
+                                    "size": float(_fo.amount),
+                                    "value_usd": float(_fo.amount * (_fo.price or Decimal("0"))),
+                                    "reason": _rb_reason,
+                                },
+                            )
                     if should_halt:
                         halt_local()
                     logger.critical(
@@ -689,17 +686,15 @@ class AtomicExecutor:
                     )
 
                 # Day 14: emit ROLLED_BACK for each leg that was filled and successfully unwound.
-                if self._state_machine is not None:
-                    from src.execution.order_state import OrderState as _OS
-                    for _leg_filled, _leg_order in (
-                        (leg1_filled, leg1_order),
-                        (leg2_filled, leg2_order),
-                    ):
-                        if _leg_filled:
-                            await self._maybe_transition(
-                                _leg_order.order_id, _OS.ACKED, _OS.ROLLED_BACK,
-                                {"exchange": exchange_id, "reason": "partial_below_threshold_or_failure"},
-                            )
+                for _leg_filled, _leg_order in (
+                    (leg1_filled, leg1_order),
+                    (leg2_filled, leg2_order),
+                ):
+                    if _leg_filled:
+                        await self._maybe_transition(
+                            _leg_order.order_id, _OS.ACKED, _OS.ROLLED_BACK,
+                            {"exchange": exchange_id, "reason": "partial_below_threshold_or_failure"},
+                        )
 
                 return ExecutionResult(
                     status=ExecutionStatus.ROLLED_BACK,
@@ -1151,12 +1146,10 @@ class AtomicExecutor:
 
             # Step 8: Submit Leg 1 on Exchange A
             # Day 14: emit PENDING → SENT before submission.
-            if self._state_machine is not None:
-                from src.execution.order_state import OrderState as _OS
-                await self._maybe_transition(
-                    leg1_order.order_id, _OS.PENDING, _OS.SENT,
-                    {"exchange": ex_a_id, "symbol": leg1_order.symbol, "side": str(leg1_order.side)},
-                )
+            await self._maybe_transition(
+                leg1_order.order_id, _OS.PENDING, _OS.SENT,
+                {"exchange": ex_a_id, "symbol": leg1_order.symbol, "side": str(leg1_order.side)},
+            )
             try:
                 leg1_trade = await self._place_maybe_split(adapter_a, leg1_order)
                 leg1_result = LegResult(
@@ -1165,8 +1158,7 @@ class AtomicExecutor:
                     fill_price=leg1_trade.price if leg1_trade else None,
                 )
                 # Day 14: emit SENT → ACKED → FILLED/PARTIAL for leg1 on success.
-                if self._state_machine is not None and leg1_trade is not None:
-                    from src.execution.order_state import OrderState as _OS
+                if leg1_trade is not None:
                     await self._maybe_transition(
                         leg1_order.order_id, _OS.SENT, _OS.ACKED,
                         {"exchange": ex_a_id, "trade_id": str(leg1_trade.trade_id)},
@@ -1180,12 +1172,10 @@ class AtomicExecutor:
             except asyncio.TimeoutError:
                 logger.error("leg1_timeout exchange=%s strategy=%s", ex_a_id, strategy_id)
                 # Day 14: SENT → REJECTED on timeout (before rollback attempt).
-                if self._state_machine is not None:
-                    from src.execution.order_state import OrderState as _OS
-                    await self._maybe_transition(
-                        leg1_order.order_id, _OS.SENT, _OS.REJECTED,
-                        {"reason": "timeout", "exchange": ex_a_id},
-                    )
+                await self._maybe_transition(
+                    leg1_order.order_id, _OS.SENT, _OS.REJECTED,
+                    {"reason": "timeout", "exchange": ex_a_id},
+                )
                 # BUG-37: try cancel first; check return value and alert if it fails.
                 # BUG-39: for exit (reduceOnly) orders, cancel failure means the close
                 # WAS filled — do NOT place opposite-direction unwind (that re-opens).
@@ -1404,12 +1394,10 @@ class AtomicExecutor:
 
             # Step 10: Submit Leg 2 on Exchange B
             # Day 14: emit PENDING → SENT for leg2 pre-submission.
-            if self._state_machine is not None:
-                from src.execution.order_state import OrderState as _OS
-                await self._maybe_transition(
-                    adjusted_leg2.order_id, _OS.PENDING, _OS.SENT,
-                    {"exchange": ex_b_id, "symbol": adjusted_leg2.symbol, "side": str(adjusted_leg2.side)},
-                )
+            await self._maybe_transition(
+                adjusted_leg2.order_id, _OS.PENDING, _OS.SENT,
+                {"exchange": ex_b_id, "symbol": adjusted_leg2.symbol, "side": str(adjusted_leg2.side)},
+            )
             try:
                 leg2_trade = await self._place_maybe_split(adapter_b, adjusted_leg2)
                 leg2_result = LegResult(
@@ -1418,8 +1406,7 @@ class AtomicExecutor:
                     fill_price=leg2_trade.price if leg2_trade else None,
                 )
                 # Day 14: emit SENT → ACKED for leg2 on success (FILLED after Step 11 eval).
-                if self._state_machine is not None and leg2_trade is not None:
-                    from src.execution.order_state import OrderState as _OS
+                if leg2_trade is not None:
                     await self._maybe_transition(
                         adjusted_leg2.order_id, _OS.SENT, _OS.ACKED,
                         {"exchange": ex_b_id, "trade_id": str(leg2_trade.trade_id)},
@@ -1466,24 +1453,22 @@ class AtomicExecutor:
             # Day 14: on SUCCESS, emit terminal FILLED for both legs.
             # leg1 may already be PARTIAL (Step 9 emitted that when ratio < 1.0).
             # leg2 is in ACKED state from Step 10. Both advance to FILLED here.
-            if self._state_machine is not None:
-                from src.execution.order_state import OrderState as _OS
-                _leg1_ratio_final = leg1_result.fill_ratio(leg1_order.amount)
-                _leg1_from = _OS.PARTIAL if _leg1_ratio_final < Decimal("1.0") else _OS.ACKED
-                await self._maybe_transition(
-                    leg1_order.order_id, _leg1_from, _OS.FILLED,
-                    {
-                        "filled_amount": str(leg1_result.filled_amount),
-                        "fill_price": str(leg1_result.fill_price) if leg1_result.fill_price else None,
-                    },
-                )
-                await self._maybe_transition(
-                    adjusted_leg2.order_id, _OS.ACKED, _OS.FILLED,
-                    {
-                        "filled_amount": str(leg2_result.filled_amount),
-                        "fill_price": str(leg2_result.fill_price) if leg2_result.fill_price else None,
-                    },
-                )
+            _leg1_ratio_final = leg1_result.fill_ratio(leg1_order.amount)
+            _leg1_from = _OS.PARTIAL if _leg1_ratio_final < Decimal("1.0") else _OS.ACKED
+            await self._maybe_transition(
+                leg1_order.order_id, _leg1_from, _OS.FILLED,
+                {
+                    "filled_amount": str(leg1_result.filled_amount),
+                    "fill_price": str(leg1_result.fill_price) if leg1_result.fill_price else None,
+                },
+            )
+            await self._maybe_transition(
+                adjusted_leg2.order_id, _OS.ACKED, _OS.FILLED,
+                {
+                    "filled_amount": str(leg2_result.filled_amount),
+                    "fill_price": str(leg2_result.fill_price) if leg2_result.fill_price else None,
+                },
+            )
 
             # Bug 13-A: cross-exchange = 2-leg sequential
             _elapsed_ms = (asyncio.get_running_loop().time() - _t0) * 1000
@@ -1534,8 +1519,7 @@ class AtomicExecutor:
             reason, strategy_id
         )
         # Day 14: emit leg2 REJECTED if it errored before fill (no ACK received).
-        if self._state_machine is not None and leg2_result.order is not None:
-            from src.execution.order_state import OrderState as _OS
+        if leg2_result.order is not None:
             _leg2_filled_now = leg2_result.trade is not None and leg2_result.filled_amount > 0
             if not _leg2_filled_now and leg2_result.error:
                 await self._maybe_transition(
@@ -1643,20 +1627,18 @@ class AtomicExecutor:
                 ex_a_id, strategy_id
             )
             # Day 14: ACKED → STRANDED for leg1 on rollback failure.
-            if self._state_machine is not None:
-                from src.execution.order_state import OrderState as _OS
-                _leg1_from = _OS.ACKED if leg1_filled else _OS.SENT
-                await self._maybe_transition(
-                    leg1_order.order_id, _leg1_from, _OS.STRANDED,
-                    {
-                        "exchange": ex_a_id,
-                        "symbol": leg1_order.symbol,
-                        "side": str(leg1_order.side),
-                        "size": float(leg1_order.amount),
-                        "value_usd": float(leg1_order.amount * (leg1_order.price or Decimal("0"))),
-                        "reason": rb_reason,
-                    },
-                )
+            _leg1_from = _OS.ACKED if leg1_filled else _OS.SENT
+            await self._maybe_transition(
+                leg1_order.order_id, _leg1_from, _OS.STRANDED,
+                {
+                    "exchange": ex_a_id,
+                    "symbol": leg1_order.symbol,
+                    "side": str(leg1_order.side),
+                    "size": float(leg1_order.amount),
+                    "value_usd": float(leg1_order.amount * (leg1_order.price or Decimal("0"))),
+                    "reason": rb_reason,
+                },
+            )
             return ExecutionResult(
                 status=ExecutionStatus.ROLLBACK_FAILED,
                 legs=[leg1_result, leg2_result],
@@ -1683,19 +1665,17 @@ class AtomicExecutor:
             )
 
         # Day 14: emit ACKED → ROLLED_BACK for each leg that was filled and successfully unwound.
-        if self._state_machine is not None:
-            from src.execution.order_state import OrderState as _OS
-            if leg1_filled:
-                await self._maybe_transition(
-                    leg1_order.order_id, _OS.ACKED, _OS.ROLLED_BACK,
-                    {"exchange": ex_a_id, "reason": reason},
-                )
-            _leg2_filled_now = leg2_result.trade is not None and leg2_result.filled_amount > 0
-            if _leg2_filled_now and leg2_result.order is not None:
-                await self._maybe_transition(
-                    leg2_result.order.order_id, _OS.ACKED, _OS.ROLLED_BACK,
-                    {"exchange": leg2_result.order.exchange_id, "reason": reason},
-                )
+        if leg1_filled:
+            await self._maybe_transition(
+                leg1_order.order_id, _OS.ACKED, _OS.ROLLED_BACK,
+                {"exchange": ex_a_id, "reason": reason},
+            )
+        _leg2_filled_now = leg2_result.trade is not None and leg2_result.filled_amount > 0
+        if _leg2_filled_now and leg2_result.order is not None:
+            await self._maybe_transition(
+                leg2_result.order.order_id, _OS.ACKED, _OS.ROLLED_BACK,
+                {"exchange": leg2_result.order.exchange_id, "reason": reason},
+            )
 
         return ExecutionResult(
             status=ExecutionStatus.ROLLED_BACK,
