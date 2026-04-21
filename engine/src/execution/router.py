@@ -21,13 +21,14 @@ migrates the legacy executor onto this substrate.
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from typing import Any, Protocol
 
 import structlog
+
+from src.core.config_loader import get_bool_flag
 
 logger = structlog.get_logger(__name__)
 
@@ -37,8 +38,6 @@ FLAG_ENV_VAR: str = "EXECUTION_ROUTER_ENABLED"
 
 IDEMPOTENCY_TTL_S: float = 600.0
 """Dedup cache TTL in seconds (10 minutes per plan §3.4)."""
-
-_TRUTHY = {"1", "true", "yes", "on"}
 
 
 class _AdapterProtocol(Protocol):
@@ -110,7 +109,7 @@ class OrderRouter:
 
     def _flag_active(self) -> bool:
         """Read EXECUTION_ROUTER_ENABLED at call time (dynamic; tests monkeypatch)."""
-        return os.environ.get(self._flag_env, "false").strip().lower() in _TRUTHY
+        return get_bool_flag(self._flag_env)
 
     # ------------------------------------------------------------------ core
 

@@ -100,6 +100,17 @@ def get_config(dotpath: str, default: Any = None, env_key: str | None = None) ->
     return default
 
 
+_TRUTHY_VALUES = frozenset({"1", "true", "yes", "on", "y", "t"})
+
+
+def get_bool_flag(name: str, default: bool = False) -> bool:
+    """Parse env var as boolean with consistent truthy handling across modules."""
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.strip().lower() in _TRUTHY_VALUES
+
+
 def _coerce(val: str, reference: Any) -> Any:
     """string env var 값을 reference 타입으로 강제 변환."""
     if reference is None:

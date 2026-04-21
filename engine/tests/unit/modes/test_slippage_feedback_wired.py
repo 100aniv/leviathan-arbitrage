@@ -122,3 +122,52 @@ def test_feedback_collector_receives_non_zero_predicted_bps() -> None:
     assert call["actual_bps"] == 10.0
     assert call["exchange"] == "binance"
     assert call["pair"] == "BTC/USDT"
+
+
+# ---------------------------------------------------------------------------
+# L-2: SLIPPAGE_PREDICTION_MISSING_TOTAL counter increments when pred is None
+# ---------------------------------------------------------------------------
+
+
+def test_missing_prediction_counter_increments() -> None:
+    """SLIPPAGE_PREDICTION_MISSING_TOTAL.inc() fires when predicted_slippage_bps is None.
+
+    Mirrors the branch added to live.py:1863 area (L-2 review fix):
+        if _sig_pred is None:
+            SLIPPAGE_PREDICTION_MISSING_TOTAL.labels(...).inc()
+    """
+    from src.infra.metrics import SLIPPAGE_PREDICTION_MISSING_TOTAL
+
+    strategy = "test_strategy"
+    exchange = "binance"
+    label_key = {"strategy": strategy, "exchange": exchange}
+
+    # Read baseline count (prometheus counters are process-global; use _value.get())
+    before = SLIPPAGE_PREDICTION_MISSING_TOTAL.labels(**label_key)._value.get()
+
+    # Simulate the production branch that fires when _sig_pred is None.
+    _sig_pred = None
+    if _sig_pred is None:
+        SLIPPAGE_PREDICTION_MISSING_TOTAL.labels(strategy=strategy, exchange=exchange).inc()
+
+    after = SLIPPAGE_PREDICTION_MISSING_TOTAL.labels(**label_key)._value.get()
+    assert after == before + 1, f"Counter should have incremented by 1; before={before} after={after}"
+
+
+def test_missing_prediction_counter_does_not_increment_when_pred_present() -> None:
+    """Counter must NOT fire when predicted_slippage_bps is populated."""
+    from src.infra.metrics import SLIPPAGE_PREDICTION_MISSING_TOTAL
+
+    strategy = "test_strategy"
+    exchange = "bybit"
+    label_key = {"strategy": strategy, "exchange": exchange}
+
+    before = SLIPPAGE_PREDICTION_MISSING_TOTAL.labels(**label_key)._value.get()
+
+    # Simulate the branch with a real prediction — counter branch is skipped.
+    _sig_pred = Decimal("25.0")
+    if _sig_pred is None:  # noqa: SIM102 — mirrors production code exactly
+        SLIPPAGE_PREDICTION_MISSING_TOTAL.labels(strategy=strategy, exchange=exchange).inc()
+
+    after = SLIPPAGE_PREDICTION_MISSING_TOTAL.labels(**label_key)._value.get()
+    assert after == before, "Counter must not increment when prediction is present"

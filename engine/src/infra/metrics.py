@@ -146,6 +146,12 @@ PNL_SOURCE_TOTAL = Counter(
     ["strategy", "source"],
 )
 
+SLIPPAGE_PREDICTION_MISSING_TOTAL = Counter(
+    "leviathan_slippage_prediction_missing_total",
+    "Count of slippage feedback records where predicted_bps was missing (fallback to 0)",
+    ["strategy", "exchange"],
+)
+
 # ---------------------------------------------------------------------------
 # Phase 2: Rust hot-path observability
 # ---------------------------------------------------------------------------

@@ -40,7 +40,6 @@ this module.
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -51,6 +50,7 @@ from typing import TYPE_CHECKING, Any, Callable, Protocol
 
 import structlog
 
+from src.core.config_loader import get_bool_flag
 from src.execution.atomic import AtomicOrderExecutor
 from src.execution.journal import FLAG_ENV_VAR as JOURNAL_FLAG_ENV_VAR
 from src.execution.order_state import FLAG_ENV_VAR as STATE_MACHINE_FLAG_ENV_VAR
@@ -67,12 +67,6 @@ FLAG_ENV_VAR: str = "EXECUTION_PARALLEL_LEGS_ENABLED"
 
 DEFAULT_IOC_TTL_MS: int = 5000
 """Default per-leg IOC TTL budget."""
-
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
-
-
-def _flag_enabled(name: str) -> bool:
-    return os.environ.get(name, "false").strip().lower() in _TRUTHY
 
 
 _BUY_ALIASES = frozenset({"buy", "long", "bid"})
@@ -220,14 +214,14 @@ class CrossExchangeV2Executor:
 
         # §22.3 flag dependency matrix: enforced at construction so
         # mis-configuration fails fast.
-        if _flag_enabled(self._flag_env):
+        if get_bool_flag(self._flag_env):
             missing: list[str] = []
             for dep in (
                 JOURNAL_FLAG_ENV_VAR,
                 STATE_MACHINE_FLAG_ENV_VAR,
                 ROUTER_FLAG_ENV_VAR,
             ):
-                if not _flag_enabled(dep):
+                if not get_bool_flag(dep):
                     missing.append(dep)
             if missing:
                 raise ConfigError(
@@ -244,7 +238,7 @@ class CrossExchangeV2Executor:
     @property
     def _enabled(self) -> bool:
         """Re-read flag on each call so tests can toggle via monkeypatch."""
-        return _flag_enabled(self._flag_env)
+        return get_bool_flag(self._flag_env)
 
     async def execute(
         self,

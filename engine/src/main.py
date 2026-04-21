@@ -32,6 +32,7 @@ load_dotenv()  # Load .env before any os.getenv() calls
 
 from src.api.server import EngineContext, create_app
 from src.core.config import ExecutionMode, Settings, get_settings
+from src.core.config_loader import get_bool_flag
 
 _s = get_settings().operational  # module-level operational settings shortcut
 
@@ -233,7 +234,7 @@ class Engine:
                         self._engine_mode.value if hasattr(self, '_engine_mode') else (
                             self._settings.execution_mode if self._settings else "unknown"
                         ))
-            if os.environ.get("SUPERVISOR_ACTIVE", "false").lower() == "true":
+            if get_bool_flag("SUPERVISOR_ACTIVE"):
                 from src.core.supervisor import TradingSupervisor  # noqa: PLC0415
                 self._supervisor = TradingSupervisor(self._settings)
             await self._shutdown_event.wait()

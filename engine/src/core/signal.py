@@ -16,6 +16,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from src.core.config import get_settings
+from src.core.config_loader import get_bool_flag
 from src.core.events import SignalEvent
 from src.core.models import Signal
 from src.core.order_book import OrderBook
@@ -155,7 +156,7 @@ class SignalGenerator:
         (min of buy/sell exchanges to stay conservative). Fall back to
         the proxy otherwise so behaviour is unchanged by default.
         """
-        if os.environ.get("CORE_REAL_ADV_ENABLED", "false").lower() == "true":
+        if get_bool_flag("CORE_REAL_ADV_ENABLED"):
             from src.core.market_stats import get_market_stats
             ms = get_market_stats()
             buy_ex = buy_book.exchange

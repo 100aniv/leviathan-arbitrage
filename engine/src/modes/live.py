@@ -30,6 +30,7 @@ from decimal import Decimal
 from typing import Any, Protocol, runtime_checkable
 
 from src.core.config import get_settings
+from src.core.config_loader import get_bool_flag
 from src.core.exchanges import KRW_EXCHANGES
 from src.core.models import Order, OrderSide, OrderType, Signal
 from src.core.rust_bridge import get_orderbook_class
@@ -1378,7 +1379,7 @@ class LiveMode(BaseMode):
         # Flag off (default) = bypass both gates — byte-identical to pre-Day-2 baseline.
         # Flag on = all 11 gates + BUG-228c auto-bump; ReasonCode + Prometheus emitted
         # by the validator itself; bookkeeping stays here so metrics are authoritative.
-        _pretrade_enabled = os.environ.get("EXECUTION_PRETRADE_VALIDATOR_ENABLED") == "true"
+        _pretrade_enabled = get_bool_flag("EXECUTION_PRETRADE_VALIDATOR_ENABLED")
         if _pretrade_enabled:
             _validation_ctx: dict[str, Any] = {}
             _validation = await self._pre_trade_validator.validate(
@@ -1860,6 +1861,10 @@ class LiveMode(BaseMode):
                     _sig = getattr(trade_request, "signal", None)
                     _sig_pred = getattr(_sig, "predicted_slippage_bps", None) if _sig else None
                     _pred_bps = float(_sig_pred) if _sig_pred is not None else 0.0
+                    if _sig_pred is None:
+                        from src.infra.metrics import SLIPPAGE_PREDICTION_MISSING_TOTAL
+                        _fb_exch = trade_request.legs[0].exchange_id if trade_request.legs else "unknown"
+                        SLIPPAGE_PREDICTION_MISSING_TOTAL.labels(strategy=sid, exchange=_fb_exch).inc()
                     for _fb_leg in trade_request.legs:
                         _fb_expected = float(_fb_leg.price) if _fb_leg.price else 0.0
                         if _fb_leg.side == OrderSide.BUY and _buy_fill_from_result and _buy_fill_price and _fb_expected > 0:

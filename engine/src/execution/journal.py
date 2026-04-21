@@ -30,7 +30,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import os
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -38,6 +37,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
+
+from src.core.config_loader import get_bool_flag
 
 logger = structlog.get_logger(__name__)
 
@@ -54,9 +55,6 @@ GENESIS_PREV_HASH: str = "0" * 64
 
 FLAG_ENV_VAR: str = "EXECUTION_JOURNAL_ENABLED"
 """Environment flag controlling journal activation (default false)."""
-
-_TRUTHY = {"1", "true", "yes", "on"}
-
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS execution_events (
@@ -119,7 +117,7 @@ def _compute_hash(prev_hash: str, order_id: str, state: str, payload_json: str) 
 
 def _flag_enabled() -> bool:
     """Read EXECUTION_JOURNAL_ENABLED at call time (dynamic tests use monkeypatch)."""
-    return os.environ.get(FLAG_ENV_VAR, "false").strip().lower() in _TRUTHY
+    return get_bool_flag(FLAG_ENV_VAR)
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +191,7 @@ class ExecutionJournal:
     # ------------------------------------------------------------------ setup
 
     def _flag_active(self) -> bool:
-        return os.environ.get(self._flag_env, "false").strip().lower() in _TRUTHY
+        return get_bool_flag(self._flag_env)
 
     async def start(self) -> None:
         """Open DB, create schema, set WAL pragmas, load last_hash.
@@ -506,7 +504,7 @@ class ExecutionJournal:
 # ---------------------------------------------------------------------------
 
 _SINGLETON: ExecutionJournal | None = None
-_SINGLETON_LOCK = asyncio.Lock()
+_SINGLETON_LOCK: asyncio.Lock | None = None
 
 
 def _default_db_path() -> Path:
@@ -518,7 +516,9 @@ def _default_db_path() -> Path:
 
 async def get_execution_journal() -> ExecutionJournal:
     """Return (constructing on demand) the module-singleton journal."""
-    global _SINGLETON
+    global _SINGLETON, _SINGLETON_LOCK
+    if _SINGLETON_LOCK is None:
+        _SINGLETON_LOCK = asyncio.Lock()
     async with _SINGLETON_LOCK:
         if _SINGLETON is None:
             _SINGLETON = ExecutionJournal(db_path=_default_db_path())

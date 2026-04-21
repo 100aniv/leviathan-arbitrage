@@ -40,9 +40,9 @@ Day 7 does NOT
 """
 from __future__ import annotations
 
-import os
 from enum import Enum
 
+from src.core.config_loader import get_bool_flag
 from src.execution.journal import FLAG_ENV_VAR as JOURNAL_FLAG_ENV_VAR
 from src.execution.journal import ExecutionEvent, ExecutionJournal
 
@@ -57,13 +57,6 @@ __all__ = [
 
 FLAG_ENV_VAR: str = "EXECUTION_STATE_MACHINE_ENABLED"
 """Environment flag controlling state-machine activation (default false)."""
-
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
-
-
-def _flag_enabled(name: str) -> bool:
-    return os.environ.get(name, "false").strip().lower() in _TRUTHY
-
 
 class OrderState(str, Enum):
     """Nine-state order lifecycle. Value is the journal-persisted string."""
@@ -161,7 +154,7 @@ class OrderStateMachine:
         self._journal = journal
         self._flag_env = flag_env
         # Dependency guard (§22.3 Flag Interaction Matrix).
-        if _flag_enabled(self._flag_env) and not _flag_enabled(JOURNAL_FLAG_ENV_VAR):
+        if get_bool_flag(self._flag_env) and not get_bool_flag(JOURNAL_FLAG_ENV_VAR):
             raise ConfigError(
                 f"{self._flag_env}=true requires {JOURNAL_FLAG_ENV_VAR}=true "
                 "(§22.3 Flag Interaction Matrix)"
@@ -170,7 +163,7 @@ class OrderStateMachine:
     @property
     def _enabled(self) -> bool:
         """Re-read flag on each call so monkeypatch-style test toggles work."""
-        return _flag_enabled(self._flag_env)
+        return get_bool_flag(self._flag_env)
 
     async def transition(
         self,
