@@ -87,6 +87,11 @@ class PaperExchangeAdapter:
         self._fee_maker = fee_maker
         self._fee_taker = fee_taker
 
+        # Universe-matrix interface attributes.
+        # _market_type distinguishes spot vs futures venues for shape routing
+        # (futures_futures / spot_futures strategies depend on this).
+        self._market_type = "futures" if exchange_id.endswith("_futures") else "spot"
+
         # Simulated balances: currency -> Balance
         self._balances: dict[str, Balance] = {
             "USDT": Balance(
@@ -113,6 +118,18 @@ class PaperExchangeAdapter:
     async def connect(self) -> None:
         """No-op for paper adapter."""
         logger.info("Paper adapter '%s' connected", self.exchange_id)
+
+    # -------------------------------------------------------------------
+    # Universe-matrix interface: spec from ExchangeAdapter Protocol
+    # -------------------------------------------------------------------
+
+    def supports_symbol(self, symbol: str) -> bool:
+        """Paper venues accept any symbol — synthetic book generated on demand."""
+        return True
+
+    async def get_min_notional(self, symbol: str) -> Decimal:
+        """Minimal floor for paper trading — real venues typically $5-20."""
+        return Decimal("5")
 
     async def disconnect(self) -> None:
         """Cancel all subscription tasks."""

@@ -833,39 +833,47 @@ class Engine:
                      len(self._exchanges), list(self._exchanges.keys()))
 
     async def _init_paper_exchanges(self, capital: Decimal) -> None:
+        """Create one PaperExchangeAdapter per configured exchange.
+
+        Previously hardcoded 2 adapters (paper_binance, paper_okx) disconnected
+        from config. This caused ``self._exchanges`` to have 2 keys while
+        data collectors ran on all ``exchanges.active`` (usually 7). The
+        ``UniverseMatrix`` built entries=0 because 2 exchanges provided
+        insufficient valid (strategy, symbol, leg_a, leg_b) tuples.
+
+        Fix (2026-04-22): match ``self._active_exchanges`` (from
+        engine.json ``exchanges.active``). IDs match data collector
+        exchange IDs so executor can route TradeRequests via
+        ``self._exchanges[trade_request.buy_exchange]``.
+
+        Note: PaperExchangeAdapter still generates synthetic GBM orderbooks
+        — this step only fixes the routing mismatch. Follow-up (post-
+        measurement): replace synthetic pricing with live WS book snapshot.
+        """
         from src.execution.paper import PaperExecutor, SlippageModel
         from src.execution.paper_adapter import PaperExchangeAdapter
 
-        # Create 2+ paper exchanges with different spread injection profiles
-        # to simulate cross-exchange arbitrage opportunities
-        configs = [
-            {
-                "exchange_id": "paper_binance",
-                "spread_injection_rate": 0.03,  # 3% of ticks
-                "spread_injection_bps": 25,
-            },
-            {
-                "exchange_id": "paper_okx",
-                "spread_injection_rate": 0.03,
-                "spread_injection_bps": -25,  # Opposite direction
-            },
-        ]
+        exchanges = self._active_exchanges or _get_fallback_exchanges()
 
-        for cfg in configs:
+        # Alternating spread injection sign so cross-exchange pairs can
+        # generate arb signals within the synthetic orderbook model.
+        for idx, eid in enumerate(exchanges):
             executor = PaperExecutor(
                 fee_rate=Decimal("0.001"),
                 slippage_model=SlippageModel(base_slippage_pct=Decimal("0.0005")),
             )
             adapter = PaperExchangeAdapter(
-                exchange_id=cfg["exchange_id"],
+                exchange_id=eid,
                 initial_capital=capital,
                 paper_executor=executor,
-                spread_injection_rate=cfg["spread_injection_rate"],
-                spread_injection_bps=cfg["spread_injection_bps"],
-                tick_interval=0.5,  # 500ms per tick for paper mode
+                spread_injection_rate=0.03,
+                spread_injection_bps=25 if idx % 2 == 0 else -25,
+                tick_interval=0.5,
             )
             await adapter.connect()
-            self._exchanges[cfg["exchange_id"]] = adapter
+            self._exchanges[eid] = adapter
+            logger.info("paper adapter initialized: %s (idx=%d, spread_bps=%d)",
+                        eid, idx, 25 if idx % 2 == 0 else -25)
 
     async def _init_sandbox_exchanges(self) -> None:
         # BUG-151: legacy ccxt path removed, native adapters only.
