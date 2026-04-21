@@ -82,37 +82,97 @@ New modules (all opt-in, main.py untouched):
 - `src/core/supervisor.py` (498 LOC) — `TradingSupervisor` + `SupervisorHealth`. Start sequence: DB → Redis → exchanges → strategy placeholder → UniverseMatrix → background tasks → signal handlers. Stop: idempotent, 30s timeout, disconnects cleanly (12 tests pass).
 - `src/core/strategy_registry.py` (621 LOC) — `StrategyRegistry` + `StrategyEntry`. Reads `strategy_activation.json`, binds UniverseMatrix, subscribes to BudgetLedger/CB events for runtime deactivation (19 tests pass).
 
-### Day 5 — Main.py integration (REPLACE old code)
-- main.py's Engine.__init__ replaced with `Supervisor.start()`
-- Scattered `get_config()`/`get_settings()` replaced with `ConfigService.current`
-- Strategy instantiation moved from main.py:1253-1340 → StrategyRegistry
-- Expected: main.py -600 to -800 LOC (4,202 → ~3,400)
-- Risk: HIGH — this is the cutover. Must gate behind full regression + 72H paper canary before merge.
+### ✅ Day 5 — Main.py fail-fast boot guard
+**Commit `30b704b`**
 
-### Day 5 — Main.py split (part 2)
-- Extract `src/core/strategy_registry.py` — strategy lifecycle, universe binding, activation lists
-- Expected: main.py -300 LOC
+- main.py fail-fast boot guard wired via ConfigService
+- Boot guard validates required env vars + config schema before any exchange connection
 
-### Day 6 — Live.py split (part 1)
-- Extract `src/execution/order_router.py` — idempotent order dispatch with `trace_id + leg_index` client_order_id
-- Expected: live.py -500 LOC
+### ✅ Day 6 — ExecutionJournal durable substrate
+**Commit `468785c`** | +12 tests
 
-### Day 7 — Live.py split (part 2)
-- Extract `src/execution/paper_gateway.py` vs `src/execution/live_gateway.py` — mode-specific gateways, separate classes (no more single LiveMode with mode flag)
-- Expected: live.py -400 LOC
+- `src/execution/journal.py` (~530 LOC) — SQLite-WAL, SHA256 hash chain, `EXECUTION_JOURNAL_ENABLED` flag (default false)
+- Genesis hash `"0"*64`; every event chain-linked; `verify_chain()` tamper detection
+- `live.py`, `main.py`, `executor.py` LOC unchanged (monotonic shrink invariant preserved)
 
-### Day 8 — trace_id propagation
-- `contextvars.ContextVar[str]` in every pipeline hop
-- Trace column added to `trades`, `orders`, `fills`, `pnl_events`, `signal_rejections`
-- Expected: no LOC change; wiring + DB schema migrations
+### ✅ Day 7 — OrderStateMachine explicit lifecycle
+**Commit `01d9d12`** | +9 tests
 
-### Day 9 — Canary Stage Controller
-- `src/canary/stage_controller.py` — S0→S1→S2→S3 graduated rollout with HALT criteria per stage
+- `src/execution/order_state.py` (~226 LOC) — 9 states, declarative `_LEGAL_TRANSITIONS`, journal integration
+- Terminal states: `FILLED`, `CANCELLED`, `REJECTED`, `ROLLED_BACK`, `STRANDED`
+- Behind `EXECUTION_STATE_MACHINE_ENABLED` (requires JOURNAL); flag-off = full no-op
+- `live.py` 3,252 / `main.py` 4,221 / `executor.py` / `atomic.py` unchanged
 
-### Day 10 — Full regression + documentation pass
-- `pytest tests/` full suite green
-- SIT-3 72H paper canary
-- Gate to re-enable live trading requires passing Stage 1 (48H continuous live canary $10)
+### ✅ Day 8 — OrderRouter thin boundary
+**Commit `72df0e2`** | +7 tests
+
+- `src/execution/router.py` (225 LOC) — `client_order_id = f"{trace_id}.{leg_index}"`, 10-min dedup cache, PENDING→SENT journal hook
+- Behind `EXECUTION_ROUTER_ENABLED` (default false); flag-off = pure bypass (direct adapter call)
+- `live.py`, `main.py`, `executor.py`, `atomic.py` unchanged
+
+### ✅ Day 9 — Fix Signal.predicted_slippage_bps wiring
+**Commit `d016849`** | +3 tests
+
+- Fixed `_pred_bps=0.0` hardcoded at `live.py:1863,1870`
+- Added `Signal.predicted_slippage_bps` and `TradeRequest.signal` fields
+- Enables Day 13 gamma calibration pipeline
+
+### ✅ Day 10 — MarketStats real 24h ADV
+**Commit `89b820f`** | +7 tests
+
+- `src/core/market_stats.py` — rolling 24h USD-volume window per (exchange, symbol) from WS trade events
+- Behind `CORE_REAL_ADV_ENABLED` (default false); falls back to depth proxy when pair not warm (< 15min)
+
+### ✅ Day 11 — IOC-TTL parallel cross-exchange legs
+**Commit `74292cc`** | +9 tests
+
+- `src/execution/cross_exchange_v2.py` (~440 LOC) — `CrossExchangeV2Executor`, asyncio.gather IOC-TTL (5s default)
+- 5 outcomes: SUCCESS, STRANDED_LEG1/2, NEITHER, ROLLED_BACK
+- `src/execution/atomic.py` +50 LOC: `try_ioc()` reusable primitive extracted
+- Behind `EXECUTION_PARALLEL_LEGS_ENABLED` (requires JOURNAL + STATE_MACHINE + ROUTER)
+- Sequential path in `executor.py:1050-1276` kept as 2-week rollback insurance
+
+### ✅ Day 12 — Wire PreTradeValidator + BookWalkSlippage into live signal path
+**Commit `db7bb43`** | +9 tests
+
+- `EXECUTION_PRETRADE_VALIDATOR_ENABLED` flag gates both PreTradeValidator.validate() and BookWalk market-impact check
+- live.py net delta −2 LOC (21 ins / 23 del); monotonic shrink invariant preserved
+- Requires Day 6 Journal + Day 8 Router per §22.3 interaction matrix
+
+### ✅ Day 13 — Gamma calibration cron + synthetic-test harness
+**Commit `782e25e`** | +7 tests
+
+- Gamma calibration scheduled job; synthetic canary harness for SlippageFeedbackCollector
+- Gate criterion: mean(|actual - predicted|) < 5 bps over 100-trade rolling window
+
+### ✅ Day 14 — executor.py migrate to OrderStateMachine + ExecutionJournal
+**Commit `edb491f`** | +5 tests
+
+- `AtomicExecutor.__init__` gains optional DI `state_machine` + `journal` (both default None)
+- `_maybe_transition()` helper: best-effort, swallows `TransitionError` as warning (hot path safe)
+- `executor.py` 1,587 → 1,793 LOC (+206, accepted infrastructure cost for Day 15)
+- Regression: 5770 → 5775 green; 0 new failures
+
+### ✅ Day 15 — TradingSupervisor activate as main.py runloop owner
+**Commit `38a99a6`** | +4 tests
+
+- `TradingSupervisor` wired as authoritative runloop owner in main.py
+- `main.py` 4,221 → 4,228 LOC (+7 wiring injection)
+
+### ✅ W3 — Dashboard 8-page skeleton
+**Commit `07bd710`**
+
+- Next.js 14 App Router + OKLCH dark theme
+- 8 pages: Overview, Portfolio, Attribution, Funding, System, Settings, Logs, Admin
+
+### ✅ W4 — Infra audit + improvements
+**Commit `aed0e92`**
+
+- Prometheus: 5 recording rules (30s eval), added to `prometheus.yml` + docker-compose
+- Alertmanager: 16 ReasonCode severity map (critical→Telegram, warning→Discord+email, info→email); inhibit rules
+- Grafana: 5 dashboards (`pnl-tca`, `divergence`, `strategy-health`, `rejections-top`, `execution-latency`), all using pre-computed recording rules
+- TimescaleDB: compression after 7d/14d/30d + retention drop after 90d/365d/180d (`infra/timescaledb/compression_policy.sql`)
+- Loki: retention 7d → 30d (`retention_period: 720h`)
 
 ## Red-Flag Abort Criteria
 

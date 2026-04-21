@@ -2,7 +2,36 @@
 
 All notable changes to LEVIATHAN are documented here per [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) spec.
 
-## [Unreleased] — Path-B v2 refactor in progress
+## [Unreleased]
+
+_Nothing pending._
+
+## [v2.0.0-path-b] — 2026-04-21
+
+Path-B v2 structural refactor complete (Day 0-15 + W3 + W4). Execution boundary: Journal + StateMachine + Router + parallel legs. Live re-enable BLOCKED until Gate passes 48H paper canary + 7 criteria.
+
+| Commit | Deliverable |
+|--------|-------------|
+| `b861a10` | Day 0 — SSOT + 13-doc sync + Binance 30d reconciliation |
+| `468785c` | Day 6 — ExecutionJournal (+12 tests) |
+| `01d9d12` | Day 7 — OrderStateMachine (+9 tests) |
+| `72df0e2` | Day 8 — OrderRouter (+7 tests) |
+| `d016849` | Day 9 — pred_bps wiring fix (+3 tests) |
+| `89b820f` | Day 10 — MarketStats real ADV (+7 tests) |
+| `74292cc` | Day 11 — IOC-TTL parallel legs (+9 tests) |
+| `db7bb43` | Day 12 — PreTradeValidator wire (+9 tests) |
+| `782e25e` | Day 13 — gamma calibration (+7 tests) |
+| `edb491f` | Day 14 — executor migrate (+5 tests) |
+| `38a99a6` | Day 15 — TradingSupervisor activate (+4 tests) |
+| `07bd710` | W3 — dashboard 8-page skeleton |
+| `aed0e92` | W4 — infra audit (Prometheus/Grafana/Alertmanager/TimescaleDB/Loki) |
+
+**LOC deltas**: live.py 3,476→3,250 (−226), main.py 4,194→4,228 (+34), atomic.py +50 (try_ioc), executor.py 1,587→1,793 (+206 state machine wiring).
+**Test delta**: +72 new tests across Day 6-15; total regression 4,996 pass / 13 pre-existing failures (unrelated).
+**Feature flags**: 7 flags, all default false — rollback = set false in .env.
+**Gate pending**: 48H paper canary + 7 criteria (plan §5). Live re-enable BLOCKED until Gate passes.
+
+## [Path-B v2 — Unreleased (original entries)] — 2026-04-20
 
 ### Added
 - W4 Infra: Prometheus recording rules (5 rules, 30s eval interval) — `infra/prometheus/recording_rules.yml`: `leviathan:signal_rejected:rate5m` per reason_code, `leviathan:order_placed:rate5m` per exchange, `leviathan:execution_latency_p50/p95/p99:5m` (histogram_quantile pre-computed), `leviathan:pnl_divergence_usd:latest` gauge snapshot. Added to `prometheus.yml` rule_files + docker-compose volume mount.

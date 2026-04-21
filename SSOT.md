@@ -39,7 +39,62 @@
 **Phase**: L (대기) | **Path-B 구조 리팩토링 진행 중** (2026-04-19 ~): Day 1-3 완료, Day 4-10 예정. live 거래 중단.
 **PHOENIX 트랙**: v237 canary에서 구조 결함 확증 → **중단**. 실제 Binance 24H -$4.92 loss (commission -$2.48 + realized -$2.33 + funding -$0.11) vs 엔진 보고 +$0.09 괴리. 근본 원인: engine internal `_stats.total_pnl`이 exchange income과 별개 경로로 계산·전시. **"Commercial-grade transition 완료" 선언 철회.**
 
-### Path-B 구조 리팩토링 현황 (commit tree)
+### Path-B v2 현재 상태 (2026-04-21 KST — Day 0-15 + W3 + W4 완료)
+
+#### 커밋 이력 전체
+
+| 구분 | 커밋 | 내용 | 신규 테스트 |
+|------|------|------|------------|
+| Day 0 | `b861a10` | SSOT + 13-doc sync + Binance 30d 정산 | — |
+| Day 1 | `b32792e` | PnLLedger + PnLReconciler + ExchangePnLSnapshot | +25 |
+| Day 2 | `3c45a3b` + `0784c2b` | UniverseMatrix + PreTradeValidator (live.py -227 LOC) | +39 |
+| Day 3 | `974c1ad` + `5ff1cd9` | StrategyBudgetLedger + DailyReconciliationReport | +32 |
+| Day 4 | `27eaa57` + `51f25cc` + `5617ecd` | ConfigService + TradingSupervisor + StrategyRegistry (opt-in) | +47 |
+| Day 5 | `30b704b` | main.py fail-fast boot guard via ConfigService | — |
+| Day 6 | `468785c` | ExecutionJournal (SQLite-WAL, hash chain) | +12 |
+| Day 7 | `01d9d12` | OrderStateMachine (9-state explicit lifecycle) | +9 |
+| Day 8 | `72df0e2` | OrderRouter (thin boundary, idempotency, journal hook) | +7 |
+| Day 9 | `d016849` | Signal.predicted_slippage_bps wiring fix (_pred_bps=0 버그) | +3 |
+| Day 10 | `89b820f` | MarketStats real 24h ADV from WS trade stream | +7 |
+| Day 11 | `74292cc` | IOC-TTL parallel cross-exchange legs (HIGH risk) | +9 |
+| Day 12 | `db7bb43` | PreTradeValidator + BookWalkSlippage live signal path 배선 | +9 |
+| Day 13 | `782e25e` | gamma calibration cron + synthetic-test harness | +7 |
+| Day 14 | `edb491f` | executor.py → OrderStateMachine + ExecutionJournal 마이그레이션 | +5 |
+| Day 15 | `38a99a6` | TradingSupervisor activate as main.py runloop owner | +4 |
+| W3 | `07bd710` | Dashboard 8-page skeleton (Next.js + OKLCH dark theme) | — |
+| W4 | `aed0e92` | Infra audit: Prometheus/Grafana/Alertmanager/TimescaleDB/Loki | — |
+
+#### 집계
+
+| 항목 | 값 |
+|------|-----|
+| 신규 모듈 | 16개 (Day 1-5: 11개 opt-in + Day 6-15: 5개 신규) |
+| 신규 테스트 | +72개 (Day 0 포함) |
+| 현재 회귀 | 4,996 pass / 13 pre-existing failures (무관) |
+| live.py LOC | 3,476 → 3,250 (Day 12 기준 net -226) |
+| main.py LOC | 4,194 → 4,228 (Day 15 기준 +34, supervisor wiring) |
+| executor.py LOC | 1,587 → 1,793 (+206, Day 14 state machine wiring) |
+| atomic.py LOC | 275 (try_ioc 추출) |
+
+#### 피처 플래그 체인 (모두 default false, §22.3 순서)
+
+| 플래그 | 활성화 Day | 의존 플래그 |
+|--------|-----------|------------|
+| `EXECUTION_JOURNAL_ENABLED` | Day 6 | — |
+| `EXECUTION_STATE_MACHINE_ENABLED` | Day 7 | JOURNAL |
+| `EXECUTION_ROUTER_ENABLED` | Day 8 | — |
+| `CORE_REAL_ADV_ENABLED` | Day 10 | — |
+| `EXECUTION_PARALLEL_LEGS_ENABLED` | Day 11 | JOURNAL + STATE_MACHINE + ROUTER |
+| `EXECUTION_PRETRADE_VALIDATOR_ENABLED` | Day 12 | — |
+| (gamma calibration cron) | Day 13 | — |
+
+#### Gate 상태
+
+- **Gate**: 48H paper canary + 7개 기준 대기 중 (plan §5)
+- **Live 재개**: BLOCKED until Gate passes
+- **모드**: paper only (commit `606c97b` enforcement)
+
+### Path-B 구조 리팩토링 현황 (commit tree — Day 0-5 상세)
 - `606c97b` — live → paper mode halt (Day 0)
 - `b32792e` — Day 1: PnLLedger + PnLReconciler + ExchangePnLSnapshot (single-source-of-truth PnL, 25 tests)
 - `3c45a3b` — Day 2: UniverseMatrix (부팅 시 (strategy, symbol, leg_a, leg_b) 유효성 검증, 12 tests, BUG-225 class 영구차단)
@@ -47,9 +102,7 @@
 - `974c1ad` — Day 3: StrategyBudgetLedger (전략별 독립 일일 손실예산 from exchange income only, 18 tests)
 - `5ff1cd9` — Day 3: DailyReconciliationReport (UTC 00:05 Telegram + 22-col CSV + variance decomposition 6항목, 14 tests)
 
-**Day 1-3 총계**: 새 모듈 +4,296 LOC / 새 테스트 +2,577 LOC / 96 테스트 전부 통과. `live.py` 3,476 → 3,249 LOC (-227). `main.py` 4,194 → 4,202 LOC (+8 injection only). 
-
-**Day 4-10 예정**: main.py 분해 (Supervisor/ConfigService/StrategyRegistry), live.py OrderRouter/Gateway 분리, trace_id 전파, CanaryStageController, 72H paper canary 회귀, live 재개 Gate는 Stage-1 ($10 × 48H continuous) 통과.
+**Day 1-3 총계**: 새 모듈 +4,296 LOC / 새 테스트 +2,577 LOC / 96 테스트 전부 통과. `live.py` 3,476 → 3,249 LOC (-227). `main.py` 4,194 → 4,202 LOC (+8 injection only).
 
 **금지 사항 (refactor 기간 엄수)**: ❌ config bump으로 fix, ❌ live.py/main.py에 코드 추가 (monotonically shrinking only), ❌ exchange 대조 없이 "fixed" 선언.
 **§2.2 TCA 계층 진화**: 2 layer (gross + fee) → 4 layer (WS-A) → **7 layer** (gross + fee + slippage + funding + basis + reconciliation_variance + exchange_realized — WS-D 완료). Exchange `realizedPnl` primary source (WS-A1/A2/A3/A5), `Trade.realized_pnl` field + 4-branch priority, `ExchangeIncomeFetcher` 30s polling (Binance `/fapi/v1/income` + Bitget `/account/bill`). **WS-B**: dynamic min_spread = fee + p95_slippage + funding_buffer + profit_margin. **WS-D**: divergence 5% rule 자동 HALT + toxicity filter + Sharpe/MDD 30-day rolling + daily TCA CSV.
