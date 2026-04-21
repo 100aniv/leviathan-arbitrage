@@ -189,9 +189,14 @@ class TestEngineInitExchanges:
             with patch("src.execution.paper_adapter.PaperExchangeAdapter", return_value=mock_adapter_inst):
                 await engine._init_exchanges()
 
-        assert len(engine._exchanges) == 2
-        assert "paper_binance" in engine._exchanges
-        assert "paper_okx" in engine._exchanges
+        # Paper mode now creates one adapter per configured exchange
+        # (previously hardcoded 2 paper_binance/paper_okx). Assertion matches
+        # engine.json exchanges.active list (7 by default).
+        assert len(engine._exchanges) == 7
+        # IDs match data collector exchange IDs for executor routing correctness.
+        for eid in ("binance", "bitget", "upbit", "coinone", "bithumb",
+                    "binance_futures", "bitget_futures"):
+            assert eid in engine._exchanges, f"missing paper adapter for {eid}"
 
     @pytest.mark.skip(reason="BUG-151 (ccxt 완전 제거) 후 use_native_adapters flag obsolete — native only")
     @pytest.mark.asyncio

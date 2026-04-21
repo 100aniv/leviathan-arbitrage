@@ -9,8 +9,20 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
+
+# Day 15 hook: optional halt forwarder invoked on threshold breach. Set by
+# TradingSupervisor.start() so STRANDED events propagate up to halt_request
+# without introducing a hard import dependency on Supervisor from this module.
+_HALT_FORWARDER: "Optional[Callable[[str], None]]" = None
+
+
+def register_halt_forwarder(fn: Optional[Callable[[str], None]]) -> None:
+    """Install/clear the halt forwarder. Passing None clears it."""
+    global _HALT_FORWARDER
+    _HALT_FORWARDER = fn
 
 # Error codes / messages that are safe to ignore (position already closed)
 _BENIGN_CODES: frozenset[str] = frozenset({
@@ -116,6 +128,13 @@ class StrandedPositionTracker:
                 "stranded_threshold_exceeded total_usd=%.2f threshold=%.2f — halting",
                 total_usd, self._threshold,
             )
+            # Day 15: forward reason to supervisor.halt_request if installed.
+            # Guarded try/except — tracker hot path never raises on metric/forwarder error.
+            if _HALT_FORWARDER is not None:
+                try:
+                    _HALT_FORWARDER(f"stranded_usd={total_usd:.2f}")
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning("halt_forwarder_failed err=%r", exc)
             return True
 
         logger.warning(
