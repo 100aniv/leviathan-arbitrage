@@ -4,7 +4,10 @@ import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Home, Settings2, BarChart2, ShieldCheck, Settings, Bell, LogOut, Database, Activity } from "lucide-react";
+import {
+  Home, Settings2, BarChart2, ShieldCheck, Settings, Bell, LogOut, Database, Activity,
+  DollarSign, Briefcase, GitBranch, HeartPulse, Scale, FileText, AlertOctagon, CheckSquare,
+} from "lucide-react";
 import ko from "@/i18n/ko.json";
 import { useApi } from "@/hooks/useApi";
 import { getStatus } from "@/lib/api";
@@ -15,6 +18,18 @@ const TABS = [
   { id: "manage",   label: ko.nav.manage,   href: "/manage",   icon: Settings2 },
   { id: "insights", label: ko.nav.insights, href: "/insights", icon: BarChart2 },
   { id: "safety",   label: ko.nav.safety,   href: "/safety",   icon: ShieldCheck },
+] as const;
+
+/** Path-B v2 W3 (Day 22) — 8 operator dashboard pages per DESIGN.md §5. */
+const PATH_B_PAGES = [
+  { label: "PnL",             href: "/pnl",             icon: DollarSign },
+  { label: "Positions",       href: "/positions",       icon: Briefcase },
+  { label: "Strategy Health", href: "/strategy-health", icon: HeartPulse },
+  { label: "Divergence",      href: "/divergence",      icon: Scale },
+  { label: "Daily Report",    href: "/daily-report",    icon: FileText },
+  { label: "Rejections",      href: "/rejections",      icon: AlertOctagon },
+  { label: "Reconciliation",  href: "/reconciliation",  icon: CheckSquare },
+  { label: "Trace",           href: "/trace/latest",    icon: GitBranch },
 ] as const;
 
 const QUICK_MENU = [
@@ -36,6 +51,15 @@ export function TabLayout({ children }: TabLayoutProps) {
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
+  }
+
+  // Path-B v2 W3 — render 8 operator pages inside the dedicated sidebar layout.
+  const isPathBRoute = PATH_B_PAGES.some((p) =>
+    p.href === "/trace/latest" ? pathname.startsWith("/trace") : pathname.startsWith(p.href),
+  );
+
+  if (isPathBRoute) {
+    return <PathBShell pathname={pathname}>{children}</PathBShell>;
   }
 
   return (
@@ -208,5 +232,125 @@ function ConnectionBadge() {
       />
       {connected ? ko.header.connected : ko.header.disconnected}
     </span>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Path-B v2 W3 Shell (DESIGN.md §8)
+ *  - Fixed 240px left sidebar with 8 operator pages
+ *  - 48px top bar with Mode badge + ConnectionBadge + brand
+ * ────────────────────────────────────────────────────────────────────────── */
+function PathBShell({
+  pathname,
+  children,
+}: {
+  pathname: string;
+  children: React.ReactNode;
+}) {
+  function isActive(href: string) {
+    if (href === "/trace/latest") return pathname.startsWith("/trace");
+    return pathname.startsWith(href);
+  }
+
+  return (
+    <div className="min-h-screen bg-bg-base flex">
+      {/* ── 좌측 사이드바 (240px) ── */}
+      <aside
+        className="hidden md:flex flex-col fixed top-0 left-0 bottom-0 w-[240px] bg-bg-surface border-r border-border z-40"
+        aria-label="Path-B v2 dashboard navigation"
+      >
+        <div className="h-12 flex items-center px-4 border-b border-border">
+          <Link href="/" className="flex items-center gap-2 min-w-0">
+            <Image src="/logo.png" alt="로고" width={22} height={22} className="rounded-md shrink-0" />
+            <span className="font-display font-bold text-text-primary tracking-tight text-body">
+              LEVIATHAN
+            </span>
+          </Link>
+        </div>
+
+        <div className="px-4 py-3 border-b border-border">
+          <ModeBadge />
+        </div>
+
+        <nav className="flex-1 overflow-y-auto py-2" aria-label="운영 페이지 메뉴">
+          {PATH_B_PAGES.map((p) => {
+            const Icon = p.icon;
+            const active = isActive(p.href);
+            return (
+              <Link
+                key={p.href}
+                href={p.href}
+                aria-current={active ? "page" : undefined}
+                className={`
+                  flex items-center gap-2 px-4 py-2 text-caption font-medium
+                  transition-colors duration-150 border-l-2
+                  ${active
+                    ? "bg-brand-subtle text-brand border-brand"
+                    : "text-text-secondary border-transparent hover:bg-bg-muted hover:text-text-primary"}
+                `}
+              >
+                <Icon size={15} aria-hidden />
+                <span>{p.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="px-4 py-3 border-t border-border">
+          <Link href="/" className="text-small text-text-tertiary hover:text-text-primary transition-colors">
+            ← 메인 대시보드
+          </Link>
+        </div>
+      </aside>
+
+      {/* ── 본문 (사이드바 만큼 오프셋) ── */}
+      <div className="flex-1 min-w-0 md:ml-[240px] flex flex-col">
+        {/* 상단 48px 바 */}
+        <header
+          className="sticky top-0 z-30 h-12 bg-bg-base border-b border-border flex items-center px-4 md:px-6 gap-3"
+        >
+          <div className="md:hidden flex items-center gap-2">
+            <Image src="/logo.png" alt="로고" width={20} height={20} className="rounded-md" />
+            <span className="font-display font-bold text-text-primary text-caption">LEVIATHAN</span>
+          </div>
+          <div className="flex items-center gap-3 ml-auto">
+            <ConnectionBadge />
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-auto" id="main-content">
+          {children}
+        </main>
+      </div>
+
+      {/* 모바일: 하단 탭은 8페이지를 표시하지 않음 — 사이드바가 가려지므로
+          Path-B 페이지 내 네비게이션은 /pnl /positions 등 직접 URL 접근 */}
+    </div>
+  );
+}
+
+/* Mode 표시 뱃지 — engine.json의 mode (paper|live|backtest) */
+function ModeBadge() {
+  const { data } = useApi<StatusResponse>("/status", getStatus, {
+    refreshInterval: 15_000,
+  });
+  const mode = (data?.execution_mode ?? "paper").toLowerCase();
+  const modeClass =
+    mode === "live"     ? "bg-danger-bg text-danger" :
+    mode === "backtest" ? "bg-info-bg text-info" :
+                          "bg-success-bg text-[#026B3F]";
+
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-small uppercase tracking-widest text-text-tertiary font-medium">
+        Mode
+      </span>
+      <span
+        className={`inline-flex items-center px-2 py-0.5 rounded-[6px] text-small font-mono font-semibold uppercase ${modeClass}`}
+        aria-label={`실행 모드: ${mode}`}
+      >
+        {mode}
+      </span>
+    </div>
   );
 }
