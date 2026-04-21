@@ -4,7 +4,29 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [Unreleased]
 
-_Nothing pending._
+### Added
+- `ARCHITECTURE.md` — comprehensive hand-off doc (378 LOC) covering Path-B v2 execution boundary, 16 module table, flag dependency matrix, order lifecycle, persistence, reconciliation cycle, Gate criteria, extension points (`4a54e56`)
+- `engine/docs/PATH_B_V2_REVIEW.md` ready for reviewers — multi-model code review findings (1 CRITICAL + 4 HIGH + 4 MEDIUM + 3 LOW)
+- `leviathan_slippage_prediction_missing_total` Prometheus counter — tracks feedback records missing Signal.predicted_slippage_bps (`556ffb7`)
+- `src/core/config_loader.get_bool_flag()` unified truthy env-var parser across all 7 Path-B v2 feature flags (`556ffb7`)
+- `engine/tests/unit/core/test_config_loader_bool_flag.py` (20 tests) + extended `test_slippage_feedback_wired.py` (+2 tests)
+- `engine/tests/unit/execution/test_cross_exchange_v2_criticals.py` (+11 tests) + self-loop tests in test_order_state.py (`5a276f5`)
+
+### Changed
+- C-1 `CrossExchangeV2Executor`: raise `ConfigError` when `flag ON + state_machine=None` (was silent logger.warning). Promote `TransitionError` from DEBUG to ERROR. STRANDED now emits via state_machine (`5a276f5`)
+- H-2 `OrderState._LEGAL_TRANSITIONS`: add `ACKED→ACKED` + `PARTIAL→PARTIAL` self-loops for incremental fills (`5a276f5`)
+- H-4 `cross_exchange_v2._normalize_side()`: unify "BUY"/"Buy"/"long"/"bid"/"ask" → lowercase (`5a276f5`)
+- M-1 `ExecutionJournal._SINGLETON_LOCK`: lazy-init inside `get_execution_journal()` (CLI tool compatibility, `556ffb7`)
+- Day 14 executor.py: remove 13 redundant `if state_machine is not None` outer guards (−20 LOC, `9900346`)
+
+### Fixed
+- 13 pre-existing test failures unrelated to Path-B v2 (`cfaedaf`):
+  - stat_arb_disable fixture × 4 (Engine._exchanges stub)
+  - native_bitget + collectors v2→v3 format × 5
+  - exchange_base Protocol adapter stub × 1
+  - pretrade_validator event-loop flake × 1
+
+**Post-review regression**: 5053 unit tests pass, 0 failures, 14 skipped.
 
 ## [v2.0.0-path-b] — 2026-04-21
 
