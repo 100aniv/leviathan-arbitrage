@@ -94,6 +94,7 @@ _LEGAL_TRANSITIONS: dict[OrderState, frozenset[OrderState]] = {
     ),
     OrderState.ACKED: frozenset(
         {
+            OrderState.ACKED,
             OrderState.PARTIAL,
             OrderState.FILLED,
             OrderState.CANCELLED,
@@ -102,7 +103,12 @@ _LEGAL_TRANSITIONS: dict[OrderState, frozenset[OrderState]] = {
         }
     ),
     OrderState.PARTIAL: frozenset(
-        {OrderState.FILLED, OrderState.CANCELLED, OrderState.STRANDED}
+        {
+            OrderState.PARTIAL,
+            OrderState.FILLED,
+            OrderState.CANCELLED,
+            OrderState.STRANDED,
+        }
     ),
     # Terminals — no outgoing transitions.
     OrderState.FILLED: frozenset(),

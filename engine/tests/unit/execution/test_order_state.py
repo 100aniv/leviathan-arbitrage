@@ -204,3 +204,67 @@ def test_flag_dependency_state_machine_requires_journal(
     journal = ExecutionJournal(db_path=tmp_path / "j.db")
     with pytest.raises(ConfigError):
         OrderStateMachine(journal=journal)
+
+
+@pytest.mark.asyncio
+async def test_partial_to_partial_self_loop_allowed(
+    enable_flags: None, db_path: Path
+) -> None:
+    """H-2 fix: PARTIAL → PARTIAL is legal (supports incremental fills).
+
+    Upstream adapters emit one PARTIAL event per exchange trade update. Before
+    H-2 the second update raised TransitionError and the order's true state
+    diverged from the journal.
+    """
+    journal = ExecutionJournal(db_path=db_path)
+    await journal.start()
+    sm = OrderStateMachine(journal=journal)
+    try:
+        oid = "ORD-PARTIAL-LOOP"
+        # PENDING → SENT → ACKED → PARTIAL establishes the entry point.
+        await sm.transition(oid, OrderState.PENDING, OrderState.SENT, {})
+        await sm.transition(oid, OrderState.SENT, OrderState.ACKED, {})
+        e1 = await sm.transition(oid, OrderState.ACKED, OrderState.PARTIAL, {"filled": 3})
+        # Self-loop: subsequent incremental fill still classified as PARTIAL.
+        e2 = await sm.transition(oid, OrderState.PARTIAL, OrderState.PARTIAL, {"filled": 6})
+        e3 = await sm.transition(oid, OrderState.PARTIAL, OrderState.PARTIAL, {"filled": 9})
+        for e in (e1, e2, e3):
+            assert e is not None
+        events = await journal.replay(order_id=oid)
+        states = [e.state for e in events]
+        assert states.count("PARTIAL") == 3
+        # Can still exit to FILLED.
+        await sm.transition(oid, OrderState.PARTIAL, OrderState.FILLED, {"filled": 10})
+        assert await sm.current_state(oid) == OrderState.FILLED
+    finally:
+        await journal.stop()
+
+
+@pytest.mark.asyncio
+async def test_acked_to_acked_self_loop_allowed(
+    enable_flags: None, db_path: Path
+) -> None:
+    """H-2 fix: ACKED → ACKED is legal (supports repeated status updates).
+
+    Some adapters refresh the order status multiple times before the first
+    fill (e.g. amend_price events). Re-entering ACKED must not be classified
+    illegal.
+    """
+    journal = ExecutionJournal(db_path=db_path)
+    await journal.start()
+    sm = OrderStateMachine(journal=journal)
+    try:
+        oid = "ORD-ACKED-LOOP"
+        await sm.transition(oid, OrderState.PENDING, OrderState.SENT, {})
+        e1 = await sm.transition(oid, OrderState.SENT, OrderState.ACKED, {"exch_id": "A"})
+        # Self-loop: re-ACK after an amend/refresh.
+        e2 = await sm.transition(oid, OrderState.ACKED, OrderState.ACKED, {"exch_id": "A'"})
+        for e in (e1, e2):
+            assert e is not None
+        events = await journal.replay(order_id=oid)
+        assert [e.state for e in events] == ["SENT", "ACKED", "ACKED"]
+        # Downstream transitions still work from ACKED.
+        await sm.transition(oid, OrderState.ACKED, OrderState.FILLED, {})
+        assert await sm.current_state(oid) == OrderState.FILLED
+    finally:
+        await journal.stop()

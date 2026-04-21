@@ -75,6 +75,26 @@ def _flag_enabled(name: str) -> bool:
     return os.environ.get(name, "false").strip().lower() in _TRUTHY
 
 
+_BUY_ALIASES = frozenset({"buy", "long", "bid"})
+_SELL_ALIASES = frozenset({"sell", "short", "ask"})
+
+
+def _normalize_side(side: Any) -> str:
+    """Normalize any side representation to lowercase ``"buy"`` or ``"sell"``.
+
+    Handles adapter/strategy variants: "BUY"/"Buy"/"long"/"bid" → "buy";
+    "SELL"/"Sell"/"short"/"ask" → "sell". Unrecognised values raise ``ValueError``.
+    Applied at LegState ingress and rollback-unwind path to keep the executor's
+    side-comparison logic stable under H-4 review findings.
+    """
+    raw = str(side).strip().lower()
+    if raw in _BUY_ALIASES:
+        return "buy"
+    if raw in _SELL_ALIASES:
+        return "sell"
+    raise ValueError(f"unrecognised side literal: {side!r}")
+
+
 # ---------------------------------------------------------------------------
 # Error types
 # ---------------------------------------------------------------------------
@@ -162,7 +182,7 @@ class CrossExchangeV2Executor:
 
         executor = CrossExchangeV2Executor(
             router=router,
-            state_machine=state_machine,        # optional; WARN if None
+            state_machine=state_machine,        # required when flag on (C-1)
             stranded=stranded_tracker,
             atomic=AtomicOrderExecutor(timeout_ms=5000),
             ttl_ms=5000,
@@ -171,7 +191,8 @@ class CrossExchangeV2Executor:
 
     Construction enforces the §22.3 flag-dependency matrix. Flag-off behaviour
     is a pure sentinel: ``ExecResultV2(status=DISABLED)`` without touching
-    any adapter.
+    any adapter. Flag-on with ``state_machine=None`` raises ``ConfigError``
+    (C-1 review blocker — STRANDED transitions must be journaled).
     """
 
     def __init__(
@@ -214,9 +235,10 @@ class CrossExchangeV2Executor:
                     "(§22.3 Flag Interaction Matrix)"
                 )
             if self._sm is None:
-                logger.warning(
-                    "cross_exchange_v2.state_machine_missing "
-                    "— transitions will be skipped"
+                raise ConfigError(
+                    f"{self._flag_env}=true requires a non-None state_machine "
+                    "(§22.3 Flag Interaction Matrix): STRANDED transitions "
+                    "must be journaled"
                 )
 
     @property
@@ -274,7 +296,7 @@ class CrossExchangeV2Executor:
                             leg_index=0,
                             exchange_id=str(leg_a.exchange_id),
                             symbol=str(leg_a.symbol),
-                            side=str(leg_a.side),
+                            side=_normalize_side(leg_a.side),
                             size=Decimal(str(leg_a.size)),
                             price=Decimal(str(leg_a.price or 0)),
                         ),
@@ -282,7 +304,7 @@ class CrossExchangeV2Executor:
                             leg_index=1,
                             exchange_id=str(leg_b.exchange_id),
                             symbol=str(leg_b.symbol),
-                            side=str(leg_b.side),
+                            side=_normalize_side(leg_b.side),
                             size=Decimal(str(leg_b.size)),
                             price=Decimal(str(leg_b.price or 0)),
                         ),
@@ -316,7 +338,7 @@ class CrossExchangeV2Executor:
                         leg_index=idx,
                         exchange_id=str(src_leg.exchange_id),
                         symbol=str(src_leg.symbol),
-                        side=str(src_leg.side),
+                        side=_normalize_side(src_leg.side),
                         size=Decimal(str(src_leg.size)),
                         price=Decimal(str(src_leg.price or 0)),
                         filled=False,
@@ -361,7 +383,7 @@ class CrossExchangeV2Executor:
 
         if leg_a_state.filled and not leg_b_state.filled:
             # Only leg1 fills → STRANDED_LEG1 path.
-            self._register_stranded(leg_a_state, reason="leg2_ioc_ttl_expired")
+            await self._register_stranded(leg_a_state, reason="leg2_ioc_ttl_expired")
             return ExecResultV2(
                 status=ExecutionStatusV2.STRANDED_LEG1,
                 legs=leg_states,
@@ -371,7 +393,7 @@ class CrossExchangeV2Executor:
 
         if leg_b_state.filled and not leg_a_state.filled:
             # Only leg2 fills → mirror path.
-            self._register_stranded(leg_b_state, reason="leg1_ioc_ttl_expired")
+            await self._register_stranded(leg_b_state, reason="leg1_ioc_ttl_expired")
             return ExecResultV2(
                 status=ExecutionStatusV2.STRANDED_LEG2,
                 legs=leg_states,
@@ -401,7 +423,7 @@ class CrossExchangeV2Executor:
             leg_index=leg_index,
             exchange_id=str(leg.exchange_id),
             symbol=str(leg.symbol),
-            side=str(leg.side),
+            side=_normalize_side(leg.side),
             size=Decimal(str(leg.size)),
             price=Decimal(str(leg.price or 0)),
             client_order_id=f"{trace_id}.{leg_index}",
@@ -489,8 +511,9 @@ class CrossExchangeV2Executor:
         try:
             await self._sm.transition(order_id, from_state, to_state, payload)
         except TransitionError:
-            # Illegal transition (e.g. SM disabled + payload mismatch).
-            logger.debug(
+            # Illegal transitions are bugs (not routine) — promote to ERROR
+            # so operators/runbook see the violation (§12.3 silent-DEBUG ban).
+            logger.error(
                 "cross_exchange_v2.transition_illegal",
                 order_id=order_id,
                 from_state=str(from_state),
@@ -505,8 +528,13 @@ class CrossExchangeV2Executor:
 
     # ---------------------------------------------------------------- stranded
 
-    def _register_stranded(self, leg: LegState, *, reason: str) -> None:
-        """Register a single-leg stranded position via the shared tracker."""
+    async def _register_stranded(self, leg: LegState, *, reason: str) -> None:
+        """Register a single-leg stranded position + emit STRANDED transition.
+
+        C-1 fix: a lone tracker.register() leaves no journal trail for the
+        STRANDED state. Also transition the state-machine to STRANDED so the
+        journal/replay path carries the terminal state.
+        """
         value_usd = float(leg.filled_size * leg.avg_price) if leg.avg_price else 0.0
         should_halt = self._stranded.register(
             exchange_id=leg.exchange_id,
@@ -515,6 +543,22 @@ class CrossExchangeV2Executor:
             size=float(leg.filled_size),
             value_usd=value_usd,
             reason=reason,
+        )
+        # C-1: journal the STRANDED transition via state-machine so the
+        # hash-chained replay reflects the terminal state. The source state is
+        # FILLED (single leg filled before its partner stranded it).
+        await self._safe_transition(
+            leg.client_order_id,
+            OrderState.FILLED,
+            OrderState.STRANDED,
+            {
+                "exchange": leg.exchange_id,
+                "symbol": leg.symbol,
+                "side": leg.side,
+                "size": str(leg.filled_size),
+                "value_usd": value_usd,
+                "reason": reason,
+            },
         )
         if should_halt:
             logger.critical(
@@ -547,7 +591,9 @@ class CrossExchangeV2Executor:
             leg = leg_states[idx]
             if not leg.filled:
                 return leg
-            close_side = "sell" if leg.side in ("buy", "bid") else "buy"
+            # H-4: leg.side has been normalized at ingress, but re-normalize
+            # defensively so this helper stays robust if called elsewhere.
+            close_side = "sell" if _normalize_side(leg.side) == "buy" else "buy"
             try:
                 await adapters[idx].place_market(
                     leg.symbol, close_side, leg.filled_size
@@ -568,7 +614,7 @@ class CrossExchangeV2Executor:
                     symbol=leg.symbol,
                     err=err,
                 )
-                self._register_stranded(
+                await self._register_stranded(
                     leg, reason=f"both_legs_rollback_failed:{err}"
                 )
             return leg

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +16,7 @@ from src.execution.stranded import StrandedPositionTracker
 from tests.unit.execution._parallel_legs_conftest import (  # type: ignore[import-not-found]
     FakeAdapter,
     enable_all_flags,
+    make_state_machine,
     make_trade_request,
 )
 
@@ -25,7 +27,7 @@ def enabled(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_leg1_fill_leg2_ttl_stranded(enabled: None) -> None:
+async def test_leg1_fill_leg2_ttl_stranded(enabled: None, tmp_path: Path) -> None:
     """Leg1 fills, leg2 IOC times out → STRANDED_LEG1 + StrandedPositionTracker."""
     # Override `try_ioc` on the atomic executor: leg 0 fills, leg 1 does not.
     calls: list[int] = []
@@ -51,21 +53,26 @@ async def test_leg1_fill_leg2_ttl_stranded(enabled: None) -> None:
     adapter_b = FakeAdapter()
     router = OrderRouter()
     stranded = StrandedPositionTracker(halt_threshold_usd=100_000_000.0)
+    sm, journal = await make_state_machine(tmp_path)
 
-    executor = CrossExchangeV2Executor(
-        router=router,
-        stranded=stranded,
-        atomic=_FakeAtomic(),  # type: ignore[arg-type]
-        ttl_ms=500,
-    )
+    try:
+        executor = CrossExchangeV2Executor(
+            router=router,
+            stranded=stranded,
+            state_machine=sm,
+            atomic=_FakeAtomic(),  # type: ignore[arg-type]
+            ttl_ms=500,
+        )
 
-    req = make_trade_request(size=Decimal("1.0"))
-    result = await executor.execute(req, adapter_a, adapter_b)
+        req = make_trade_request(size=Decimal("1.0"))
+        result = await executor.execute(req, adapter_a, adapter_b)
 
-    assert result.status == ExecutionStatusV2.STRANDED_LEG1
-    assert len(result.legs) == 2
-    assert result.legs[0].filled is True
-    assert result.legs[1].filled is False
-    assert result.error == "leg2_ioc_ttl_expired"
-    # Tracker received the stranded leg.
-    assert stranded.total_stranded_usd > 0.0
+        assert result.status == ExecutionStatusV2.STRANDED_LEG1
+        assert len(result.legs) == 2
+        assert result.legs[0].filled is True
+        assert result.legs[1].filled is False
+        assert result.error == "leg2_ioc_ttl_expired"
+        # Tracker received the stranded leg.
+        assert stranded.total_stranded_usd > 0.0
+    finally:
+        await journal.stop()

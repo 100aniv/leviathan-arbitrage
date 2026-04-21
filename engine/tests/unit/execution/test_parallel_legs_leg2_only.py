@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +15,7 @@ from src.execution.stranded import StrandedPositionTracker
 from tests.unit.execution._parallel_legs_conftest import (  # type: ignore[import-not-found]
     FakeAdapter,
     enable_all_flags,
+    make_state_machine,
     make_trade_request,
 )
 
@@ -24,7 +26,7 @@ def enabled(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_leg2_fill_leg1_ttl_stranded_mirror(enabled: None) -> None:
+async def test_leg2_fill_leg1_ttl_stranded_mirror(enabled: None, tmp_path: Path) -> None:
     """Leg1 IOC TTL, leg2 fills → STRANDED_LEG2 (mirror of leg1-only)."""
     calls: list[int] = []
 
@@ -49,19 +51,24 @@ async def test_leg2_fill_leg1_ttl_stranded_mirror(enabled: None) -> None:
     adapter_b = FakeAdapter()
     router = OrderRouter()
     stranded = StrandedPositionTracker(halt_threshold_usd=100_000_000.0)
+    sm, journal = await make_state_machine(tmp_path)
 
-    executor = CrossExchangeV2Executor(
-        router=router,
-        stranded=stranded,
-        atomic=_FakeAtomic(),  # type: ignore[arg-type]
-        ttl_ms=500,
-    )
+    try:
+        executor = CrossExchangeV2Executor(
+            router=router,
+            stranded=stranded,
+            state_machine=sm,
+            atomic=_FakeAtomic(),  # type: ignore[arg-type]
+            ttl_ms=500,
+        )
 
-    req = make_trade_request(size=Decimal("1.0"))
-    result = await executor.execute(req, adapter_a, adapter_b)
+        req = make_trade_request(size=Decimal("1.0"))
+        result = await executor.execute(req, adapter_a, adapter_b)
 
-    assert result.status == ExecutionStatusV2.STRANDED_LEG2
-    assert result.legs[0].filled is False
-    assert result.legs[1].filled is True
-    assert result.error == "leg1_ioc_ttl_expired"
-    assert stranded.total_stranded_usd > 0.0
+        assert result.status == ExecutionStatusV2.STRANDED_LEG2
+        assert result.legs[0].filled is False
+        assert result.legs[1].filled is True
+        assert result.error == "leg1_ioc_ttl_expired"
+        assert stranded.total_stranded_usd > 0.0
+    finally:
+        await journal.stop()

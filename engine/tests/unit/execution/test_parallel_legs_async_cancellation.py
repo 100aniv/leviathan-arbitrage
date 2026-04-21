@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -15,6 +16,7 @@ from src.execution.stranded import StrandedPositionTracker
 from tests.unit.execution._parallel_legs_conftest import (  # type: ignore[import-not-found]
     FakeAdapter,
     enable_all_flags,
+    make_state_machine,
     make_trade_request,
 )
 
@@ -25,7 +27,9 @@ def enabled(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_outer_task_cancellation_propagates(enabled: None) -> None:
+async def test_outer_task_cancellation_propagates(
+    enabled: None, tmp_path: Path,
+) -> None:
     """If the outer task is cancelled mid-gather, CancelledError propagates."""
 
     class _SlowAtomic:
@@ -39,20 +43,25 @@ async def test_outer_task_cancellation_propagates(enabled: None) -> None:
     adapter_b = FakeAdapter()
     router = OrderRouter()
     stranded = StrandedPositionTracker()
+    sm, journal = await make_state_machine(tmp_path)
 
-    executor = CrossExchangeV2Executor(
-        router=router,
-        stranded=stranded,
-        atomic=_SlowAtomic(),  # type: ignore[arg-type]
-        ttl_ms=5000,
-    )
+    try:
+        executor = CrossExchangeV2Executor(
+            router=router,
+            stranded=stranded,
+            state_machine=sm,
+            atomic=_SlowAtomic(),  # type: ignore[arg-type]
+            ttl_ms=5000,
+        )
 
-    req = make_trade_request(size=Decimal("1.0"))
-    task = asyncio.create_task(executor.execute(req, adapter_a, adapter_b))
-    await asyncio.sleep(0.01)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
+        req = make_trade_request(size=Decimal("1.0"))
+        task = asyncio.create_task(executor.execute(req, adapter_a, adapter_b))
+        await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        await journal.stop()
 
 
 @pytest.mark.asyncio
