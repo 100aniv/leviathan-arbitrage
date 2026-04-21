@@ -145,12 +145,14 @@ class TestWsSubscribeMessage:
         assert msg["op"] == "subscribe"
         assert len(msg["args"]) == 1
         arg = msg["args"][0]
-        assert arg["instType"] == "SPOT"
-        assert arg["channel"] == "books5"
-        assert arg["instId"] == "BTCUSDT"
+        # BUG-182: V3 UTA uses lowercase instType and topic/symbol (not channel/instId)
+        assert arg["instType"] == "spot"
+        assert arg["topic"] == "books5"
+        assert arg["symbol"] == "BTCUSDT"
 
     def test_ws_url(self, adapter):
-        assert adapter._ws_orderbook_url("BTC/USDT") == "wss://ws.bitget.com/v2/ws/public"
+        # BUG-182: V3 UTA endpoint
+        assert adapter._ws_orderbook_url("BTC/USDT") == "wss://ws.bitget.com/v3/ws/public"
 
 
 # ---------------------------------------------------------------------------

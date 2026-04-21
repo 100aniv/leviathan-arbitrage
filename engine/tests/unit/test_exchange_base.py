@@ -81,6 +81,12 @@ class ConcreteAdapter:
             symbol=symbol,
         )
 
+    async def get_min_notional(self, symbol: str) -> Decimal:
+        return Decimal("5")
+
+    def supports_symbol(self, symbol: str) -> bool:
+        return True
+
     @property
     def health_score(self) -> float:
         return 1.0

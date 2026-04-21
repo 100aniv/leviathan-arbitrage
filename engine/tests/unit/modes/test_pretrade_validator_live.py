@@ -82,7 +82,7 @@ class TestFlagOff:
 
         # If the flag is off, validate() must never be called (live.py skips the block)
         if flag:
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 validator.validate(_make_trade_request(), "cross_exchange_v1")
             )
         validator.validate.assert_not_called()
@@ -110,7 +110,7 @@ class TestFlagOnReject:
         flag = os.environ.get("EXECUTION_PRETRADE_VALIDATOR_ENABLED") == "true"
         assert flag is True
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             validator.validate(trade_request, trade_request.strategy_id, context={})
         )
         assert result.approved is False
@@ -123,7 +123,7 @@ class TestFlagOnReject:
         from src.core.reason_codes import ReasonCode
 
         validator = _make_validator(reject=True)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             validator.validate(_make_trade_request(), "s1", context={})
         )
         assert isinstance(result.reason_code, ReasonCode)
@@ -142,7 +142,7 @@ class TestFlagOnPass:
         validator = _make_validator(reject=False)
         trade_request = _make_trade_request()
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             validator.validate(trade_request, trade_request.strategy_id, context={})
         )
         assert result.approved is True

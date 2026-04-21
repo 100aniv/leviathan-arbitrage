@@ -78,6 +78,7 @@ class TestMainStatArbRegistration:
         engine._regime_detector = MagicMock()
         engine._strategy_manager = MagicMock()
         engine._latency_tracker = None
+        engine._exchanges = {}
         return engine
 
     @pytest.mark.asyncio

@@ -247,7 +247,8 @@ class TestBitgetDenormalizeSymbol:
 class TestBitgetCollectorWsUrl:
     def test_ws_url_is_bitget_endpoint(self):
         c = BitgetCollector(symbols=["BTC/USDT"])
-        assert c._ws_url() == "wss://ws.bitget.com/v2/ws/public"
+        # BUG-182: V3 UTA endpoint
+        assert c._ws_url() == "wss://ws.bitget.com/v3/ws/public"
 
 
 class TestBitgetCollectorSubscribeMessage:
@@ -258,14 +259,16 @@ class TestBitgetCollectorSubscribeMessage:
         assert msg["op"] == "subscribe"
         assert len(msg["args"]) == 1
         arg = msg["args"][0]
-        assert arg["instType"] == "SPOT"
-        assert arg["channel"] == "books15"
-        assert arg["instId"] == "BTCUSDT"
+        # BUG-182: V3 UTA uses lowercase instType, topic/symbol (not channel/instId)
+        assert arg["instType"] == "spot"
+        assert arg["topic"] == "books5"
+        assert arg["symbol"] == "BTCUSDT"
 
     def test_subscribe_message_eth_usdt(self):
         c = BitgetCollector(symbols=["ETH/USDT"])
         msg = c._subscribe_message("ETH/USDT")
-        assert msg["args"][0]["instId"] == "ETHUSDT"
+        # BUG-182: V3 UTA uses 'symbol' key (not 'instId')
+        assert msg["args"][0]["symbol"] == "ETHUSDT"
 
 
 class TestBitgetCollectorParseMessage:
