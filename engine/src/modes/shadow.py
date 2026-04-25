@@ -1735,13 +1735,22 @@ class PaperMode:
             for i, leg in enumerate(trade_request.legs):
                 leg_price = leg.price or Decimal("0")
                 if leg_price <= Decimal("0"):
+                    # 2026-04-22 fix: leg.price=0 silent fill 차단.
+                    # strategy bug 또는 signal staleness로 leg.price=0 → fill_price=0 →
+                    # net_pnl=+0.0000 result=loss false 분류. 즉시 reject + counter.
                     logger.warning(
-                        "paper_mode.trade_leg_missing_price",
+                        "paper_mode.trade_request_rejected_missing_price",
                         strategy_id=sid,
                         exchange_id=leg.exchange_id,
                         symbol=leg.symbol,
                         side=str(leg.side),
+                        leg_index=i,
                     )
+                    self._stats.trades_rejected += 1
+                    if sid not in self._stats.by_strategy:
+                        self._stats.by_strategy[sid] = StrategyStats()
+                    self._stats.by_strategy[sid].rejections += 1
+                    return
                 order = Order(
                     order_id=str(uuid.uuid4()),
                     exchange_id=leg.exchange_id,
