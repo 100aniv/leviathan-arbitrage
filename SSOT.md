@@ -101,11 +101,15 @@
 - **첫 카나리 실패** (2026-04-21~22, PID 45822, 14H 14m): universe_matrix entries=0 → paper_trade_filled=0 (실 거래 0건)
   - 근본원인: PaperExchangeAdapter 2개 하드코딩 + market_type 인터페이스 메서드 부재
   - 수정: `3d37e91` (paper 어댑터 7개 확장), `e5a28b2` (테스트 갱신)
-- **재카나리 진행 중** (2026-04-22 ~ 진행):
-  - 5분 dry-run ALL_PASS: entries=34, trade=5, total_pnl=+$2.18, crash=0
-  - **30분 측정 (PID 66873, 종료) ALL_PASS**: entries=34, trade=2, total_pnl=+$0.5764, crash=0 → 4/4 (`pre_canary_20260425_042124.json`)
-  - 부가: toxicity filter 동작 (cross_exchange_spot rejects), stale_detector 동작 (Bithumb cross_validation), spot_futures sf_arb p50=5.21bps, triangular pass_profit=5/5
-  - 다음: 60분 → 6h → 24h → US-055 LiveGate Preflight (`bash scripts/auto_canary_chain.sh 3` for 60min start)
+- **재카나리 + 실시간 fix 사이클 (2026-04-22 진행)**:
+  - **사이클 1**: 5분 dry-run ALL_PASS — entries=34, trade=5, +$2.18, crash=0
+  - **사이클 2**: 30분 측정 ALL_PASS — entries=34, trade=2, +$0.58, crash=0
+  - **사이클 3**: 60min stage 9분에 spot_futures -$5.02 catastrophic loss 발견 → loss cap $10→$1 fix (`.env` + `CLAUDE.md` `ebb0930`) → engine restart
+  - **사이클 4**: monitor false positive KILL_SWITCH alert → `clear_halt()` Prometheus metric reset 누락 bug 발견 → fix (`45a5ba4`) → engine restart
+  - **사이클 5**: v2 6분에 trade_leg_missing_price → silent fill price=0 → result=loss false 분류 발견 → trade reject fix (`b0b1b3c`) → engine restart
+  - **사이클 6 (v3 진행 중)**: PID 14082, 11분 elapsed, 7 fills, **+$11.05 PnL**, crash=0, kill_switch=0.0 ✓, missing_price=0 ✓, 모든 13 항목 PASS
+  - 부가: toxicity filter ~7K rejects, stale_detector ~1K rejects, sf_arb p50=8bps signals 활발, monitor v5 BG 30s polling
+  - 다음: 새 문제 polling 계속 → 발견 시 즉시 fix → 24h Gate (US-055 LiveGate Preflight 직전)
 - **48H Gate**: 24h paper canary PASS 후 LiveGate 진입 가능
 - **Live 재개**: BLOCKED until Gate passes
 - **모드**: paper only (commit `606c97b` enforcement)
