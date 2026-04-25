@@ -190,6 +190,67 @@ Live 거래는 다음 모두 충족 후에만 재개:
 
 ---
 
+## 6.5 Incident Response Procedure (IRP) — P1/P2/P3 (Phase L L-5, 2026-04-22)
+
+> 사장님 부재 시(외출/취침) 자동 대응 흐름. 사람이 즉시 개입할 수 없는 시간대에 엔진이 안전 측면 fallback 보장.
+
+### P1 — 자금 손실 위험 (즉시 차단, < 1초)
+
+| 트리거 | 자동 대응 | 알림 채널 |
+|--------|----------|---------|
+| `KILL_SWITCH` 발동 (수동/자동) | 신규 주문 차단 + 미체결 취소 + 시장가 청산 (Tier 1→2→3) | Telegram TradeBot 즉시 alert |
+| `divergence > 5%` (engine vs exchange realized PnL) | KillSwitch Tier-1 자동 발동 + HALT | Telegram critical |
+| `STRANDED total_usd > $30` | `register_halt_forwarder` 통해 supervisor halt | Telegram critical |
+| live mode unexpected (mode=paper 무시 시도) | startup boot guard fail + 즉시 종료 | Console fatal log |
+
+**운영자 행동**:
+1. Binance/Bitget 앱에서 포지션 0 확인 (앱이 진실)
+2. Telegram TradeBot `/positions` 명령으로 엔진 상태 확인
+3. 청산 안 됐으면 수동: `python engine/scripts/close_open_positions.py --execute`
+4. 24h 내 2+ P1 발생 시 `mode=paper` 강제 + 사장님 호출 (외출 중이라도)
+
+### P2 — 운영 중단 위험 (자동 복구 시도, < 5분)
+
+| 트리거 | 자동 대응 | 알림 |
+|--------|----------|------|
+| Engine crash (process exit) | systemd/docker restart_policy=unless-stopped | InfraBot 알림 |
+| DB connection drop | retry with exponential backoff 3회 → JSON fallback | InfraBot warning |
+| WS multi-exchange disconnect (3+) | per-exchange reconnect 60s → 모두 실패 시 paper-only mode | InfraBot warning |
+| Memory leak (>2GB residual) | log_warning + restart in 1H if no resolution | DevBot info |
+
+**운영자 행동**:
+1. 자동 복구 실패 시: `docker compose ps` + `docker compose logs --tail 200 engine`
+2. WAL replay 필요 여부 확인: 시작 시 `Reconciliation successful` 로그 없으면 수동
+3. P2가 30분 내 미해결 시 P1으로 escalation
+
+### P3 — 데이터 품질 / 단일 전략 (관찰 + 격리, 24h 내 결정)
+
+| 트리거 | 자동 대응 | 알림 |
+|--------|----------|------|
+| Bithumb stale data 5+/min | `_stale_detector.add_blacklist(symbol)` 자동 격리 | DevBot debug |
+| 단일 전략 budget exhausted | 해당 전략만 HALT, 다른 전략 계속 | DevBot info |
+| Single circuit breaker OPEN | 300s cooldown 후 HALF_OPEN 복귀 시도 | DevBot debug |
+| Slippage prediction error p95 > 30bps | gamma calibration 다음 cycle 트리거 | DevBot debug |
+
+**운영자 행동**:
+1. P3는 즉시 개입 불필요 — Daily Reconciliation Report 검토 시 정리
+2. 동일 패턴 3일 연속 시 root cause 조사 + 전략 비활성화 검토
+
+### 우선순위 매트릭스
+
+```
+                    빈도(매일)    빈도(주간)    빈도(드뭄)
+즉시 자금 손실    P1            P1           P1
+운영 중단        P2 (자동복구)   P2           P1 (불복구 시)
+관찰 가능        P3            P3           P3 (격리)
+```
+
+### Escalation chain
+
+P3 (24h 미해결) → P2 / P2 (30분 미해결) → P1 / P1 (즉시) → mode=paper 강제 + Telegram TradeBot critical + KillSwitch.
+
+---
+
 ## 7. 긴급 연락 / 에스컬레이션
 
 | 상황 | 조치 |
