@@ -121,6 +121,14 @@ python -m src.main
 # Ctrl-C to stop; logs in engine/logs/
 ```
 
+**중요 (2026-04-22)**: 본격 카나리 시작 전 5분 dry-run으로 4 항목 점검:
+- universe_matrix entries > 0 (paper 어댑터 + ExchangeAdapter Protocol 완전성)
+- paper trade fill 발생 (`paper_mode.trade_request_executed` ≥ 1)
+- crash 0
+- PnL > 0
+
+상세 절차: `engine/docs/OPERATOR_RUNBOOK.md §0.5 Pre-canary 점검`. 2026-04-21 14h 카나리는 universe_matrix=0으로 trade 0건이었음 — 같은 함정 재발 방지 룰.
+
 ### 5. Run tests
 
 ```bash
@@ -144,33 +152,29 @@ Mode is set by `engine/config/engine.json` → `"mode"` field. Environment varia
 
 ---
 
-## Current Refactor: Path-B v2
+## Current Refactor: Path-B v2 (2026-04-22 status)
 
 Plan: `/Users/100aniv/.claude/plans/hidden-cuddling-pascal.md`
 Architecture spec: `engine/docs/MODULE_DESIGN.md`
 Progress tracker: `engine/docs/REFACTOR_PLAN.md`
 
-### Day sequence
+**Day 0-15 + W3 + W4 commits 모두 main에 landed** (`b861a10` ~ `aed0e92`). 후속 review remediation + paper universe_matrix fix 완료 (`5a276f5`, `556ffb7`, `3d37e91`, `e5a28b2`).
 
-```
-Day 6  ExecutionJournal   ──► Day 7  OrderStateMachine ──► Day 14 Executor migrate
-                          │                              │
-                          └──► Day 8  OrderRouter ───────┼──► Day 11 Parallel legs (HIGH RISK)
-                                                         │
-Day 9  pred_bps fix ──────┐                              │
-                          ├──► Day 12 Wire live ──► Day 13 Gamma calib
-Day 10 Real ADV ──────────┘                              │
-                                                         └──► Day 15 Supervisor activate
-```
+### Status summary
 
-Key metrics being fixed:
-
-| Metric | Now | Target (Day 15) |
+| Metric | Pre-Path-B (v237) | Post-paper-fix (2026-04-22) |
 |---|---|---|
-| Engine vs Binance 24h PnL gap | -$5.01 | ±$1.00 |
-| Slippage prediction error p95 | ~120 bps (pred=0 bug) | <20 bps |
-| Cross-exchange naked exposure p95 | 200-480ms | <50ms |
-| Crash state recovery | unrecoverable | 100% journal replay |
+| Engine vs Binance 24h PnL gap | -$5.01 | 측정 대기 (24h Gate 후) |
+| universe_matrix entries | N/A | 34 (was 0 in 14h canary) |
+| paper trade_request_executed (5분) | N/A | 5건 (funding_rate ×2, spot_futures ×3) |
+| 5분 total_pnl | N/A | +$2.18 |
+| Slippage prediction wiring | _pred_bps=0 bug | wired (`d016849`) |
+| Cross-exchange parallel legs | sequential 200-480ms | IOC-TTL gather (`74292cc`) |
+| Crash state recovery | unrecoverable | journal replay (`468785c`) |
+| Order state lifecycle | scattered booleans | 9-state machine (`01d9d12`) |
+| Regression | 4,996 pass | 5,053 pass / 14 skipped |
+
+**Next**: Gate 재실행 (universe_matrix=34 환경) — 30분 → 60분 → 6h → 24h → 48h paper canary, 7 criteria. Live 재개는 Gate 통과 후.
 
 ---
 
