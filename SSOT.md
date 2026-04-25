@@ -1,14 +1,14 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> **마지막 업데이트: 2026-04-20 KST — Path-B v2 Day 0 kickoff (SSOT migration)**
+> **마지막 업데이트: 2026-04-22 KST — Day-16 후속 commits + Gate 재실행 + 6개 mismatch 정정**
 > 이전 선언이었던 "commercial-grade 전환 완료"는 **철회**. 근거: v237 카나리에서 엔진 PnL +$0.09 vs 실제 Binance /fapi/v1/income -$4.92 확증 → 거짓 보고의 근본원인은 개별 버그가 아니라 `live.py` 3,249줄 + `main.py` 4,221줄 God-class 모놀리스 구조. 4개 독립 리뷰(Codex/Gemini/exa.ai/external critic) 수렴 결과 Path-B v2 (ExecutionJournal + OrderStateMachine + OrderRouter 기반 10-day atomic 리팩토링) 채택, V4 Rust 전면 재작성 기각.
 > **Live 거래 정지 중** (mode=paper, commit `606c97b`). Binance 오픈 포지션 0건 확인됨. 거래소 잔고 $10.55 (입금 $16 - 손실 $4.92).
 > PHOENIX v237까지의 BUG-73~228 패치 75+건은 유지. Path-B v2 통합 플랜: `/Users/100aniv/.claude/plans/hidden-cuddling-pascal.md` (유일한 플랜 소스).
 > PRD: `.omc/prd.json` (437 US)
 > GAP 분석: `.claude/plans/modular-seeking-wreath.md` (6-관점 통합) | 계획서: `.claude/plans/parallel-finding-sparrow.md` (7 Phase, 63 US) | **SIT-3 플랜: `.claude/plans/streamed-dazzling-music.md` (Canary 72H, 10팀 411 시나리오)**
 > **Phase K 플랜**: `.claude/plans/radiant-cooking-forest.md` (Backtest→Paper→Live 종합 23케이스, 2026-04-02 v4)
-> **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → J ✅ → K(72/80) → **L ✅** → M → N(TF Final → Live)
+> **실행 순서**: A~M ✅ → S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → J ✅ → K(72/80) → **L ✅** → M → N(TF Final → Live) | **30분 measurement 진행 중 (2026-04-22)**
 
 ---
 
@@ -63,14 +63,22 @@
 | Day 15 | `38a99a6` | TradingSupervisor activate as main.py runloop owner | +4 |
 | W3 | `07bd710` | Dashboard 8-page skeleton (Next.js + OKLCH dark theme) | — |
 | W4 | `aed0e92` | Infra audit: Prometheus/Grafana/Alertmanager/TimescaleDB/Loki | — |
+| Post-review (Day 16+) | `9900346` | Day 14 executor state transition 단순화 | — |
+| Post-review | `cfaedaf` | 13개 기존 테스트 실패 수정 (Bitget v2→v3, stat_arb fixture) | — |
+| Post-review | `4a54e56` | ARCHITECTURE.md 핸드오프 문서 | — |
+| Post-review | `5a276f5` | 리뷰 CRITICAL+HIGH 차단 수정 (C-1, H-2, H-4) | — |
+| Post-review | `556ffb7` | 리뷰 MEDIUM 수정 (M-1 lock, M-3 flag, L-2 counter) | — |
+| Post-review | `7a9c35a` | CHANGELOG review remediation 정리 | — |
+| Paper adapter | `3d37e91` | universe_matrix 0→34 수정 (7 paper adapters + market_type routing) | — |
+| Paper adapter | `e5a28b2` | paper-adapter expansion 후 테스트 실패 수정 | — |
 
 #### 집계
 
 | 항목 | 값 |
 |------|-----|
 | 신규 모듈 | 16개 (Day 1-5: 11개 opt-in + Day 6-15: 5개 신규) |
-| 신규 테스트 | +72개 (Day 0 포함) |
-| 현재 회귀 | 4,996 pass / 13 pre-existing failures (무관) |
+| 신규 테스트 | +72개 (Day 0 포함, Day 0-15 기준) |
+| 현재 회귀 | 4,996 pass (Day 0-15 기준, 2026-04-21) → **5,053 pass / 14 skipped (2026-04-22, e5a28b2 기준)** |
 | live.py LOC | 3,476 → 3,250 (Day 12 기준 net -226) |
 | main.py LOC | 4,194 → 4,228 (Day 15 기준 +34, supervisor wiring) |
 | executor.py LOC | 1,587 → 1,793 (+206, Day 14 state machine wiring) |
@@ -90,7 +98,11 @@
 
 #### Gate 상태
 
-- **Gate**: 48H paper canary + 7개 기준 대기 중 (plan §5)
+- **첫 카나리 실패** (2026-04-21~22, PID 45822, 14H 14m): universe_matrix entries=0 → paper_trade_filled=0 (실 거래 0건)
+  - 근본원인: PaperExchangeAdapter 2개 하드코딩 + market_type 인터페이스 메서드 부재
+  - 수정: `3d37e91` (paper 어댑터 7개 확장), `e5a28b2` (테스트 갱신)
+  - 검증: 5분 실행에서 universe_matrix entries=34, trade_request_executed=5건 (funding_rate_v1 ×2 + spot_futures_v1 ×1, total_pnl +$1.08)
+- **48H Gate 재실행 필요**. 30분 실행 진행 중 (2026-04-22)
 - **Live 재개**: BLOCKED until Gate passes
 - **모드**: paper only (commit `606c97b` enforcement)
 
@@ -106,7 +118,7 @@
 
 **금지 사항 (refactor 기간 엄수)**: ❌ config bump으로 fix, ❌ live.py/main.py에 코드 추가 (monotonically shrinking only), ❌ exchange 대조 없이 "fixed" 선언.
 **§2.2 TCA 계층 진화**: 2 layer (gross + fee) → 4 layer (WS-A) → **7 layer** (gross + fee + slippage + funding + basis + reconciliation_variance + exchange_realized — WS-D 완료). Exchange `realizedPnl` primary source (WS-A1/A2/A3/A5), `Trade.realized_pnl` field + 4-branch priority, `ExchangeIncomeFetcher` 30s polling (Binance `/fapi/v1/income` + Bitget `/account/bill`). **WS-B**: dynamic min_spread = fee + p95_slippage + funding_buffer + profit_margin. **WS-D**: divergence 5% rule 자동 HALT + toxicity filter + Sharpe/MDD 30-day rolling + daily TCA CSV.
-**Tests**: 5,508 collected (from `pytest --co -q` on 2026-04-19)
+**Tests**: 5,508 collected (PHOENIX 트랙 기준, `pytest --co -q` on 2026-04-19) / **Path-B v2 기준: 5,053 pass / 14 skipped (2026-04-22, e5a28b2 기준)**
 **Coverage**: 74%
 **PRD**: 429/437 passes:true (passes:false 8개 — US-055, US-056, US-373, US-425, US-426, US-427, US-428, US-429)
 **TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → K ✅ → **L** → M → N(TF Final → Live)
@@ -287,7 +299,7 @@ Engine.run()
 | WS | `/ws` | JWT (query/cookie) | 실시간 state_update 브로드캐스트 (1s 간격, shadow_stats 포함) |
 | WS | `/ws/feed` | JWT (query/cookie) | 실시간 이벤트 피드 (거래/신호/경고 브로드캐스트) |
 
-**Shadow 데이터 흐름**: `ShadowMode._metrics` → `get_snapshot()` (thread-safe dict) → `EngineContext.shadow_mode` → `/api/v1/shadow/stats` (REST) + WS `_dashboard_feed_loop` (1s 간격) → `ShadowPanel.tsx` 렌더링
+**Shadow 데이터 흐름**: `PaperMode._metrics` (shadow.py 내 PaperMode 클래스) → `get_snapshot()` (thread-safe dict) → `EngineContext.shadow_mode` → `/api/v1/shadow/stats` (REST) + WS `_dashboard_feed_loop` (1s 간격) → `ShadowPanel.tsx` 렌더링
 
 **ShadowStats 타입** (`dashboard/src/types/index.ts`):
 - `total_pnl`, `win_rate`, `total_trades`, `max_drawdown`
@@ -527,7 +539,7 @@ Daily_TCA_CSV: end-of-day export per symbol/strategy/exchange (audit trail)
 
 - `CollectorManager.KOREAN_EXCHANGES = {"upbit", "bithumb", "coinone"}`
 - `_get_exchange_symbols()`: `/USDT` → `/KRW` 자동 변환
-- `ShadowMode._on_orderbook()`: KRW → USDT 역환산 (dual-source: Upbit+Bithumb API, 30s 갱신)
+- `PaperMode._on_orderbook()` (shadow.py 내): KRW → USDT 역환산 (dual-source: Upbit+Bithumb API, 30s 갱신)
 - Sanity: +/-10%, 120s staleness, 5-reject lockout escape
 
 ### Bithumb 데이터 품질 이슈 (US-073 근본 해결)
@@ -883,11 +895,12 @@ AC (케이스별 동일): Sharpe>1.0, MDD<15%, WR>45%, PF>1.2, trades>=20
 - [x] US-372: P-01~P-23 → K-PT 케이스로 대체 (US-407~424)
 
 **K-PT: 페이퍼 테스트 단계 — force_enable 격리 실행 (BT PASS 케이스만)**
+> ⚠️ **주의**: US-407/409/410/419는 universe_matrix=0 시점 실행 → 실 체결 부재 의심. universe_matrix=34 환경(commit `3d37e91` 이후)에서 재실행 필요.
 - [x] US-388: Paper force_enable 구현 + 버그 3건 수정 (sigma 로그, total_pnl 이월, net_pnl=0)
-- [x] US-407: K-PT-01 — Binance (BT PASS 전략, 8H, trade>=5, WR>=40%, crash=0)
+- [x] US-407: K-PT-01 — Binance (BT PASS 전략, 8H, trade>=5, WR>=40%, crash=0) ⚠️ ac_override win_rate_min=0 + universe_matrix=0 환경에서 실행 의심 → 재실행 필요
 - [x] US-408: K-PT-02 — Bybit (BT PASS 전략, 8H)
-- [x] US-409: K-PT-03 — OKX (BT PASS 전략, 8H)
-- [x] US-410: K-PT-04 — Bitget (BT PASS 전략, 8H)
+- [x] US-409: K-PT-03 — OKX (BT PASS 전략, 8H) ⚠️ ac_override win_rate_min=0 + universe_matrix=0 환경에서 실행 의심 → 재실행 필요
+- [x] US-410: K-PT-04 — Bitget (BT PASS 전략, 8H) ⚠️ ac_override trades_min=1 (원래 5) + universe_matrix=0 환경에서 실행 의심 → 재실행 필요
 - [x] US-411: K-PT-05 — Coinone (signal_evaluated>=1, crash=0, 8H)
 - [x] US-412: K-PT-06 — Upbit (signal_evaluated>=1, crash=0, 8H)
 - [x] US-413: K-PT-07 — Bithumb (crash=0, data issue 허용, 8H)
@@ -896,7 +909,7 @@ AC (케이스별 동일): Sharpe>1.0, MDD<15%, WR>45%, PF>1.2, trades>=20
 - [x] US-416: K-PT-10 — Binance↔Upbit CE (trade>=1, crash=0, 8H)
 - [x] US-417: K-PT-11 — Binance↔Bithumb CE (trade>=1, crash=0, 8H)
 - [x] US-418: K-PT-12 — Binance↔Coinone CE (trade>=1, crash=0, 8H)
-- [x] US-419: K-PT-13 — Binance↔Bybit CE (trade>=5, PnL>0, 8H)
+- [x] US-419: K-PT-13 — Binance↔Bybit CE (trade>=5, PnL>0, 8H) ⚠️ ac_override pnl_gt0=False + universe_matrix=0 환경에서 실행 의심 → 재실행 필요
 - [x] US-420: K-PT-14 — Binance↔OKX CE (trade>=5, PnL>0, 8H)
 - [x] US-421: K-PT-15 — Binance↔Bitget CE (trade>=5, PnL>0, 8H)
 - [x] US-422: K-PT-16 — BinFut↔BitgetFut FF (trade>=1, crash=0, 8H)
@@ -971,7 +984,7 @@ AC (케이스별 동일): Sharpe>1.0, MDD<15%, WR>45%, PF>1.2, trades>=20
 > **목표**: 토스증권/업비트 UX 기반 전면 재설계 + 운영 인프라 안정화
 > **진입 조건**: Phase K 2주 완료
 
-- [x] US-386: Shadow→Paper 코드 전면 리네임 (ShadowMode→PaperEngine, shadow_runner→paper_runner, DATA_MODE 값 변경)
+- [x] US-386: Shadow→Paper 코드 **부분** 리네임 (ShadowMode 클래스 → **PaperMode** 클래스 + paper.py 43-line shim. shadow.py 2679줄 모놀리스는 이름만 PaperMode, 구현 미이전. ShadowRunner 클래스는 tuning/shadow_runner.py에 잔존. DATA_MODE=shadow 호환 유지) — ⚠️ 부분 완료 (전면 리네임 아님)
 - [ ] L-1: 대시보드 UX 전면 재설계 (토스증권/업비트 참조)
 - [ ] L-2: Settings hot-reload (재시작 없이 파라미터 변경)
 - [ ] L-3: OpenTelemetry 통합 (분산 트레이싱)
