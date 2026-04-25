@@ -1,7 +1,7 @@
 # LEVIATHAN Operator Runbook
 
 > 사장님이 매일 아침 확인해야 할 최소 체크리스트, 주요 메트릭 해석, 알람 대응 절차.
-> 업데이트: 2026-04-19 (Path-B Day-3 완료 기준)
+> 업데이트: 2026-04-22 (paper 모드 universe_matrix 함정 수정 후 기준)
 
 ---
 
@@ -12,7 +12,40 @@
 | 엔진 mode | `paper` | Path-B 리팩토링 완료까지 live 금지 |
 | 오픈 포지션 | 0 | Binance 확인 필 (`scripts/check_positions.py`) |
 | 누적 실손실 (24H) | -$4.92 | v227~v237 누적. 수수료 50%, realized 47%, funding 3% |
-| 다음 re-enable gate | Stage-1 canary ($10 × 48H) | REFACTOR_PLAN.md Day 10 |
+| 14h 카나리 (2026-04-21~22) | 무효 | universe_matrix=0 환경, paper trade fill 0건. 원인: paper 어댑터 2개 하드코딩 + market_type 미구현 |
+| 수정 (2026-04-22) | `3d37e91` `e5a28b2` | paper 어댑터 2→7 + ExchangeAdapter Protocol 완전 구현. universe_matrix entries 0→34. 5분 실행 trade=5/$2.18 검증 |
+| 다음 re-enable gate | Stage-1 canary ($10 × 48H) | universe_matrix=34 환경에서 재실행. REFACTOR_PLAN.md 끝 섹션 참조 |
+
+---
+
+## 0.5 Pre-canary 점검 (paper 카나리 시작 전 5분 필수)
+
+> 14h 카나리 헛수고 재발 방지. 4 항목 모두 충족 안 하면 카나리 시작 금지.
+
+```bash
+# 5분 dry-run + grep으로 4 항목 확인:
+cd /Users/100aniv/Development/arbitrage_OMC/engine
+python -m src.main > /tmp/precheck.log 2>&1 &
+PID=$!; sleep 300; kill $PID; sleep 3; kill -9 $PID 2>/dev/null
+
+# 1) universe_matrix entries > 0 (paper 어댑터 + ExchangeAdapter Protocol 완전성)
+grep "universe_matrix.built" /tmp/precheck.log | tail -1
+# 기준: entries >= 30, exchanges == config.exchanges.active 갯수 (보통 7)
+
+# 2) paper trade fill 발생
+grep -cE "paper_mode\.trade_request_executed" /tmp/precheck.log
+# 기준: >= 1 (5분 동안)
+
+# 3) crash 0
+grep -cE "CRITICAL|Traceback|FATAL" /tmp/precheck.log
+# 기준: 0 (startup WS noise 제외)
+
+# 4) PnL > 0 (참고용, 작은 sample이라 100% WR 가능)
+grep -oE "total_pnl=[+-][0-9.]+" /tmp/precheck.log | tail -1
+# 기준: 양수
+```
+
+4/4 PASS 후 본 카나리 시작. 1/4 라도 fail이면 entries=0 / paper adapter / strategy halt 등 root cause 조사.
 
 ---
 
