@@ -197,9 +197,13 @@ def make_signal_for_exchange(
 
 @pytest.mark.asyncio
 async def test_bug225_unsupported_symbol_on_sell_exchange_rejected():
-    """BUG-225: signal rejected when sell-leg exchange (e.g. upbit) does not list symbol."""
-    upbit = make_mock_adapter("upbit", supported_symbols={"BTC/USDT", "ETH/USDT"})  # AAVE/USDT not listed
-    registry = {"binance": make_mock_adapter("binance", supported_symbols={"AAVE/USDT", "BTC/USDT"}), "upbit": upbit}
+    """BUG-225: signal rejected when sell-leg exchange does not list symbol.
+
+    2026-04-22: KRW exchange × USDT pair fix로 인해 BUG-225 unsupported 검증을
+    USDT-only 거래소 조합 (binance ↔ bitget)으로 변경.
+    """
+    bitget = make_mock_adapter("bitget", supported_symbols={"BTC/USDT", "ETH/USDT"})  # AAVE/USDT not listed
+    registry = {"binance": make_mock_adapter("binance", supported_symbols={"AAVE/USDT", "BTC/USDT"}), "bitget": bitget}
 
     strategy = CrossExchangeStrategy(
         "cex_spot",
@@ -209,7 +213,7 @@ async def test_bug225_unsupported_symbol_on_sell_exchange_rejected():
     )
     await strategy.start()
 
-    signal = make_signal_for_exchange("binance", "upbit", "AAVE/USDT")
+    signal = make_signal_for_exchange("binance", "bitget", "AAVE/USDT")
     result = await strategy.on_signal(signal)
 
     assert result is None
@@ -218,10 +222,15 @@ async def test_bug225_unsupported_symbol_on_sell_exchange_rejected():
 
 @pytest.mark.asyncio
 async def test_bug225_supported_symbol_on_both_legs_passes():
-    """BUG-225: signal passes through when both leg exchanges list the symbol."""
+    """BUG-225: signal passes through when both leg exchanges list the symbol.
+
+    2026-04-22: KRW exchange (upbit/bithumb/coinone) × USDT pair는 별도 fix로
+    무조건 reject (KRW base 가격 mix 위험). USDT-only 거래소 (binance↔bitget)
+    조합으로 변경.
+    """
     registry = {
         "binance": make_mock_adapter("binance", supported_symbols={"BTC/USDT", "AAVE/USDT"}),
-        "upbit": make_mock_adapter("upbit", supported_symbols={"BTC/USDT", "AAVE/USDT"}),
+        "bitget": make_mock_adapter("bitget", supported_symbols={"BTC/USDT", "AAVE/USDT"}),
     }
 
     strategy = CrossExchangeStrategy(
@@ -232,7 +241,7 @@ async def test_bug225_supported_symbol_on_both_legs_passes():
     )
     await strategy.start()
 
-    signal = make_signal_for_exchange("binance", "upbit", "AAVE/USDT")
+    signal = make_signal_for_exchange("binance", "bitget", "AAVE/USDT")
     result = await strategy.on_signal(signal)
 
     assert result is not None
@@ -240,11 +249,17 @@ async def test_bug225_supported_symbol_on_both_legs_passes():
 
 @pytest.mark.asyncio
 async def test_bug225_counter_increments_on_rejection():
-    """BUG-225: SIGNALS_REJECTED_SYMBOL_UNSUPPORTED counter increments on rejection."""
+    """BUG-225: SIGNALS_REJECTED_SYMBOL_UNSUPPORTED counter increments on rejection.
+
+    2026-04-22: KRW exchange × USDT pair는 BUG-225 supports_symbol 체크 전에
+    무조건 reject (별도 KRW data normalization fix). 따라서 BUG-225 unsupported
+    체크는 USDT-only 거래소 조합 (binance ↔ bitget)으로 검증.
+    """
     from src.infra.metrics import SIGNALS_REJECTED_SYMBOL_UNSUPPORTED
 
-    bithumb = make_mock_adapter("bithumb", supported_symbols={"BTC/USDT"})  # TAO/USDT not listed
-    registry = {"binance": make_mock_adapter("binance", supported_symbols={"TAO/USDT"}), "bithumb": bithumb}
+    # bitget이 TAO/USDT 미list → BUG-225 supports_symbol 체크에서 reject
+    bitget = make_mock_adapter("bitget", supported_symbols={"BTC/USDT"})
+    registry = {"binance": make_mock_adapter("binance", supported_symbols={"TAO/USDT"}), "bitget": bitget}
 
     strategy = CrossExchangeStrategy(
         "cex_spot",
@@ -255,14 +270,14 @@ async def test_bug225_counter_increments_on_rejection():
     await strategy.start()
 
     before = SIGNALS_REJECTED_SYMBOL_UNSUPPORTED.labels(
-        strategy="cross_exchange_spot", exchange="bithumb"
+        strategy="cross_exchange_spot", exchange="bitget"
     )._value.get()
 
-    signal = make_signal_for_exchange("binance", "bithumb", "TAO/USDT")
+    signal = make_signal_for_exchange("binance", "bitget", "TAO/USDT")
     result = await strategy.on_signal(signal)
 
     after = SIGNALS_REJECTED_SYMBOL_UNSUPPORTED.labels(
-        strategy="cross_exchange_spot", exchange="bithumb"
+        strategy="cross_exchange_spot", exchange="bitget"
     )._value.get()
 
     assert result is None
