@@ -21,7 +21,21 @@ exchange=bitget symbol=ALGO/USDT reason=imbalance imbalance=0.7698
   bid=777967.92 ask=101174.58
 ```
 
-**증상**: bid >> ask (정상 시장 반대) 또는 단위 mismatch (KRW vs USDT).
+**증상**: bid_depth >> ask_depth (또는 vice versa) — thin liquidity asymmetry.
+
+## 진단 정정 (2026-04-22 후속)
+
+**원래 진단**: KRW base × USDT base 가격 mix
+**정정**: toxicity_filter의 `bid=`/`ask=`는 **depth (base currency units)**, 가격 아님.
+즉 KRW data normalization bug 아닌 **시장의 thin liquidity** (소형코인 매수/매도 사이드 depth 큰 차이).
+
+KRW × USDT pair 차단 fix (`705be52`)는 안전하지만 이 진단의 직접 fix 아님.
+v4 engine에서 KRW exchange toxicity reject 거의 0이지만, 전체 toxicity는 binance_futures/bitget_futures 같은 USDT-only 거래소의 thin liquidity 거부로 여전히 높음.
+
+**진짜 root cause** (재진단):
+- 소형코인 (KITE, KAT, MOVE 등) thin orderbook
+- futures 거래소도 spot보다 thin liquidity 흔함
+- signal_generator가 thin pair 사전 filter 미흡 → toxicity layer가 99% 거부
 
 ## Root Cause 후보
 
