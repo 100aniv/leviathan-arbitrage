@@ -120,7 +120,7 @@
 **§2.2 TCA 계층 진화**: 2 layer (gross + fee) → 4 layer (WS-A) → **7 layer** (gross + fee + slippage + funding + basis + reconciliation_variance + exchange_realized — WS-D 완료). Exchange `realizedPnl` primary source (WS-A1/A2/A3/A5), `Trade.realized_pnl` field + 4-branch priority, `ExchangeIncomeFetcher` 30s polling (Binance `/fapi/v1/income` + Bitget `/account/bill`). **WS-B**: dynamic min_spread = fee + p95_slippage + funding_buffer + profit_margin. **WS-D**: divergence 5% rule 자동 HALT + toxicity filter + Sharpe/MDD 30-day rolling + daily TCA CSV.
 **Tests**: 5,508 collected (PHOENIX 트랙 기준, `pytest --co -q` on 2026-04-19) / **Path-B v2 기준: 5,053 pass / 14 skipped (2026-04-22, e5a28b2 기준)**
 **Coverage**: 74%
-**PRD**: 429/437 passes:true (passes:false 8개 — US-055, US-056, US-373, US-425, US-426, US-427, US-428, US-429)
+**PRD** (2026-04-22 정정): 424/437 passes:true (passes:false 13개 — US-055, US-056, US-373, US-386 [부분 리네임], US-407 [⚠️], US-409 [⚠️], US-410 [⚠️], US-419 [⚠️], US-425, US-426, US-427, US-428, US-429). ⚠️ 표시는 universe_matrix=0 환경에서 ac_override 통과한 거짓양성 (재실행 필요).
 **TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → K ✅ → **L** → M → N(TF Final → Live)
 **Next**: US-436 (E2E 브라우저 검증) → Phase L 완료 → Phase M (PHOENIX: 24H 연속 가동 실증 → Phase M 진입)
 **모드 체계 (Phase I 확정)**: `backtest → paper → live` (shadow 명칭 폐기, EngineMode 단일 축)
