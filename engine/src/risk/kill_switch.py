@@ -99,6 +99,14 @@ def clear_halt() -> None:
     Clears both Python and Rust flags.
     """
     _HALT_FLAG.clear()
+    # 2026-04-22 fix: Prometheus metric reset 누락 버그 — startup compliance
+    # test가 halt_local() 호출 후 clear_halt() 부르면 _HALT_FLAG는 cleared지만
+    # KILL_SWITCH_ACTIVE는 1 stuck → Grafana/monitor false positive 발생.
+    try:
+        from src.infra.metrics import KILL_SWITCH_ACTIVE
+        KILL_SWITCH_ACTIVE.set(0)
+    except Exception:
+        pass  # metrics import fail is non-fatal
     rust_ks = _get_rust_ks()
     if rust_ks is not None:
         try:
