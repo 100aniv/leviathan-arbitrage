@@ -51,6 +51,12 @@ run_stage() {
 }
 
 for stage in $(seq "$START_STAGE" 5); do
+    # 24h stage는 사장님 명시 승인 필요 (CONFIRM_24H=yes 환경변수)
+    if [ "$stage" -eq 5 ] && [ "${CONFIRM_24H:-no}" != "yes" ]; then
+        echo "[chain] STAGE 5 (24h) requires CONFIRM_24H=yes. Halting at end of stage 4."
+        echo "[chain] To proceed: CONFIRM_24H=yes bash scripts/auto_canary_chain.sh 5"
+        break
+    fi
     if ! run_stage "$stage"; then
         echo ""
         echo "[chain] ABORT at stage $stage. Fix root cause before retrying."
