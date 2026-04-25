@@ -288,3 +288,12 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - Silent DEBUG reject logs FORBIDDEN (§12.3)
 - live.py + main.py monotonically shrinking (reject PRs that grow either)
 - Binance API cross-check on every pnl claim
+
+## Paper 모드 + universe_matrix 게이트 룰 (2026-04-22 신규, 14h 헛수고 교훈)
+
+- **Paper 어댑터는 config 기반으로 생성** — `_init_paper_exchanges`는 config의 `exchanges.active`(7개)를 그대로 사용. paper_binance/paper_okx 같은 하드코딩 절대 금지. 거래소 ID는 data collector ID와 일치 (binance, bitget, ...).
+- **PaperExchangeAdapter는 ExchangeAdapter Protocol 완전 구현** — `_market_type` 속성 (`_futures` suffix → "futures", else "spot"), `supports_symbol(symbol)`, `get_min_notional(symbol)` 메서드 필수. 누락 시 universe_matrix=0.
+- **universe_matrix entries=0이면 즉시 paper 카나리 중단** — 어떤 trade도 발생 불가. CLAUDE.md "Shadow 10분 PnL > 0" 규칙은 entries > 0 전제.
+- **Day N 완료 게이트**: pytest pass + Shadow 10분 + `universe_matrix entries > 0` + `trade_request_executed >= 1`. 4개 동시 충족 안 되면 Day 완료 선언 금지.
+- **K-PT/Paper 케이스에 ac_override 사용 금지** — 기준 충족 못 하는 케이스를 ac_override로 PASS 선언하면 거짓양성 누적.
+- **참조**: 메모리 `feedback_paper_universe_matrix_zero_trap.md` (2026-04-22)
