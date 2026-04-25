@@ -297,3 +297,12 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - **Day N 완료 게이트**: pytest pass + Shadow 10분 + `universe_matrix entries > 0` + `trade_request_executed >= 1`. 4개 동시 충족 안 되면 Day 완료 선언 금지.
 - **K-PT/Paper 케이스에 ac_override 사용 금지** — 기준 충족 못 하는 케이스를 ac_override로 PASS 선언하면 거짓양성 누적.
 - **참조**: 메모리 `feedback_paper_universe_matrix_zero_trap.md` (2026-04-22)
+
+## Strategy Loss Cap 룰 (2026-04-22 신규, catastrophic loss 차단)
+
+- **single trade loss cap = $1** (paper + live 모두). engine/.env에 `PAPER_MAX_LOSS_PER_TRADE_USD=1.0`, `LIVE_MAX_LOSS_PER_TRADE_USD=1.0`.
+- **strategy별 cap JSON**: `STRATEGY_LOSS_CAP_JSON={"spot_futures_basis":1.0,"funding_rate_arb":1.0,"futures_futures":1.0,"triangular":1.0}`.
+- **이전 기본값 $10이라 60min stage 중 spot_futures -$5.02 단일 손실 발생**. cap 미작동 → 즉시 $1로 변경 + engine 재시작.
+- **자본 보호**: $140 자본 0.7% 이상 단일 trade 손실 영구 차단.
+- **paper도 동일 룰** — paper에서 catastrophic loss 패턴 학습되면 live에서 재현될 위험. 두 모드 cap 통일.
+- **실시간 모니터링**: `engine/scripts/realtime_monitor.py` + `loss_capped > 0` 메트릭 alert.
