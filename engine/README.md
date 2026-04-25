@@ -129,22 +129,34 @@ python -m pytest tests/ --no-cov
 python -m pytest tests/integration/ --no-cov
 ```
 
-## Path-B v2 Status
+## Path-B v2 Status (2026-04-22 기준)
 
-| Day | Title | Status |
-|-----|-------|--------|
-| 0 | SSOT + 14-doc sync | 🟡 in progress |
-| 9 | `_pred_bps=0.0` fix | ⏳ pending |
-| 10 | Real 24h ADV from WS trades | ⏳ |
-| 6 | ExecutionJournal (HIGH) | ⏳ |
-| 7 | OrderStateMachine (HIGH) | ⏳ |
-| 8 | OrderRouter | ⏳ |
-| 11 | IOC-TTL parallel legs (HIGH, 5d) | ⏳ |
-| 12 | PreTradeValidator wire live | ⏳ |
-| 13 | Gamma calibration | ⏳ |
-| 14 | Executor migrate (MED) | ⏳ |
-| 15 | Supervisor activate | ⏳ |
-| Gate | 48H paper canary + 7 criteria | ⏳ |
+| Day | Title | Status | Commit |
+|-----|-------|--------|--------|
+| 0 | SSOT + 14-doc sync | ✅ | `b861a10` |
+| 1 | PnLLedger + Reconciler | ✅ | `b32792e` |
+| 2 | UniverseMatrix + PreTradeValidator | ✅ | `3c45a3b` `0784c2b` |
+| 3 | StrategyBudgetLedger + DailyReport | ✅ | `974c1ad` `5ff1cd9` |
+| 4 | ConfigService + Supervisor + StrategyRegistry | ✅ | `27eaa57` `51f25cc` `5617ecd` |
+| 5 | main.py fail-fast boot guard | ✅ | `30b704b` |
+| 6 | ExecutionJournal (HIGH) | ✅ | `468785c` |
+| 7 | OrderStateMachine (HIGH) | ✅ | `01d9d12` |
+| 8 | OrderRouter | ✅ | `72df0e2` |
+| 9 | `_pred_bps=0.0` fix | ✅ | `d016849` |
+| 10 | Real 24h ADV from WS trades | ✅ | `89b820f` |
+| 11 | IOC-TTL parallel legs (HIGH) | ✅ | `74292cc` |
+| 12 | PreTradeValidator wire live | ✅ | `db7bb43` |
+| 13 | Gamma calibration | ✅ | `782e25e` |
+| 14 | Executor migrate (MED) | ✅ | `edb491f` |
+| 15 | TradingSupervisor activate | ✅ | `38a99a6` |
+| W3 | Dashboard 8-page skeleton | ✅ | `07bd710` |
+| W4 | Infra audit (Prometheus/Grafana/Alertmanager) | ✅ | `aed0e92` |
+| Post-Day-15 | Review remediation (CRITICAL+HIGH+MEDIUM) | ✅ | `5a276f5` `556ffb7` |
+| Paper fix | universe_matrix 0→34 (14h canary 무효 인정) | ✅ | `3d37e91` `e5a28b2` |
+| Doc sync | SSOT/PRD/CHANGELOG/RUNBOOK 6 mismatch 정정 | ✅ | `f304355` ~ `f31d410` |
+| Gate | 48H paper canary + 7 criteria | 🟡 재실행 필요 (universe_matrix=34 환경) |
+
+**중요**: 14H 카나리(PID 45822, 2026-04-21~22)는 universe_matrix entries=0으로 무효. 수정 후 5분 dry-run 검증 (entries=34, trade=5/$2.18 PnL 양수). 다음 단계: 30분 → 60분 → 6h → 24h → 48h Gate 재실행. **Pre-canary check** 절차 필수 (`docs/OPERATOR_RUNBOOK.md §0.5`).
 
 ## References
 
