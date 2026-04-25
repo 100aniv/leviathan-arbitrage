@@ -7309,7 +7309,7 @@
       "phase": "L",
       "title": "Shadow → Paper 코드 전면 리네임 (용어 통일)",
       "priority": 50,
-      "passes": true,
+      "passes": false,
       "files": [
         "engine/src/modes/shadow.py",
         "engine/src/tuning/shadow_runner.py",
@@ -7739,7 +7739,7 @@
       "title": "K-PT-01 — Binance (BT PASS 전략, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": true,
+      "passes": false,
       "description": "Binance BT PASS 전략 Paper 8H, force_enable=true",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7775,7 +7775,7 @@
       "title": "K-PT-03 — OKX (BT PASS 전략, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": true,
+      "passes": false,
       "description": "OKX BT PASS 전략 Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7793,7 +7793,7 @@
       "title": "K-PT-04 — Bitget (BT PASS 전략, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": true,
+      "passes": false,
       "description": "Bitget BT PASS 전략 Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
@@ -7955,7 +7955,7 @@
       "title": "K-PT-13 — Binance↔Bybit CE (trade>=5, PnL>0, 8H)",
       "phase": "K",
       "priority": "HIGH",
-      "passes": true,
+      "passes": false,
       "description": "Binance↔Bybit CE Paper 8H",
       "acceptanceCriteria": [
         "crash=0 (8H 무중단)",
