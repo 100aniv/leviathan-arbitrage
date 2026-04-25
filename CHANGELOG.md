@@ -4,7 +4,23 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [Unreleased]
 
-### Added
+### Fixed (2026-04-22) — Paper 모드 universe_matrix 함정 + 14h 카나리 무효화 인정
+- `engine/src/main.py:_init_paper_exchanges` — paper 어댑터를 config의 `exchanges.active`(7개) 기반으로 생성. 이전 paper_binance + paper_okx 2개 하드코딩이 14h 카나리에서 trade 0건 발생 root cause였음 (`3d37e91`)
+- `engine/src/execution/paper_adapter.py` — `_market_type` 속성 + `supports_symbol`/`get_min_notional` 메서드 추가. PaperExchangeAdapter가 ExchangeAdapter Protocol 완전 구현 → universe_matrix가 spot/futures 정확 분류 (`3d37e91`)
+- 결과: universe_matrix entries **0 → 34**, 5분 실행 trade_request_executed=5건, total_pnl=+$1.08
+- 14h 카나리(PID 45822) 결과 **무효 인정** — universe_matrix=0 환경에서 K-PT 18 케이스 ac_override 통과한 4건(US-407/409/410/419) passes:false 리셋 (`45a83a6`)
+- US-386 "Shadow→Paper 전면 리네임" passes:true → false: 실제로는 클래스명만 PaperMode (shadow.py 2679줄 모놀리스 미이전), ShadowRunner tuning에 잔존 (`45a83a6`)
+- 테스트 갱신: paper-adapter 2→7 확장으로 깨진 2 테스트 (`test_init_exchanges_paper_mode_creates_two_adapters`, `test_supervisor_halt_on_stranded.py`) 수정 (`e5a28b2`). regression 5053 pass / 14 skipped
+
+### Changed (2026-04-22) — SSOT.md 6 mismatch 정정 (`f304355`)
+1. §2 commit table에 Day-16 후속 8 commits 추가 (이전: Day 15 마지막 표시)
+2. §2 Gate 상태: "대기 중" → 첫 카나리 실패 + 수정 + 5분 검증 + 재실행 필요 명시
+3. US-386: "전면 리네임" → "부분 리네임 (클래스명만)" 정정
+4. K-PT 4 케이스 ⚠️ ac_override 거짓양성 의심 + 재실행 필요 표기
+5. 모드 명칭 ShadowMode → PaperMode 정정 (lines 290, 530)
+6. Tests 카운트 시점 명시 (5,508 PHOENIX vs 5,053 Path-B v2)
+
+### Added (Path-B v2 review remediation)
 - `ARCHITECTURE.md` — comprehensive hand-off doc (378 LOC) covering Path-B v2 execution boundary, 16 module table, flag dependency matrix, order lifecycle, persistence, reconciliation cycle, Gate criteria, extension points (`4a54e56`)
 - `engine/docs/PATH_B_V2_REVIEW.md` ready for reviewers — multi-model code review findings (1 CRITICAL + 4 HIGH + 4 MEDIUM + 3 LOW)
 - `leviathan_slippage_prediction_missing_total` Prometheus counter — tracks feedback records missing Signal.predicted_slippage_bps (`556ffb7`)
