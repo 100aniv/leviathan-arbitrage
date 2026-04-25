@@ -22,6 +22,18 @@
 
 > 14h 카나리 헛수고 재발 방지. 4 항목 모두 충족 안 하면 카나리 시작 금지.
 
+### 자동화 (권장)
+
+```bash
+cd engine
+python scripts/pre_canary_check.py --seconds 300
+echo "exit=$?"  # 0이면 4/4 PASS, 1이면 1+ FAIL
+```
+
+JSON 결과: `engine/.omc/evidence/pre_canary_<timestamp>.json` 자동 저장.
+
+### 수동 (스크립트 미작동 시 fallback)
+
 ```bash
 # 5분 dry-run + grep으로 4 항목 확인:
 cd /Users/100aniv/Development/arbitrage_OMC/engine
