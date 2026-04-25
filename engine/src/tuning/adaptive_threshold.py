@@ -93,13 +93,10 @@ class AdaptiveThreshold:
             }
             self.history.append(entry)
             logger.info(
-                "AdaptiveThreshold adjust",
-                edge_bps=expected_edge_bps,
-                pf=profit_factor,
-                new_threshold=self.current_edge_bps,
-                old_threshold=old,
-                win_rate=win_rate,
-                total_trades=total_trades,
+                "AdaptiveThreshold adjust edge_bps=%s pf=%s new_threshold=%s "
+                "old_threshold=%s win_rate=%s total_trades=%s",
+                expected_edge_bps, profit_factor, self.current_edge_bps,
+                old, win_rate, total_trades,
             )
 
         return self.current_edge_bps

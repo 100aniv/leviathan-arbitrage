@@ -391,8 +391,10 @@ class ScheduledTuner:
             if entry["data_type"] == "synthetic_gbm" and strategy in existing:
                 old_type = existing[strategy].get("data_type", "")
                 if old_type == "real_timescaledb":
-                    logger.info("tuner_skip_synthetic_overwrite", strategy=strategy,
-                                reason="real data params preserved over synthetic")
+                    logger.info(
+                        "tuner_skip_synthetic_overwrite strategy=%s reason=real data params preserved over synthetic",
+                        strategy,
+                    )
                     continue
             # PHOENIX: preserve DISABLED/DISABLED_PHASE2 status — tuner must not re-enable manually gated strategies
             current_status = existing.get(strategy, {}).get("status", "")
@@ -626,10 +628,9 @@ class ShadowMiniTuner:
 
             best_params = study.best_params
             logger.info(
-                "ShadowMiniTuner: optimization complete",
-                best_params=best_params,
-                best_value=study.best_value,
-                note="shadow-local only, strategy_params.json not modified",
+                "ShadowMiniTuner: optimization complete best_params=%s best_value=%.6f "
+                "note=shadow-local only, strategy_params.json not modified",
+                best_params, study.best_value,
             )
 
             if self._callback is not None:
