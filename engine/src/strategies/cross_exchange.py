@@ -127,6 +127,17 @@ class CrossExchangeStrategy(BaseStrategy):
                 self._metrics.signals_filtered += 1
                 return None
 
+        # 2026-04-22 fix: KRW exchange × USDT pair 조합 차단 (latency_boost 무관)
+        # coinone/upbit/bithumb는 KRW base (BTC/KRW) 거래소. USDT pair signal은
+        # KRW→USDT 환율 변환 누락 위험 + toxicity reject 33K root cause.
+        # 정상 KRW arb는 별도 KRW pair 전략으로 처리.
+        krw_exchange_in_legs = (
+            signal.buy_exchange in KRW_EXCHANGES or signal.sell_exchange in KRW_EXCHANGES
+        )
+        if krw_exchange_in_legs and signal.symbol.endswith("/USDT"):
+            self._metrics.signals_filtered += 1
+            return None
+
         # BUG-225: per-exchange symbol availability gate
         # Prevents Korean-leg failures where Upbit/Bithumb don't list a USDT pair.
         if self._exchange_registry:
