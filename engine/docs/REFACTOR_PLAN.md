@@ -174,6 +174,23 @@ New modules (all opt-in, main.py untouched):
 - TimescaleDB: compression after 7d/14d/30d + retention drop after 90d/365d/180d (`infra/timescaledb/compression_policy.sql`)
 - Loki: retention 7d → 30d (`retention_period: 720h`)
 
+### ✅ Post-Day-15 review remediation + Paper universe_matrix fix (2026-04-21~22)
+**Commits**: `9900346` `cfaedaf` `4a54e56` `5a276f5` `556ffb7` `7a9c35a` (review fix), `3d37e91` `e5a28b2` (paper fix)
+
+**Review remediation** (2026-04-21):
+- `9900346` Day 14 executor state transition boilerplate 단순화
+- `cfaedaf` 13개 기존 테스트 실패 수정 (Bitget v2→v3 format, stat_arb fixture, Protocol stub)
+- `4a54e56` ARCHITECTURE.md 핸드오프 문서 (378 LOC)
+- `5a276f5` 리뷰 CRITICAL+HIGH 차단 수정 (C-1 STRANDED swallow, H-2 PARTIAL/ACKED self-loops, H-4 side normalize)
+- `556ffb7` 리뷰 MEDIUM 수정 (M-1 lock lazy-init, M-3 get_bool_flag 통일, L-2 prediction_missing counter)
+- `7a9c35a` CHANGELOG review remediation 정리
+
+**Paper 모드 universe_matrix 함정 수정** (2026-04-22, 14h 카나리 헛수고 교훈):
+- `3d37e91` `_init_paper_exchanges` 하드코딩 2개 → config 기반 7개. PaperExchangeAdapter `_market_type` + `supports_symbol` + `get_min_notional` 추가
+- `e5a28b2` paper-adapter 확장으로 깨진 2 테스트 (test_init_exchanges_paper_mode_creates_two_adapters, test_supervisor_halt_on_stranded) 수정
+- 결과: universe_matrix entries **0 → 34**, 5분 실행 trade_request_executed=5건 (funding_rate_v1 ×2 + spot_futures_v1 ×3, total_pnl=+$2.18, WR 100%)
+- 14h 카나리(PID 45822) 결과 무효 인정. K-PT 4 케이스(US-407/409/410/419) + US-386 passes:false 리셋. SSOT.md 6 mismatch 정정 (`f304355`).
+
 ## Red-Flag Abort Criteria
 
 Refactor aborts (revert to Path A, accept risk) if any of:
