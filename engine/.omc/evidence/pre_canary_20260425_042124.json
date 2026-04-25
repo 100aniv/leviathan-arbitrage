@@ -1,0 +1,19 @@
+{
+  "log_path": "/tmp/leviathan_30min.log",
+  "universe_matrix_line": "universe_matrix.built entries=34 strategies=4 exchanges=7",
+  "checks": {
+    "universe_matrix_entries": 34,
+    "paper_trade_fills": 2,
+    "crash_count": 0,
+    "total_pnl": 0.5764
+  },
+  "pass_flags": {
+    "ac1_universe_matrix_gt_0": true,
+    "ac2_fill_ge_1": true,
+    "ac3_crash_eq_0": true,
+    "ac4_pnl_gt_0": true
+  },
+  "all_pass": true,
+  "checked_at": "2026-04-25T04:21:30.071487Z",
+  "seconds": 300
+}

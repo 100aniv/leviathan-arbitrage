@@ -101,8 +101,12 @@
 - **첫 카나리 실패** (2026-04-21~22, PID 45822, 14H 14m): universe_matrix entries=0 → paper_trade_filled=0 (실 거래 0건)
   - 근본원인: PaperExchangeAdapter 2개 하드코딩 + market_type 인터페이스 메서드 부재
   - 수정: `3d37e91` (paper 어댑터 7개 확장), `e5a28b2` (테스트 갱신)
-  - 검증: 5분 실행에서 universe_matrix entries=34, trade_request_executed=5건 (funding_rate_v1 ×2 + spot_futures_v1 ×1, total_pnl +$1.08)
-- **48H Gate 재실행 필요**. 30분 실행 진행 중 (2026-04-22)
+- **재카나리 진행 중** (2026-04-22 ~ 진행):
+  - 5분 dry-run ALL_PASS: entries=34, trade=5, total_pnl=+$2.18, crash=0
+  - **30분 측정 (PID 66873, 종료) ALL_PASS**: entries=34, trade=2, total_pnl=+$0.5764, crash=0 → 4/4 (`pre_canary_20260425_042124.json`)
+  - 부가: toxicity filter 동작 (cross_exchange_spot rejects), stale_detector 동작 (Bithumb cross_validation), spot_futures sf_arb p50=5.21bps, triangular pass_profit=5/5
+  - 다음: 60분 → 6h → 24h → US-055 LiveGate Preflight (`bash scripts/auto_canary_chain.sh 3` for 60min start)
+- **48H Gate**: 24h paper canary PASS 후 LiveGate 진입 가능
 - **Live 재개**: BLOCKED until Gate passes
 - **모드**: paper only (commit `606c97b` enforcement)
 
