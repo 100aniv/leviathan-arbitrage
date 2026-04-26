@@ -1740,10 +1740,12 @@ class PaperMode:
         if self._pre_trade_validator is not None and get_bool_flag("EXECUTION_PRETRADE_VALIDATOR_ENABLED"):
             try:
                 _validation = await self._pre_trade_validator.validate(trade_request, strategy_id=sid)
-                if not _validation.allowed:
+                # ValidationResult: approved (bool), reason_code (ReasonCode), detail (str)
+                if not _validation.approved:
+                    _reason = _validation.reason_code.value if _validation.reason_code else "unknown"
                     logger.info(
-                        "paper_mode.pre_trade_validator_rejected strategy=%s reason=%s",
-                        sid, getattr(_validation, "reason", "unknown"),
+                        "paper_mode.pre_trade_validator_rejected strategy=%s reason=%s detail=%s",
+                        sid, _reason, _validation.detail or "",
                     )
                     self._stats.trades_rejected += 1
                     if sid not in self._stats.by_strategy:
@@ -1752,7 +1754,7 @@ class PaperMode:
                     return
             except Exception as exc:
                 # validator 실패는 trade 차단 X (paper에서 graceful degrade)
-                logger.warning("paper_mode.pre_trade_validator_error: %s", exc)
+                logger.warning("paper_mode.pre_trade_validator_error: %r", exc, exc_info=True)
 
         # ExecutionJournal SENT 이벤트 emit (Day 6 활성화). order_id에 trade_request id() 16비트 prefix
         # 추가 — 동일 ms 내 동일 strategy 충돌 방지 (review MEDIUM 권고).
