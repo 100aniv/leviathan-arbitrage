@@ -80,3 +80,33 @@ class TestExecutionResultDispatcher:
         d.register(sync)
         await d.dispatch(SimpleNamespace(), SimpleNamespace())
         assert len(sync.calls) == 1  # raising 후에도 호출됨
+
+
+class _AsyncRaisingListener:
+    name = "async_raising"
+
+    async def on_execution_result(self, request, result) -> None:
+        raise ValueError("async listener boom")
+
+
+class TestDispatchSyncDoneCallback:
+    """Codex SUGGEST (2026-04-26): dispatch_sync async exceptions surface via log."""
+
+    @pytest.mark.asyncio
+    async def test_async_listener_exception_logged_via_done_callback(self, caplog) -> None:
+        """dispatch_sync에서 async listener 예외 → done-callback 로그 (silent 금지)."""
+        import asyncio
+        import logging
+
+        d = ExecutionResultDispatcher()
+        d.register(_AsyncRaisingListener())
+
+        with caplog.at_level(logging.WARNING, logger="src.listeners.dispatcher"):
+            d.dispatch_sync(SimpleNamespace(), SimpleNamespace())
+            # ensure_future scheduled task — yield to loop to let it run
+            await asyncio.sleep(0.05)
+
+        # done-callback fired → log message captured
+        msgs = [r.getMessage() for r in caplog.records]
+        assert any("listener.async_dispatch_failed" in m and "async_raising" in m for m in msgs), \
+            f"async exception not surfaced via done-callback. records={msgs}"

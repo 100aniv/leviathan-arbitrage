@@ -79,15 +79,34 @@ class ExecutionResultDispatcher:
                 # 다음 listener 계속
 
     def dispatch_sync(self, request: Any, result: Any) -> None:
-        """동기 호출자용 (asyncio loop 외부). async listener는 ensure_future."""
+        """동기 호출자용. async listener는 ensure_future + done-callback (exception 가시화).
+
+        Codex SUGGEST (2026-04-26): asyncio.ensure_future만으로는 unobserved task
+        exception이 silent로 사라짐. done-callback 부착하여 모든 async failure를 log.
+        """
         for listener in self._listeners:
             try:
                 callback = listener.on_execution_result
                 _result_ret = callback(request, result)
                 if inspect.iscoroutine(_result_ret):
-                    asyncio.ensure_future(_result_ret)
+                    task = asyncio.ensure_future(_result_ret)
+                    task.add_done_callback(self._log_async_exception(listener.name))
             except Exception as exc:
                 logger.warning(
                     "listener.dispatch_sync_failed name=%s error=%s",
                     listener.name, exc,
                 )
+
+    @staticmethod
+    def _log_async_exception(listener_name: str) -> Callable[[asyncio.Task[Any]], None]:
+        """Done-callback factory: log async listener exceptions (Codex SUGGEST)."""
+        def _on_done(task: asyncio.Task[Any]) -> None:
+            if task.cancelled():
+                return
+            exc = task.exception()
+            if exc is not None:
+                logger.warning(
+                    "listener.async_dispatch_failed name=%s error=%s",
+                    listener_name, exc,
+                )
+        return _on_done
