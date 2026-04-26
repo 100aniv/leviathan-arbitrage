@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from src.listeners._helpers import get_status_value
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,7 +32,7 @@ class LogListener:
         """
         try:
             strategy_id = getattr(request, "strategy_id", "unknown")
-            status_value = getattr(getattr(result, "status", None), "value", "unknown")
+            status_value = get_status_value(result) or "unknown"
             logger.info(
                 "Execution result: strategy=%s status=%s",
                 strategy_id, status_value,
