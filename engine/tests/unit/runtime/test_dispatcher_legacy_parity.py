@@ -209,6 +209,51 @@ class TestLegacyDispatcherParity:
         assert engine._state.total_pnl == Decimal("3.0"), \
             "dispatch_sync fallback should still update state via sync listeners"
 
+    def test_circuit_breaker_record_win_on_positive_pnl(self) -> None:
+        """Codex SUGGEST parity coverage: CircuitBreaker record_win 호출 양쪽 동등."""
+        engine_legacy = _make_engine_stub()
+        engine_disp = _make_engine_stub()
+
+        # Mock CircuitBreaker that captures calls
+        cb_legacy = MagicMock()
+        cb_legacy.record_win = AsyncMock()
+        cb_legacy.record_loss = AsyncMock()
+        cb_disp = MagicMock()
+        cb_disp.record_win = AsyncMock()
+        cb_disp.record_loss = AsyncMock()
+        engine_legacy._circuit_breaker = cb_legacy
+        engine_disp._circuit_breaker = cb_disp
+        engine_disp._listener_dispatcher = build_dispatcher_from_engine(engine_disp)
+
+        request, result = _make_buy_sell_request_result(pnl=Decimal("2.0"))
+
+        _on_execution_result_legacy(engine_legacy, request, result)
+        on_execution_result(engine_disp, request, result)
+
+        # Both call record_win (positive PnL)
+        cb_legacy.record_win.assert_called_once()
+        cb_disp.record_win.assert_called_once()
+        cb_legacy.record_loss.assert_not_called()
+        cb_disp.record_loss.assert_not_called()
+
+    def test_trade_history_appended_both_paths(self) -> None:
+        """Codex SUGGEST parity coverage: trade_history append 양쪽 동등."""
+        engine_legacy = _make_engine_stub()
+        engine_disp = _make_engine_stub()
+        engine_disp._listener_dispatcher = build_dispatcher_from_engine(engine_disp)
+        request, result = _make_buy_sell_request_result(pnl=Decimal("1.0"))
+
+        _on_execution_result_legacy(engine_legacy, request, result)
+        on_execution_result(engine_disp, request, result)
+
+        # Both append 1 entry to context.trade_history
+        assert len(engine_legacy.context.trade_history) == 1
+        assert len(engine_disp.context.trade_history) == 1
+        # Same key fields
+        for key in ("strategy_id", "symbol", "buy_exchange", "sell_exchange"):
+            assert engine_legacy.context.trade_history[0][key] == \
+                   engine_disp.context.trade_history[0][key], f"PARITY mismatch {key}"
+
     def test_close_execution_decrements_cross_exposure(self) -> None:
         """reduceOnly=True → both paths decrement cross_gross_exposure identically."""
         # Setup: pre-populate cross exposure for both engines
