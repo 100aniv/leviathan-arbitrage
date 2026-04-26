@@ -3314,6 +3314,11 @@ class Engine:
                     # review fix CRITICAL: halt_local은 module-level 함수 (KillSwitch attribute 아님)
                     from src.risk.kill_switch import halt_local as _shadow_halt_local
                     _shadow_dedup = DeduplicationGate(window_s=10.0)
+                    # 2026-04-26 fix v10: min_notional_registry stub (paper 자체 추적, gate skip)
+                    class _PaperMinNotionalStub:
+                        async def get(self, exchange_id, symbol):
+                            return 0.0  # paper에서 min_notional 게이트 무용 (실거래 없음)
+                    _shadow_min_notional = _PaperMinNotionalStub()
                     _shadow_strategy_filter_frozen = (
                         frozenset(_shadow_strategy_filter) if _shadow_strategy_filter else None
                     )
@@ -3334,7 +3339,7 @@ class Engine:
                         symbol_last_trade={},
                         symbol_cooldown_s=float(_shadow_get_cfg("execution.symbol_cooldown_s", default=30.0)),
                         cached_margin={},
-                        min_notional_registry=None,
+                        min_notional_registry=_shadow_min_notional,  # paper stub
                         get_config=lambda key, default=None: _shadow_get_cfg(key, default=default),
                         total_capital_usd=_total_capital,
                         max_session_loss_usd=_max_session_loss,
