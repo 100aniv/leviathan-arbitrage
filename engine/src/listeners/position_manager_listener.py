@@ -11,6 +11,13 @@ import asyncio
 import logging
 from typing import Any
 
+from src.listeners._helpers import (
+    extract_legs_info,
+    get_side,
+    is_close_execution,
+    is_status_success,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,6 +27,8 @@ class PositionManagerListener:
     DI:
     - position_manager: PositionManager (또는 None)
     - pm_queue: asyncio.Queue (bounded, ordered ops)
+
+    Codex SUGGEST (2026-04-26): legs_info / close-detection 로직은 _helpers로 추출 (DRY).
     """
 
     name = "position_manager"
@@ -31,28 +40,15 @@ class PositionManagerListener:
     def on_execution_result(self, request: Any, result: Any) -> None:
         if self._pm is None:
             return
-        status_val = getattr(getattr(result, "status", None), "value",
-                             str(getattr(result, "status", "")))
-        if status_val != "success":
+        if not is_status_success(result):
             return
         try:
-            legs_info = [
-                (getattr(leg, "trade", None), getattr(leg, "order", None))
-                for leg in getattr(result, "legs", [])
-            ]
-            _is_close_exec = any(
-                isinstance(getattr(o, "metadata", None), dict) and (
-                    o.metadata.get("reduceOnly") is True
-                    or str(o.metadata.get("leg_type", "")).startswith(
-                        ("settlement_close", "timeout_close")
-                    )
-                )
-                for _, o in legs_info if o
-            )
+            legs_info = extract_legs_info(result)
+            _is_close_exec = is_close_execution(legs_info)
             for trade, order in legs_info:
                 if trade is None or order is None:
                     continue
-                _side_str = getattr(order.side, "value", str(order.side)).upper()
+                _side_str = get_side(order)
                 if _is_close_exec:
                     _op_kwargs = ("close_position", {
                         "strategy_id": request.strategy_id,
