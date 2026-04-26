@@ -2478,11 +2478,6 @@ class LiveMode(BaseMode):
                 net_pnl -= notional + fee
         return net_pnl, "estimate"
 
-    def _compute_pnl(self, trade_request: TradeRequest, exec_result: Any) -> Decimal:
-        """Legacy wrapper — delegates to _compute_pnl_from_result, drops source label."""
-        pnl, _ = self._compute_pnl_from_result(exec_result, trade_request)
-        return pnl
-
     def _update_pnl_stats(self, pnl: Decimal, strategy_id: str) -> None:
         """Update cumulative PnL, drawdown, and per-strategy stats."""
         pnl_f = float(pnl)

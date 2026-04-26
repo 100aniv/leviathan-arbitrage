@@ -20,7 +20,6 @@ import json
 import logging
 import os
 import signal
-import time
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
@@ -2770,39 +2769,6 @@ class Engine:
                 await asyncio.sleep(1.0)
         except asyncio.CancelledError:
             pass
-
-    async def _paper_signal_simulator_loop(self) -> None:
-        """Run multi-strategy signal simulator for paper mode.
-
-        Produces synthetic signals for SpotFutures, FundingRate, and Triangular
-        strategies so ALL 8 strategies receive signals in paper mode.
-        """
-        from src.core.multi_signal import MultiStrategySignalProducer, PaperSignalSimulator
-
-        producer = MultiStrategySignalProducer(
-            event_bus=self._event_bus,
-            latency_tracker=getattr(self, "_latency_tracker", None),
-        )
-        symbols = self._settings.trading.symbols if self._settings else ["BTC/USDT"]
-        exchanges = list(self._exchanges.keys())
-
-        simulator = PaperSignalSimulator(
-            producer=producer,
-            exchanges=exchanges,
-            symbols=symbols,
-            injection_rate=0.05,
-        )
-        await simulator.start()
-        logger.info("Paper signal simulator started (exchanges=%s, symbols=%s)", exchanges, symbols)
-
-        try:
-            while self.state.running:
-                await simulator.tick()
-                await asyncio.sleep(1.0)
-        except asyncio.CancelledError:
-            pass
-        finally:
-            await simulator.stop()
 
     async def _real_data_feed_loop(self) -> None:
         """Start real public WebSocket collectors and feed SignalGenerator.
