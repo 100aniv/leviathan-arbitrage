@@ -236,6 +236,50 @@ class TestLegacyDispatcherParity:
         cb_legacy.record_loss.assert_not_called()
         cb_disp.record_loss.assert_not_called()
 
+    def test_correlation_record_pnl_both_paths(self) -> None:
+        """Codex SUGGEST coverage: CorrelationMonitor.record_trade_pnl 양쪽 동등."""
+        engine_legacy = _make_engine_stub()
+        engine_disp = _make_engine_stub()
+        mon_legacy = MagicMock()
+        mon_disp = MagicMock()
+        engine_legacy._correlation_monitor = mon_legacy
+        engine_disp._correlation_monitor = mon_disp
+        engine_disp._listener_dispatcher = build_dispatcher_from_engine(engine_disp)
+
+        request, result = _make_buy_sell_request_result(pnl=Decimal("0.7"))
+
+        _on_execution_result_legacy(engine_legacy, request, result)
+        on_execution_result(engine_disp, request, result)
+
+        mon_legacy.record_trade_pnl.assert_called_once_with("test_strategy", 0.7)
+        mon_disp.record_trade_pnl.assert_called_once_with("test_strategy", 0.7)
+
+    def test_market_recorder_record_execution_both_paths(self) -> None:
+        """Codex SUGGEST coverage: MarketRecorder.record_execution 양쪽 동등.
+
+        legacy uses `l.side == OrderSide.BUY` 비교 — actual enum 필요.
+        """
+        from src.core.models import OrderSide
+        engine_legacy = _make_engine_stub()
+        engine_disp = _make_engine_stub()
+        rec_legacy = MagicMock()
+        rec_disp = MagicMock()
+        engine_legacy._market_recorder = rec_legacy
+        engine_disp._market_recorder = rec_disp
+        engine_disp._listener_dispatcher = build_dispatcher_from_engine(engine_disp)
+
+        # Build request with actual OrderSide enum on legs
+        request, result = _make_buy_sell_request_result(pnl=Decimal("1.5"))
+        request.legs[0].side = OrderSide.BUY
+        request.legs[1].side = OrderSide.SELL
+
+        _on_execution_result_legacy(engine_legacy, request, result)
+        on_execution_result(engine_disp, request, result)
+
+        # Both call record_execution exactly once
+        rec_legacy.record_execution.assert_called_once()
+        rec_disp.record_execution.assert_called_once()
+
     def test_trade_history_appended_both_paths(self) -> None:
         """Codex SUGGEST parity coverage: trade_history append 양쪽 동등."""
         engine_legacy = _make_engine_stub()
