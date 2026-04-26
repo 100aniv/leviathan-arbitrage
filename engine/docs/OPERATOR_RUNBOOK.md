@@ -202,6 +202,34 @@ Live 거래는 다음 모두 충족 후에만 재개:
 
 ---
 
+## 6.5.1 FlashGuard Cross-Exchange Rule (2026-04-26 신규, KRW false positive 25K 차단)
+
+> **사례**: v5 엔진 10분 가동 중 `flash_guard.triggered` 25,000건 (Upbit 20,159 + Coinone 4,812 + Bithumb 23). 99.9% 단일 거래소 stale data → false halt.
+> **fix commit**: `102ac45` flash_guard.py + test_flash_guard.py.
+
+### 동작 원칙
+
+| 시나리오 | 이전 (single-exchange trigger) | 현재 (cross-exchange confirmation) |
+|---------|--------------------------------|---------------------------------|
+| Upbit BTC -8% (Binance 변동 0) | 즉시 halt | `local_only` log INFO + `_suppressed_count++`, halt 안 됨 |
+| Upbit + Binance 둘 다 -5% (60s 내) | halt | halt (confirmed by 2+ exchanges) |
+| 단일 거래소만 +3% spike | halt | local_only suppressed |
+
+### 운영 행동
+
+- `flash_guard.local_only` log = 단일 거래소 stale data (정상 무시 동작)
+- `flash_guard.triggered confirming=N` log = N개 거래소 동시 trigger 확인 (진짜 시장 flash)
+- `_DEFAULT_MIN_EXCHANGES_FOR_TRIGGER = 2` (configurable per FlashGuard instance)
+- `_CROSS_EXCHANGE_WINDOW_S = 60` (60초 내 같은 symbol 다른 거래소 trigger 짝 형성)
+- 단일 거래소 시나리오 backward-compat: `min_exchanges_for_trigger=1` opt-in
+
+### 메트릭
+
+- 운영 모니터링: `flash_guard.triggered` log → cross-exchange confirmed flash만 표시
+- `flash_guard.local_only` log → 단일 거래소 stale 빈도 (높으면 데이터 품질 alarm)
+
+---
+
 ## 6.5 Incident Response Procedure (IRP) — P1/P2/P3 (Phase L L-5, 2026-04-22)
 
 > 사장님 부재 시(외출/취침) 자동 대응 흐름. 사람이 즉시 개입할 수 없는 시간대에 엔진이 안전 측면 fallback 보장.
