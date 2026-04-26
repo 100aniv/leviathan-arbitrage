@@ -9,6 +9,8 @@ import logging
 from decimal import Decimal
 from typing import Any
 
+from src.listeners._helpers import is_close_leg
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,15 +48,7 @@ class RollbackListener:
                 strategy = self._mgr.get_strategy(request.strategy_id)
                 if strategy is not None and request.legs:
                     symbol = request.legs[0].symbol
-                    _is_exit = any(
-                        isinstance(getattr(leg, "metadata", None), dict) and (
-                            leg.metadata.get("reduceOnly") is True
-                            or str(leg.metadata.get("leg_type", "")).startswith(
-                                ("settlement_close", "timeout_close", "spread_exit")
-                            )
-                        )
-                        for leg in request.legs
-                    )
+                    _is_exit = any(is_close_leg(leg) for leg in request.legs)
                     if _is_exit and hasattr(strategy, "handle_exit_rollback"):
                         strategy.handle_exit_rollback(symbol)
                     elif hasattr(strategy, "handle_entry_rollback"):

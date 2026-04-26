@@ -14,14 +14,18 @@ Phase 5.1 Ports (7개):
 6. LedgerPort           — PnL ledger (record_pnl/get_total/per-strategy)
 7. KillSwitchPort       — 3-tier halt + clear
 
-Phase 7 추가 Ports (2026-04-26, Gemini Priority 2):
+Phase 7 추가 Ports (2026-04-26, Gemini Priority 2 + Codex SUGGEST):
 8. EventBusPort         — pub/sub message bus (Nautilus MessageBus 미러)
-9. MetricsPort          — telemetry (LEAN/OpenTelemetry 미러)
+9. MetricsPort          — telemetry write-side (LEAN/OpenTelemetry 미러)
+10. ConfigPort          — engine.json + env var 조회 (DI-friendly)
+11. AlertPort           — Telegram/Discord/Slack 알림 (vendor-neutral)
 
 Phase 5.2 god-object 해체 시 runtime/* 모듈이 Engine 대신 각 Port 의존.
 """
 from __future__ import annotations
 
+from src.ports.alert_port import AlertPort
+from src.ports.config_port import ConfigPort
 from src.ports.data_feed_port import DataFeedPort
 from src.ports.event_bus_port import EventBusPort
 from src.ports.exchange_adapter_port import ExchangeAdapterPort
@@ -33,6 +37,8 @@ from src.ports.metrics_port import MetricsPort
 from src.ports.risk_port import RiskPort
 
 __all__ = [
+    "AlertPort",
+    "ConfigPort",
     "DataFeedPort",
     "EventBusPort",
     "ExchangeAdapterPort",
