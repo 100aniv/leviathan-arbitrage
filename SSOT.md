@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> **마지막 업데이트: 2026-04-22 KST — Day-16 후속 commits + Gate 재실행 + 6개 mismatch 정정**
+> **마지막 업데이트: 2026-04-26 KST — Refactor follow-up audit (WS-3 None-safe + FF stale gate fix) + 30+ commits sync**
 > 이전 선언이었던 "commercial-grade 전환 완료"는 **철회**. 근거: v237 카나리에서 엔진 PnL +$0.09 vs 실제 Binance /fapi/v1/income -$4.92 확증 → 거짓 보고의 근본원인은 개별 버그가 아니라 `live.py` 3,249줄 + `main.py` 4,221줄 God-class 모놀리스 구조. 4개 독립 리뷰(Codex/Gemini/exa.ai/external critic) 수렴 결과 Path-B v2 (ExecutionJournal + OrderStateMachine + OrderRouter 기반 10-day atomic 리팩토링) 채택, V4 Rust 전면 재작성 기각.
 > **Live 거래 정지 중** (mode=paper, commit `606c97b`). Binance 오픈 포지션 0건 확인됨. 거래소 잔고 $10.55 (입금 $16 - 손실 $4.92).
 > PHOENIX v237까지의 BUG-73~228 패치 75+건은 유지. Path-B v2 통합 플랜: `/Users/100aniv/.claude/plans/hidden-cuddling-pascal.md` (유일한 플랜 소스).
@@ -101,15 +101,18 @@
 - **첫 카나리 실패** (2026-04-21~22, PID 45822, 14H 14m): universe_matrix entries=0 → paper_trade_filled=0 (실 거래 0건)
   - 근본원인: PaperExchangeAdapter 2개 하드코딩 + market_type 인터페이스 메서드 부재
   - 수정: `3d37e91` (paper 어댑터 7개 확장), `e5a28b2` (테스트 갱신)
-- **재카나리 + 실시간 fix 사이클 (2026-04-22 진행)**:
-  - **사이클 1**: 5분 dry-run ALL_PASS — entries=34, trade=5, +$2.18, crash=0
-  - **사이클 2**: 30분 측정 ALL_PASS — entries=34, trade=2, +$0.58, crash=0
-  - **사이클 3**: 60min stage 9분에 spot_futures -$5.02 catastrophic loss 발견 → loss cap $10→$1 fix (`.env` + `CLAUDE.md` `ebb0930`) → engine restart
-  - **사이클 4**: monitor false positive KILL_SWITCH alert → `clear_halt()` Prometheus metric reset 누락 bug 발견 → fix (`45a5ba4`) → engine restart
-  - **사이클 5**: v2 6분에 trade_leg_missing_price → silent fill price=0 → result=loss false 분류 발견 → trade reject fix (`b0b1b3c`) → engine restart
-  - **사이클 6 (v3 진행 중)**: PID 14082, 11분 elapsed, 7 fills, **+$11.05 PnL**, crash=0, kill_switch=0.0 ✓, missing_price=0 ✓, 모든 13 항목 PASS
-  - 부가: toxicity filter ~7K rejects, stale_detector ~1K rejects, sf_arb p50=8bps signals 활발, monitor v5 BG 30s polling
-  - 다음: 새 문제 polling 계속 → 발견 시 즉시 fix → 24h Gate (US-055 LiveGate Preflight 직전)
+- **재카나리 + 실시간 fix 사이클 (2026-04-22 ~ 2026-04-26 진행)**:
+  - **사이클 1-6**: 30분 ALL_PASS → catastrophic loss → kill_switch reset → silent fill → KRW × USDT pair 차단 → +$11.05 PnL ALL 13항목 PASS
+  - **사이클 7 (v4, 2026-04-25 ~ 04-26)**: PID 33311, 11h 39min elapsed, 8 fills, **+$15.77 PnL**, crash=0, RSS 안정 (149-251MB GC 정상)
+    - ScheduledTuner kwargs TypeError fix (`2260862`)
+    - monitor datetime.utcnow() DeprecationWarning fix (`40bd8ee`)
+  - **사이클 8 (v5, 2026-04-26 진행)**: PID 54923, refactor follow-up fix 적용
+    - **Audit (병렬 multi-agent)**: WS-1/2/3 + BUG-94 6 commits 독립 감사 → NO_ROLLBACK
+    - **Fix 1**: `position_manager.update_position()` None-safety 누수 — paper 모드 dual_writer=None crash 차단
+    - **Fix 2**: `EXCHANGE_STALE_THRESHOLD_S` 5s → 30s — futures_futures 100% drop (stale==pairs sigs=0) 해소
+    - commit `a182d32` (refactor-followup), 단위테스트 34/34 PASS
+  - 부가: 5,851 tests collected (`pytest --co -q` 2026-04-26)
+  - 다음: v5 24h Gate canary → futures_futures 신규 fills 발생 검증 → 13항목 PASS → LiveGate Preflight
 - **48H Gate**: 24h paper canary PASS 후 LiveGate 진입 가능
 - **Live 재개**: BLOCKED until Gate passes
 - **모드**: paper only (commit `606c97b` enforcement)
@@ -126,7 +129,7 @@
 
 **금지 사항 (refactor 기간 엄수)**: ❌ config bump으로 fix, ❌ live.py/main.py에 코드 추가 (monotonically shrinking only), ❌ exchange 대조 없이 "fixed" 선언.
 **§2.2 TCA 계층 진화**: 2 layer (gross + fee) → 4 layer (WS-A) → **7 layer** (gross + fee + slippage + funding + basis + reconciliation_variance + exchange_realized — WS-D 완료). Exchange `realizedPnl` primary source (WS-A1/A2/A3/A5), `Trade.realized_pnl` field + 4-branch priority, `ExchangeIncomeFetcher` 30s polling (Binance `/fapi/v1/income` + Bitget `/account/bill`). **WS-B**: dynamic min_spread = fee + p95_slippage + funding_buffer + profit_margin. **WS-D**: divergence 5% rule 자동 HALT + toxicity filter + Sharpe/MDD 30-day rolling + daily TCA CSV.
-**Tests**: 5,508 collected (PHOENIX 트랙 기준, `pytest --co -q` on 2026-04-19) / **Path-B v2 기준: 5,053 pass / 14 skipped (2026-04-22, e5a28b2 기준)**
+**Tests**: 5,508 collected (PHOENIX 트랙 기준, `pytest --co -q` on 2026-04-19) / Path-B v2 기준: 5,053 pass / 14 skipped (2026-04-22, e5a28b2 기준) / **Refactor follow-up 기준: 5,851 collected (`pytest --co -q` 2026-04-26, a182d32)**
 **Coverage**: 74%
 **PRD** (2026-04-22 정정): 424/437 passes:true (passes:false 13개 — US-055, US-056, US-373, US-386 [부분 리네임], US-407 [⚠️], US-409 [⚠️], US-410 [⚠️], US-419 [⚠️], US-425, US-426, US-427, US-428, US-429). ⚠️ 표시는 universe_matrix=0 환경에서 ac_override 통과한 거짓양성 (재실행 필요).
 **TF Status**: S1~S26 ✅ → SIT-0~2 ✅ → SIT-3 ✅ → Phase H ✅ → Phase I ✅ → Phase J ✅ → K ✅ → **L** → M → N(TF Final → Live)
