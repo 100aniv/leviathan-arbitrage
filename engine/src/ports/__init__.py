@@ -15,10 +15,11 @@ Phase 5.1 Ports (7개):
 7. KillSwitchPort       — 3-tier halt + clear
 
 Phase 7 추가 Ports (2026-04-26, Gemini Priority 2 + Codex SUGGEST):
-8. EventBusPort         — pub/sub message bus (Nautilus MessageBus 미러)
-9. MetricsPort          — telemetry write-side (LEAN/OpenTelemetry 미러)
-10. ConfigPort          — engine.json + env var 조회 (DI-friendly)
-11. AlertPort           — Telegram/Discord/Slack 알림 (vendor-neutral)
+8. EventBusPort               — pub/sub message bus (Nautilus MessageBus 미러)
+9. MetricsPort                — telemetry write-side (LEAN/OpenTelemetry 미러)
+10. ConfigPort                — engine.json + env var 조회 (DI-friendly)
+11. AlertPort                 — Telegram/Discord/Slack 알림 (vendor-neutral)
+12. ExchangeIncomeFetcherPort — exchange income polling (Binance income / Bitget bills)
 
 Phase 5.2 god-object 해체 시 runtime/* 모듈이 Engine 대신 각 Port 의존.
 """
@@ -29,6 +30,7 @@ from src.ports.config_port import ConfigPort
 from src.ports.data_feed_port import DataFeedPort
 from src.ports.event_bus_port import EventBusPort
 from src.ports.exchange_adapter_port import ExchangeAdapterPort
+from src.ports.exchange_income_fetcher_port import ExchangeIncomeFetcherPort
 from src.ports.executor_port import ExecutorPort
 from src.ports.journal_port import JournalPort
 from src.ports.kill_switch_port import KillSwitchPort
@@ -42,6 +44,7 @@ __all__ = [
     "DataFeedPort",
     "EventBusPort",
     "ExchangeAdapterPort",
+    "ExchangeIncomeFetcherPort",
     "ExecutorPort",
     "JournalPort",
     "KillSwitchPort",
