@@ -16,9 +16,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from decimal import Decimal
-from typing import Any
+from typing import Any, Optional
 
 from src.listeners._helpers import get_side, is_status_success
+from src.ports import AlertPort
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +41,16 @@ class PositionSizeLeakListener:
         self,
         position_sizes: dict[str, Decimal],
         state: Any = None,
-        alert_bot: Any = None,
+        alert_bot: Optional[AlertPort] = None,
     ) -> None:
+        """DI: position_sizes (mutable), state (EngineState), alert_bot (AlertPort | None).
+
+        alert_bot 타입을 AlertPort로 type-hint — Telegram/Discord/Slack 무관 substitutable.
+        Codex SUGGEST (2026-04-27): AlertPort actual adoption.
+        """
         self._sizes = position_sizes
         self._state = state
-        self._alert_bot = alert_bot
+        self._alert_bot: Optional[AlertPort] = alert_bot
 
     def on_execution_result(self, request: Any, result: Any) -> None:
         if not is_status_success(result):
