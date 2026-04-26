@@ -99,6 +99,7 @@ class TestAllPortsRuntimeCheckable:
 
     def test_all_ports_exported(self) -> None:
         from src.ports import __all__
-        expected = {"DataFeedPort", "ExchangeAdapterPort", "ExecutorPort",
-                    "JournalPort", "KillSwitchPort", "LedgerPort", "RiskPort"}
+        expected = {"DataFeedPort", "EventBusPort", "ExchangeAdapterPort",
+                    "ExecutorPort", "JournalPort", "KillSwitchPort",
+                    "LedgerPort", "MetricsPort", "RiskPort"}
         assert set(__all__) == expected
