@@ -81,14 +81,12 @@ def build_dispatcher_from_engine(engine: Any) -> ExecutionResultDispatcher:
         getattr(engine, "_pm_queue", None),
     ))
 
-    # 4. Cross-hedge tracking (delta-neutral)
-    cross_gross_holder = [engine._cross_gross_exposure]
-    dispatcher.register(CrossHedgeListener(
-        engine._cross_exchange_positions,
-        cross_gross_holder,
-    ))
-    # Note: cross_gross_holder[0] mutation 후 engine._cross_gross_exposure sync 필요.
-    # Phase 6+: EngineState 통일.
+    # 4. Cross-hedge tracking (delta-neutral) — Phase 5.2.6 후속 fix:
+    # holder list[Decimal] 제거, EngineState 직접 mutate (단일 진실 소스).
+    if hasattr(engine, "_state") and engine._state is not None:
+        dispatcher.register(CrossHedgeListener(state=engine._state))
+    else:
+        logger.warning("ListenerFactory: engine._state missing — CrossHedgeListener skipped")
 
     # 5. PnL + peak equity
     pnl_state = getattr(engine, "_state", None)

@@ -26,13 +26,13 @@ class CrossHedgeListener:
 
     name = "cross_hedge"
 
-    def __init__(
-        self,
-        cross_exchange_positions: set[str],
-        cross_gross_exposure_holder: list,
-    ) -> None:
-        self._positions = cross_exchange_positions
-        self._gross_holder = cross_gross_exposure_holder
+    def __init__(self, state: Any) -> None:
+        """DI: EngineState 인스턴스 (Phase 5.2.1).
+
+        Mutate state.cross_exchange_positions (set) + state.cross_gross_exposure (Decimal).
+        Phase 5.2.6 holder list[Decimal] 패턴 제거 — EngineState 단일 진실 소스.
+        """
+        self._state = state
 
     def on_execution_result(self, request: Any, result: Any) -> None:
         status_val = getattr(getattr(result, "status", None), "value",
@@ -63,9 +63,9 @@ class CrossHedgeListener:
             )
             for sym in symbols_in_exec:
                 if _is_cross and not _is_close:
-                    self._positions.add(sym)
+                    self._state.cross_exchange_positions.add(sym)
                 elif _is_close or not _is_cross:
-                    self._positions.discard(sym)
+                    self._state.cross_exchange_positions.discard(sym)
 
             if _is_cross:
                 _leg_gross = sum(
@@ -74,8 +74,10 @@ class CrossHedgeListener:
                     if trade is not None and order is not None
                 )
                 if _is_close:
-                    self._gross_holder[0] = max(Decimal("0"), self._gross_holder[0] - _leg_gross)
+                    self._state.cross_gross_exposure = max(
+                        Decimal("0"), self._state.cross_gross_exposure - _leg_gross,
+                    )
                 else:
-                    self._gross_holder[0] += _leg_gross
+                    self._state.cross_gross_exposure += _leg_gross
         except Exception as exc:
             logger.debug("cross_hedge.error %s", exc)
