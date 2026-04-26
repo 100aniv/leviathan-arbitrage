@@ -8,6 +8,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from src.listeners._helpers import get_side
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,13 +27,11 @@ class SlippageListener:
         try:
             for leg in result.legs:
                 if hasattr(leg, "expected_price") and hasattr(leg, "fill_price"):
-                    side = "BUY"
-                    if leg.order and hasattr(leg.order, "side"):
-                        side = leg.order.side.value.upper()
+                    side = get_side(leg.order) if leg.order else "BUY"
                     self._fb.record_fill(
                         expected_price=leg.expected_price,
                         actual_price=leg.fill_price,
-                        side=side,
+                        side=side or "BUY",
                     )
         except Exception as exc:
             logger.debug("slippage_listener.error %s", exc)
