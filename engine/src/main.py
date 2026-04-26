@@ -96,6 +96,13 @@ class Engine:
     def __init__(self, context: EngineContext | None = None) -> None:
         self.context = context or EngineContext()
         self.state = EngineState()
+        # Phase 5.2.2: 16 mutable runtime fields → EngineStateRuntime dataclass.
+        # legacy state(EngineState: running/kill_switch_active/background_tasks)와 별개.
+        # 16 fields: total_pnl, peak_equity, position_sizes, cross_exchange_positions,
+        # cross_gross_exposure, exchange_health, position_tracking_errors, pm_drain_errors,
+        # prev_reconciler_orphans, regime_pnl_history, regime_last_pnl, ...
+        from src.core.engine_state import EngineState as _RuntimeEngineState
+        self._state: _RuntimeEngineState = _RuntimeEngineState()
         self._shutdown_event = asyncio.Event()
         # BUG-83: engine.json exchanges.active is the SOLE source of truth for active exchanges.
         # Pydantic default only has spot exchanges (missing futures). Load once, use everywhere.
