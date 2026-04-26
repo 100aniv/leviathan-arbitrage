@@ -98,8 +98,11 @@ class TestAllPortsRuntimeCheckable:
         assert isinstance(_MockKillSwitch(), KillSwitchPort)
 
     def test_all_ports_exported(self) -> None:
+        """Codex NIT (2026-04-26 v2): required-subset 검증으로 churn 제거.
+        새 Port 추가 시 (ConfigPort, AlertPort 등) 본 테스트 수정 불필요."""
         from src.ports import __all__
-        expected = {"DataFeedPort", "EventBusPort", "ExchangeAdapterPort",
+        required = {"DataFeedPort", "EventBusPort", "ExchangeAdapterPort",
                     "ExecutorPort", "JournalPort", "KillSwitchPort",
                     "LedgerPort", "MetricsPort", "RiskPort"}
-        assert set(__all__) == expected
+        assert required.issubset(set(__all__)), \
+            f"missing required ports: {required - set(__all__)}"
