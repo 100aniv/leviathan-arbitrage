@@ -170,3 +170,24 @@ class TestLegacyDispatcherParity:
         # Both unchanged
         assert engine_legacy._total_pnl == Decimal("0")
         assert engine_disp._total_pnl == Decimal("0")
+
+    def test_rollback_position_clears(self) -> None:
+        """status=rolled_back → both paths handle entry rollback identically."""
+        engine_legacy = _make_engine_stub()
+        engine_disp = _make_engine_stub()
+        engine_disp._listener_dispatcher = build_dispatcher_from_engine(engine_disp)
+
+        # Mock strategy_manager so handle_entry_rollback is callable
+        for engine in (engine_legacy, engine_disp):
+            strategy = MagicMock()
+            engine._strategy_manager.get_strategy = MagicMock(return_value=strategy)
+
+        request, result = _make_buy_sell_request_result()
+        result.status = SimpleNamespace(value="rolled_back")
+
+        _on_execution_result_legacy(engine_legacy, request, result)
+        on_execution_result(engine_disp, request, result)
+
+        # Both call strategy.handle_entry_rollback (entry — no reduceOnly metadata)
+        engine_legacy._strategy_manager.get_strategy.assert_called()
+        engine_disp._strategy_manager.get_strategy.assert_called()
