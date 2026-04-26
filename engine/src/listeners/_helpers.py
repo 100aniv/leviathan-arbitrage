@@ -75,3 +75,27 @@ def effective_pnl(request: Any, result: Any) -> float:
     if hasattr(result, "pnl") and result.pnl is not None:
         return float(result.pnl)
     return float(getattr(request, "expected_profit_usdt", 0))
+
+
+def request_to_summary(request: Any, result: Any) -> dict[str, Any]:
+    """Build common request-to-summary dict (Codex SUGGEST 2026-04-26).
+
+    telegram_listener fill_data + trade_history_listener entry 공통 7 필드.
+    호출자는 추가 필드(uuid id, side, prices, status)를 dict.update로 추가.
+    """
+    from datetime import datetime, timezone
+
+    legs = getattr(request, "legs", [])
+    return {
+        "strategy_id": getattr(request, "strategy_id", "unknown"),
+        "symbol": legs[0].symbol if legs else "UNKNOWN",
+        "buy_exchange": next(
+            (l.exchange_id for l in legs if get_side(l) == "BUY"), ""
+        ),
+        "sell_exchange": next(
+            (l.exchange_id for l in legs if get_side(l) == "SELL"), ""
+        ),
+        "size": float(legs[0].size) if legs else 0,
+        "pnl": effective_pnl(request, result),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
