@@ -207,6 +207,8 @@ class Engine:
         # US-351: BacktestMode result (populated by _backtest_mode_task)
         self._backtest_result: Any = None
         self._supervisor: Any = None  # Day 15: SUPERVISOR_ACTIVE-gated
+        # Phase 6 Step 1: ExecutionResultDispatcher (default None until _init_listeners)
+        self._listener_dispatcher: Any = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -231,6 +233,8 @@ class Engine:
             await self._populate_context()
             await self._startup_position_scan()
             await self._startup_compliance_audit()
+            # Phase 6 Step 1: build 14 listeners + dispatcher (LOW risk, env flag gated)
+            self._init_listeners()
             await self._start_background_tasks()
             await self._init_tuner()
 
@@ -554,6 +558,25 @@ class Engine:
     async def _orderbook_feed_loop(self) -> None:
         from src.runtime.mode_loops import orderbook_feed_loop
         await orderbook_feed_loop(self)
+
+    def _init_listeners(self) -> None:
+        """Phase 6 Step 1: 14 ExecutionResultListener + Dispatcher 빌드.
+
+        env flag EXECUTION_DISPATCHER_ENABLED 활성 시에만 빌드.
+        default false → paper canary 영향 0 (legacy on_execution_result 사용).
+        """
+        if not get_bool_flag("EXECUTION_DISPATCHER_ENABLED"):
+            logger.debug("listener_dispatcher.disabled (EXECUTION_DISPATCHER_ENABLED=false)")
+            return
+        try:
+            from src.listeners.factory import build_dispatcher_from_engine
+            self._listener_dispatcher = build_dispatcher_from_engine(self)
+            logger.info(
+                "ListenerFactory.built %d listeners",
+                self._listener_dispatcher.listener_count,
+            )
+        except Exception as exc:
+            logger.warning("listener_dispatcher.init_failed: %s", exc)
 
     async def _real_data_feed_loop(self) -> None:
         from src.runtime.mode_loops import real_data_feed_loop
