@@ -191,3 +191,71 @@ class TestLegacyDispatcherParity:
         # Both call strategy.handle_entry_rollback (entry — no reduceOnly metadata)
         engine_legacy._strategy_manager.get_strategy.assert_called()
         engine_disp._strategy_manager.get_strategy.assert_called()
+
+    def test_close_execution_decrements_cross_exposure(self) -> None:
+        """reduceOnly=True → both paths decrement cross_gross_exposure identically."""
+        # Setup: pre-populate cross exposure for both engines
+        engine_legacy = _make_engine_stub()
+        engine_legacy._state.cross_gross_exposure = Decimal("200")
+        engine_legacy._state.cross_exchange_positions.add("BTC/USDT")
+
+        engine_disp = _make_engine_stub()
+        engine_disp._state.cross_gross_exposure = Decimal("200")
+        engine_disp._state.cross_exchange_positions.add("BTC/USDT")
+        engine_disp._listener_dispatcher = build_dispatcher_from_engine(engine_disp)
+
+        # Build close trade with reduceOnly=True (sell binance + buy okx, swapped)
+        legs_result = [
+            SimpleNamespace(
+                order=SimpleNamespace(
+                    symbol="BTC/USDT", exchange_id="binance",
+                    side=SimpleNamespace(value="sell"),
+                    metadata={"reduceOnly": True},
+                ),
+                trade=SimpleNamespace(price=Decimal("50000"), amount=Decimal("0.001")),
+            ),
+            SimpleNamespace(
+                order=SimpleNamespace(
+                    symbol="BTC/USDT", exchange_id="okx",
+                    side=SimpleNamespace(value="buy"),
+                    metadata={"reduceOnly": True},
+                ),
+                trade=SimpleNamespace(price=Decimal("50000"), amount=Decimal("0.001")),
+            ),
+        ]
+        legs_request = [
+            SimpleNamespace(
+                symbol="BTC/USDT", exchange_id="binance",
+                side=SimpleNamespace(value="sell"),
+                price=Decimal("50000"), size=Decimal("0.001"),
+                metadata={"reduceOnly": True},
+            ),
+            SimpleNamespace(
+                symbol="BTC/USDT", exchange_id="okx",
+                side=SimpleNamespace(value="buy"),
+                price=Decimal("50000"), size=Decimal("0.001"),
+                metadata={"reduceOnly": True},
+            ),
+        ]
+        request = SimpleNamespace(
+            strategy_id="close_test", legs=legs_request,
+            expected_profit_usdt=Decimal("0"),
+            timestamp=SimpleNamespace(timestamp=lambda: 1234567890.0),
+        )
+        result = SimpleNamespace(
+            status=SimpleNamespace(value="success"),
+            pnl=Decimal("0.5"),
+            legs=legs_result,
+            execution_duration_ms=200,
+        )
+
+        _on_execution_result_legacy(engine_legacy, request, result)
+        on_execution_result(engine_disp, request, result)
+
+        # Both should have BTC/USDT discarded from cross_exchange_positions
+        # AND cross_gross_exposure decremented (200 - 100 = 100)
+        legacy_pos = engine_legacy._state.cross_exchange_positions
+        disp_pos = engine_disp._state.cross_exchange_positions
+        assert legacy_pos == disp_pos, (
+            f"PARITY: legacy_positions={legacy_pos} disp_positions={disp_pos}"
+        )
