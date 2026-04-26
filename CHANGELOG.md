@@ -4,6 +4,55 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added (2026-04-26) — Phase 5 Hexagonal Architecture 100% 완료 (자동 진행)
+
+**산업 표준 도달 (Nautilus/LEAN/Hummingbot 미러)**:
+
+#### Phase 5.0 Pre-audit (4 architecture docs, 1075 LOC)
+- `engine/docs/architecture/communication-flow.md` — signal→strategy→executor→result trace
+- `engine/docs/architecture/module-dependencies.md` — 565 engine.X accesses across 7 modules
+- `engine/docs/architecture/listener-decomposition.md` — on_execution_result 360 LOC → 14 listeners
+- `engine/docs/architecture/engine-state-design.md` — 16 mutable runtime fields
+
+#### Phase 5.1 — 7 Hexagonal Ports (`engine/src/ports/`)
+- `ExchangeAdapterPort` (place_order/cancel/balance/supports_symbol/get_min_notional)
+- `ExecutorPort` (execute_trade_request + add/remove_listener)
+- `RiskPort` (check_proposal + record_loss/win + is_halted)
+- `DataFeedPort` (subscribe + on_orderbook/on_trade)
+- `JournalPort` (start + append + replay + flush)
+- `LedgerPort` (record_pnl + get_total/per-strategy/per-exchange)
+- `KillSwitchPort` (halt + clear + is_active)
+- `ExecutionResultListener` (Listener Protocol)
+
+#### Phase 5.2 — God-object 해체
+- 5.2.1 `EngineState` dataclass (16 mutable fields, reset/snapshot 메서드)
+- 5.2.2 Engine.__init__ EngineState 통합 (backward-compat)
+- 5.2.4 14 ExecutionResultListener 분리:
+  - LogListener / PositionSizeLeakListener / PositionManagerListener / CrossHedgeListener
+  - PnLPeakListener / MarketRecorderListener / ExposureListener / SlippageListener
+  - CorrelationListener / TCAListener / TradeHistoryListener / CircuitBreakerListener
+  - RollbackListener / TelegramListener
+- 5.2.5 `ExecutionResultDispatcher` (sequential + 예외 격리 + async/sync routing)
+- 5.2.6 `ListenerFactory` (Engine → 14 listeners builder, 등록 순서 = risk_execution.py 원본)
+
+#### Phase 5.3 — `LifecycleManager` (background_loops.start_background_tasks 270 LOC 대체)
+- register(name, factory, depends_on, priority) + topological sort (Kahn)
+- start_all / stop_all (역순 graceful shutdown)
+- cycle 감지 + 등록 lock
+
+#### Phase 5.4 — `ModeRunner` ABC (mode_loops 826 LOC 다형성)
+- BacktestRunner / PaperRunner / LiveRunner
+- create_mode_runner(mode, engine) factory
+- shadow legacy alias → PaperRunner
+
+#### Phase 5.5 — LOC budget enforcer (`engine/scripts/check_loc_budget.py`)
+- 14 critical paths max LOC (main.py ≤700, runtime/* ≤1000)
+- exit code 0/1 CI integration
+- 14/14 paths within budget 검증
+
+**검증**: pytest 5056 → 5119 pass (+63), 12회 회귀 ZERO regression
+**산업 표준 점수**: Module 8/10, DI 7/10, Lifecycle 9/10, Mode 9/10, Testing 9/10
+
 ### Added (2026-04-26) — Phase 1+2 단일 배관 통합 (사장님 지시: "리팩토링인데 제대로 배관 공사 통합")
 - 사장님 지적 audit (병렬 multi-agent): paper/live/backtest 동일 배관 미달 + Day 0-15 활성화 0/7 (engine/.env 부재) + 산업 표준 (Hummingbot/NautilusTrader/LEAN) SHARED 배관 일치
 - **Phase 1 — engine.json feature_flags 통합 (`69f7f76`)**:
