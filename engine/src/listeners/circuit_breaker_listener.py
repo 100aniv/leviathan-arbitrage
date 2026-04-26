@@ -10,6 +10,8 @@ import logging
 from decimal import Decimal
 from typing import Any, Callable
 
+from src.listeners._helpers import get_status_value
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +40,7 @@ class CircuitBreakerListener:
         if self._cb is None:
             return
         try:
-            status_val = getattr(getattr(result, "status", None), "value", str(getattr(result, "status", "")))
+            status_val = get_status_value(result)
             if status_val == "success":
                 pnl_val = getattr(result, "pnl", None)
                 if pnl_val is not None and float(pnl_val) < 0:

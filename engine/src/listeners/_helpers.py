@@ -60,10 +60,19 @@ def get_side(order: Any) -> str:
 
 def is_status_success(result: Any) -> bool:
     """Check execution_result.status.value == 'success'."""
+    return get_status_value(result) == "success"
+
+
+def get_status_value(result: Any) -> str:
+    """Extract execution_result.status.value as string.
+
+    SimpleNamespace(status=SimpleNamespace(value="rolled_back")) → "rolled_back".
+    Used by listeners that need multi-branch (CircuitBreakerListener).
+    """
     status = getattr(result, "status", None)
     if status is None:
-        return False
-    return getattr(status, "value", str(status)) == "success"
+        return ""
+    return getattr(status, "value", str(status))
 
 
 def effective_pnl(request: Any, result: Any) -> float:

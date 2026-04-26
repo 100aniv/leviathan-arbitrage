@@ -9,7 +9,7 @@ import logging
 from typing import Any
 from uuid import uuid4
 
-from src.listeners._helpers import request_to_summary
+from src.listeners._helpers import get_status_value, request_to_summary
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class TradeHistoryListener:
                 "side": "arbitrage",
                 "entry_price": float(legs[0].price or 0) if legs else 0,
                 "exit_price": float(legs[-1].price or 0) if legs else 0,
-                "status": getattr(getattr(result, "status", None), "value", "unknown"),
+                "status": get_status_value(result) or "unknown",
             })
             self._ctx.trade_history.append(entry)
         except Exception as exc:
