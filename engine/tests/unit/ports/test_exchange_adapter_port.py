@@ -27,19 +27,19 @@ class _MockAdapter:
     def supports_symbol(self, symbol: str) -> bool:
         return True
 
-    def get_min_notional(self, symbol: str) -> Decimal:
+    async def get_min_notional(self, symbol: str) -> Decimal:
         return Decimal("0")
 
     @property
     def _market_type(self) -> str:
         return "spot"
 
-    async def get_balance(self) -> dict[str, Decimal]:
+    async def get_balances(self) -> dict[str, Any]:
         return {"USDT": Decimal("1000")}
 
     @property
-    def health_score(self) -> Decimal:
-        return Decimal("1")
+    def health_score(self) -> float:
+        return 1.0
 
 
 class TestExchangeAdapterPortProtocol:
@@ -50,11 +50,11 @@ class TestExchangeAdapterPortProtocol:
     def test_paper_exchange_adapter_has_required_methods(self) -> None:
         from src.execution.paper_adapter import PaperExchangeAdapter
         for attr in ("connect", "place_order", "cancel_order",
-                     "supports_symbol", "get_min_notional"):
+                     "supports_symbol", "get_min_notional", "get_balances"):
             assert hasattr(PaperExchangeAdapter, attr), f"missing {attr}"
 
     def test_port_public_methods_count(self) -> None:
         port_methods = [a for a in dir(ExchangeAdapterPort) if not a.startswith("_")]
         for method in ("place_order", "cancel_order", "supports_symbol",
-                       "get_min_notional", "get_balance", "connect", "disconnect"):
+                       "get_min_notional", "get_balances", "connect", "disconnect"):
             assert method in port_methods

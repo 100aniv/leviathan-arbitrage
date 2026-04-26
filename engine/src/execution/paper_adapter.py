@@ -254,8 +254,12 @@ class PaperExchangeAdapter:
         self._update_balances(trade)
         return trade
 
-    async def cancel_order(self, order_id: str) -> bool:
-        """Cancel an open order (simulated)."""
+    async def cancel_order(self, order_id: str, symbol: str | None = None) -> bool:
+        """Cancel an open order (simulated).
+
+        Codex BLOCKING #1 (2026-04-26): symbol kwarg 추가 (Native parity).
+        Paper는 symbol을 무시하지만 시그니처는 ExchangeAdapterPort에 정합.
+        """
         if order_id in self._open_orders:
             del self._open_orders[order_id]
             return True

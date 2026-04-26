@@ -24,12 +24,12 @@ class _MockExchangeAdapter:
     async def place_order(self, order: Any) -> Any: return None
     async def cancel_order(self, order_id: str, symbol: str | None = None) -> bool: return True
     def supports_symbol(self, symbol: str) -> bool: return True
-    def get_min_notional(self, symbol: str) -> Decimal: return Decimal("0")
+    async def get_min_notional(self, symbol: str) -> Decimal: return Decimal("0")
     @property
     def _market_type(self) -> str: return "spot"
-    async def get_balance(self) -> dict[str, Decimal]: return {}
+    async def get_balances(self) -> dict[str, Any]: return {}
     @property
-    def health_score(self) -> Decimal: return Decimal("1")
+    def health_score(self) -> float: return 1.0
 
 
 class _MockExecutor:
