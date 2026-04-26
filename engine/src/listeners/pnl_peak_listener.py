@@ -34,9 +34,8 @@ class PnLPeakListener:
         self._capital_total = capital_total_supplier or (lambda: Decimal("0"))
 
     def on_execution_result(self, request: Any, result: Any) -> None:
-        status_val = getattr(getattr(result, "status", None), "value",
-                             str(getattr(result, "status", "")))
-        if status_val != "success":
+        from src.listeners._helpers import is_status_success
+        if not is_status_success(result):
             return
         try:
             pnl_raw = getattr(result, "pnl", None)
