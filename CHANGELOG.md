@@ -4,6 +4,31 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added (2026-04-26) — Phase 6 Listener Dispatcher 활성 + Codex BLOCKING 3건 해결
+
+#### Phase 6 Step 1-3: ExecutionResultDispatcher 활성화
+- `d50a8de`: main.py `_init_listeners()` + `EXECUTION_DISPATCHER_ENABLED` flag (default false)
+- `1b1383f`: engine.json EXECUTION_DISPATCHER_ENABLED=true (Step 2 활성화)
+- `7691cde`: TDD RED — `tests/unit/runtime/test_on_execution_result_delegation.py` (3 tests)
+- `dc4491b`: TDD GREEN — `risk_execution.py:519` 상단에 dispatcher 위임 분기 (14 LOC)
+  - dispatcher.dispatch() 성공 시 legacy 360 LOC 경로 SKIP
+  - dispatcher 예외 시 legacy fallback (resilience)
+
+#### Codex 외부 리뷰 BLOCKING 3건 모두 해결
+- `f311e65` (BLOCKING #1): ExchangeAdapterPort 시그니처 정합
+  - get_min_notional: sync → async (paper/native 모두 async였음)
+  - get_balance(singular) → get_balances(plural) (Balance dict)
+  - health_score: Decimal → float (실제 구현 정합)
+  - PaperExchangeAdapter.cancel_order(order_id, symbol=None) (Native parity)
+- `ca5522d` (BLOCKING #3): EngineState SSOT — 6 @property 프록시
+  - 6 legacy fields 어셈블리 블록 삭제, 6 @property + setter pair 추가
+  - listener/risk_path 양쪽 모두 self._state 동일 객체 참조 (no divergence)
+  - Engine.__init__에서 legacy 11 LOC → 4 LOC comment
+
+#### 외부 AI 리뷰 (Gemini + Codex)
+- Codex (`codex-adversarial-review-2026-04-26T13-12-52-936Z.md`): 3 BLOCKING + 4 SUGGEST + 2 NIT — 모든 BLOCKING 해결
+- Gemini (`gemini-architecture-audit-2026-04-26T13-10-37-667Z.md`): Priority 1 (kill on_execution_result body) Step 3로 1차 충족, Step 4에서 완전 삭제 예정
+
 ### Added (2026-04-26) — Phase 5 Hexagonal Architecture 100% 완료 (자동 진행)
 
 **산업 표준 도달 (Nautilus/LEAN/Hummingbot 미러)**:

@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> **마지막 업데이트: 2026-04-26 KST — Phase 5 Hexagonal Architecture 완료 + 43 commits sync**
+> **마지막 업데이트: 2026-04-26 KST — Phase 6 Listener Dispatcher 활성 + Codex BLOCKING 3건 해결 + 50 commits sync**
 > 이전 선언이었던 "commercial-grade 전환 완료"는 **철회**. 근거: v237 카나리에서 엔진 PnL +$0.09 vs 실제 Binance /fapi/v1/income -$4.92 확증 → 거짓 보고의 근본원인은 개별 버그가 아니라 `live.py` 3,249줄 + `main.py` 4,221줄 God-class 모놀리스 구조. 4개 독립 리뷰(Codex/Gemini/exa.ai/external critic) 수렴 결과 Path-B v2 (ExecutionJournal + OrderStateMachine + OrderRouter 기반 10-day atomic 리팩토링) 채택, V4 Rust 전면 재작성 기각.
 > **Live 거래 정지 중** (mode=paper, commit `606c97b`). Binance 오픈 포지션 0건 확인됨. 거래소 잔고 $10.55 (입금 $16 - 손실 $4.92).
 > PHOENIX v237까지의 BUG-73~228 패치 75+건은 유지. Path-B v2 통합 플랜: `/Users/100aniv/.claude/plans/hidden-cuddling-pascal.md` (유일한 플랜 소스).
@@ -71,18 +71,26 @@
 | Post-review | `7a9c35a` | CHANGELOG review remediation 정리 | — |
 | Paper adapter | `3d37e91` | universe_matrix 0→34 수정 (7 paper adapters + market_type routing) | — |
 | Paper adapter | `e5a28b2` | paper-adapter expansion 후 테스트 실패 수정 | — |
+| Phase 5 (2026-04-26) | 50+ commits | Hexagonal Architecture: 7 Ports + 14 Listeners + EngineState + ModeRunner ABC + LifecycleManager + LOC budget enforcer | +62 |
+| Phase 6 Step 1 | `d50a8de` | _init_listeners() 메서드 + EXECUTION_DISPATCHER_ENABLED flag (default false) | — |
+| Phase 6 Step 2 | `1b1383f` | engine.json EXECUTION_DISPATCHER_ENABLED=true (활성화) | — |
+| Phase 6 Step 3 RED | `7691cde` | on_execution_result delegation TDD RED 테스트 | +3 |
+| Phase 6 Step 3 GREEN | `dc4491b` | on_execution_result 상단 dispatcher 위임 분기 (14 LOC, fallback to legacy) | — |
+| Codex BLOCKING #1 | `f311e65` | ExchangeAdapterPort: async get_min_notional + plural get_balances + float health_score + Paper.cancel_order(symbol) | — |
+| Codex BLOCKING #3 | `ca5522d` | Engine 6 @property 프록시 → self._state SSOT (state divergence 제거) | — |
 
 #### 집계
 
 | 항목 | 값 |
 |------|-----|
-| 신규 모듈 | 16개 (Day 1-5: 11개 opt-in + Day 6-15: 5개 신규) |
-| 신규 테스트 | +72개 (Day 0 포함, Day 0-15 기준) |
-| 현재 회귀 | 4,996 pass (Day 0-15 기준, 2026-04-21) → **5,053 pass / 14 skipped (2026-04-22, e5a28b2 기준)** |
+| 신규 모듈 | 16개 (Day 1-5: 11개 opt-in + Day 6-15: 5개 신규) + Phase 5: 7 ports + 14 listeners + EngineState + LifecycleManager + ModeRunner ABC |
+| 신규 테스트 | +72개 (Day 0 포함, Day 0-15 기준) + Phase 5: +62 (ports + listeners + dispatcher + factory + lifecycle) + Phase 6: +3 (dispatcher delegation) |
+| 현재 회귀 | 4,996 pass (Day 0-15 기준, 2026-04-21) → 5,053 pass / 14 skipped (2026-04-22, e5a28b2) → **5,145 pass / 14 skipped (2026-04-26, ca5522d 기준)** |
 | live.py LOC | 3,476 → 3,250 (Day 12 기준 net -226) |
-| main.py LOC | 4,194 → 4,228 (Day 15 기준 +34, supervisor wiring) |
+| main.py LOC | 4,194 → 4,228 (Day 15) → **719 (Phase 5 -3,509 LOC, 84% 감소)** → **765 (Phase 6 +46 @property 프록시)** |
 | executor.py LOC | 1,587 → 1,793 (+206, Day 14 state machine wiring) |
 | atomic.py LOC | 275 (try_ioc 추출) |
+| risk_execution.py LOC | 878 (on_execution_result 360 LOC + delegation 14 LOC + 기타 504 LOC). Phase 6 Step 4에서 360 LOC 삭제 예정 |
 
 #### 피처 플래그 체인 (모두 default false, §22.3 순서)
 
