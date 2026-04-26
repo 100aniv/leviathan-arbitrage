@@ -8,6 +8,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from src.listeners._helpers import effective_pnl
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,8 +25,6 @@ class CorrelationListener:
         if self._mon is None:
             return
         try:
-            pnl = (float(result.pnl) if hasattr(result, "pnl") and result.pnl is not None
-                   else float(getattr(request, "expected_profit_usdt", 0)))
-            self._mon.record_trade_pnl(request.strategy_id, pnl)
+            self._mon.record_trade_pnl(request.strategy_id, effective_pnl(request, result))
         except Exception as exc:
             logger.debug("correlation_listener.error %s", exc)

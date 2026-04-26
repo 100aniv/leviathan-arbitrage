@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
+from src.listeners._helpers import effective_pnl
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,10 +36,7 @@ class TradeHistoryListener:
                 "size": float(legs[0].size) if legs else 0,
                 "entry_price": float(legs[0].price or 0) if legs else 0,
                 "exit_price": float(legs[-1].price or 0) if legs else 0,
-                "pnl": (
-                    float(result.pnl) if hasattr(result, "pnl") and result.pnl is not None
-                    else float(getattr(request, "expected_profit_usdt", 0))
-                ),
+                "pnl": effective_pnl(request, result),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "status": getattr(getattr(result, "status", None), "value", "unknown"),
             }

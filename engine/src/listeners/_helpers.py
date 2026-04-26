@@ -64,3 +64,14 @@ def is_status_success(result: Any) -> bool:
     if status is None:
         return False
     return getattr(status, "value", str(status)) == "success"
+
+
+def effective_pnl(request: Any, result: Any) -> float:
+    """PnL fallback: result.pnl 우선, 없으면 request.expected_profit_usdt.
+
+    Codex SUGGEST (2026-04-26): correlation_listener / telegram_listener /
+    trade_history_listener 3곳에서 동일 fallback 인라인 — 본 helper로 통일.
+    """
+    if hasattr(result, "pnl") and result.pnl is not None:
+        return float(result.pnl)
+    return float(getattr(request, "expected_profit_usdt", 0))

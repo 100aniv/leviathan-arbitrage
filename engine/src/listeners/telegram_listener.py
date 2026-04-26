@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from src.listeners._helpers import is_status_success
+from src.listeners._helpers import effective_pnl, is_status_success
 from src.ports import AlertPort
 
 logger = logging.getLogger(__name__)
@@ -41,10 +41,7 @@ class TelegramListener:
                 "buy_exchange": next((l.exchange_id for l in legs if l.side.value == "buy"), ""),
                 "sell_exchange": next((l.exchange_id for l in legs if l.side.value == "sell"), ""),
                 "size": float(legs[0].size) if legs else 0,
-                "pnl": (
-                    float(result.pnl) if hasattr(result, "pnl") and result.pnl is not None
-                    else float(getattr(request, "expected_profit_usdt", 0))
-                ),
+                "pnl": effective_pnl(request, result),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             asyncio.ensure_future(self._bot.send_fill_kr(fill_data))
