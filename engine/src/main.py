@@ -3326,7 +3326,10 @@ class Engine:
                         circuit_breaker=None,
                         rate_buckets=None,
                         flash_guard=self._flash_guard,
-                        risk_guardian=self._risk_guardian,
+                        # 2026-04-26 fix: paper에서 risk_guardian=None (live 인스턴스 공유 시 100% reject 발견 v9).
+                        # paper는 자체 risk 추적 (loss cap + portfolio_risk + flash_guard).
+                        # live mode에서만 risk_guardian gate 활성.
+                        risk_guardian=None,
                         dedup_gate=_shadow_dedup,
                         symbol_last_trade={},
                         symbol_cooldown_s=float(_shadow_get_cfg("execution.symbol_cooldown_s", default=30.0)),
