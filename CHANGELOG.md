@@ -4,6 +4,25 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added (2026-04-27) — Helpers expansion + 11 Parity tests + 8 helpers total
+
+#### Helpers 8 functions (4 new today)
+- `268068e`: get_status_value (multi-branch status check)
+- `709f18b`: effective_pnl (3 listeners DRY)
+- `674fa38`: request_to_summary (telegram + trade_history)
+- `5d06388`: 29 helper unit tests (8 functions × ~3 cases)
+
+#### Parity tests 11 cases (5 new today)
+- total_pnl_matches / position_sizes_matches / cross_exchange_positions_matches / failure_status / rollback (existing)
+- `b7b92df`: no_running_loop_fallback
+- `31d5abf`: close_execution_decrements_cross_exposure
+- `f06f03c`: circuit_breaker_record_win + trade_history_appended
+- `39c0a2b`: correlation_record_pnl + market_recorder_record_execution
+
+#### 9/14 listeners helper 적용
+- `332b545`: PnLPeakListener
+- `268068e`: CircuitBreakerListener + TradeHistoryListener (get_status_value)
+
 ### Added (2026-04-27) — Phase 7 완성 — 12 Ports + 3 Adapters + 5 Helpers + 6 Parity tests
 
 #### Concrete Port adapters (src/adapters/)
