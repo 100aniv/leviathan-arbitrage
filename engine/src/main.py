@@ -3288,6 +3288,65 @@ class Engine:
                 if _shadow_strategy_filter_raw else None
             )
 
+            # 2026-04-26 Phase 2B: paper에서 Day 6 (ExecutionJournal) + Day 12 (PreTradeValidator) 활성화
+            # paper/live 단일 배관 통합. flag (engine.json.feature_flags) 활성 시에만 inject.
+            from src.core.config_loader import get_config as _shadow_get_cfg
+            _shadow_pre_trade_validator = None
+            _shadow_execution_journal = None
+            if get_bool_flag("EXECUTION_JOURNAL_ENABLED"):
+                try:
+                    import pathlib as _pl
+                    from src.execution.journal import ExecutionJournal
+                    # review fix: 2-hop (engine/src/main.py → engine/) 로 일관 (line 117 동일 패턴)
+                    _journal_path = _pl.Path(__file__).parent.parent / "logs" / "paper_execution_journal.db"
+                    _journal_path.parent.mkdir(parents=True, exist_ok=True)
+                    _shadow_execution_journal = ExecutionJournal(db_path=_journal_path)
+                    # review fix CRITICAL: ExecutionJournal는 start()이지 initialize() 아님
+                    await _shadow_execution_journal.start()
+                    logger.info("paper_mode.execution_journal_enabled path=%s", _journal_path)
+                except Exception as exc:
+                    # review fix: traceback 포함 (silent CRITICAL 차단)
+                    logger.warning("paper_mode.execution_journal_init_failed: %r", exc, exc_info=True)
+            if get_bool_flag("EXECUTION_PRETRADE_VALIDATOR_ENABLED"):
+                try:
+                    from src.execution.pre_trade_validator import PreTradeValidator
+                    from src.execution.dedup import DeduplicationGate
+                    # review fix CRITICAL: halt_local은 module-level 함수 (KillSwitch attribute 아님)
+                    from src.risk.kill_switch import halt_local as _shadow_halt_local
+                    _shadow_dedup = DeduplicationGate(window_s=10.0)
+                    _shadow_strategy_filter_frozen = (
+                        frozenset(_shadow_strategy_filter) if _shadow_strategy_filter else None
+                    )
+                    _total_capital = float(_shadow_get_cfg("portfolio.total_capital_usdt", default=140.0))
+                    _max_session_loss = float(_shadow_get_cfg("risk.max_session_loss_usd", default=10.0))
+                    _shadow_pre_trade_validator = PreTradeValidator(
+                        strategy_filter=_shadow_strategy_filter_frozen,
+                        strategy_disable_until={},
+                        kill_switch=_shadow_kill_switch,
+                        circuit_breaker=None,
+                        rate_buckets=None,
+                        flash_guard=self._flash_guard,
+                        risk_guardian=self._risk_guardian,
+                        dedup_gate=_shadow_dedup,
+                        symbol_last_trade={},
+                        symbol_cooldown_s=float(_shadow_get_cfg("execution.symbol_cooldown_s", default=30.0)),
+                        cached_margin={},
+                        min_notional_registry=None,
+                        get_config=lambda key, default=None: _shadow_get_cfg(key, default=default),
+                        total_capital_usd=_total_capital,
+                        max_session_loss_usd=_max_session_loss,
+                        # review fix HIGH: paper에서도 session loss 추적. _stats.total_pnl post-construction wired
+                        session_loss_supplier=lambda: -float(getattr(getattr(self, "_paper_mode", None), "_stats", None) and self._paper_mode._stats.total_pnl or 0.0),
+                        build_collision_key=lambda req: f"{req.strategy_id}_{req.legs[0].symbol if req.legs else 'none'}",
+                        is_reduceonly_request=lambda req: False,
+                        halt_local=_shadow_halt_local,  # review fix CRITICAL: module-level 함수
+                        telegram=self._telegram,
+                    )
+                    logger.info("paper_mode.pre_trade_validator_enabled")
+                except Exception as exc:
+                    # review fix: traceback (silent CRITICAL 차단)
+                    logger.warning("paper_mode.pre_trade_validator_init_failed: %r", exc, exc_info=True)
+
             self._paper_mode = ShadowMode(
                 signal_generator=self._signal_generator,
                 paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
@@ -3306,6 +3365,8 @@ class Engine:
                 data_quality_manager=self._data_quality_manager,  # US-286
                 strategy_filter=_shadow_strategy_filter,  # US-299
                 portfolio_risk=self._portfolio_risk,  # US-300
+                pre_trade_validator=_shadow_pre_trade_validator,  # Phase 2B
+                execution_journal=_shadow_execution_journal,  # Phase 2B
             )
             # SIT-3: Wire FlashGuard into ShadowMode
             if self._flash_guard is not None:
