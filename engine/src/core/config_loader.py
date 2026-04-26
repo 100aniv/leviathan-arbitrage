@@ -104,11 +104,23 @@ _TRUTHY_VALUES = frozenset({"1", "true", "yes", "on", "y", "t"})
 
 
 def get_bool_flag(name: str, default: bool = False) -> bool:
-    """Parse env var as boolean with consistent truthy handling across modules."""
+    """Parse boolean flag with config fallback chain (single-source-of-truth principle).
+
+    Resolution order (2026-04-26 통합):
+    1. os.environ[name] — runtime override (operator escape hatch)
+    2. engine.json.feature_flags[name] — single source of truth
+    3. default — code fallback
+    """
     val = os.environ.get(name)
-    if val is None:
-        return default
-    return val.strip().lower() in _TRUTHY_VALUES
+    if val is not None:
+        return val.strip().lower() in _TRUTHY_VALUES
+    # engine.json.feature_flags lookup
+    cfg_val = get_config(f"feature_flags.{name}", default=None)
+    if cfg_val is not None:
+        if isinstance(cfg_val, bool):
+            return cfg_val
+        return str(cfg_val).strip().lower() in _TRUTHY_VALUES
+    return default
 
 
 def _coerce(val: str, reference: Any) -> Any:

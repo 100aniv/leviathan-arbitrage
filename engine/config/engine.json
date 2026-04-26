@@ -185,6 +185,16 @@
     "gamma_calibrated": false,
     "t0": 60.0
   },
+  "feature_flags": {
+    "_comment": "Path-B v2 Day 6-15 모듈 활성화 플래그. 단일 진실 소스 (.env override 가능, but engine.json이 default).",
+    "EXECUTION_JOURNAL_ENABLED": true,
+    "EXECUTION_STATE_MACHINE_ENABLED": true,
+    "EXECUTION_ROUTER_ENABLED": true,
+    "CORE_REAL_ADV_ENABLED": true,
+    "EXECUTION_PARALLEL_LEGS_ENABLED": false,
+    "EXECUTION_PRETRADE_VALIDATOR_ENABLED": true,
+    "SUPERVISOR_ACTIVE": false
+  },
   "parallel": {
     "_comment": "Phase K K-2-ALL: \uac80\uc99d \uc644\ub8cc 4\uc870\ud569 \ubcd1\ub82c 24H \uc6b4\uc601 \uc124\uc815",
     "enabled": true,
