@@ -4,6 +4,14 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed (2026-04-26) — Refactor follow-up audit + WS-3 None-safety + FF stale gate
+- **WS-1/2/3 + BUG-94 6 commits 독립 감사** (병렬 multi-agent): NO_ROLLBACK 결정. 구조적으로 정상 (BUG-94 `_pending_position_metadata` 5-경로 cleanup 검증, WS-3 `_position_sizes` rollback 검증, WS-1 trading.json 잔재 0건). 2 follow-up fix 발견.
+- `engine/src/risk/position_manager.py:142` — `update_position()` None-safety 누수 수정. `dual_writer=None` paper 모드 crash 차단. `close_position` 패턴 미러 (try/except + warning log).
+- `engine/src/core/config.py:570` — `EXCHANGE_STALE_THRESHOLD_S` 5s → 30s. real_signal_producer.py:684-692 FF stale gate 100% drop 원인 (3.5h 가동 중 stale==pairs sigs=0). 162-358bps spread 관측되어도 차단됨. 3s `book.last_update_time` 1차 stale 보호 유지, 30s는 reconnect-detection fallback only. (`a182d32`)
+- **결과**: 단위테스트 34/34 PASS, 엔진 v5 재기동 → futures_futures 신호 발생 검증 진행 중.
+- **부수**: `scheduled_tuner.py` + `adaptive_threshold.py` stdlib logger structlog-스타일 호출 TypeError 수정 (`2260862`). `realtime_monitor.py` datetime.utcnow() DeprecationWarning 제거 (`40bd8ee`). KRW × USDT pair cross_exchange_spot 차단 (`705be52`).
+- **SSOT.md sync**: 4-day drift 정정. tests count 5,053 → 5,851 collected. 8 사이클 paper canary 이력 통합. (`7eac5ab`)
+
 ### Fixed (2026-04-22) — Paper 모드 universe_matrix 함정 + 14h 카나리 무효화 인정
 - `engine/src/main.py:_init_paper_exchanges` — paper 어댑터를 config의 `exchanges.active`(7개) 기반으로 생성. 이전 paper_binance + paper_okx 2개 하드코딩이 14h 카나리에서 trade 0건 발생 root cause였음 (`3d37e91`)
 - `engine/src/execution/paper_adapter.py` — `_market_type` 속성 + `supports_symbol`/`get_min_notional` 메서드 추가. PaperExchangeAdapter가 ExchangeAdapter Protocol 완전 구현 → universe_matrix가 spot/futures 정확 분류 (`3d37e91`)
