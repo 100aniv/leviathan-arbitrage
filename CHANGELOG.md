@@ -4,6 +4,30 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added (2026-04-27) — Phase 7 완성 — 12 Ports + 3 Adapters + 5 Helpers + 6 Parity tests
+
+#### Concrete Port adapters (src/adapters/)
+- `4cc0b9a`: ConfigAdapter + NoOpMetricsAdapter + NoOpAlertAdapter
+- 산업 표준 (NautilusTrader/LEAN/Hummingbot): Port + Adapter 쌍 완성
+- 8 conformance tests (runtime_checkable + behavior smoke)
+
+#### AlertPort actual adoption (Codex BLOCKING)
+- `d74a59e`: PositionSizeLeakListener.alert_bot: Any → Optional[AlertPort]
+- `0ab25a1`: TelegramListener.trade_bot: Any → Optional[AlertPort]
+- 첫 vendor-neutral substitutable type 적용
+
+#### DRY helpers 추가 확산 (Codex SUGGEST 3종 모두 해결)
+- `709f18b`: effective_pnl(request, result) — 3 listeners 통일
+  - correlation_listener / telegram_listener / trade_history_listener
+- `674fa38`: request_to_summary(request, result) — 7 공통 필드 통합
+  - telegram_listener: 13 LOC fill_data → 1 LOC
+  - trade_history_listener: 14 LOC entry → 6 LOC
+
+#### Parity test 확장 (Codex final review SUGGEST)
+- `04e8a99`: rollback_position_clears (rolled_back status)
+- `31d5abf`: close_execution_decrements_cross_exposure (reduceOnly)
+- 6/6 PASS — total_pnl/position_sizes/cross_exchange/failure/rollback/close
+
 ### Added (2026-04-27) — Phase 7 Hexagonal expansion (12 Ports) + Codex final review 4건 해결
 
 #### Phase 6 Step 4: legacy 분리 (Gemini Priority 1)

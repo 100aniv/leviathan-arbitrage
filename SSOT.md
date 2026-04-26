@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> **마지막 업데이트: 2026-04-27 00:30 KST — Phase 7 12 Ports + Codex BLOCKING 4건 모두 해결 + 65 commits sync**
+> **마지막 업데이트: 2026-04-27 01:00 KST — Phase 7 완성 (12 Ports + 3 Adapters + 5 helpers + 6 parity tests) + 70+ commits sync**
 > 이전 선언이었던 "commercial-grade 전환 완료"는 **철회**. 근거: v237 카나리에서 엔진 PnL +$0.09 vs 실제 Binance /fapi/v1/income -$4.92 확증 → 거짓 보고의 근본원인은 개별 버그가 아니라 `live.py` 3,249줄 + `main.py` 4,221줄 God-class 모놀리스 구조. 4개 독립 리뷰(Codex/Gemini/exa.ai/external critic) 수렴 결과 Path-B v2 (ExecutionJournal + OrderStateMachine + OrderRouter 기반 10-day atomic 리팩토링) 채택, V4 Rust 전면 재작성 기각.
 > **Live 거래 정지 중** (mode=paper, commit `606c97b`). Binance 오픈 포지션 0건 확인됨. 거래소 잔고 $10.55 (입금 $16 - 손실 $4.92).
 > PHOENIX v237까지의 BUG-73~228 패치 75+건은 유지. Path-B v2 통합 플랜: `/Users/100aniv/.claude/plans/hidden-cuddling-pascal.md` (유일한 플랜 소스).
@@ -87,6 +87,13 @@
 | Codex final review | `fab96c0` | alert/elevation 복원 (PositionSizeLeak counter+telegram) | +1 |
 | Parity test | `b18bb60` | legacy vs dispatcher parity 4/4 PASS | +4 |
 | Phase 7 IncomeFetcher | `2c17eab` | ExchangeIncomeFetcherPort (12 ports total) | +1 |
+| Sync SSOT v2 | `4553f6d` | SSOT + CHANGELOG Phase 7 14-doc sync | — |
+| AlertPort adoption | `d74a59e` + `0ab25a1` | PositionSizeLeak + Telegram listener type-hint AlertPort | — |
+| Concrete adapters | `4cc0b9a` | ConfigAdapter + NoOpMetrics + NoOpAlert (src/adapters/) | +8 |
+| effective_pnl helper | `709f18b` | 3 listeners DRY (correlation/telegram/trade_history) | — |
+| Rollback parity | `04e8a99` | parity test rollback case | +1 |
+| request_to_summary helper | `674fa38` | 7 공통 필드 통합 (telegram + trade_history) | — |
+| Close exec parity | `31d5abf` | parity test reduceOnly close case | +1 |
 
 #### 집계
 
