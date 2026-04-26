@@ -4,6 +4,36 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added (2026-04-27) — Phase 7 Hexagonal expansion (12 Ports) + Codex final review 4건 해결
+
+#### Phase 6 Step 4: legacy 분리 (Gemini Priority 1)
+- `614dd91`: on_execution_result 14-LOC wrapper, _on_execution_result_legacy private function 분리
+- DEPRECATION 표시: 7+ days canary 안정 후 360 LOC 삭제 가능
+- 새 테스트 test_legacy_function_extracted_and_callable
+
+#### Phase 7: 7 → 12 Ports (Gemini Priority 2 + Codex SUGGEST)
+- `37daf15`: EventBusPort + MetricsPort (Nautilus MessageBus / LEAN telemetry 미러)
+- `734b223`: ConfigPort + AlertPort (DI-friendly, vendor-neutral)
+- `2c17eab`: ExchangeIncomeFetcherPort (income polling lifecycle)
+- 모든 Port runtime_checkable 정합 + InMemoryEventBus 실제 round-trip 검증
+
+#### Codex final review 4건 BLOCKING 모두 해결
+- `9f05182` (v2 BLOCKING): EventBusPort 시그니처 (callback-driven → pull-based list[dict], raw=True 보존)
+- `c8eb4a1` (SUGGEST): dispatch_sync done-callback async exception 가시화 (silent task drop 제거)
+- `fab96c0` (final BLOCKING): alert/elevation 복원
+  - PositionSizeLeakListener에 state + alert_bot DI
+  - position_tracking_errors counter, > 5 시 telegram alert (legacy parity)
+- `b18bb60` (final BLOCKING): legacy vs dispatcher parity test
+  - 4/4 PASS — total_pnl / position_sizes / cross_exchange_positions / failure status
+  - dispatch path 강화: get_running_loop() 분기 (loop.create_task vs dispatch_sync)
+
+#### Codex SUGGEST: listener helpers DRY (`2d642d5`)
+- 신규 src/listeners/_helpers.py:
+  - extract_legs_info(result) — None-safe (trade, order) tuples
+  - is_close_leg(leg_or_order) — reduceOnly + 3 prefixes (settlement_close/timeout_close/spread_exit)
+  - is_close_execution(legs_info), get_side(order), is_status_success(result)
+- 7 listeners 적용 (cross_hedge / position_manager / rollback / exposure / market_recorder / telegram / position_size_leak)
+
 ### Added (2026-04-26) — Phase 6 Listener Dispatcher 활성 + Codex BLOCKING 3건 해결
 
 #### Phase 6 Step 1-3: ExecutionResultDispatcher 활성화

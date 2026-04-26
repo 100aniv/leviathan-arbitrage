@@ -1,7 +1,7 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> **마지막 업데이트: 2026-04-26 KST — Phase 6 Listener Dispatcher 활성 + Codex BLOCKING 3건 해결 + 50 commits sync**
+> **마지막 업데이트: 2026-04-27 00:30 KST — Phase 7 12 Ports + Codex BLOCKING 4건 모두 해결 + 65 commits sync**
 > 이전 선언이었던 "commercial-grade 전환 완료"는 **철회**. 근거: v237 카나리에서 엔진 PnL +$0.09 vs 실제 Binance /fapi/v1/income -$4.92 확증 → 거짓 보고의 근본원인은 개별 버그가 아니라 `live.py` 3,249줄 + `main.py` 4,221줄 God-class 모놀리스 구조. 4개 독립 리뷰(Codex/Gemini/exa.ai/external critic) 수렴 결과 Path-B v2 (ExecutionJournal + OrderStateMachine + OrderRouter 기반 10-day atomic 리팩토링) 채택, V4 Rust 전면 재작성 기각.
 > **Live 거래 정지 중** (mode=paper, commit `606c97b`). Binance 오픈 포지션 0건 확인됨. 거래소 잔고 $10.55 (입금 $16 - 손실 $4.92).
 > PHOENIX v237까지의 BUG-73~228 패치 75+건은 유지. Path-B v2 통합 플랜: `/Users/100aniv/.claude/plans/hidden-cuddling-pascal.md` (유일한 플랜 소스).
@@ -76,8 +76,17 @@
 | Phase 6 Step 2 | `1b1383f` | engine.json EXECUTION_DISPATCHER_ENABLED=true (활성화) | — |
 | Phase 6 Step 3 RED | `7691cde` | on_execution_result delegation TDD RED 테스트 | +3 |
 | Phase 6 Step 3 GREEN | `dc4491b` | on_execution_result 상단 dispatcher 위임 분기 (14 LOC, fallback to legacy) | — |
+| Phase 6 Step 4 | `614dd91` | _on_execution_result_legacy 분리 (Gemini Priority 1) | +1 |
 | Codex BLOCKING #1 | `f311e65` | ExchangeAdapterPort: async get_min_notional + plural get_balances + float health_score + Paper.cancel_order(symbol) | — |
 | Codex BLOCKING #3 | `ca5522d` | Engine 6 @property 프록시 → self._state SSOT (state divergence 제거) | — |
+| Codex SUGGEST dispatcher | `c8eb4a1` | dispatch_sync done-callback (async exception 가시화) | +1 |
+| Phase 7 EventBus+Metrics | `37daf15` | EventBusPort + MetricsPort (Gemini Priority 2) | +4 |
+| Codex BLOCKING v2 ports | `9f05182` | EventBusPort 시그니처 정합 (callback→pull, raw=True 보존) | +1 |
+| Codex SUGGEST helpers | `2d642d5` | _helpers.py — DRY (extract_legs_info/is_close_leg/get_side/is_status_success) | +21 |
+| Phase 7 Config+Alert | `734b223` | ConfigPort + AlertPort + RollbackListener helpers | +3 |
+| Codex final review | `fab96c0` | alert/elevation 복원 (PositionSizeLeak counter+telegram) | +1 |
+| Parity test | `b18bb60` | legacy vs dispatcher parity 4/4 PASS | +4 |
+| Phase 7 IncomeFetcher | `2c17eab` | ExchangeIncomeFetcherPort (12 ports total) | +1 |
 
 #### 집계
 
