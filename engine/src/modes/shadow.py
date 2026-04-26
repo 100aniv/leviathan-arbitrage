@@ -408,6 +408,8 @@ class PaperMode:
         data_quality_manager: Any | None = None,
         strategy_filter: list[str] | None = None,
         portfolio_risk: Any | None = None,
+        pre_trade_validator: Any | None = None,
+        execution_journal: Any | None = None,
     ) -> None:
         """Initialise the shadow mode orchestrator.
 
@@ -435,6 +437,10 @@ class PaperMode:
                                only signals whose strategy_id matches an entry are
                                processed; all others are skipped. None = no filter
                                (existing behaviour preserved).
+            pre_trade_validator: Optional PreTradeValidator for Phase 2A unified pipeline.
+                               None = no-op (backward compatible). 활성 시 paper도 11+ gate 적용.
+            execution_journal: Optional ExecutionJournal for Phase 2A trade event logging.
+                               None = no-op (backward compatible). 활성 시 SENT 이벤트 emit.
             portfolio_risk:    Optional PortfolioRiskManager for US-300 portfolio-level
                                metrics (correlation, VaR, MDD). None = no-op (backward
                                compatible).
@@ -453,6 +459,11 @@ class PaperMode:
         )
         # US-300: PortfolioRiskManager for portfolio-level metrics
         self._portfolio_risk = portfolio_risk
+        # 2026-04-26 Phase 2A: paper/live 단일 배관 통합 — PreTradeValidator + ExecutionJournal
+        # default None = backward-compat (기존 동작 그대로). main.py에서 LiveMode와 같은
+        # 인스턴스 inject 시 paper에서도 Day 6/12 모듈 활성화. Phase 1 commit 69f7f76 후속.
+        self._pre_trade_validator = pre_trade_validator
+        self._execution_journal = execution_journal
         # SIT-3: FlashGuard — set externally after construction via main.py
         self._flash_guard: Any | None = None
         # SIT-3: Trade history for dashboard /trades API (deque, max 10K)
@@ -1721,6 +1732,39 @@ class PaperMode:
         if self._strategy_filter is not None and sid not in self._strategy_filter:
             logger.debug("paper_mode.strategy_filtered", strategy=sid)
             return
+
+        # 2026-04-26 Phase 2A: paper/live 단일 배관 통합. validator/journal=None일 때 100% backward-compat.
+        # EXECUTION_PRETRADE_VALIDATOR_ENABLED + EXECUTION_JOURNAL_ENABLED flag (engine.json.feature_flags) 활성화 시에만 실행.
+        # 함수 진입점에서 1회 import (review LOW 권고 — circular import 회피 + 중복 제거).
+        from src.core.config_loader import get_bool_flag
+        if self._pre_trade_validator is not None and get_bool_flag("EXECUTION_PRETRADE_VALIDATOR_ENABLED"):
+            try:
+                _validation = await self._pre_trade_validator.validate(trade_request, strategy_id=sid)
+                if not _validation.allowed:
+                    logger.info(
+                        "paper_mode.pre_trade_validator_rejected strategy=%s reason=%s",
+                        sid, getattr(_validation, "reason", "unknown"),
+                    )
+                    self._stats.trades_rejected += 1
+                    if sid not in self._stats.by_strategy:
+                        self._stats.by_strategy[sid] = StrategyStats()
+                    self._stats.by_strategy[sid].rejections += 1
+                    return
+            except Exception as exc:
+                # validator 실패는 trade 차단 X (paper에서 graceful degrade)
+                logger.warning("paper_mode.pre_trade_validator_error: %s", exc)
+
+        # ExecutionJournal SENT 이벤트 emit (Day 6 활성화). order_id에 trade_request id() 16비트 prefix
+        # 추가 — 동일 ms 내 동일 strategy 충돌 방지 (review MEDIUM 권고).
+        if self._execution_journal is not None and get_bool_flag("EXECUTION_JOURNAL_ENABLED"):
+            try:
+                await self._execution_journal.append(
+                    order_id=f"paper_{sid}_{int(t0 * 1000)}_{id(trade_request) & 0xFFFF:04x}",
+                    state="SENT",
+                    payload={"strategy_id": sid, "legs": len(trade_request.legs)},
+                )
+            except Exception as exc:
+                logger.warning("paper_mode.execution_journal_error: %s", exc)
 
         try:
             # Rate limit check: all legs must pass before executing any (SG-6)
