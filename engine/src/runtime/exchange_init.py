@@ -52,7 +52,15 @@ async def init_exchanges(engine: "Engine") -> None:
 
 
 async def init_paper_exchanges(engine: "Engine", capital: Decimal) -> None:
-    """Create one PaperExchangeAdapter per configured exchange."""
+    """Create one PaperExchangeAdapter per configured exchange.
+
+    SSOT 정의 (2026-04-26 사장님 확인):
+    - paper 모드: 실 WebSocket data + 거래 시뮬 (synthetic GBM 미사용)
+    - backtest 모드: synthetic GBM (별도 path, PaperExchangeAdapter 미사용)
+
+    spread_injection / synthetic loop 인자는 backtest 호환용이며 paper에서는
+    호출되지 않음. paper canary 검증: subscribe_orderbook log 0건 (실 WS만 사용).
+    """
     from src.execution.paper import PaperExecutor, SlippageModel
     from src.execution.paper_adapter import PaperExchangeAdapter
 
@@ -67,15 +75,16 @@ async def init_paper_exchanges(engine: "Engine", capital: Decimal) -> None:
             exchange_id=eid,
             initial_capital=capital,
             paper_executor=executor,
-            spread_injection_rate=0.03,
-            spread_injection_bps=25 if idx % 2 == 0 else -25,
+            # Phase 5 정의 정합 (2026-04-26): paper = 실 WS data only.
+            # synthetic spread injection은 backtest 모드 전용이므로 0으로 비활성.
+            spread_injection_rate=0.0,
+            spread_injection_bps=0,
             tick_interval=0.5,
         )
         await adapter.connect()
         engine._exchanges[eid] = adapter
         logger.info(
-            "paper adapter initialized: %s (idx=%d, spread_bps=%d)",
-            eid, idx, 25 if idx % 2 == 0 else -25,
+            "paper adapter initialized: %s (idx=%d, real-WS-only)", eid, idx,
         )
 
 
