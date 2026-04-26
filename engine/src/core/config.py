@@ -566,8 +566,9 @@ class OperationalSettings(BaseSettings):
     # Signal producer
     # BUG-46: 1.5s too tight for Bitget event-driven books15 WS (quiet periods up to 3s normal).
     # 3s freshness guard (book.last_update_time) is already the primary stale-book protection.
-    # 5s here acts as a secondary reconnect-detection fallback only.
-    exchange_stale_threshold_s: float = Field(default=5.0, alias="EXCHANGE_STALE_THRESHOLD_S")
+    # FF stale gate fix (2026-04-26): 5s caused 100% futures_futures drop (stale==pairs sigs=0).
+    # 30s acts as reconnect-detection fallback (per-exchange global last_update); per-book 3s remains primary.
+    exchange_stale_threshold_s: float = Field(default=30.0, alias="EXCHANGE_STALE_THRESHOLD_S")
     spot_futures_min_basis_bps: float = Field(default=5.0, alias="SPOT_FUTURES_MIN_BASIS_BPS")
 
 

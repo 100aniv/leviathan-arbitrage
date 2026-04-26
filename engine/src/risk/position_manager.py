@@ -139,19 +139,24 @@ class PositionManager:
 
         record.mark_price = mark_price
 
-        await self._writer.write_position(
-            strategy_id=strategy_id,
-            exchange_id=exchange_id,
-            symbol=symbol,
-            side=record.side,
-            quantity=record.quantity,
-            avg_price=record.entry_price,
-            event_type="UPDATE",
-            metadata={
-                "mark_price": str(mark_price),
-                "unrealized_pnl": str(record.unrealized_pnl),
-            },
-        )
+        # WS-3: None-safe dual_writer (mirrors close_position pattern)
+        if self._writer is not None:
+            try:
+                await self._writer.write_position(
+                    strategy_id=strategy_id,
+                    exchange_id=exchange_id,
+                    symbol=symbol,
+                    side=record.side,
+                    quantity=record.quantity,
+                    avg_price=record.entry_price,
+                    event_type="UPDATE",
+                    metadata={
+                        "mark_price": str(mark_price),
+                        "unrealized_pnl": str(record.unrealized_pnl),
+                    },
+                )
+            except Exception as exc:
+                logger.warning("update_position_writer_error: %s", exc)
 
     async def close_position(
         self,
