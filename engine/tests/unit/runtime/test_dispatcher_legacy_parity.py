@@ -192,6 +192,23 @@ class TestLegacyDispatcherParity:
         engine_legacy._strategy_manager.get_strategy.assert_called()
         engine_disp._strategy_manager.get_strategy.assert_called()
 
+    def test_dispatcher_no_running_loop_falls_to_dispatch_sync(self) -> None:
+        """Codex SUGGEST: dispatcher path가 running loop 없을 때 dispatch_sync 사용.
+
+        sync test (no event loop) → loop.create_task 못함 → dispatch_sync 호출.
+        sync listeners (PnLPeak, PositionSize 등)는 정상 동작, async listeners만 skip.
+        """
+        engine = _make_engine_stub()
+        engine._listener_dispatcher = build_dispatcher_from_engine(engine)
+        request, result = _make_buy_sell_request_result(pnl=Decimal("3.0"))
+
+        # 호출 시 running loop 없음 → dispatch_sync로 fallback
+        on_execution_result(engine, request, result)
+
+        # PnLPeakListener (sync)는 dispatch_sync에서 실행 → state 업데이트
+        assert engine._state.total_pnl == Decimal("3.0"), \
+            "dispatch_sync fallback should still update state via sync listeners"
+
     def test_close_execution_decrements_cross_exposure(self) -> None:
         """reduceOnly=True → both paths decrement cross_gross_exposure identically."""
         # Setup: pre-populate cross exposure for both engines
