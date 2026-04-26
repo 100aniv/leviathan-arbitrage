@@ -91,10 +91,14 @@ class TestOnExecutionResultDelegation:
 
     @pytest.mark.asyncio
     async def test_falls_back_to_legacy_on_dispatcher_exception(self) -> None:
-        """Dispatcher.dispatch raising → legacy code runs as fallback."""
+        """Dispatcher.dispatch + dispatch_sync 양쪽 모두 예외 발생 시 → legacy fallback.
+
+        Codex final review (2026-04-26): dispatch_sync 경로 추가로 단일 dispatch
+        예외만으론 fallback 안 됨. 두 경로 모두 실패 시 legacy 수행.
+        """
         dispatcher = MagicMock()
-        # Make ensure_future scheduling itself raise (sync exception)
         dispatcher.dispatch = MagicMock(side_effect=RuntimeError("dispatcher exploded"))
+        dispatcher.dispatch_sync = MagicMock(side_effect=RuntimeError("sync also exploded"))
         engine = _make_engine(dispatcher=dispatcher)
         request = _make_request()
         result = _make_result()
