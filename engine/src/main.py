@@ -386,16 +386,12 @@ class Engine:
     # ------------------------------------------------------------------
 
     def _setup_signal_handlers(self) -> None:
-        loop = asyncio.get_event_loop()
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            try:
-                loop.add_signal_handler(sig, self._handle_signal)
-            except (NotImplementedError, RuntimeError):
-                pass
+        from src.runtime.bootstrap import setup_signal_handlers
+        setup_signal_handlers(self)
 
     def _handle_signal(self) -> None:
-        logger.warning("Shutdown signal received")
-        self._shutdown_event.set()
+        from src.runtime.bootstrap import handle_signal
+        handle_signal(self)
 
     # ------------------------------------------------------------------
     # Step 1: Configuration
@@ -403,405 +399,41 @@ class Engine:
 
     @staticmethod
     def _apply_trading_json_defaults(cfg: dict) -> None:
-        """Inject trading.json values as env var defaults (env vars take priority)."""
-
-        def _setdefault(key: str, value: object) -> None:
-            if key not in os.environ:
-                os.environ[key] = json.dumps(value) if isinstance(value, list) else str(value)
-
-        if "active_exchanges" in cfg:
-            _setdefault("TRADING_ACTIVE_EXCHANGES", cfg["active_exchanges"])
-
-        sym = cfg.get("symbol_discovery", {})
-        if "min_exchanges" in sym:
-            _setdefault("TRADING_SYMBOL_MIN_EXCHANGES", sym["min_exchanges"])
-
-        exe = cfg.get("execution", {})
-        for _k, _env in [
-            ("leg_timeout_ms", "LEG_TIMEOUT_MS"),
-            ("rollback_timeout_ms", "ROLLBACK_TIMEOUT_MS"),
-            ("reconciliation_interval_s", "RECONCILIATION_INTERVAL_S"),
-        ]:
-            if _k in exe:
-                _setdefault(_env, exe[_k])
-
-        pg = cfg.get("phase_gates", {})
-        if "phase" in pg:
-            _setdefault("CAPITAL_TIER", pg["phase"])
-        if "alpha_capital_per_exchange" in pg:
-            _setdefault("CAPITAL_INITIAL_CAPITAL", pg["alpha_capital_per_exchange"])
-
-        risk = cfg.get("risk", {})
-        if "max_rollback_threshold" in risk:
-            _setdefault("RISK_MAX_ROLLBACK_THRESHOLD", risk["max_rollback_threshold"])
-
-        # US-162: Volume filter threshold
-        if "min_volume_usd" in cfg:
-            _setdefault("SIGNAL_MIN_VOLUME_USD", cfg["min_volume_usd"])
-
-        # US-156/164: Shadow disabled strategies and single loss defense
-        if "disabled_strategies" in cfg:
-            _setdefault("PAPER_DISABLED_STRATEGIES", ",".join(cfg["disabled_strategies"]))
-        if "max_single_loss_usd" in cfg:
-            _setdefault("PAPER_MAX_LOSS_PER_TRADE_USD", cfg["max_single_loss_usd"])
+        """Phase 4: thin wrapper → src.runtime.bootstrap.apply_trading_json_defaults"""
+        from src.runtime.bootstrap import apply_trading_json_defaults
+        apply_trading_json_defaults(cfg)
 
     async def _init_config(self) -> None:
-        # Load non-sensitive config from engine.json; env vars (.env) take priority.
-        from src.core.config import load_engine_config as _lec_cfg
-        _ecfg = _lec_cfg()
-        if _ecfg:
-            self._apply_trading_json_defaults(_ecfg)
-
-        # Convert TRADING_SYMBOLS=auto to valid JSON before pydantic-settings parsing.
-        # pydantic-settings tries json.loads() on list[str] fields; "auto" is not valid JSON.
-        raw_symbols = os.environ.get("TRADING_SYMBOLS", "").strip()
-        if raw_symbols.lower() == "auto":
-            os.environ["TRADING_SYMBOLS"] = '["auto"]'
-
-        try:
-            self._settings = get_settings()
-            self.context.environment = self._settings.engine_env
-            self.context.execution_mode = self._settings.execution_mode
-            from src.core.config import load_engine_config as _lec
-            _actual_mode = _lec().get("mode", "paper")
-            logger.info(
-                "Config loaded — env=%s engine_mode=%s (EXECUTION_MODE env=%s) capital_tier=%s",
-                self._settings.engine_env,
-                _actual_mode,           # authoritative: engine.json
-                self._settings.execution_mode,  # legacy .env (for reference only)
-                self._settings.capital.tier,
-            )
-        except Exception as exc:
-            logger.warning("Config load failed (using defaults): %s", exc)
-            self._settings = Settings()
-            self.context.environment = "dev"
-            self.context.execution_mode = "paper"
-
-        # Validate config consistency before proceeding
-        self._validate_config()
-
-        # Auto-discover trading symbols from exchange APIs
-        await self._resolve_symbols()
+        from src.runtime.bootstrap import init_config
+        await init_config(self)
 
     def _validate_config(self) -> None:
-        """Validate config consistency at startup. WARNING for non-fatal, SystemExit for fatal."""
-        from src.core.config import load_engine_config
-
-        ecfg = load_engine_config()
-        if not ecfg:
-            return  # No engine.json — nothing to validate
-
-        # 1. Mode consistency: engine.json vs env vars
-        engine_mode = ecfg.get("mode", "paper")
-        env_engine_mode = os.environ.get("ENGINE_MODE", "")
-        env_execution_mode = os.environ.get("EXECUTION_MODE", "")
-        if env_engine_mode and env_engine_mode != engine_mode:
-            logger.warning(
-                "CONFIG CONFLICT: ENGINE_MODE env='%s' differs from engine.json mode='%s' — engine.json wins",
-                env_engine_mode, engine_mode,
-            )
-        if env_execution_mode and env_execution_mode != engine_mode:
-            logger.warning(
-                "CONFIG CONFLICT: EXECUTION_MODE env='%s' differs from engine.json mode='%s' — engine.json wins",
-                env_execution_mode, engine_mode,
-            )
-
-        # 2. exchanges.active must not be empty (FATAL)
-        active_exchanges = ecfg.get("exchanges", {}).get("active", [])
-        if not active_exchanges:
-            logger.critical("FATAL: exchanges.active is empty in engine.json — cannot start without exchanges")
-            raise SystemExit(1)
-
-        # 3. Risk value ranges
-        risk = ecfg.get("risk", {})
-        for key, label in [("max_position_pct", "max_position_pct"), ("max_daily_loss_pct", "max_daily_loss_pct")]:
-            val = risk.get(key)
-            if val is not None and not (0 <= float(val) <= 100):
-                logger.warning(
-                    "CONFIG: risk.%s=%s is outside valid range [0, 100]", label, val,
-                )
-
-        # 4. Required sections exist
-        for section in ("strategy_filters", "execution", "risk"):
-            if section not in ecfg:
-                logger.warning("CONFIG: required section '%s' missing from engine.json", section)
-
-        # WS-1: trading.json deprecation check removed (file is gone)
+        from src.runtime.bootstrap import validate_config
+        validate_config(self)
 
     async def _resolve_symbols(self) -> None:
-        """Resolve 'auto' symbols to actual trading pairs via exchange API discovery.
-
-        When TRADING_SYMBOLS=auto, queries Binance/Upbit/Bithumb APIs to find
-        symbols common to >= min_exchanges. New listings are picked up on restart;
-        delistings are excluded automatically.
-        """
-        if not self._settings or self._settings.trading.symbols != ["auto"]:
-            return
-
-        from src.collectors.symbol_discovery import discover_common_symbols
-        from src.core.config import load_engine_config
-
-        min_ex = self._settings.trading.symbol_min_exchanges
-        _ecfg = load_engine_config()
-        _exchange_exclusions: dict[str, list[str]] = (
-            _ecfg.get("exchanges", {}).get("symbol_exclusions_per_exchange", {})
-        )
-        try:
-            symbols = await discover_common_symbols(
-                min_exchanges=min_ex,
-                exchange_exclusions=_exchange_exclusions or None,
-            )
-            if symbols:
-                self._settings.trading.symbols = symbols
-                logger.info(
-                    "Auto-discovered %d trading symbols (min_exchanges=%d)",
-                    len(symbols), min_ex,
-                )
-            else:
-                self._settings.trading.symbols = ["BTC/USDT", "ETH/USDT", "XRP/USDT"]
-                logger.warning(
-                    "Symbol auto-discovery returned empty — using fallback 3 symbols"
-                )
-        except Exception as exc:
-            self._settings.trading.symbols = ["BTC/USDT", "ETH/USDT", "XRP/USDT"]
-            logger.warning(
-                "Symbol auto-discovery failed (using fallback): %s", exc
-            )
-
-        # US-241: Append triangular cross-pairs for cross-pair arbitrage
-        _op = getattr(self._settings, "operational", None)
-        cross_pairs_env = getattr(_op, "triangular_cross_pairs", None) if _op else None
-        if cross_pairs_env and self._settings:
-            cross_pairs = [p.strip() for p in cross_pairs_env.split(",") if p.strip()]
-            existing = set(self._settings.trading.symbols)
-            added = []
-            for cp in cross_pairs:
-                if cp not in existing:
-                    self._settings.trading.symbols.append(cp)
-                    existing.add(cp)
-                    added.append(cp)
-            if added:
-                logger.info("US-241: Added %d triangular cross-pairs: %s", len(added), added)
-
-    # ------------------------------------------------------------------
-    # Step 2: Infrastructure (EventBus)
-    # ------------------------------------------------------------------
+        from src.runtime.bootstrap import resolve_symbols
+        await resolve_symbols(self)
 
     async def _init_infrastructure(self) -> None:
-        from src.core.config import EngineMode, resolve_engine_mode, load_engine_config
-
-        # Phase H-2: resolve mode from config/engine.json (not .env)
-        _engine_cfg = load_engine_config()
-        self._engine_mode = resolve_engine_mode(
-            engine_mode=_engine_cfg.get("mode"),
-        )
-
-        # Bug 1-F: initialize shared HTTP client for FundingRateCollector
-        import httpx
-        self._http_client = httpx.AsyncClient(timeout=10.0)
-
-        # EventBus: only LIVE mode uses Redis, all others use InMemory (direct routing)
-        if self._engine_mode == EngineMode.LIVE:
-            try:
-                from urllib.parse import urlparse
-                from src.infra.redis.client import RedisClient, RedisConfig
-                from src.infra.redis.event_bus import EventBus
-                _parsed = urlparse(self._settings.redis.url)
-                redis_config = RedisConfig(
-                    host=_parsed.hostname or "localhost",
-                    port=_parsed.port or 6379,
-                    db=int((_parsed.path or "/0").lstrip("/") or "0"),
-                    password=_parsed.password,
-                    max_connections=self._settings.redis.max_connections,
-                )
-                redis_client = RedisClient(redis_config)
-                await redis_client.connect()
-                self._redis_client = redis_client
-                self._event_bus = EventBus(redis_client)
-                logger.info("Redis EventBus initialized (live mode)")
-                # Bug 30: flush stale trade_requests from previous session.
-                # Redis Streams persist across restarts — old entries would be
-                # re-consumed by TradeRequestConsumer, replaying prior-session orders.
-                try:
-                    await redis_client.delete("leviathan:trade_requests")
-                    logger.info("startup_flush: leviathan:trade_requests deleted")
-                except Exception as _flush_exc:
-                    logger.warning("startup_flush_failed: %s", _flush_exc)
-            except Exception as exc:
-                logger.warning("Redis init failed, falling back to InMemoryEventBus: %s", exc)
-                from src.infra.redis.memory_bus import InMemoryEventBus
-                self._event_bus = InMemoryEventBus()
-        else:
-            from src.infra.redis.memory_bus import InMemoryEventBus
-            self._event_bus = InMemoryEventBus()
-            logger.info("InMemoryEventBus initialized (engine_mode=%s)", self._engine_mode)
-
-        # --- TimescaleDB + MarketRecorder ---
-        await self._init_database()
-
-        # --- Telegram Alerter ---
-        self._init_telegram()
-
-        # --- Rust PyO3 Bridge (log feature flags) ---
-        self._init_rust_bridge()
+        from src.runtime.bootstrap import init_infrastructure
+        await init_infrastructure(self)
 
     async def _init_database(self) -> None:
-        """Initialize TimescaleDB connection pool, run schema migration, start MarketRecorder."""
-        dsn = get_settings().operational.database_url
-        if not dsn:
-            logger.warning("DATABASE_URL not set — using default dev credentials")
-            dsn = "postgresql://leviathan:leviathan@localhost:5432/leviathan"
-        # asyncpg needs raw postgres:// DSN (not postgresql+asyncpg://)
-        asyncpg_dsn = dsn.replace("postgresql+asyncpg://", "postgresql://")
-
-        try:
-            from src.infra.db.connection import DatabasePool
-            self._db_pool = DatabasePool(dsn=asyncpg_dsn, min_size=2, max_size=10)
-            await self._db_pool.initialize()
-            logger.info("TimescaleDB connection pool initialized")
-
-            # Run schema migration
-            try:
-                from src.infra.db.migration_runner import run_migrations
-                await run_migrations(self._db_pool.pool)
-                logger.info("TimescaleDB schema migration applied")
-            except Exception as exc:
-                logger.warning("Schema migration failed (non-fatal): %s", exc)
-
-            # Check .env sync (root vs engine)
-            try:
-                from src.modes.preflight import PreflightChecker
-                PreflightChecker()._check_env_sync()
-            except Exception:
-                pass  # Non-fatal — preflight not required for startup
-
-            # Start MarketRecorder
-            try:
-                from src.infra.db.market_recorder import MarketRecorder
-                self._market_recorder = MarketRecorder(pool=self._db_pool.pool)
-                await self._market_recorder.start()
-                logger.info("MarketRecorder started (flush=%dms, buffer=%d)",
-                            MarketRecorder.FLUSH_INTERVAL_MS, MarketRecorder.MAX_BUFFER_SIZE)
-            except Exception as exc:
-                logger.warning("MarketRecorder init failed (non-fatal): %s", exc)
-
-            # Load historical trades into PerformanceAttribution
-            try:
-                from src.analysis.attribution import PerformanceAttribution
-                self._attribution = PerformanceAttribution()
-                await self._attribution.load_from_db(self._db_pool.pool)
-            except Exception as exc:
-                logger.warning("PerformanceAttribution init failed (non-fatal): %s", exc)
-
-            # US-284-a: CapitalAllocator init
-            _op = get_settings().operational
-            if _op.capital_allocator_enabled:
-                try:
-                    from src.core.capital_allocator import CapitalAllocator
-                    _max_pos = _op.max_position_usd
-                    self._capital_allocator = CapitalAllocator(total_capital=_max_pos * 10)
-                    logger.info("CapitalAllocator initialized: total_capital=%.0f", _max_pos * 10)
-                except Exception as exc:
-                    logger.warning("CapitalAllocator init failed (non-fatal): %s", exc)
-
-            # US-277/278: PortfolioRiskManager init
-            if _op.portfolio_risk_enabled:
-                try:
-                    from src.core.portfolio_risk import PortfolioRiskManager
-                    self._portfolio_risk = PortfolioRiskManager()
-                    logger.info("PortfolioRiskManager initialized")
-                except Exception as exc:
-                    logger.warning("PortfolioRiskManager init failed (non-fatal): %s", exc)
-        except Exception as exc:
-            # BUG-81: DB must be healthy in live mode — trade records are the ledger.
-            # Redis is volatile; without DB, position history is lost on restart.
-            from src.core.config import load_engine_config as _lec_db
-            _mode = _lec_db().get("mode", "paper")
-            if _mode == "live":
-                logger.critical(
-                    "TimescaleDB init FAILED in LIVE mode — aborting. "
-                    "Fix DB before running live. Error: %s", exc,
-                )
-                raise SystemExit(
-                    f"FATAL: Cannot run live mode without DB. Fix TimescaleDB. Error: {exc}"
-                ) from exc
-            logger.warning("TimescaleDB init failed (non-fatal in paper mode): %s", exc)
+        from src.runtime.bootstrap import init_database
+        await init_database(self)
 
     def _init_telegram(self) -> None:
-        """Initialize 3-Bot Telegram system (Trade/Infra/Dev) from environment variables.
-
-        Phase S21: Legacy TelegramAlerter/SmartTelegramAlerter/TelegramCommandHandler removed.
-        All alerting goes through the 3-Bot system.
-        """
-        # Trade봇: 거래 알림 + Kill Switch + 포지션/체결/전략 제어
-        try:
-            from src.infra.telegram_trade_bot import TradeTelegramBot
-            self._trade_bot = TradeTelegramBot(engine_context=self)
-            # Backward compat: self._telegram points to trade_bot for legacy callers
-            self._telegram = self._trade_bot
-            if self._trade_bot.enabled:
-                logger.info("TradeTelegramBot enabled")
-            else:
-                logger.info("TradeTelegramBot disabled")
-        except Exception as exc:
-            logger.warning("TradeTelegramBot init failed (non-fatal): %s", exc)
-
-        # Infra봇 + Dev봇: bot-gateway 독립 프로세스
-        # See: python -m src.bot_gateway / docker compose up bot-gateway
-        logger.info("InfraBot/DevBot → bot-gateway (독립 프로세스)")
+        from src.runtime.bootstrap import init_telegram
+        init_telegram(self)
 
     def _init_rust_bridge(self) -> None:
-        """Log Rust PyO3 feature flag status."""
-        try:
-            from src.core.rust_bridge import get_feature_flags
-            flags = get_feature_flags()
-            logger.info("Rust bridge flags: %s", flags)
-        except Exception as exc:
-            logger.warning("Rust bridge init failed (non-fatal): %s", exc)
+        from src.runtime.bootstrap import init_rust_bridge
+        init_rust_bridge(self)
 
     async def _init_tuner(self) -> None:
-        """Initialize ScheduledTuner if ENABLE_INLINE_TUNER is set (US-146)."""
-        if not _HAS_TUNER:
-            logger.info("ScheduledTuner not available (optuna/apscheduler not installed)")
-            return
-        if get_settings().operational.enable_inline_tuner.lower() not in ("true", "1", "yes"):
-            logger.info("Inline tuner disabled (ENABLE_INLINE_TUNER not set)")
-            return
-        try:
-            self._scheduled_tuner = ScheduledTuner()
-
-            # US-179: Hot-reload callback — update SignalConfig.min_edge when params change
-            def _tuner_reload_callback() -> None:
-                try:
-                    import json
-                    import pathlib
-                    params_path = pathlib.Path(__file__).parent.parent / "config" / "strategy_params.json"
-                    if params_path.exists() and self._signal_generator is not None:
-                        params = json.loads(params_path.read_text())
-                        # Apply cross_exchange min_spread as the runtime min_edge if available
-                        ce = params.get("cross_exchange", {})
-                        if ce.get("status") in ("READY", "MONITOR") and "min_spread_bps" in ce:
-                            new_edge = Decimal(str(ce["min_spread_bps"])) / Decimal("10000")
-                            if hasattr(self._signal_generator, "_config"):
-                                self._signal_generator._config.min_edge = new_edge
-                                logger.info(
-                                    "ScheduledTuner hot-reload: min_edge updated to %.2f bps",
-                                    float(ce["min_spread_bps"]),
-                                )
-                        # US-326: hot-reload slippage_buffer
-                        if ce.get("slippage_buffer_bps") is not None:
-                            if hasattr(self._signal_generator, "_config"):
-                                self._signal_generator._config.slippage_buffer_bps = Decimal(
-                                    str(ce["slippage_buffer_bps"])
-                                )
-                except Exception as exc:
-                    logger.warning("ScheduledTuner hot-reload failed: %s", exc)
-
-            self._scheduled_tuner._reload_callback = _tuner_reload_callback
-            self._scheduled_tuner.start_scheduler()
-            logger.info("Scheduled tuner started (with hot-reload callback)")
-        except Exception as exc:
-            logger.warning("Failed to start scheduled tuner: %s", exc)
+        from src.runtime.bootstrap import init_tuner
+        await init_tuner(self)
 
     # ------------------------------------------------------------------
     # Step 3: Exchange Adapters

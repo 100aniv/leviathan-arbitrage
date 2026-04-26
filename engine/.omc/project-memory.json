@@ -217,8 +217,8 @@
   "hotPaths": [
     {
       "path": "src/modes/live.py",
-      "accessCount": 207,
-      "lastAccessed": 1776038245298,
+      "accessCount": 210,
+      "lastAccessed": 1777173584517,
       "type": "file"
     },
     {
@@ -246,16 +246,16 @@
       "type": "file"
     },
     {
+      "path": "src",
+      "accessCount": 24,
+      "lastAccessed": 1777175715280,
+      "type": "directory"
+    },
+    {
       "path": "src/infra/exchange/native_binance.py",
       "accessCount": 19,
       "lastAccessed": 1775990318789,
       "type": "file"
-    },
-    {
-      "path": "src",
-      "accessCount": 19,
-      "lastAccessed": 1776038226468,
-      "type": "directory"
     },
     {
       "path": "config/engine.json",
@@ -267,6 +267,12 @@
       "path": "src/infra/exchange/native_adapter.py",
       "accessCount": 15,
       "lastAccessed": 1776016413916,
+      "type": "directory"
+    },
+    {
+      "path": "src/modes/shadow.py",
+      "accessCount": 15,
+      "lastAccessed": 1777174943955,
       "type": "directory"
     },
     {
@@ -300,6 +306,12 @@
       "type": "directory"
     },
     {
+      "path": "src/execution",
+      "accessCount": 8,
+      "lastAccessed": 1777173538618,
+      "type": "directory"
+    },
+    {
       "path": "src/friction/cost_calculator.py",
       "accessCount": 7,
       "lastAccessed": 1775986996671,
@@ -318,21 +330,45 @@
       "type": "file"
     },
     {
+      "path": "src/execution/stranded.py",
+      "accessCount": 7,
+      "lastAccessed": 1776784649618,
+      "type": "file"
+    },
+    {
+      "path": "src/risk/kill_switch.py",
+      "accessCount": 7,
+      "lastAccessed": 1777173578147,
+      "type": "file"
+    },
+    {
       "path": "src/strategies/funding_rate.py",
       "accessCount": 6,
       "lastAccessed": 1776038234088,
       "type": "file"
     },
     {
-      "path": "src/execution",
-      "accessCount": 5,
-      "lastAccessed": 1775996161921,
-      "type": "directory"
+      "path": "src/main.py",
+      "accessCount": 6,
+      "lastAccessed": 1777175732015,
+      "type": "file"
     },
     {
       "path": "src/core/models.py",
       "accessCount": 5,
       "lastAccessed": 1775998341172,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/realtime_monitor.py",
+      "accessCount": 5,
+      "lastAccessed": 1777127054730,
+      "type": "file"
+    },
+    {
+      "path": "config",
+      "accessCount": 5,
+      "lastAccessed": 1777175731461,
       "type": "directory"
     },
     {
@@ -348,16 +384,22 @@
       "type": "file"
     },
     {
+      "path": "src/execution/paper_adapter.py",
+      "accessCount": 4,
+      "lastAccessed": 1776784372090,
+      "type": "directory"
+    },
+    {
+      "path": "src/core/supervisor.py",
+      "accessCount": 4,
+      "lastAccessed": 1776784676191,
+      "type": "directory"
+    },
+    {
       "path": "config/trading.json",
       "accessCount": 3,
       "lastAccessed": 1775984837788,
       "type": "file"
-    },
-    {
-      "path": "config",
-      "accessCount": 3,
-      "lastAccessed": 1775989510264,
-      "type": "directory"
     },
     {
       "path": "src/strategies",
@@ -367,21 +409,9 @@
     },
     {
       "path": "src/core",
-      "accessCount": 2,
-      "lastAccessed": 1775987838359,
+      "accessCount": 3,
+      "lastAccessed": 1777172901893,
       "type": "directory"
-    },
-    {
-      "path": "src/execution/stranded.py",
-      "accessCount": 2,
-      "lastAccessed": 1775998081204,
-      "type": "file"
-    },
-    {
-      "path": "src/main.py",
-      "accessCount": 2,
-      "lastAccessed": 1775998102784,
-      "type": "file"
     },
     {
       "path": "src/api",
@@ -414,12 +444,6 @@
       "type": "directory"
     },
     {
-      "path": "src/risk/kill_switch.py",
-      "accessCount": 1,
-      "lastAccessed": 1775987823528,
-      "type": "file"
-    },
-    {
       "path": "src/execution/trade_consumer.py",
       "accessCount": 1,
       "lastAccessed": 1775988584119,
@@ -430,12 +454,6 @@
       "accessCount": 1,
       "lastAccessed": 1775992044043,
       "type": "file"
-    },
-    {
-      "path": "src/modes/shadow.py",
-      "accessCount": 1,
-      "lastAccessed": 1775993150540,
-      "type": "directory"
     },
     {
       "path": "src/api/routes/strategies.py",
@@ -459,6 +477,42 @@
       "path": "src/friction/fee_model.py",
       "accessCount": 1,
       "lastAccessed": 1776038244068,
+      "type": "file"
+    },
+    {
+      "path": "src/core/universe_matrix.py",
+      "accessCount": 1,
+      "lastAccessed": 1776784333120,
+      "type": "directory"
+    },
+    {
+      "path": "tests/unit/modes/test_supervisor_halt_on_stranded.py",
+      "accessCount": 1,
+      "lastAccessed": 1776784609407,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/test_main_engine.py",
+      "accessCount": 1,
+      "lastAccessed": 1776784624540,
+      "type": "file"
+    },
+    {
+      "path": "docs/OPERATOR_RUNBOOK.md",
+      "accessCount": 1,
+      "lastAccessed": 1777090312715,
+      "type": "file"
+    },
+    {
+      "path": "scripts/auto_canary_chain.sh",
+      "accessCount": 1,
+      "lastAccessed": 1777090981075,
+      "type": "file"
+    },
+    {
+      "path": "src/infra/compliance.py",
+      "accessCount": 1,
+      "lastAccessed": 1777091913850,
       "type": "file"
     }
   ],

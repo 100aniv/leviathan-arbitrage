@@ -121,7 +121,7 @@ class TestEngineInitConfig:
         mock_settings.execution_mode.value = "paper"
         mock_settings.capital.tier = "alpha"
 
-        with patch("src.main.get_settings", return_value=mock_settings), \
+        with patch("src.runtime.bootstrap.get_settings", return_value=mock_settings), \
              patch.dict(os.environ, {}, clear=False):
             await engine._init_config()
 
@@ -131,7 +131,7 @@ class TestEngineInitConfig:
     @pytest.mark.asyncio
     async def test_init_config_fallback_on_exception(self):
         engine = Engine()
-        with patch("src.main.get_settings", side_effect=Exception("config error")), \
+        with patch("src.runtime.bootstrap.get_settings", side_effect=Exception("config error")), \
              patch.dict(os.environ, {}, clear=False):
             await engine._init_config()
 
