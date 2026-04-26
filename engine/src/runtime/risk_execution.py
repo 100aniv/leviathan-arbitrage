@@ -519,9 +519,8 @@ def build_risk_check_fn(engine: "Engine"):
 def on_execution_result(engine: "Engine", trade_request, execution_result) -> None:
     """Callback after each trade execution.
 
-    Phase 6 Step 3: When engine._listener_dispatcher is set, delegate to
-    ExecutionResultDispatcher (14 listeners) and skip the legacy 360 LOC body.
-    Falls back to legacy on dispatcher errors (resilience).
+    Phase 6 Step 4 (2026-04-26): 14-LOC wrapper. Dispatcher path is primary;
+    legacy 360 LOC body extracted into _on_execution_result_legacy as fallback.
     """
     dispatcher = getattr(engine, "_listener_dispatcher", None)
     if dispatcher is not None:
@@ -535,7 +534,17 @@ def on_execution_result(engine: "Engine", trade_request, execution_result) -> No
                 exc,
             )
             # Intentional fall-through to legacy path
+    _on_execution_result_legacy(engine, trade_request, execution_result)
 
+
+def _on_execution_result_legacy(engine: "Engine", trade_request, execution_result) -> None:
+    """Phase 6 Step 4 (Gemini Priority 1): Legacy 360 LOC god-function preserved
+    as fallback when EXECUTION_DISPATCHER_ENABLED=false OR dispatcher.dispatch() raises.
+
+    DEPRECATION WARNING (2026-04-26): This is the designated deletion target.
+    Once dispatcher proves stable for 7+ days paper + live (when re-enabled),
+    delete entirely. The 14 listeners in src/listeners/ are functionally equivalent.
+    """
     logger.info(
         "Execution result: strategy=%s status=%s",
         trade_request.strategy_id,

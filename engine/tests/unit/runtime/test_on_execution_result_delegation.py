@@ -103,3 +103,12 @@ class TestOnExecutionResultDelegation:
 
         # Legacy path executed → total_pnl incremented
         assert engine._total_pnl == Decimal("1.5")
+
+    def test_legacy_function_extracted_and_callable(self) -> None:
+        """Phase 6 Step 4: _on_execution_result_legacy is a separate, directly-callable function."""
+        from src.runtime.risk_execution import _on_execution_result_legacy
+        engine = _make_engine(dispatcher=None)
+        # Call the legacy function directly (skipping wrapper)
+        _on_execution_result_legacy(engine, _make_request(), _make_result())
+        # Same effect as legacy path through wrapper
+        assert engine._total_pnl == Decimal("1.5")
