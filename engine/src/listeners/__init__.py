@@ -16,5 +16,6 @@ on_execution_result 360 LOC god-function 분리. 14 single-responsibility listen
 from __future__ import annotations
 
 from src.listeners.log_listener import LogListener
+from src.listeners.market_recorder_listener import MarketRecorderListener
 
-__all__ = ["LogListener"]
+__all__ = ["LogListener", "MarketRecorderListener"]
