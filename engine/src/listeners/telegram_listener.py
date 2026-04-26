@@ -8,20 +8,25 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from src.listeners._helpers import is_status_success
+from src.ports import AlertPort
 
 logger = logging.getLogger(__name__)
 
 
 class TelegramListener:
-    """Single-responsibility: Korean fill notification via TradeBot."""
+    """Single-responsibility: Korean fill notification via AlertPort.
+
+    Codex SUGGEST (2026-04-27): AlertPort actual adoption — vendor-neutral
+    (Telegram/Discord/Slack 무관 substitutable).
+    """
 
     name = "telegram"
 
-    def __init__(self, trade_bot: Any) -> None:
-        self._bot = trade_bot
+    def __init__(self, trade_bot: Optional[AlertPort]) -> None:
+        self._bot: Optional[AlertPort] = trade_bot
 
     def on_execution_result(self, request: Any, result: Any) -> None:
         if self._bot is None:
