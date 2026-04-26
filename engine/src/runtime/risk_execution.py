@@ -517,7 +517,25 @@ def build_risk_check_fn(engine: "Engine"):
 
 
 def on_execution_result(engine: "Engine", trade_request, execution_result) -> None:
-    """Callback after each trade execution."""
+    """Callback after each trade execution.
+
+    Phase 6 Step 3: When engine._listener_dispatcher is set, delegate to
+    ExecutionResultDispatcher (14 listeners) and skip the legacy 360 LOC body.
+    Falls back to legacy on dispatcher errors (resilience).
+    """
+    dispatcher = getattr(engine, "_listener_dispatcher", None)
+    if dispatcher is not None:
+        try:
+            asyncio.ensure_future(dispatcher.dispatch(trade_request, execution_result))
+            return
+        except Exception as exc:
+            logger.error(
+                "dispatcher_failed_falling_back_to_legacy strategy=%s err=%s",
+                trade_request.strategy_id,
+                exc,
+            )
+            # Intentional fall-through to legacy path
+
     logger.info(
         "Execution result: strategy=%s status=%s",
         trade_request.strategy_id,
