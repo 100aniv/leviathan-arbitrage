@@ -16,6 +16,7 @@ on_execution_result 360 LOC god-function 분리. 14 single-responsibility listen
 from __future__ import annotations
 
 from src.listeners.circuit_breaker_listener import CircuitBreakerListener
+from src.listeners.dispatcher import ExecutionResultDispatcher
 from src.listeners.correlation_listener import CorrelationListener
 from src.listeners.cross_hedge_listener import CrossHedgeListener
 from src.listeners.exposure_listener import ExposureListener
@@ -34,6 +35,7 @@ __all__ = [
     "CircuitBreakerListener",
     "CorrelationListener",
     "CrossHedgeListener",
+    "ExecutionResultDispatcher",
     "ExposureListener",
     "LogListener",
     "MarketRecorderListener",
