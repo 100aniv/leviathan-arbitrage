@@ -882,7 +882,7 @@ class TestKrwRateLoop:
         sm._krw_rate_updated_at = time.monotonic() - 200.0  # 200 s stale
 
         with patch("asyncio.sleep", side_effect=self._one_shot(sm)), \
-             patch("src.modes.shadow.logger") as mock_logger:
+             patch("src.modes.paper.logger") as mock_logger:  # Phase 3: shadow → paper module
             await sm._krw_rate_loop()
 
         warning_events = [
