@@ -16,7 +16,7 @@ fill_price = base_price * (1 +/- slippage_pct)
 용도: 유닛 테스트, 기본 Paper 모드
 ```
 
-**PowerLawSlippage** (`modes/shadow.py`)
+**PowerLawSlippage** (`modes/shadow.py` — 코드 path는 paper.py forward shim) — **DEPRECATED 2026-04-26**
 ```
 impact = k * size^gamma
 slippage = base_slippage_pct * impact * random(0.5, 1.5)
@@ -25,7 +25,8 @@ fill_price = base_price * (1 +/- slippage)
 근거: SignalGenerator가 CEXOrderbookSlippage로 사전 필터.
       PaperExecutor에서 추가 슬리피지 적용 시 이중 계산.
       k=0으로 PaperExecutor 슬리피지 제거 (Phase C 확정).
-용도: Shadow 모드 전용
+이전 용도: shadow 모드 (DEPRECATED)
+현재: 모드 3개 backtest/paper/live, shadow는 폐기. paper에서 PowerLawSlippage 비활성 유지.
 ```
 
 **CEXOrderbookSlippage** (`friction/slippage_model.py`)

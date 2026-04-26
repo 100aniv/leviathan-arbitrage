@@ -115,7 +115,7 @@ pnpm dev
 - 수수료율 표시
 
 **엔진 설정**:
-- 실행 모드 (Paper/Shadow/Live)
+- 실행 모드 (backtest/paper/live — shadow 모드는 폐기됨, 사장님 정책)
 - 활성 전략 선택/해제
 - 최소 스프레드 (MIN_EDGE_BPS)
 - Kill Switch 활성화/비활성화
