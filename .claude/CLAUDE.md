@@ -289,6 +289,31 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - live.py + main.py monotonically shrinking (reject PRs that grow either)
 - Binance API cross-check on every pnl claim
 
+## Phase 5 Hexagonal Architecture Rules (2026-04-26 active)
+
+- main.py LOC budget: ≤ 700 (현재 696). PR이 700 초과 시 거부.
+- god-object 'engine' 인자 사용 금지 — 신규 함수/클래스는 specific Port DI 사용 (ExchangeAdapterPort, ExecutorPort, RiskPort, DataFeedPort, JournalPort, LedgerPort, KillSwitchPort).
+- 7 Ports는 `typing.Protocol(runtime_checkable=True)`로만 선언. 구체 구현 import 금지.
+- EngineState (`src/core/engine_state.py`)는 16 mutable runtime field의 SSOT — 새 mutable field 추가 시 EngineState 우선.
+- ModeRunner ABC 패턴 — paper/live/backtest dispatch는 if-elif 금지, 반드시 BacktestRunner/PaperRunner/LiveRunner 클래스 사용.
+- LifecycleManager Kahn topological sort — 컴포넌트 시작/종료 순서는 declarative dependency.
+- LOC budget enforcer: `python engine/scripts/check_loc_budget.py` (CI/pre-commit 통합 필수).
+
+## Phase 6 Listener Dispatcher Rules (2026-04-26 active)
+
+- 14 ExecutionResultListener는 SRP 준수 — 한 개 listener는 한 개 책임만 (log/position_size/cross_hedge/pnl_peak/market_recorder/exposure/slippage/correlation/tca/trade_history/circuit_breaker/rollback/telegram/position_manager).
+- ExecutionResultDispatcher는 async/sync 자동 라우팅 + failure isolation — 한 listener exception이 다른 listener 호출을 막지 않음.
+- factory.py `build_dispatcher_from_engine(engine)` — 14 listeners 일괄 wiring entry point.
+- env flag `EXECUTION_DISPATCHER_ENABLED` (engine.json.feature_flags) — false=legacy, true=dispatcher 경로.
+- 신규 listener 추가 시 ExecutionResultListener Protocol 준수 + factory.py 등록 + unit test 필수.
+
+## Paper 모드 정의 (2026-04-26 확정)
+
+- **Paper = 실제 WebSocket 데이터 (real WS) + 시뮬레이션 체결**. Synthetic GBM/spread injection 절대 금지.
+- `PaperExchangeAdapter(spread_injection_rate=0.0, spread_injection_bps=0)` — synthetic 비활성화 강제.
+- Synthetic data는 **backtest 모드 전용** — paper와 backtest 코드 경로 분리.
+- Shadow 모드는 **폐기됨 (DEPRECATED 2026-04-26)** — `src/modes/shadow.py`는 paper.py로 forward shim. 신규 코드 import 금지.
+
 ## Paper 모드 + universe_matrix 게이트 룰 (2026-04-22 신규, 14h 헛수고 교훈)
 
 - **Paper 어댑터는 config 기반으로 생성** — `_init_paper_exchanges`는 config의 `exchanges.active`(7개)를 그대로 사용. paper_binance/paper_okx 같은 하드코딩 절대 금지. 거래소 ID는 data collector ID와 일치 (binance, bitget, ...).
