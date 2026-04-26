@@ -525,7 +525,15 @@ def on_execution_result(engine: "Engine", trade_request, execution_result) -> No
     dispatcher = getattr(engine, "_listener_dispatcher", None)
     if dispatcher is not None:
         try:
-            asyncio.ensure_future(dispatcher.dispatch(trade_request, execution_result))
+            # Codex final review: handle both inside-loop and outside-loop callers.
+            # Production: engine runs inside asyncio.run, ensure_future is correct.
+            # Tests/sync callers: dispatch_sync schedules + handles done-callbacks.
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(dispatcher.dispatch(trade_request, execution_result))
+            except RuntimeError:
+                # No running loop — use sync dispatch (no async listeners run, but sync ones do)
+                dispatcher.dispatch_sync(trade_request, execution_result)
             return
         except Exception as exc:
             logger.error(
