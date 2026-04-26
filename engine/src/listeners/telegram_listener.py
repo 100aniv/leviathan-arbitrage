@@ -10,6 +10,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from src.listeners._helpers import is_status_success
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,8 +26,7 @@ class TelegramListener:
     def on_execution_result(self, request: Any, result: Any) -> None:
         if self._bot is None:
             return
-        status_val = getattr(getattr(result, "status", None), "value", str(getattr(result, "status", "")))
-        if status_val != "success":
+        if not is_status_success(result):
             return
         try:
             legs = getattr(request, "legs", [])

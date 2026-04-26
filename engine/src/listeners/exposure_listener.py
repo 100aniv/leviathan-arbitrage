@@ -18,6 +18,8 @@ import logging
 from decimal import Decimal
 from typing import Any
 
+from src.listeners._helpers import get_side, is_status_success
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,9 +40,7 @@ class ExposureListener:
     def on_execution_result(self, request: Any, result: Any) -> None:
         """async create_task for each filled leg. exception은 callback에서 로깅."""
         try:
-            status_value = getattr(getattr(result, "status", None), "value",
-                                   str(getattr(result, "status", "")))
-            if status_value != "success" or self._tracker is None:
+            if not is_status_success(result) or self._tracker is None:
                 return
 
             for leg in getattr(result, "legs", []):
@@ -51,7 +51,7 @@ class ExposureListener:
                 if "/" not in getattr(order, "symbol", ""):
                     continue
                 base_asset = order.symbol.split("/")[0]
-                side = getattr(order.side, "value", str(order.side)).upper()
+                side = get_side(order)
                 delta = trade.amount if side == "BUY" else -trade.amount
                 _ex_id = (order.exchange_id if hasattr(order, "exchange_id")
                           else getattr(leg, "exchange_id", "unknown"))

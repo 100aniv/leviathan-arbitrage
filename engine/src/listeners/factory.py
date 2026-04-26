@@ -72,8 +72,12 @@ def build_dispatcher_from_engine(engine: Any) -> ExecutionResultDispatcher:
     # 1. Log
     dispatcher.register(LogListener())
 
-    # 2. Position size leak (BUY/SELL net)
-    dispatcher.register(PositionSizeLeakListener(engine._position_sizes))
+    # 2. Position size leak (BUY/SELL net) + alert escalation (Codex parity)
+    dispatcher.register(PositionSizeLeakListener(
+        engine._position_sizes,
+        state=getattr(engine, "_state", None),
+        alert_bot=getattr(engine, "_telegram", None),
+    ))
 
     # 3. PositionManager (sync index + async queue)
     dispatcher.register(PositionManagerListener(

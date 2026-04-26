@@ -24,6 +24,30 @@ class TestPositionSizeLeakListener:
     def test_protocol(self) -> None:
         assert isinstance(PositionSizeLeakListener({}), ExecutionResultListener)
 
+    def test_alert_escalation_on_repeated_errors(self) -> None:
+        """Codex final review parity: error_count > 5 → telegram alert."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        bot = SimpleNamespace(send_alert_kr=AsyncMock())
+        state = SimpleNamespace(position_tracking_errors=5)
+        listener = PositionSizeLeakListener({}, state=state, alert_bot=bot)
+        # Trigger exception by passing legs missing trade.price
+        result = SimpleNamespace(
+            status=SimpleNamespace(value="success"),
+            legs=[SimpleNamespace(
+                trade=SimpleNamespace(),  # no price → exception in pos_value calc
+                order=SimpleNamespace(symbol="X", side=SimpleNamespace(value="buy")),
+            )],
+        )
+        listener.on_execution_result(SimpleNamespace(strategy_id="x"), result)
+        # Counter incremented to 6 > threshold 5 → alert called
+        assert state.position_tracking_errors == 6
+        bot.send_alert_kr.assert_called_once()
+        args, _ = bot.send_alert_kr.call_args
+        assert args[0] == "position_tracking_fail"
+        assert args[1] == {"error_count": 6}
+
     def test_skips_when_status_not_success(self) -> None:
         sizes = {}
         result = SimpleNamespace(status=SimpleNamespace(value="failure"), legs=[])

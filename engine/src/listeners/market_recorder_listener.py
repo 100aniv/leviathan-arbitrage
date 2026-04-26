@@ -16,6 +16,8 @@ import logging
 from decimal import Decimal
 from typing import Any
 
+from src.listeners._helpers import get_side, is_status_success
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,8 +41,7 @@ class MarketRecorderListener:
     def on_execution_result(self, request: Any, result: Any) -> None:
         """Build dict + call record_execution. Skip if recorder=None or no legs."""
         try:
-            status_value = getattr(getattr(result, "status", None), "value", str(getattr(result, "status", "")))
-            if status_value != "success":
+            if not is_status_success(result):
                 return
             if self._recorder is None or not request.legs:
                 return
@@ -58,7 +59,7 @@ class MarketRecorderListener:
                 _t = getattr(_lr, "trade", None)
                 _o = getattr(_lr, "order", None)
                 if _t and _o:
-                    _s = getattr(_o.side, "value", str(_o.side)).upper()
+                    _s = get_side(_o)
                     if _s == "BUY":
                         _bp = Decimal(str(_t.price))
                     else:
