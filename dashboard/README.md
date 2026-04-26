@@ -2,6 +2,12 @@
 
 **dashboard/** 폴더는 LEVIATHAN 엔진의 실시간 모니터링 웹 애플리케이션입니다. Next.js 14 (App Router) + TypeScript + Tailwind CSS로 구축했으며 FastAPI 백엔드와 WebSocket으로 연동합니다.
 
+## 백엔드 아키텍처 (2026-04-27, Phase 5/6/7 완료 후)
+
+엔진은 Hexagonal Architecture: 12 Ports + 3 Adapters + 14 Listeners + Dispatcher + EngineState SSOT.
+**모드 체계**: `backtest` / `paper` / `live` (3개). 현재 `paper` mode enforced.
+**대시보드 API**: FastAPI `/api/v1/*` + WebSocket `/ws` (JWT). 5,205 tests passing.
+
 ## 개발 환경 시작
 
 ### 1. 의존성 설치

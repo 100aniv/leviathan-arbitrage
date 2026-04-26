@@ -1,7 +1,8 @@
 # LEVIATHAN Engine
 
 > Python 3.12 asyncio + Rust PyO3 hot-path crypto arbitrage engine.
-> Path-B v2 refactor in progress — see `/Users/100aniv/.claude/plans/hidden-cuddling-pascal.md`.
+> Path-B v2 + Phase 5/6/7 Hexagonal Architecture 완료 (2026-04-26~27).
+> Mode: paper (live 거래 중단). Live re-enable 게이트는 라이브 micro 카나리 ($10/trade) 기반.
 
 ## Quick Start
 
@@ -16,10 +17,10 @@ pip install -r requirements.txt
 # 3. Env
 cp ../.env.example ../.env  # fill API keys
 
-# 4. Run (paper mode — default during Path-B v2)
+# 4. Run (paper mode — engine.json mode=paper enforced)
 python -m src.main
 
-# 5. Tests
+# 5. Tests (5,205 passing / 14 skipped)
 python -m pytest tests/unit/ -x --tb=short --no-cov
 
 # 6. Code quality
@@ -27,11 +28,57 @@ ruff check src/
 python -m pytest --co -q  # test count
 ```
 
-## Module Map (Day 1-5 built)
+## Module Map (Phase 5/6/7 후)
 
 ```
 src/
-├── main.py              # 4,221 LOC — Engine class (Day 15 → TradingSupervisor)
+├── main.py              # 765 LOC — Engine + EngineState + 6 @property proxies
+├── ports/               # Phase 7: 12 Hexagonal Ports (Protocol, runtime_checkable)
+│   ├── exchange_adapter_port.py
+│   ├── executor_port.py
+│   ├── risk_port.py
+│   ├── data_feed_port.py
+│   ├── journal_port.py
+│   ├── ledger_port.py
+│   ├── kill_switch_port.py
+│   ├── event_bus_port.py        # Phase 7 (Codex SUGGEST)
+│   ├── metrics_port.py          # Phase 7
+│   ├── config_port.py           # Phase 7
+│   ├── alert_port.py            # Phase 7
+│   └── exchange_income_fetcher_port.py  # Phase 7
+├── adapters/            # Phase 7: Concrete Port adapters
+│   ├── config_adapter.py        # ConfigAdapter (config_loader wrap)
+│   ├── no_op_metrics.py         # NoOpMetricsAdapter (test fallback)
+│   └── no_op_alert.py           # NoOpAlertAdapter (paper-only fallback)
+├── listeners/           # Phase 5/6: 14 ExecutionResultListener + Dispatcher
+│   ├── _helpers.py              # 8 helpers (extract_legs_info / is_close_leg / get_side / is_status_success / get_status_value / effective_pnl / request_to_summary)
+│   ├── dispatcher.py            # ExecutionResultDispatcher (async/sync routing + failure isolation)
+│   ├── factory.py               # build_dispatcher_from_engine
+│   └── *_listener.py            # 14 SRP listeners
+├── core/
+│   ├── engine_state.py          # Phase 5.2.1 — 16 mutable runtime fields SSOT
+│   ├── config_service.py
+│   ├── supervisor.py            # TradingSupervisor (Day 15)
+│   ├── strategy_registry.py
+│   ├── universe_matrix.py
+│   ├── reason_codes.py
+│   ├── signal.py                # predicted_slippage_bps (Day 9)
+│   ├── price_hub.py
+│   └── models.py
+├── runtime/             # main.py 4203 → 765 분리
+│   ├── lifecycle_manager.py     # Phase 5.3 — Kahn topological sort
+│   ├── mode_runner.py           # Phase 5.4 — ModeRunner ABC (Backtest/Paper/Live)
+│   ├── bootstrap.py             # config/db/telegram/rust/tuner
+│   ├── exchange_init.py         # paper adapter spread_injection_rate=0
+│   ├── pipeline_init.py         # SignalGenerator + Strategies
+│   ├── ml_loops.py              # 4 ML training loops
+│   ├── background_loops.py      # lifecycle + health
+│   ├── mode_loops.py            # paper/live/backtest dispatch
+│   └── risk_execution.py        # on_execution_result wrapper + _on_execution_result_legacy
+├── modes/
+│   ├── backtest.py              # 백테스트 모드 (synthetic data only)
+│   ├── paper.py                 # 페이퍼 모드 (real WS + simulated execution)
+│   └── live.py                  # 라이브 모드 (3,250 LOC, real WS + real execution)
 ├── modes/
 │   ├── live.py          # 3,249 LOC — LiveMode (Day 14 migrate to Journal+StateMachine)
 │   └── shadow.py        # (deprecated, merged into live.py paper mode)

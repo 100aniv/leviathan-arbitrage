@@ -2,17 +2,28 @@
 
 Commercial-grade crypto arbitrage engine for multi-exchange trading.
 
-## Status
+## Status (2026-04-27)
 
 | Item | Value |
 |---|---|
-| Mode | PAPER — paused for Path-B v2 refactor |
-| Version | v238 in progress (Path-B v2, Day 6-15) |
-| Tests | 4,879 passing (unit, no Docker required) |
-| Engine LOC | ~70k Python + Rust (PyO3 hot-path) |
-| Engine vs Exchange PnL gap | -$5.01 (target: ±$1.00 after Day 15) |
+| Mode | PAPER — `engine.json mode=paper` (commit 606c97b enforcement, live 거래 중단) |
+| Architecture | Hexagonal Architecture (12 Ports + 3 Adapters + 14 Listeners + Dispatcher) |
+| Version | Path-B v2 + Phase 5/6/7 완료 (구조 리팩토링 끝, 운영 검증 단계) |
+| Tests | 5,205 passing / 14 skipped (unit, no Docker required) |
+| Engine LOC | main.py 4,203 → 765 LOC (Phase 5 -82%) + 14 Listeners 분리 |
+| Path-B v2 PnL gap | -$5.01 → engine 측 wiring fix 완료, 운영 검증 미완 |
+| Live re-enable gate | 48h paper 안정 + dispatcher error-rate 검증 + exchange PnL 정합 후 라이브 micro 카나리 ($10/trade) |
 
-Path-B v2 is a correctness-first refactor. Root cause of the gap: sequential cross-exchange legs (200-480ms naked exposure), `_pred_bps=0.0` wiring bug, and ADV proxied from top-5 depth instead of real 24h volume. Days 6-15 fix each in order.
+### Hexagonal Architecture (Phase 5/6/7, 2026-04-26~27)
+
+- **12 Ports**: ExchangeAdapter / Executor / Risk / DataFeed / Journal / Ledger / KillSwitch / EventBus / Metrics / Config / Alert / ExchangeIncomeFetcher
+- **3 Adapters**: ConfigAdapter / NoOpMetricsAdapter / NoOpAlertAdapter
+- **14 Listeners + Dispatcher**: log/position_size/position_manager/cross_hedge/pnl_peak/market_recorder/exposure/slippage/correlation/tca/trade_history/circuit_breaker/rollback/telegram (failure isolation + async/sync routing)
+- **EngineState SSOT**: 16 mutable runtime fields dataclass + 6 @property proxies (no divergence)
+- **ModeRunner ABC**: Backtest/Paper/Live 다형성 (if-elif 제거)
+- **LifecycleManager**: Kahn topological sort (declarative dependencies)
+
+Path-B v2 root cause: sequential cross-exchange legs (200-480ms naked exposure), `_pred_bps=0.0` wiring bug, ADV proxied from top-5 depth. Days 6-15 fix each + Phase 5-7 god-object 해체.
 
 ---
 

@@ -3,14 +3,34 @@
 | Field | Value |
 |---|---|
 | Document | `engine/docs/MODULE_DESIGN.md` |
-| Version | 0.1 (§1-§4 draft, pending exa.ai industry benchmark + codex/gemini independent review) |
-| Date | 2026-04-19 KST |
-| Status | DRAFT — architecture approval pending |
-| Authors | Architect (OMC), Path-B Day 1–5 authors |
-| Reviewers | Operator, Critic, backend-architect, pending Codex + Gemini |
-| Supersedes | implicit architecture inside `src/main.py` + `src/modes/live.py` |
+| Version | 1.0 (Phase 5/6/7 Hexagonal Architecture 완료) |
+| Date | 2026-04-27 KST |
+| Status | ACTIVE — Phase 5/6/7 완료, Codex (4 rounds) + Gemini (2 rounds) 외부 리뷰 BLOCKING+SUGGEST+NIT+Priority 모두 해결 |
+| Authors | Architect (OMC), Path-B Day 1–5 + Phase 5/6/7 작성자 |
+| Reviewers | Operator, Critic, backend-architect, Codex, Gemini |
+| Supersedes | implicit architecture inside legacy `src/main.py` (4,203 LOC monolith) |
 | Related | `engine/docs/REFACTOR_PLAN.md`, `SSOT.md §3`, `SSOT.md §4` |
-| Scope | §1 Architecture + Data Flow, §2 Responsibility Matrix, §3 Interface Contracts, §4 Migration Plan |
+| Scope | §1 Architecture + Data Flow, §2 Responsibility Matrix, §3 Interface Contracts (12 Ports), §4 Listeners + Dispatcher (Phase 6) |
+
+## Architecture Summary (2026-04-27, Phase 5/6/7 후 단일 진실)
+
+**모드 체계** (사장님 정책): `backtest` / `paper` / `live` 3개 (engine.json mode 단일 축).
+**현재 mode**: `paper` (engine.json mode=paper enforced, commit 606c97b).
+**라이브 거래**: 중단 중 (v237 -$4.92 발견 후, Path-B v2 + Phase 5/6/7 완료까지).
+**라이브 카나리**: 미실시 — 진짜 canary는 라이브 micro ($10/trade × 48H), paper는 카나리 아님.
+
+**아키텍처 컴포넌트**:
+- **main.py**: 4,203 → 765 LOC (Phase 5 -82%)
+- **12 Hexagonal Ports** (`src/ports/`, runtime_checkable Protocol): ExchangeAdapter / Executor / Risk / DataFeed / Journal / Ledger / KillSwitch / EventBus / Metrics / Config / Alert / ExchangeIncomeFetcher
+- **3 Concrete Adapters** (`src/adapters/`): ConfigAdapter / NoOpMetricsAdapter / NoOpAlertAdapter
+- **14 Listeners + Dispatcher** (`src/listeners/`): god-function `on_execution_result` 360 LOC → 14 SRP listeners + ExecutionResultDispatcher (async/sync routing + failure isolation)
+- **EngineState SSOT** (`src/core/engine_state.py`): 16 mutable runtime fields dataclass + 6 @property proxies (state divergence 제거)
+- **ModeRunner ABC** (`src/runtime/mode_runner.py`): Backtest/Paper/Live 다형성
+- **LifecycleManager** (`src/runtime/lifecycle_manager.py`): Kahn topological sort
+- **8 Listener helpers** (`src/listeners/_helpers.py`): extract_legs_info / is_close_leg / is_close_execution / get_side / is_status_success / get_status_value / effective_pnl / request_to_summary
+- **Feature flag**: `EXECUTION_DISPATCHER_ENABLED=true` (engine.json.feature_flags)
+- **Tests**: 5,205 passing / 14 skipped / 0 failed
+- **11 Parity tests**: legacy vs dispatcher 안전 삭제 검증
 
 ---
 

@@ -1,7 +1,8 @@
 # LEVIATHAN Operator Runbook
 
 > 사장님이 매일 아침 확인해야 할 최소 체크리스트, 주요 메트릭 해석, 알람 대응 절차.
-> 업데이트: 2026-04-22 (paper 모드 universe_matrix 함정 수정 후 기준)
+> 업데이트: 2026-04-27 (Phase 5/6/7 Hexagonal Architecture 완료 후 기준)
+> **용어 정정**: 모드는 `backtest` / `paper` / `live` 3개뿐. 카나리(canary)는 라이브 소액 모니터링이며 paper에는 적용 안 됨.
 
 ---
 
@@ -9,16 +10,30 @@
 
 | 항목 | 값 | 비고 |
 |------|-----|------|
-| 엔진 mode | `paper` | Path-B 리팩토링 완료까지 live 금지 |
+| 엔진 mode | `paper` | engine.json mode=paper enforced (commit 606c97b). Live 거래 중단. |
+| 아키텍처 | Hexagonal Architecture | Phase 5/6/7 완료: 12 Ports + 3 Adapters + 14 Listeners + Dispatcher + EngineState SSOT |
 | 오픈 포지션 | 0 | Binance 확인 필 (`scripts/check_positions.py`) |
-| 누적 실손실 (24H) | -$4.92 | v227~v237 누적. 수수료 50%, realized 47%, funding 3% |
-| 14h 카나리 (2026-04-21~22) | 무효 | universe_matrix=0 환경, paper trade fill 0건. 원인: paper 어댑터 2개 하드코딩 + market_type 미구현 |
-| 수정 (2026-04-22) | `3d37e91` `e5a28b2` | paper 어댑터 2→7 + ExchangeAdapter Protocol 완전 구현. universe_matrix entries 0→34. 5분 실행 trade=5/$2.18 검증 |
-| 다음 re-enable gate | Stage-1 canary ($10 × 48H) | universe_matrix=34 환경에서 재실행. REFACTOR_PLAN.md 끝 섹션 참조 |
+| 누적 실손실 (v237 마지막 라이브, 24H) | -$4.92 | 수수료 50%, realized 47%, funding 3% |
+| **라이브 카나리 (= 진짜 canary)** | **미실시** | Path-B v2 + Phase 5/6/7 후 라이브 재개 미진입 |
+| Paper 안정성 검증 (2026-04-26~27) | PID 42459, 9시간+ 지속 실행 | dispatcher path 정상, 5 trade events. 카나리 아님 — paper는 시뮬레이션 검증 |
+| Tests | 5,205 passing / 14 skipped / 0 failed | Phase 5/6/7 +108 tests |
+| 다음 라이브 재개 gate | 라이브 micro 카나리 ($10/trade × 48H) | 1) 48h paper 안정 2) dispatcher 에러 0 3) exchange PnL 정합 후 진입 결정 |
+
+### Phase 5/6/7 변경 요약 (2026-04-26~27)
+
+- main.py 4,203 → 765 LOC (Phase 5 -82%)
+- 12 Hexagonal Ports (engine/src/ports/): ExchangeAdapter / Executor / Risk / DataFeed / Journal / Ledger / KillSwitch / EventBus / Metrics / Config / Alert / ExchangeIncomeFetcher
+- 3 Concrete Adapters (engine/src/adapters/): ConfigAdapter / NoOpMetricsAdapter / NoOpAlertAdapter
+- 14 Listeners + Dispatcher (engine/src/listeners/): SRP, async/sync routing + failure isolation
+- EngineState SSOT (engine/src/core/engine_state.py): 16 mutable runtime fields + 6 @property proxies (state divergence 제거)
+- 8 Listener helpers (engine/src/listeners/_helpers.py)
+- Feature flag: `EXECUTION_DISPATCHER_ENABLED=true`
+- Codex/Gemini 외부 리뷰: BLOCKING 4건 + SUGGEST 6건 + NIT 2건 + Priority 1+2 모두 해결
+- 11 Parity tests: legacy vs dispatcher 안전 삭제 검증
 
 ---
 
-## 0.5 Pre-canary 점검 (paper 카나리 시작 전 5분 필수)
+## 0.5 Pre-test 점검 (paper 시뮬레이션 시작 전 5분 필수)
 
 > 14h 카나리 헛수고 재발 방지. 4 항목 모두 충족 안 하면 카나리 시작 금지.
 

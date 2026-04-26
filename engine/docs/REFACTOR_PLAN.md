@@ -1,6 +1,6 @@
 # LEVIATHAN Path-B Refactor Plan
 
-**Status**: Active | **Started**: 2026-04-19 | **Trigger**: 13+ bugs in single session; real Binance -$4.92 reported by engine as +$0.09.
+**Status**: COMPLETED + EXTENDED (Phase 5/6/7) | **Started**: 2026-04-19 | **Path-B v2 Day 0-15 + W3 + W4 완료** | **Phase 5/6/7 완료**: 2026-04-27
 
 ## Verdict (3-agent consensus: architect + backend-architect + critic)
 
@@ -10,15 +10,27 @@ The orchestration layer (`live.py` + `main.py`) is a God-class monolith with 148
 - **Path B (structural refactor, 3-8 weeks)**: P(success)=65%, further-loss risk LOW (paper during refactor), 65% code retention
 - Path C (greenfield rewrite): P(success)=30%, 4-8 months, second-system syndrome
 
-## Current State (as of 2026-04-19 19:30 UTC)
+**결과** (2026-04-27): Path-B v2 + Phase 5/6/7 완료, 5,205 tests pass, Codex/Gemini 외부 리뷰 모두 해결. 라이브 카나리 미실시 (다음 게이트).
 
-| Module | Before | After | Delta | Source |
-|--------|--------|-------|-------|--------|
-| `src/modes/live.py` | 3,414 LOC | **3,249** | -165 | commit `0784c2b` |
-| `src/main.py` | 4,194 LOC | 4,202 | +8 | commit `3c45a3b` |
-| **Monolith total** | 7,608 | 7,451 | -157 | |
+## Current State (Phase 5/6/7 완료, 2026-04-27)
 
-Target: live.py ≤ 2,500 LOC by end of Day 7. main.py ≤ 3,500 LOC by end of Day 10.
+**모드** (사장님 정책): `backtest` / `paper` / `live` 3개. 현재 mode=`paper` (engine.json enforced, commit 606c97b).
+
+**라이브 거래**: 중단 중. 라이브 카나리 미실시 (= 진짜 canary, $10/trade × 48H 미진입).
+
+| Module | Path-B v2 시작 | Phase 5/6/7 후 | Delta | Source |
+|--------|------|------|-------|--------|
+| `src/main.py` | 4,194 LOC | **765 LOC** | **-3,429 (-82%)** | Phase 5 분리 + 6 @property proxies |
+| `src/modes/live.py` | 3,414 LOC | 3,250 LOC | -164 | Day 12 PreTradeValidator wire |
+| `src/runtime/risk_execution.py` | 0 LOC | 905 LOC | +905 | on_execution_result 14-LOC wrapper + _on_execution_result_legacy fallback |
+| `src/ports/` | 0 files | **12 Ports** | +12 | Phase 5 7개 + Phase 7 5개 추가 |
+| `src/adapters/` | 0 files | **3 Adapters** | +3 | ConfigAdapter / NoOpMetricsAdapter / NoOpAlertAdapter |
+| `src/listeners/` | 0 files | **14 Listeners + Dispatcher + 8 helpers** | — | Phase 5/6 god-function 해체 |
+| `src/core/engine_state.py` | 0 LOC | 107 LOC | +107 | EngineState dataclass + reset/snapshot |
+| `src/runtime/mode_runner.py` | 0 LOC | 112 LOC | +112 | ModeRunner ABC (Backtest/Paper/Live) |
+| `src/runtime/lifecycle_manager.py` | 0 LOC | 183 LOC | +183 | Kahn topological sort |
+
+**Tests**: 4,879 → **5,205 passing / 14 skipped / 0 failed** (+326 tests across Path-B v2 + Phase 5/6/7).
 
 ## Day-by-Day Progress
 

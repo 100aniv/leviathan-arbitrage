@@ -1,7 +1,8 @@
 # LEVIATHAN Dashboard — Design System Spec
 
-> Path-B v2 W3 (Day 23-27) target. Frontend source of truth for color palette, typography, components, interaction patterns.
-> Follow-up: `/design-consultation` at W3 kickoff.
+> Path-B v2 W3 (Day 23-27) **완료** (2026-04-21). 8-page Next.js skeleton + OKLCH dark theme.
+> Phase 5/6/7 후속 (2026-04-27): 백엔드는 Hexagonal Architecture (12 Ports + 14 Listeners + Dispatcher + EngineState SSOT). 대시보드 API 스펙 변경 없음 — 디자인 시스템 그대로 유지.
+> Follow-up: `/design-consultation` 스킬은 라이브 micro 카나리 진입 시 재실행.
 
 ---
 
