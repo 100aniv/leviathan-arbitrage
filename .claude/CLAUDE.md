@@ -291,7 +291,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 ## Phase 5 Hexagonal Architecture Rules (2026-04-26 active)
 
-- main.py LOC budget: ≤ 700 (현재 696). PR이 700 초과 시 거부.
+- main.py LOC budget: ≤ 800 (현재 765). Codex BLOCKING #3 정합 시 6 @property pairs +46 LOC 인정. 800 초과 시 거부.
 - god-object 'engine' 인자 사용 금지 — 신규 함수/클래스는 specific Port DI 사용 (ExchangeAdapterPort, ExecutorPort, RiskPort, DataFeedPort, JournalPort, LedgerPort, KillSwitchPort).
 - 7 Ports는 `typing.Protocol(runtime_checkable=True)`로만 선언. 구체 구현 import 금지.
 - EngineState (`src/core/engine_state.py`)는 16 mutable runtime field의 SSOT — 새 mutable field 추가 시 EngineState 우선.

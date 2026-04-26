@@ -161,17 +161,10 @@ class Engine:
         self._tca_analyzer: Any = None  # US-116
         self._rebalancer: Any = None  # US-120
         self._balance_tracker: Any = None  # US-120
-        # US-129: Position tracking for RiskGuardian PortfolioState
-        self._position_sizes: dict[str, Decimal] = {}   # symbol -> current notional exposure (nets out for hedged)
-        self._cross_exchange_positions: set[str] = set()  # symbols with active cross-exchange hedged positions
-        self._cross_gross_exposure: Decimal = Decimal("0")  # gross capital in delta-neutral hedges (both legs)
-        # NOTE: _position_sizes nets BUY/SELL for same symbol (correct for directional exposure / Check#1),
-        # but yields len=0 for delta-neutral hedged positions (funding_rate, spot_futures).
-        # _cross_exchange_positions tracks these separately for Check #10 (max concurrent).
-        # _cross_gross_exposure tracks total capital deployed in hedges for Check #3 (total exposure).
-        self._peak_equity: Decimal | None = None           # initialized to capital_total on first risk check
-        self._total_pnl: Decimal = Decimal("0")          # cumulative realized PnL
-        self._exchange_health: dict[str, Decimal] = {}   # exchange_id -> health score (0-1)
+        # Codex BLOCKING #3 (2026-04-26) — 6 mutable fields는 self._state로 통합.
+        # @property 프록시 (Engine 클래스 레벨, line ~720)가 backward-compat 보장:
+        # _position_sizes/_cross_exchange_positions/_cross_gross_exposure/
+        # _peak_equity/_total_pnl/_exchange_health 모두 self._state.X를 read/write.
         # US-131: RegimeDetector reference (set during _init_signal_pipeline)
         self._regime_detector: Any = None
         # US-146: ScheduledTuner (optional, enabled via ENABLE_INLINE_TUNER)
@@ -209,6 +202,59 @@ class Engine:
         self._supervisor: Any = None  # Day 15: SUPERVISOR_ACTIVE-gated
         # Phase 6 Step 1: ExecutionResultDispatcher (default None until _init_listeners)
         self._listener_dispatcher: Any = None
+
+    # ------------------------------------------------------------------
+    # Codex BLOCKING #3 (2026-04-26) — EngineState backward-compat proxies
+    # Legacy `_position_sizes` etc. → self._state SSOT (no divergence).
+    # ------------------------------------------------------------------
+
+    @property
+    def _position_sizes(self) -> dict[str, Decimal]:
+        return self._state.position_sizes
+
+    @_position_sizes.setter
+    def _position_sizes(self, value: dict[str, Decimal]) -> None:
+        self._state.position_sizes = value
+
+    @property
+    def _cross_exchange_positions(self) -> set[str]:
+        return self._state.cross_exchange_positions
+
+    @_cross_exchange_positions.setter
+    def _cross_exchange_positions(self, value: set[str]) -> None:
+        self._state.cross_exchange_positions = value
+
+    @property
+    def _cross_gross_exposure(self) -> Decimal:
+        return self._state.cross_gross_exposure
+
+    @_cross_gross_exposure.setter
+    def _cross_gross_exposure(self, value: Decimal) -> None:
+        self._state.cross_gross_exposure = value
+
+    @property
+    def _peak_equity(self) -> Decimal | None:
+        return self._state.peak_equity
+
+    @_peak_equity.setter
+    def _peak_equity(self, value: Decimal | None) -> None:
+        self._state.peak_equity = value
+
+    @property
+    def _total_pnl(self) -> Decimal:
+        return self._state.total_pnl
+
+    @_total_pnl.setter
+    def _total_pnl(self, value: Decimal) -> None:
+        self._state.total_pnl = value
+
+    @property
+    def _exchange_health(self) -> dict[str, Decimal]:
+        return self._state.exchange_health
+
+    @_exchange_health.setter
+    def _exchange_health(self, value: dict[str, Decimal]) -> None:
+        self._state.exchange_health = value
 
     # ------------------------------------------------------------------
     # Public API
