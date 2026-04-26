@@ -255,18 +255,17 @@ Stage 6: 24H → LiveGate 6-check + Sharpe>2.0, MDD<5%, 일일 PnL 양수 (최�
 ```
 DATA_MODE=synthetic     → Backtest (GBM 합성 데이터)
 DATA_MODE=real_public   → Paper   (실 WebSocket, 가상 실행, 기능 검증)
-DATA_MODE=shadow        → Paper   (실 WebSocket, 가상 실행, 전체 지표+LiveGate — UI 표시명 "Paper"로 통일, US-430)
 EXECUTION_MODE=live     → Live    (실 거래, LiveGate 통과 후)
 ```
 
-> **US-430 (Shadow→Paper 리네임)**: `shadow` DATA_MODE 값은 코드에서 계속 지원되지만 UI/문서의 표시명은 "Paper"로 통일. 기능 검증(real_public) vs 수익성 검증(shadow) 구분은 내부적으로 유지.
+> **모드 정의 (master statement)**: 모드는 backtest/paper/live 3개. `shadow`는 폐기됨 (DEPRECATED 2026-04-26). `DATA_MODE=shadow`는 코드 backward-compat alias로 `src/modes/shadow.py`가 `paper.py`로 forward shim 처리. 신규 코드에서 shadow import 금지.
 
 ### Paper 모드 단계 구분 (내부)
 
 | DATA_MODE | UI 표시 | 목적 | 지표 | LiveGate |
 |-----------|---------|------|------|----------|
 | real_public | Paper | 파이프라인 기능 검증 ("작동하는가?") | 없음 | 없음 |
-| shadow | Paper | 수익성 검증 ("돈이 되는가?") | Prometheus + TimescaleDB 전체 기록 | 6-check 게이트 평가 |
+| ~~shadow~~ (legacy, backward-compat alias → paper) | Paper | 수익성 검증 ("돈이 되는가?") — **DEPRECATED 2026-04-26**: `shadow`는 모드 아님. `src/modes/shadow.py`는 paper.py forward shim. 신규 코드 사용 금지. | Prometheus + TimescaleDB 전체 기록 | 6-check 게이트 평가 |
 
 ### LiveGate 전환 기준 (6-check AND)
 
@@ -324,17 +323,17 @@ Engine.run()
 
 | 메서드 | 경로 | 인증 | 설명 |
 |--------|------|------|------|
-| GET | `/api/v1/shadow/stats` | JWT | Shadow 실시간 메트릭 (PnL, WR, MDD, 전략별 breakdown) |
+| GET | `/api/v1/shadow/stats` | JWT | Paper 실시간 메트릭 (PnL, WR, MDD, 전략별 breakdown) — **endpoint name은 legacy (backward-compat). 코드 변경 없이 유지. 모드명은 paper.** |
 | GET | `/api/v1/portfolio-summary` | JWT | 총자산 + 거래소별 잔고 (VirtualBalanceTracker 기반, exchange_status fallback) |
 | GET | `/api/v1/portfolio/equity-curve` | JWT | 자본 곡선 시계열 데이터 (US-108) |
 | GET | `/api/v1/portfolio/metrics` | JWT | Sharpe/MDD/Calmar 리스크 메트릭스 (US-108) |
-| PATCH | `/api/v1/settings/mode` | JWT | 실행 모드 전환 (shadow/paper/live, LiveGate 체크 포함) (US-107) |
+| PATCH | `/api/v1/settings/mode` | JWT | 실행 모드 전환 (backtest/paper/live, LiveGate 체크 포함) (US-107) — shadow는 legacy alias, 신규 호출 금지 |
 | GET | `/exchanges` | JWT | 거래소 연결 상태 + 잔고 (balance.USDT) |
 | GET | `/risk/metrics` | JWT | Kill Switch/Circuit Breaker 상태 + MDD |
 | WS | `/ws` | JWT (query/cookie) | 실시간 state_update 브로드캐스트 (1s 간격, shadow_stats 포함) |
 | WS | `/ws/feed` | JWT (query/cookie) | 실시간 이벤트 피드 (거래/신호/경고 브로드캐스트) |
 
-**Shadow 데이터 흐름**: `PaperMode._metrics` (shadow.py 내 PaperMode 클래스) → `get_snapshot()` (thread-safe dict) → `EngineContext.shadow_mode` → `/api/v1/shadow/stats` (REST) + WS `_dashboard_feed_loop` (1s 간격) → `ShadowPanel.tsx` 렌더링
+**Paper 메트릭 데이터 흐름** (legacy 경로명 유지, backward-compat): `PaperMode._metrics` (`src/modes/shadow.py` → `paper.py` forward shim) → `get_snapshot()` (thread-safe dict) → `EngineContext.shadow_mode` (legacy field명) → `/api/v1/shadow/stats` (REST, **endpoint name은 legacy**) + WS `_dashboard_feed_loop` (1s 간격) → `ShadowPanel.tsx` 렌더링 — **DEPRECATED 2026-04-26**: 경로명/필드명은 backward-compat 유지이지만 모드명은 paper. shadow를 신규 설계에서 참조 금지.
 
 **ShadowStats 타입** (`dashboard/src/types/index.ts`):
 - `total_pnl`, `win_rate`, `total_trades`, `max_drawdown`
