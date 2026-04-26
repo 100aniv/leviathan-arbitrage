@@ -4,6 +4,30 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added (2026-04-26) — Phase 1+2 단일 배관 통합 (사장님 지시: "리팩토링인데 제대로 배관 공사 통합")
+- 사장님 지적 audit (병렬 multi-agent): paper/live/backtest 동일 배관 미달 + Day 0-15 활성화 0/7 (engine/.env 부재) + 산업 표준 (Hummingbot/NautilusTrader/LEAN) SHARED 배관 일치
+- **Phase 1 — engine.json feature_flags 통합 (`69f7f76`)**:
+  - `engine/config/engine.json`에 `feature_flags` section 신설 (단일 진실 소스)
+  - 5/7 flag ON: JOURNAL, STATE_MACHINE, ROUTER, REAL_ADV, PRETRADE_VALIDATOR
+  - 2/7 OFF (보수적): PARALLEL_LEGS (HIGH risk), SUPERVISOR (Phase 3 통합 후)
+  - `get_bool_flag()` 해결 우선순위: env > engine.json.feature_flags > default
+- **Phase 2A — PaperMode inject slots (`2a06966`)**:
+  - PaperMode.__init__ — pre_trade_validator + execution_journal 파라미터 추가 (default None = backward-compat)
+  - _execute_paper_trade_request 진입점에 validator.validate() + journal.append SENT 호출
+  - code-reviewer APPROVE (CRITICAL/HIGH 0, MEDIUM 1 fix, LOW 2 fix)
+- **Phase 2B — main.py 의존성 wiring (`f2285ab`, `0572669`)**:
+  - PreTradeValidator 21개 의존성 stub: paper용 lambda + DeduplicationGate(window_s=10)
+  - ExecutionJournal start() + SQLite WAL 자동 초기화 at engine/logs/paper_execution_journal.db
+  - code-reviewer REJECT → fix 적용:
+    - CRITICAL: ExecutionJournal.start() (initialize() 아님)
+    - CRITICAL: halt_local module-level 함수 (KillSwitch attribute 아님)
+    - HIGH: session_loss_supplier paper _stats.total_pnl 추적
+    - MEDIUM: journal path 2-hop 일관
+    - ValidationResult.approved 사용 (allowed 아님)
+- **단일 배관 plan 문서**: `engine/docs/plans/single-pipeline-integration.md` (Phase 3 shadow.py 모놀리스 폐기 2-3d)
+- **메모리 추가**: `feedback_pipeline_must_be_unified.md` + `feedback_config_no_fragmentation.md`
+- 검증: pytest 5056 pass / 14 skipped × 5회 (각 commit) ZERO regression
+
 ### Fixed (2026-04-26) — Refactor follow-up audit + WS-3 None-safety + FF stale gate
 - **WS-1/2/3 + BUG-94 6 commits 독립 감사** (병렬 multi-agent): NO_ROLLBACK 결정. 구조적으로 정상 (BUG-94 `_pending_position_metadata` 5-경로 cleanup 검증, WS-3 `_position_sizes` rollback 검증, WS-1 trading.json 잔재 0건). 2 follow-up fix 발견.
 - `engine/src/risk/position_manager.py:142` — `update_position()` None-safety 누수 수정. `dual_writer=None` paper 모드 crash 차단. `close_position` 패턴 미러 (try/except + warning log).
