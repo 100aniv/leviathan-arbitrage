@@ -138,7 +138,7 @@ python -m src.main
 - crash 0
 - PnL > 0
 
-상세 절차: `engine/docs/OPERATOR_RUNBOOK.md §0.5 Pre-canary 점검`. 2026-04-21 14h 카나리는 universe_matrix=0으로 trade 0건이었음 — 같은 함정 재발 방지 룰.
+상세 절차: `engine/docs/OPERATOR_RUNBOOK.md §0.5 Pre-test 점검 (paper)`. 2026-04-21 14h paper 시뮬레이션은 universe_matrix=0으로 trade 0건이었음 — 같은 함정 재발 방지 룰. (paper는 카나리 아님 — 카나리는 라이브 소액)
 
 ### 5. Run tests
 
@@ -185,7 +185,7 @@ Progress tracker: `engine/docs/REFACTOR_PLAN.md`
 | Order state lifecycle | scattered booleans | 9-state machine (`01d9d12`) |
 | Regression | 4,996 pass | 5,053 pass / 14 skipped |
 
-**Next**: Gate 재실행 (universe_matrix=34 환경) — 30분 → 60분 → 6h → 24h → 48h paper canary, 7 criteria. Live 재개는 Gate 통과 후.
+**Next**: Gate 재실행 (universe_matrix=34 환경) — 30분 → 60분 → 6h → 24h → 48h paper 안정성 검증, 7 criteria. **그 다음** 라이브 micro 카나리 ($10/trade × 48H) 진입 결정. paper는 카나리 아니고 시뮬레이션 검증임.
 
 ---
 

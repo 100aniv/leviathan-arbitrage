@@ -201,9 +201,9 @@ python -m pytest tests/integration/ --no-cov
 | Post-Day-15 | Review remediation (CRITICAL+HIGH+MEDIUM) | ✅ | `5a276f5` `556ffb7` |
 | Paper fix | universe_matrix 0→34 (14h canary 무효 인정) | ✅ | `3d37e91` `e5a28b2` |
 | Doc sync | SSOT/PRD/CHANGELOG/RUNBOOK 6 mismatch 정정 | ✅ | `f304355` ~ `f31d410` |
-| Gate | 48H paper canary + 7 criteria | 🟡 재실행 필요 (universe_matrix=34 환경) |
+| Gate | 48H paper 안정성 검증 + 7 criteria → 라이브 micro 카나리 진입 결정 | 🟡 재실행 필요 (universe_matrix=34 환경) |
 
-**중요**: 14H 카나리(PID 45822, 2026-04-21~22)는 universe_matrix entries=0으로 무효. 수정 후 5분 dry-run 검증 (entries=34, trade=5/$2.18 PnL 양수). 다음 단계: 30분 → 60분 → 6h → 24h → 48h Gate 재실행. **Pre-canary check** 절차 필수 (`docs/OPERATOR_RUNBOOK.md §0.5`).
+**중요**: 14H paper 시뮬레이션(PID 45822, 2026-04-21~22)은 universe_matrix entries=0으로 무효. 수정 후 5분 dry-run 검증 (entries=34, trade=5/$2.18 PnL 양수). 다음 단계: 30분 → 60분 → 6h → 24h → 48h paper 안정성 Gate 재실행 → 라이브 micro 카나리 ($10/trade) 진입 결정. **Pre-test check (paper)** 절차 필수 (`docs/OPERATOR_RUNBOOK.md §0.5`). paper는 시뮬레이션 검증이지 카나리 아님.
 
 ## References
 

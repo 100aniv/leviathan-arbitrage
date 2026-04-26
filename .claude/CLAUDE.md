@@ -193,12 +193,12 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 2. **도구 활용 (CLI 우선)**:
    - **GitHub**: `gh` CLI로 push, PR, issue 관리
    - **테스트**: `cd engine && python -m pytest tests/ -x --tb=short`
-   - **Shadow 실행**: `cd engine && timeout 600 python -m src.main`
+   - **Paper 실행**: `cd engine && timeout 600 python -m src.main` (모드는 backtest/paper/live 3개. shadow는 폐기됨.)
    - **Docker**: `docker compose up -d timescaledb redis && docker compose ps` (compose 'engine' 서비스는 로컬 python과 port 8000 충돌 — DB/Redis만 기동)
    - **Exa.ai**: 리서치 시 `mcp__exa__web_search_exa` 사용
 
 3. **완료 기준**: 단위테스트 통과만으로 Phase 완료 선언 금지.
-   반드시 Shadow 10분 실행 후 PnL > 0, crash 0건 확인.
+   반드시 Paper 10분 실행 후 PnL > 0, crash 0건 확인. (Paper는 시뮬레이션 검증이지 카나리 아님 — 라이브 micro 카나리는 별도 게이트.)
 
 ## 팀 구조 (5팀 체제)
 
@@ -207,7 +207,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 | 기획팀 | architect(opus), planner(opus), analyst(opus) | SSOT 읽기, 리서치, 태스크 분해, 우선순위 |
 | 개발팀 | executor(sonnet), deep-executor(opus), build-fixer(sonnet), designer(sonnet) | 구현, 빌드 수정, UI 반영 |
 | 퀀트팀 | scientist(sonnet), analyst(opus), quant-validator | 수학 검증, 백테스트, 파라미터 민감도 |
-| 테스트팀 | test-engineer(sonnet), qa-tester(sonnet), shadow-tester | 단위/통합/Shadow 테스트, E2E |
+| 테스트팀 | test-engineer(sonnet), qa-tester(sonnet), shadow-tester(legacy name, paper 검증 전담) | 단위/통합/Paper 테스트, E2E |
 | 검증팀 | code-reviewer(opus), security-reviewer(sonnet), critic(opus), ssot-keeper, browser-verifier(sonnet) | 코드 리뷰, 보안, SSOT 업데이트, Chrome 브라우저 검증(Kazuha) |
 
 **사이클**: 기획→개발→퀀트→테스트→검증→(gaps→기획 복귀, 없으면 commit+push+SSOT 업데이트)
@@ -215,7 +215,7 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 ## 커스텀 에이전트 (.claude/agents/)
 
 - `quant-validator` — 슬리피지/마찰력/수익성 수학 검증 + ML 모델 수학 검증
-- `shadow-tester` — Shadow 모드 실 실행 및 결과 분석 + ML Canary 검증
+- `shadow-tester` (legacy name, 실제 역할: paper 모드 검증) — Paper 모드 실 실행 및 결과 분석 + ML 모델 paper 검증
 - `ssot-keeper` — SSOT.md 유일 관리자
 - `browser-verifier` — Chrome 브라우저 대시보드 통합 검증
 - `ml-pipeline` — HMM 레짐 분류, XGBoost 학습, ONNX 추론 파이프라인
@@ -318,8 +318,8 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 
 - **Paper 어댑터는 config 기반으로 생성** — `_init_paper_exchanges`는 config의 `exchanges.active`(7개)를 그대로 사용. paper_binance/paper_okx 같은 하드코딩 절대 금지. 거래소 ID는 data collector ID와 일치 (binance, bitget, ...).
 - **PaperExchangeAdapter는 ExchangeAdapter Protocol 완전 구현** — `_market_type` 속성 (`_futures` suffix → "futures", else "spot"), `supports_symbol(symbol)`, `get_min_notional(symbol)` 메서드 필수. 누락 시 universe_matrix=0.
-- **universe_matrix entries=0이면 즉시 paper 카나리 중단** — 어떤 trade도 발생 불가. CLAUDE.md "Shadow 10분 PnL > 0" 규칙은 entries > 0 전제.
-- **Day N 완료 게이트**: pytest pass + Shadow 10분 + `universe_matrix entries > 0` + `trade_request_executed >= 1`. 4개 동시 충족 안 되면 Day 완료 선언 금지.
+- **universe_matrix entries=0이면 즉시 paper 시뮬레이션 중단** — 어떤 trade도 발생 불가. CLAUDE.md "Paper 10분 PnL > 0" 규칙은 entries > 0 전제. (paper는 시뮬레이션이지 카나리 아님 — 라이브 micro 카나리는 별도 게이트.)
+- **Day N 완료 게이트**: pytest pass + Paper 10분 + `universe_matrix entries > 0` + `trade_request_executed >= 1`. 4개 동시 충족 안 되면 Day 완료 선언 금지.
 - **K-PT/Paper 케이스에 ac_override 사용 금지** — 기준 충족 못 하는 케이스를 ac_override로 PASS 선언하면 거짓양성 누적.
 - **참조**: 메모리 `feedback_paper_universe_matrix_zero_trap.md` (2026-04-22)
 

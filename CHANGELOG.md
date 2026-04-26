@@ -225,7 +225,7 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [v2.0.0-path-b] — 2026-04-21
 
-Path-B v2 structural refactor complete (Day 0-15 + W3 + W4). Execution boundary: Journal + StateMachine + Router + parallel legs. Live re-enable BLOCKED until Gate passes 48H paper canary + 7 criteria.
+Path-B v2 structural refactor complete (Day 0-15 + W3 + W4). Execution boundary: Journal + StateMachine + Router + parallel legs. Live re-enable BLOCKED until Gate passes 48H paper 안정성 검증 + 7 criteria → 라이브 micro 카나리 ($10/trade × 48H) 진입 결정. (paper는 시뮬레이션이지 카나리 아님.)
 
 | Commit | Deliverable |
 |--------|-------------|
@@ -246,7 +246,7 @@ Path-B v2 structural refactor complete (Day 0-15 + W3 + W4). Execution boundary:
 **LOC deltas**: live.py 3,476→3,250 (−226), main.py 4,194→4,228 (+34), atomic.py +50 (try_ioc), executor.py 1,587→1,793 (+206 state machine wiring).
 **Test delta**: +72 new tests across Day 6-15; total regression 4,996 pass / 13 pre-existing failures (unrelated).
 **Feature flags**: 7 flags, all default false — rollback = set false in .env.
-**Gate pending**: 48H paper canary + 7 criteria (plan §5). Live re-enable BLOCKED until Gate passes.
+**Gate pending**: 48H paper 안정성 검증 + 7 criteria (plan §5) → 라이브 micro 카나리 ($10/trade × 48H) 진입 결정. (paper는 시뮬레이션이지 카나리 아님.)
 
 ## [Path-B v2 — Unreleased (original entries)] — 2026-04-20
 

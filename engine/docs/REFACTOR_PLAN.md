@@ -207,7 +207,7 @@ New modules (all opt-in, main.py untouched):
 
 Refactor aborts (revert to Path A, accept risk) if any of:
 1. After 1 week, first extracted module cannot be unit-tested without importing monoliths
-2. After 2 weeks, engine_pnl vs exchange_pnl divergence > 5% on paper canary (model itself wrong)
+2. After 2 weeks, engine_pnl vs exchange_pnl divergence > 5% on paper 시뮬레이션 (model itself wrong; paper는 카나리 아님)
 3. Any `fix(phoenix): BUG-XXX` commit during refactor window that isn't paired with reconciler-verified evidence
 
 ## Anti-Patterns (FROZEN — both operator + AI)
