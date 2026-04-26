@@ -440,134 +440,24 @@ class Engine:
     # ------------------------------------------------------------------
 
     async def _init_exchanges(self) -> None:
-        from src.core.config import EngineMode
-        capital = self._settings.capital.initial_capital if self._settings else Decimal("70")
-
-        # Phase H-2: route by EngineMode from config/engine.json
-        # Use getattr fallback for test scenarios where full _init_infrastructure hasn't run
-        _engine_mode = getattr(self, "_engine_mode", None)
-        if _engine_mode is None:
-            # Derive from execution_mode when _engine_mode is not yet initialised
-            from src.core.config import ExecutionMode
-            _exec = getattr(self._settings, "execution_mode", None) if self._settings else None
-            _engine_mode = (
-                EngineMode.PAPER
-                if _exec in (ExecutionMode.PAPER, None)
-                else EngineMode.LIVE
-            )
-        if _engine_mode in (EngineMode.BACKTEST, EngineMode.PAPER):
-            await self._init_paper_exchanges(capital)
-        elif _engine_mode == EngineMode.LIVE:
-            await self._init_live_exchanges()
-
-        logger.info("Initialized %d exchange adapters: %s",
-                     len(self._exchanges), list(self._exchanges.keys()))
+        from src.runtime.exchange_init import init_exchanges
+        await init_exchanges(self)
 
     async def _init_paper_exchanges(self, capital: Decimal) -> None:
-        """Create one PaperExchangeAdapter per configured exchange.
-
-        Previously hardcoded 2 adapters (paper_binance, paper_okx) disconnected
-        from config. This caused ``self._exchanges`` to have 2 keys while
-        data collectors ran on all ``exchanges.active`` (usually 7). The
-        ``UniverseMatrix`` built entries=0 because 2 exchanges provided
-        insufficient valid (strategy, symbol, leg_a, leg_b) tuples.
-
-        Fix (2026-04-22): match ``self._active_exchanges`` (from
-        engine.json ``exchanges.active``). IDs match data collector
-        exchange IDs so executor can route TradeRequests via
-        ``self._exchanges[trade_request.buy_exchange]``.
-
-        Note: PaperExchangeAdapter still generates synthetic GBM orderbooks
-        — this step only fixes the routing mismatch. Follow-up (post-
-        measurement): replace synthetic pricing with live WS book snapshot.
-        """
-        from src.execution.paper import PaperExecutor, SlippageModel
-        from src.execution.paper_adapter import PaperExchangeAdapter
-
-        exchanges = self._active_exchanges or _get_fallback_exchanges()
-
-        # Alternating spread injection sign so cross-exchange pairs can
-        # generate arb signals within the synthetic orderbook model.
-        for idx, eid in enumerate(exchanges):
-            executor = PaperExecutor(
-                fee_rate=Decimal("0.001"),
-                slippage_model=SlippageModel(base_slippage_pct=Decimal("0.0005")),
-            )
-            adapter = PaperExchangeAdapter(
-                exchange_id=eid,
-                initial_capital=capital,
-                paper_executor=executor,
-                spread_injection_rate=0.03,
-                spread_injection_bps=25 if idx % 2 == 0 else -25,
-                tick_interval=0.5,
-            )
-            await adapter.connect()
-            self._exchanges[eid] = adapter
-            logger.info("paper adapter initialized: %s (idx=%d, spread_bps=%d)",
-                        eid, idx, 25 if idx % 2 == 0 else -25)
+        from src.runtime.exchange_init import init_paper_exchanges
+        await init_paper_exchanges(self, capital)
 
     async def _init_sandbox_exchanges(self) -> None:
-        # BUG-151: legacy ccxt path removed, native adapters only.
-        # `settings.trading.use_native_adapters` flag 이제 obsolete (읽지 않음).
-        exchanges = self._active_exchanges or _get_fallback_exchanges()
-        await self._init_native_exchanges(exchanges, sandbox=True)
+        from src.runtime.exchange_init import init_sandbox_exchanges
+        await init_sandbox_exchanges(self)
 
     async def _init_live_exchanges(self) -> None:
-        from src.core.config import load_engine_config
-
-        # Phase H-2: Shadow uses shadow.exchanges, Live uses live.exchanges from config
-        _engine_cfg = load_engine_config()
-        _em = getattr(self, "_engine_mode", None)
-        _mode_cfg = _engine_cfg.get(_em.value, {}) if _em is not None else {}
-        _cfg_exchanges = _mode_cfg.get("exchanges")
-
-        exchanges = _cfg_exchanges or self._active_exchanges or _get_fallback_exchanges()
-
-        # Native adapters are the default for shadow/live (native)
-        await self._init_native_exchanges(exchanges, sandbox=False)
+        from src.runtime.exchange_init import init_live_exchanges
+        await init_live_exchanges(self)
 
     async def _init_native_exchanges(self, exchanges: list[str], sandbox: bool) -> None:
-        """Create and connect native (native) adapters for each exchange."""
-        from src.infra.exchange import create_native_adapter
-
-        # Non-standard credential field name mapping for exchanges that differ from
-        # the default {eid}_api_key / {eid}_api_secret pattern.
-        _CRED_FIELD_MAP: dict[str, tuple[str, str]] = {
-            "upbit": ("upbit_access_key", "upbit_secret_key"),
-            "coinone": ("coinone_access_token", "coinone_api_secret"),
-        }
-        ex_cfg = self._settings.exchange if self._settings else None
-        for eid in exchanges:
-            try:
-                _base_eid = eid.removesuffix("_futures") if eid.endswith("_futures") else eid
-                _key_field, _secret_field = _CRED_FIELD_MAP.get(
-                    _base_eid, (f"{_base_eid}_api_key", f"{_base_eid}_api_secret")
-                )
-                api_key = getattr(ex_cfg, _key_field, "") if ex_cfg else ""
-                api_secret = getattr(ex_cfg, _secret_field, "") if ex_cfg else ""
-                passphrase = getattr(ex_cfg, f"{_base_eid}_passphrase", "") if ex_cfg else ""
-                # PHOENIX: futures exchanges share base exchange API keys
-                # (e.g. binance_futures → binance, bitget_futures → bitget)
-                if not api_key and eid.endswith("_futures") and ex_cfg:
-                    _base = eid.removesuffix("_futures")
-                    _k, _s = _CRED_FIELD_MAP.get(_base, (f"{_base}_api_key", f"{_base}_api_secret"))
-                    api_key = getattr(ex_cfg, _k, "")
-                    api_secret = getattr(ex_cfg, _s, "")
-                    passphrase = getattr(ex_cfg, f"{_base}_passphrase", "")
-                adapter = create_native_adapter(
-                    exchange_id=eid,
-                    api_key=api_key,
-                    api_secret=api_secret,
-                    passphrase=passphrase,
-                    sandbox=sandbox,
-                )
-                await adapter.connect()
-                self._exchanges[eid] = adapter
-                logger.info("Native adapter connected: %s (sandbox=%s)", eid, sandbox)
-            except ValueError as exc:
-                logger.warning("Native adapter not available for %s: %s", eid, exc)
-            except Exception as exc:
-                logger.warning("Native adapter connect failed for %s: %s", eid, exc)
+        from src.runtime.exchange_init import init_native_exchanges
+        await init_native_exchanges(self, exchanges, sandbox)
 
     # ------------------------------------------------------------------
     # Step 4: Signal Pipeline
