@@ -4,6 +4,25 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added (2026-04-27) — Phase 8 완성: paper/live 단일 배관 통합 (4 Steps)
+
+#### Phase 8 Step 4: unified function (사장님 메모리 정합 완료)
+- `03250ee`: _build_livemode_runner helper 추가 (paper/live 단일 LiveMode 빌더)
+- `5ccd9bc`: paper_mode_loop이 helper 호출 (LiveMode 인스턴스화 30 LOC → 8 LOC)
+- `f54f6f8`: live_mode_loop도 helper 호출 (29 LOC → 10 LOC, paper와 통일)
+- mode_loops.py: 826 → 757 LOC (-69, 코드 중복 제거)
+- mode 분기점 3개만 모드별 다름 (사장님 메모리 룰: adapter/data_feed/risk_gate)
+
+#### Phase 8 Step 3: ShadowMode 폐기
+- `0dd7f83`: paper_mode_loop의 ShadowMode 분기 80 LOC 제거
+- engine.json PAPER_USE_LIVEMODE flag 제거 (LiveMode 항상 사용)
+- 단위 테스트 6/6 PASS
+
+#### Phase 8 Step 2: PAPER_USE_LIVEMODE=true 활성 + paper smoke 검증
+- `34f734a`: engine.json flag=true 활성
+- PID 42459 (9시간+ ShadowMode legacy) 종료 → PID 15670 (LiveMode unified) 시작
+- 검증 통과: ListenerFactory.built 14 listeners, paper에서 dispatcher 활성
+
 ### Added (2026-04-27) — Phase 8 Step 1: paper 단일 배관 통합 시작 (사장님 메모리 정합)
 
 #### 사장님 지적 + Critic agent REJECT 판정
