@@ -458,8 +458,8 @@ async def paper_mode_loop(engine: "Engine") -> None:
     try:
         from src.collectors.funding_rate_collector import FundingRateCollector
         # Phase 8 Step 3 (2026-04-27): ShadowMode 폐기. paper_mode_loop은 항상 LiveMode 사용.
-        # PAPER_USE_LIVEMODE flag는 코드 단순화로 제거 (단일 배관 항상 활성).
-        from src.modes.live import LiveMode  # Phase 8 단일 배관
+        # Step 4: LiveMode 인스턴스화는 _build_livemode_runner helper로 추출.
+        # NIT fix (Codex Step 4 review): unused `from src.modes.live import LiveMode` 제거.
 
         symbols = engine._settings.trading.symbols if engine._settings else ["BTC/USDT"]
         exchanges = engine._active_exchanges or _get_fallback_exchanges()

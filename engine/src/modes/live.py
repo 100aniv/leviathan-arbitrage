@@ -559,19 +559,27 @@ class LiveMode(BaseMode):
             )
 
         # Step 1.5: Telegram approval gate (fail-closed, US-364)
-        try:
-            from src.infra.approval_gate import request_live_approval  # noqa: PLC0415
-            approved = await request_live_approval(
-                stage="K-L",
-                details="Live 모드 진입 준비 완료 (K-L). 승인 시 실거래 시작.",
+        # Phase 8 Codex BLOCKING #1 fix (2026-04-27): paper에서 approval gate skip.
+        # paper는 시뮬레이션이므로 라이브 승인 불필요. live 모드만 approval 요구.
+        if self._execution_mode == "live":
+            try:
+                from src.infra.approval_gate import request_live_approval  # noqa: PLC0415
+                approved = await request_live_approval(
+                    stage="K-L",
+                    details="Live 모드 진입 준비 완료 (K-L). 승인 시 실거래 시작.",
+                )
+                if not approved:
+                    logger.warning("live_mode.approval_rejected — aborting live start")
+                    raise LiveGateFailed("Live approval rejected or timed out")
+            except LiveGateFailed:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                raise LiveGateFailed(f"approval_gate_error: {exc}") from exc
+        else:
+            logger.info(
+                "live_mode.approval_gate_skipped execution_mode=%s (Phase 8: paper에서 approval 불필요)",
+                self._execution_mode,
             )
-            if not approved:
-                logger.warning("live_mode.approval_rejected — aborting live start")
-                raise LiveGateFailed("Live approval rejected or timed out")
-        except LiveGateFailed:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            raise LiveGateFailed(f"approval_gate_error: {exc}") from exc
 
         # Step 1.9: Preflight position check — MUST run before starting strategies/collectors
         # (moved here from post-collector position to prevent race condition: tasks were
