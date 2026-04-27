@@ -1,8 +1,20 @@
 # LEVIATHAN Operator Runbook
 
 > 사장님이 매일 아침 확인해야 할 최소 체크리스트, 주요 메트릭 해석, 알람 대응 절차.
-> 업데이트: 2026-04-27 (Phase 5/6/7 Hexagonal Architecture 완료 후 기준)
+> 업데이트: 2026-04-27 (Phase 8 완성: paper/live 단일 배관 통합)
 > **용어 정정**: 모드는 `backtest` / `paper` / `live` 3개뿐. 카나리(canary)는 라이브 소액 모니터링이며 paper에는 적용 안 됨.
+
+## Phase 8 완성 (2026-04-27, 사장님 메모리 `feedback_pipeline_must_be_unified.md` 정합)
+
+paper/live 단일 배관 통합 완료. mode_loops.py 826 → 757 LOC (-69 코드 중복 제거).
+
+- `_build_livemode_runner()` helper (engine/src/runtime/mode_loops.py): paper/live 단일 LiveMode 빌더
+- 모드 분기점 3개만 모드별 다름 (사장님 룰):
+  - execution_mode: "paper" | "live"
+  - risk_guardian: paper=None vs live=engine._risk_guardian
+  - live_gate: paper=None vs live=engine._live_gate
+- ShadowMode 폐기 (paper_mode_loop의 분기 코드 80 LOC 제거)
+- paper에서도 LiveMode + dispatcher + 14 listeners + Day 6-15 모듈 자동 활성
 
 ---
 

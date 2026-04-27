@@ -1,6 +1,6 @@
 # LEVIATHAN Path-B Refactor Plan
 
-**Status**: ACTIVE — Phase 8 Step 1 (paper 단일 배관 통합 시작) | **Started**: 2026-04-19 | **Path-B v2 Day 0-15 + W3 + W4 완료** | **Phase 5/6/7 부분 완료** (Critic REJECT — 10/12 Ports dead code, paper 5/7 미wired) | **Phase 8 Step 1 진행중**: 2026-04-27 (사장님 지적 후, 사장님 메모리 `feedback_pipeline_must_be_unified.md` 정합)
+**Status**: Phase 8 완성 — paper/live 단일 배관 통합 (4 Steps + helper) | **Started**: 2026-04-19 | **Path-B v2 Day 0-15 + W3 + W4 완료** | **Phase 5/6/7 부분 완료** (Critic REJECT — 10/12 Ports dead code, paper 5/7 미wired) | **Phase 8 완성**: 2026-04-27 (사장님 메모리 `feedback_pipeline_must_be_unified.md` 정합)
 
 ## Phase 8 — paper 단일 배관 통합 (2026-04-27)
 
