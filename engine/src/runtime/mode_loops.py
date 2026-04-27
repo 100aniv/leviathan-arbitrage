@@ -509,51 +509,21 @@ async def paper_mode_loop(engine: "Engine") -> None:
         )
 
         # Phase 8 단일 배관: LiveMode + execution_mode="paper" (paper/live 동일 코드 경로)
-        # 사장님 메모리 정합: feedback_pipeline_must_be_unified.md
-        from src.infra.exchange.min_notional_registry import MinNotionalRegistry
-        engine._min_notional_registry = MinNotionalRegistry(engine._exchanges)
-
-        # US-348: LiveMode internally wires PreTradeValidator, PaperExecutor,
-        # and BookWalkSlippage when execution_mode="paper".
-        engine._paper_mode = LiveMode(
-            signal_generator=engine._signal_generator,
-            executor=engine._executor,  # AtomicExecutor + PaperExchangeAdapter
-            strategy_manager=engine._strategy_manager,
+        # Phase 8 Step 4 (사장님 메모리 정합): _build_livemode_runner helper 호출.
+        # paper/live 동일 LiveMode 클래스 사용. 3개 분기점만 모드별 다름.
+        engine._paper_mode = _build_livemode_runner(
+            engine,
+            execution_mode="paper",
             symbols=symbols,
             exchanges=exchanges,
             multi_signal_producer=multi_signal_producer,
             funding_rate_collector=funding_rate_collector,
-            market_recorder=engine._market_recorder,
-            telegram=engine._telegram,
-            live_gate=None,  # Codex BLOCKING fix: paper에서 live_gate skip (approval gate 무용)
-            risk_guardian=None,  # Codex BLOCKING #1: paper에서 risk_guardian=None (legacy 룰 보존, 100% reject 회귀 방지)
             kill_switch=_paper_kill_switch,
-            circuit_breaker=engine._circuit_breaker,
-            regime_detector=engine._regime_detector,
-            event_bus=engine._event_bus,
-            db_pool=engine._db_pool,
-            data_quality_manager=engine._data_quality_manager,
-            flash_guard=getattr(engine, "_flash_guard", None),
-            portfolio_risk=getattr(engine, "_portfolio_risk", None),
-            execution_mode="paper",  # PaperExecutor + BookWalkSlippage 자동 wiring
-            tca_analyzer=getattr(engine, "_tca_analyzer", None),
-            slippage_feedback_collector=getattr(engine, "_slippage_fb_collector", None),
-            position_manager=engine._position_manager,
-            cost_feedback=getattr(engine, "_cost_feedback", None),
-            min_notional_registry=engine._min_notional_registry,
             strategy_filter=_strategy_filter,
         )
-        # Codex BLOCKING #2 fix: MarketRecorderListener (factory.py:104) 가
-        # `engine._live_mode._execution_mode` 참조 — paper unified 경로에서도
-        # alias 설정해야 mode='paper' 정확 기록 (DB 검증 증거 오염 방지).
+        # MarketRecorderListener (factory.py:104) 가 engine._live_mode 참조 → paper alias 설정
         engine._live_mode = engine._paper_mode
-        logger.info(
-            "paper_mode.livemode_unified pipeline enabled (Phase 8 — risk_guardian=None, "
-            "live_gate=None, _live_mode=_paper_mode alias for recorder)"
-        )
-        # Phase 8 Step 3 (2026-04-27): ShadowMode legacy 분기 폐기 완료.
-        # paper_mode_loop은 이제 항상 LiveMode + execution_mode='paper' 사용 (단일 배관).
-        # PAPER_USE_LIVEMODE flag는 backward-compat — 삭제는 다음 단계.
+        logger.info("paper_mode.unified_pipeline_built (Phase 8 Step 4)")
 
         # Common: Wire FlashGuard if available
         if engine._flash_guard is not None:

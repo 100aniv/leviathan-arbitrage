@@ -14,16 +14,24 @@ from __future__ import annotations
 
 
 def test_paper_mode_loop_always_uses_livemode() -> None:
-    """Phase 8 Step 3: paper_mode_loop은 항상 LiveMode 사용 (ShadowMode 폐기)."""
+    """Phase 8 Step 4 후: paper_mode_loop이 _build_livemode_runner helper 호출.
+
+    LiveMode 인스턴스화는 helper로 추출됨 (사장님 메모리 정합 — 단일 빌더).
+    """
     import inspect
     from src.runtime import mode_loops
     src_text = inspect.getsource(mode_loops.paper_mode_loop)
-    assert "from src.modes.live import LiveMode" in src_text, \
-        "paper_mode_loop은 LiveMode import 해야 함"
-    assert 'engine._paper_mode = LiveMode(' in src_text, \
-        "paper_mode_loop은 LiveMode 인스턴스 생성"
+    # helper 호출 검증 (Phase 8 Step 4)
+    assert "_build_livemode_runner(" in src_text, \
+        "paper_mode_loop은 _build_livemode_runner helper 호출 (단일 빌더)"
     assert 'execution_mode="paper"' in src_text, \
         "LiveMode를 paper 모드로 사용 (PaperExecutor + BookWalkSlippage 자동 wiring)"
+    # helper 자체가 LiveMode를 import + 인스턴스화 (단일 source)
+    helper_src = inspect.getsource(mode_loops._build_livemode_runner)
+    assert "from src.modes.live import LiveMode" in helper_src, \
+        "helper에서 LiveMode import"
+    assert "return LiveMode(" in helper_src, \
+        "helper에서 LiveMode 인스턴스 생성"
 
 
 def test_paper_mode_loop_no_shadowmode_branch() -> None:
@@ -53,12 +61,15 @@ def test_paper_use_livemode_flag_removed_from_engine_json() -> None:
 
 
 def test_paper_use_livemode_path_risk_guardian_none() -> None:
-    """Codex BLOCKING #1 fix 보존: paper에서 risk_guardian=None."""
+    """Codex BLOCKING #1 fix 보존: helper에서 paper일 때 risk_guardian=None.
+
+    Phase 8 Step 4 후: 분기 로직은 _build_livemode_runner helper로 이동.
+    """
     import inspect
     from src.runtime import mode_loops
-    src_text = inspect.getsource(mode_loops.paper_mode_loop)
-    assert "risk_guardian=None" in src_text, \
-        "paper 경로에서 risk_guardian=None 명시 필수 (100% reject 회귀 방지)"
+    helper_src = inspect.getsource(mode_loops._build_livemode_runner)
+    assert "risk_guardian=None if is_paper else engine._risk_guardian" in helper_src, \
+        "helper에서 paper일 때 risk_guardian=None (100% reject 회귀 방지)"
 
 
 def test_paper_use_livemode_path_recorder_alias() -> None:
@@ -71,9 +82,9 @@ def test_paper_use_livemode_path_recorder_alias() -> None:
 
 
 def test_paper_use_livemode_path_no_live_gate() -> None:
-    """Codex SUGGEST 보존: paper에서 live_gate=None (approval gate skip)."""
+    """Codex SUGGEST 보존: helper에서 paper일 때 live_gate=None (approval gate skip)."""
     import inspect
     from src.runtime import mode_loops
-    src_text = inspect.getsource(mode_loops.paper_mode_loop)
-    assert "live_gate=None" in src_text, \
-        "paper 경로에서 live_gate=None (approval gate 무용)"
+    helper_src = inspect.getsource(mode_loops._build_livemode_runner)
+    assert "live_gate=None if is_paper" in helper_src, \
+        "helper에서 paper일 때 live_gate=None (approval gate 무용)"
