@@ -194,7 +194,8 @@
     "EXECUTION_PARALLEL_LEGS_ENABLED": false,
     "EXECUTION_PRETRADE_VALIDATOR_ENABLED": true,
     "SUPERVISOR_ACTIVE": false,
-    "EXECUTION_DISPATCHER_ENABLED": true
+    "EXECUTION_DISPATCHER_ENABLED": true,
+    "PAPER_USE_LIVEMODE": false
   },
   "parallel": {
     "_comment": "Phase K K-2-ALL: \uac80\uc99d \uc644\ub8cc 4\uc870\ud569 \ubcd1\ub82c 24H \uc6b4\uc601 \uc124\uc815",

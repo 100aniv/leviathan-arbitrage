@@ -398,16 +398,25 @@ async def live_mode_loop(engine: "Engine") -> None:
 
 
 async def paper_mode_loop(engine: "Engine") -> None:
-    """Start Shadow Mode: real data + paper execution + full metrics.
+    """Start Paper Mode: real data + simulated execution + full metrics.
 
-    Creates a ShadowMode orchestrator wired to the engine's signal pipeline,
-    paper executor (power-law slippage), market recorder, and telegram alerter.
-    Optionally starts a LiveGate auto-evaluation loop.
+    Phase 8 (2026-04-27 사장님 명령): "라이브 기준으로 배관 맞춤"
+    - 단일 배관 통합 — LiveMode + execution_mode="paper" 사용 (ShadowMode 대신)
+    - 사장님 메모리: feedback_pipeline_must_be_unified.md
+    - paper에서도 live와 동일 LiveMode 클래스 + dispatcher + 14 listeners + Day 6-15 모듈 자동 wired
+    - 변경 전: ShadowMode 별도 클래스 (Day 6/12만 활성, Day 7/8/11/13/14/15 미활성)
+    - 변경 후: LiveMode + execution_mode="paper" (모든 Day 모듈 활성)
+
+    feature flag 보호: PAPER_USE_LIVEMODE (default false → 안정성 검증 후 true)
     """
     try:
         from src.collectors.funding_rate_collector import FundingRateCollector
-        from src.modes.shadow import ShadowMode
-        from src.modes.paper import PaperMode
+        # Phase 8 단일 배관: ShadowMode 대신 LiveMode 사용 (default 활성 후 검증)
+        # 변경 사유: paper에서 Day 6-15 모듈 활성화 + live와 동일 검증 경로
+        _use_livemode = get_bool_flag("PAPER_USE_LIVEMODE")
+        if not _use_livemode:
+            from src.modes.shadow import ShadowMode  # legacy fallback (Phase 8 검증 동안)
+        from src.modes.live import LiveMode  # Phase 8 단일 배관
 
         symbols = engine._settings.trading.symbols if engine._settings else ["BTC/USDT"]
         exchanges = engine._active_exchanges or _get_fallback_exchanges()
@@ -509,27 +518,63 @@ async def paper_mode_loop(engine: "Engine") -> None:
                 # review fix: traceback (silent CRITICAL 차단)
                 logger.warning("paper_mode.pre_trade_validator_init_failed: %r", exc, exc_info=True)
 
-        engine._paper_mode = ShadowMode(
-            signal_generator=engine._signal_generator,
-            paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
-            collector_manager=None,  # auto-creates CollectorManager
-            market_recorder=engine._market_recorder,
-            telegram=engine._telegram,
-            symbols=symbols,
-            exchanges=exchanges,
-            multi_signal_producer=multi_signal_producer,
-            funding_rate_collector=funding_rate_collector,
-            strategy_manager=engine._strategy_manager,
-            kill_switch=_shadow_kill_switch,
-            regime_detector=engine._regime_detector,
-            adaptive_threshold=engine._adaptive_threshold,
-            db_pool=engine._db_pool,  # US-256
-            data_quality_manager=engine._data_quality_manager,  # US-286
-            strategy_filter=_shadow_strategy_filter,  # US-299
-            portfolio_risk=engine._portfolio_risk,  # US-300
-            pre_trade_validator=_shadow_pre_trade_validator,  # Phase 2B
-            execution_journal=_shadow_execution_journal,  # Phase 2B
-        )
+        if _use_livemode:
+            # Phase 8 단일 배관: LiveMode + execution_mode="paper" 사용
+            # paper에서도 live와 동일 dispatcher + Day 6-15 모듈 자동 wired
+            from src.infra.exchange.min_notional_registry import MinNotionalRegistry
+            engine._min_notional_registry = MinNotionalRegistry(engine._exchanges)
+            engine._paper_mode = LiveMode(
+                signal_generator=engine._signal_generator,
+                executor=engine._executor,  # AtomicExecutor + PaperExchangeAdapter
+                strategy_manager=engine._strategy_manager,
+                symbols=symbols,
+                exchanges=exchanges,
+                multi_signal_producer=multi_signal_producer,
+                funding_rate_collector=funding_rate_collector,
+                market_recorder=engine._market_recorder,
+                telegram=engine._telegram,
+                live_gate=getattr(engine, "_live_gate", None),
+                risk_guardian=engine._risk_guardian,
+                kill_switch=_shadow_kill_switch,
+                circuit_breaker=engine._circuit_breaker,
+                regime_detector=engine._regime_detector,
+                event_bus=engine._event_bus,
+                db_pool=engine._db_pool,
+                data_quality_manager=engine._data_quality_manager,
+                flash_guard=getattr(engine, "_flash_guard", None),
+                portfolio_risk=getattr(engine, "_portfolio_risk", None),
+                execution_mode="paper",  # PaperExecutor + BookWalkSlippage 자동 wiring
+                tca_analyzer=getattr(engine, "_tca_analyzer", None),
+                slippage_feedback_collector=getattr(engine, "_slippage_fb_collector", None),
+                position_manager=engine._position_manager,
+                cost_feedback=getattr(engine, "_cost_feedback", None),
+                min_notional_registry=engine._min_notional_registry,
+            )
+            logger.info("paper_mode.livemode_unified pipeline enabled (Phase 8)")
+        else:
+            # Legacy: ShadowMode (Phase 8 활성 검증 후 폐기 예정)
+            engine._paper_mode = ShadowMode(
+                signal_generator=engine._signal_generator,
+                paper_executor=None,  # auto-creates with PowerLawSlippage(gamma=0.5)
+                collector_manager=None,  # auto-creates CollectorManager
+                market_recorder=engine._market_recorder,
+                telegram=engine._telegram,
+                symbols=symbols,
+                exchanges=exchanges,
+                multi_signal_producer=multi_signal_producer,
+                funding_rate_collector=funding_rate_collector,
+                strategy_manager=engine._strategy_manager,
+                kill_switch=_shadow_kill_switch,
+                regime_detector=engine._regime_detector,
+                adaptive_threshold=engine._adaptive_threshold,
+                db_pool=engine._db_pool,  # US-256
+                data_quality_manager=engine._data_quality_manager,  # US-286
+                strategy_filter=_shadow_strategy_filter,  # US-299
+                portfolio_risk=engine._portfolio_risk,  # US-300
+                pre_trade_validator=_shadow_pre_trade_validator,  # Phase 2B
+                execution_journal=_shadow_execution_journal,  # Phase 2B
+            )
+            logger.info("paper_mode.shadowmode_legacy enabled (PAPER_USE_LIVEMODE=false)")
         # SIT-3: Wire FlashGuard into ShadowMode
         if engine._flash_guard is not None:
             engine._paper_mode._flash_guard = engine._flash_guard
