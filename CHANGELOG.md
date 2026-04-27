@@ -4,6 +4,22 @@ All notable changes to LEVIATHAN are documented here per [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added (2026-04-27) — Phase 8 Step 1: paper 단일 배관 통합 시작 (사장님 메모리 정합)
+
+#### 사장님 지적 + Critic agent REJECT 판정
+- 야간 40 commits architecture theater (10/12 Ports dead code, paper에 5/7 Day 모듈 미wired)
+- "paper canary" 잘못된 용어 → paper는 시뮬레이션, canary는 라이브 소액
+- 단일 배관 미준수 — paper는 ShadowMode, live는 LiveMode 별도 클래스
+- 메모리 룰 (`feedback_pipeline_must_be_unified.md`) 정합 필요
+
+#### Phase 8 Step 1 (3 commits)
+- `a4eb86b`: paper_mode_loop에 LiveMode 옵션 추가 (PAPER_USE_LIVEMODE flag, default false)
+- `55f3629`: Codex BLOCKING fix
+  - #1 risk_guardian=None (paper bypass, 100% reject 회귀 방지)
+  - #2 engine._live_mode = engine._paper_mode alias (MarketRecorderListener 'paper' 정확 기록)
+  - 부가: live_gate=None (paper에서 approval gate skip)
+- `22105c1`: PAPER_USE_LIVEMODE flag 단위 테스트 5개 (Codex SUGGEST)
+
 ### Added (2026-04-27) — Helpers expansion + 11 Parity tests + 8 helpers total
 
 #### Helpers 8 functions (4 new today)

@@ -1,6 +1,21 @@
 # LEVIATHAN Path-B Refactor Plan
 
-**Status**: COMPLETED + EXTENDED (Phase 5/6/7) | **Started**: 2026-04-19 | **Path-B v2 Day 0-15 + W3 + W4 완료** | **Phase 5/6/7 완료**: 2026-04-27
+**Status**: ACTIVE — Phase 8 Step 1 (paper 단일 배관 통합 시작) | **Started**: 2026-04-19 | **Path-B v2 Day 0-15 + W3 + W4 완료** | **Phase 5/6/7 부분 완료** (Critic REJECT — 10/12 Ports dead code, paper 5/7 미wired) | **Phase 8 Step 1 진행중**: 2026-04-27 (사장님 지적 후, 사장님 메모리 `feedback_pipeline_must_be_unified.md` 정합)
+
+## Phase 8 — paper 단일 배관 통합 (2026-04-27)
+
+사장님 지적: 야간 40 commits는 architecture theater. 단일 배관 (paper/live/backtest 동일 코드 경로) 미준수. paper는 ShadowMode, live는 LiveMode 별도 클래스 사용.
+
+**Step 1 완료 (commits a4eb86b → 55f3629 → 22105c1)**:
+- engine/src/runtime/mode_loops.py paper_mode_loop에 LiveMode 옵션 추가 (PAPER_USE_LIVEMODE flag)
+- Codex BLOCKING fix: risk_guardian=None + _live_mode alias + live_gate=None
+- 단위 테스트 5개 + 5,205 tests pass (default false 안전)
+
+**남은 단계**:
+- Step 2: PAPER_USE_LIVEMODE=true 활성 + paper smoke 검증 (port 처리)
+- Step 3: ShadowMode 폐기 (코드 + import 제거)
+- Step 4: paper_mode_loop + live_mode_loop → unified_mode_loop 단일 함수
+- Step 5: AI CLI 다중 검증 + 라이브 micro 카나리 ($10/trade) 진입 결정
 
 ## Verdict (3-agent consensus: architect + backend-architect + critic)
 

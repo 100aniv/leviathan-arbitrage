@@ -1,8 +1,10 @@
 # LEVIATHAN Engine
 
 > Python 3.12 asyncio + Rust PyO3 hot-path crypto arbitrage engine.
-> Path-B v2 + Phase 5/6/7 Hexagonal Architecture 완료 (2026-04-26~27).
-> Mode: paper (live 거래 중단). Live re-enable 게이트는 라이브 micro 카나리 ($10/trade) 기반.
+> Path-B v2 + Phase 5/6/7 부분 완료 (Critic REJECT — 10/12 Ports dead, paper 5/7 미wired)
+> **Phase 8 Step 1 진행중 (2026-04-27)**: paper 단일 배관 통합 (LiveMode + execution_mode=paper, flag PAPER_USE_LIVEMODE)
+> Mode: paper (live 거래 중단). Live re-enable 게이트 = 라이브 micro 카나리 ($10/trade × 48H).
+> 모드 체계: backtest / paper / live (3개, shadow 폐기).
 
 ## Quick Start
 

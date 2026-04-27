@@ -307,6 +307,18 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`. Announce major behavior ac
 - env flag `EXECUTION_DISPATCHER_ENABLED` (engine.json.feature_flags) — false=legacy, true=dispatcher 경로.
 - 신규 listener 추가 시 ExecutionResultListener Protocol 준수 + factory.py 등록 + unit test 필수.
 
+## Phase 8 단일 배관 통합 룰 (2026-04-27 사장님 지적 후 시작)
+
+- **단일 배관 필수**: paper/live/backtest 동일 코드 경로 사용 (사장님 메모리 `feedback_pipeline_must_be_unified.md`). mode 분기점은 (1) Adapter 종류, (2) DataFeed (WS vs replay), (3) Risk gate 3곳만 허용.
+- **paper에서 LiveMode 사용**: paper_mode_loop이 LiveMode + execution_mode="paper" 사용. PAPER_USE_LIVEMODE flag로 ramp-up (default false 안전).
+- **paper-specific 룰** (Codex BLOCKING fix):
+  - risk_guardian=None (paper에서 live 인스턴스 공유 시 100% reject 회귀 방지)
+  - live_gate=None (paper에서 approval gate skip)
+  - engine._live_mode = engine._paper_mode alias (MarketRecorderListener 'paper' 정확 기록)
+- **canary 용어 정정**: paper는 시뮬레이션 검증, **카나리는 라이브 소액**. "paper canary" 표현 금지.
+- **"완료" 선언 절대 금지**: 코드 존재 ≠ 작동. Critic agent 독립 검증 필수.
+- **메모리 기반 작업**: 새 작업 전 사장님 메모리 (`/Users/100aniv/.claude/projects/-Users-100aniv-Development-arbitrage-OMC/memory/`) 필독.
+
 ## Paper 모드 정의 (2026-04-26 확정)
 
 - **Paper = 실제 WebSocket 데이터 (real WS) + 시뮬레이션 체결**. Synthetic GBM/spread injection 절대 금지.
