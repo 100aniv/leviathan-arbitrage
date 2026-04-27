@@ -16,6 +16,40 @@ paper/live 단일 배관 통합 완료. mode_loops.py 826 → 757 LOC (-69 코�
 - ShadowMode 폐기 (paper_mode_loop의 분기 코드 80 LOC 제거)
 - paper에서도 LiveMode + dispatcher + 14 listeners + Day 6-15 모듈 자동 활성
 
+## 라이브 micro 카나리 진입 절차 (사장님 결정 영역, Phase 8 후)
+
+**Codex + Gemini 종합 평가 (2026-04-27): "Phase 8 단일 배관 통합 완료. 즉시 라이브 micro 카나리 진입 권고."**
+
+### 사장님 결정 사항 (자본 영향)
+1. **API keys 입력** (.env 파일):
+   ```
+   BINANCE_API_KEY=...
+   BINANCE_API_SECRET=...
+   BITGET_API_KEY=...
+   BITGET_API_SECRET=...
+   BITGET_API_PASSPHRASE=...
+   ```
+2. **거래소 잔고 충전**: 최소 $50 Binance + $50 Bitget 권장 (micro 카나리 $10/trade × 5 회 + 마찰)
+3. **engine.json mode flip**: `"mode": "paper"` → `"mode": "live"`
+4. **capital tier 선택**:
+   - `step2_1` (initial $120, futures $60) — 권장 micro 카나리
+   - `alpha` (initial $70, spot $20 + futures $30 + KRW 28000)
+   - `beta` (initial $750) — 안정화 후
+5. **단일 trade loss cap = $1** (사장님 메모리 룰 — `STRATEGY_LOSS_CAP_JSON` 환경변수)
+
+### 자체 진행 (자본 영향 0)
+1. 사전 검증 스크립트: `python -m engine.scripts.live_pre_check` (3-step 검증)
+2. 거래소 open positions 0 확인: `python -m engine.scripts.check_positions`
+3. Phase 8 단일 배관 helper: ✅ 활성 (사전 검증)
+4. Telegram alert 활성 확인: `TELEGRAM_BOT_TOKEN` env
+
+### 진입 후 즉시 모니터링
+- `engine.context.execution_mode == "live"` 확인
+- Binance `/fapi/v1/income` 24H 합산 vs `engine._total_pnl` 정합 (Path-B v2 핵심 목표 — v237 -$4.92 vs +$0.09 괴리 해결 검증)
+- ListenerFactory 14 listeners 활성 (`engine._listener_dispatcher.listener_count == 14`)
+- approval gate가 live에서 작동 확인 (paper와 다름)
+- live_gate.bypass=true 상태 (engine.json) — bypass 해제 시 별도 검증 필요
+
 ---
 
 ## 0. 현재 운영 상태
