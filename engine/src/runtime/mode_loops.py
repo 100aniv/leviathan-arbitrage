@@ -403,32 +403,16 @@ async def live_mode_loop(engine: "Engine") -> None:
     from src.infra.exchange.min_notional_registry import MinNotionalRegistry
     engine._min_notional_registry = MinNotionalRegistry(engine._exchanges)
 
-    engine._live_mode = LiveMode(
-        signal_generator=engine._signal_generator,
-        executor=engine._executor,
-        strategy_manager=engine._strategy_manager,
+    # Phase 8 Step 4c (사장님 메모리 정합): _build_livemode_runner helper 사용 (paper와 통일)
+    engine._live_mode = _build_livemode_runner(
+        engine,
+        execution_mode=execution_mode,
         symbols=symbols,
         exchanges=exchanges,
         multi_signal_producer=engine._multi_signal_producer,
         funding_rate_collector=funding_rate_collector,
-        market_recorder=engine._market_recorder,
-        telegram=engine._telegram,
-        live_gate=engine._live_gate,
-        risk_guardian=engine._risk_guardian,
         kill_switch=getattr(engine, "_kill_switch", None),
-        circuit_breaker=engine._circuit_breaker,
-        regime_detector=engine._regime_detector,
-        event_bus=engine._event_bus,
-        db_pool=engine._db_pool,
-        data_quality_manager=engine._data_quality_manager,
-        flash_guard=getattr(engine, "_flash_guard", None),
-        portfolio_risk=getattr(engine, "_portfolio_risk", None),
-        execution_mode=execution_mode,
-        tca_analyzer=getattr(engine, "_tca_analyzer", None),
-        slippage_feedback_collector=getattr(engine, "_slippage_fb_collector", None),
-        position_manager=engine._position_manager,
-        cost_feedback=getattr(engine, "_cost_feedback", None),  # WS-B: shared TCAAdaptiveFeedback
-        min_notional_registry=engine._min_notional_registry,  # BUG-228c: runtime min_notional
+        strategy_filter=None,
     )
     from src.reconciliation import ExchangePnLSnapshot, PnLLedger, PnLReconciler  # Path-B Day-1
     engine._pnl_snapshot = ExchangePnLSnapshot(adapters=list(engine._exchanges.values()), db_pool=engine._db_pool)
