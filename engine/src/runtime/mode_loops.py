@@ -686,11 +686,18 @@ async def strategy_validation_loop(engine: "Engine") -> None:
 
 
 async def progressive_shadow_loop(engine: "Engine") -> None:
-    """Progressive Shadow: 6-stage automatic extension (1H→2H→6H→12H→24H→72H).
+    """DEPRECATED 2026-04-27 (Phase 8): ShadowMode 폐기로 본 함수도 폐기.
 
-    Creates ShadowMode and ProgressiveShadowOrchestrator, runs all 6 stages.
-    Enabled when SHADOW_PROGRESSIVE=true (default: false → _paper_mode_loop).
+    이전 용도: Progressive Shadow 6-stage automatic extension (1H→2H→6H→12H→24H→72H).
+    현재: paper_mode_loop이 LiveMode 단일 배관 사용. progressive shadow 개념 폐기.
+    함수 호출 시 deprecation warning + return.
     """
+    logger.warning(
+        "progressive_shadow_loop.deprecated — Phase 8 단일 배관 통합으로 본 함수 폐기. "
+        "paper_mode_loop 사용하세요."
+    )
+    return
+    # 이하 legacy 코드는 reachable code analysis로 dead code (return 위에서 종료):
     from src.collectors.funding_rate_collector import FundingRateCollector
     from src.modes.shadow import ShadowMode
     from src.modes.progressive_shadow import ProgressiveShadowOrchestrator
