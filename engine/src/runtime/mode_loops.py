@@ -605,8 +605,16 @@ async def paper_mode_loop(engine: "Engine") -> None:
     # Keep alive until cancelled
     # NOTE: Cleanup is handled exclusively by Engine.stop() to avoid
     # double-cleanup race conditions. Do NOT add cleanup here.
+    # Phase 8 Step 5+ (2026-04-27): paper에서 주기적 _HALT_FLAG.clear() — paper는 시뮬레이션이라
+    # 자본 보호 무용 + halt 잔재 발생 시 trade_consumer paused 무한 차단 방지.
+    # live는 별도 (paper_mode_loop만 영향).
     try:
+        from src.risk.kill_switch import clear_halt as _periodic_clear_halt
         while engine.state.running:
+            try:
+                _periodic_clear_halt()  # paper 안전망 — halt 잔재 5초마다 clear
+            except Exception:
+                pass
             await asyncio.sleep(5.0)
     except asyncio.CancelledError:
         pass
