@@ -493,6 +493,16 @@ async def paper_mode_loop(engine: "Engine") -> None:
         )
 
         # Phase 8 단일 배관: LiveMode + execution_mode="paper" (paper/live 동일 코드 경로)
+        # Phase 8 Step 5 (2026-04-27): paper 시작 시 명시적 _HALT_FLAG.clear()
+        # 이전 세션 잔재 또는 import 시점 의도치 않은 set 안전망.
+        # paper는 라이브 트레이드 안 하므로 halt clear 안전 (live는 별도 preflight 체크).
+        try:
+            from src.risk.kill_switch import clear_halt as _clear_halt
+            _clear_halt()
+            logger.info("paper_mode.halt_flag_cleared (Phase 8 Step 5: paper 안전 시작)")
+        except Exception as exc:
+            logger.warning("paper_mode.halt_flag_clear_failed: %s", exc)
+
         # Phase 8 Step 4 (사장님 메모리 정합): _build_livemode_runner helper 호출.
         # paper/live 동일 LiveMode 클래스 사용. 3개 분기점만 모드별 다름.
         engine._paper_mode = _build_livemode_runner(
