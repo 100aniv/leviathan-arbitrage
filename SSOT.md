@@ -1,7 +1,9 @@
 # LEVIATHAN — Single Source of Truth (SSOT)
 
 > **이 문서가 프로젝트의 유일한 설계 문서입니다. 다른 문서에 상태 정보를 기록하지 마세요.**
-> **마지막 업데이트: 2026-04-27 09:00 KST — Phase 7 완성 (12 Ports + 3 Adapters + 8 helpers + 11 parity tests + 11/14 listeners helper 적용) + 35 night commits + 5,205 tests pass**
+> **마지막 업데이트: 2026-04-27 진행 중 — Phase 8 Step 1: paper 단일 배관 통합 시작 (LiveMode + execution_mode=paper, flag PAPER_USE_LIVEMODE 도입, default false 안전)**
+> 사장님 지적 (2026-04-27): 야간 40 commits는 architecture theater (Critic agent 판정 REJECT). 단일 배관 미준수, "paper canary" 잘못된 용어, "Phase 5/6/7 완료" 거짓보고. paper에 dispatcher + Day 6-15 모듈 미활성 (5/7 미wired). Phase 8 시작 — 사장님 메모리 (`feedback_pipeline_must_be_unified.md`) 정합. 라이브 기준 배관 맞춤.
+> Phase 7 (이전 단계, 부분 완료): 12 Ports (10/12 dead code 지적) + 3 Adapters + 8 helpers + 11 parity tests + 11/14 listeners helper 적용 + 5,205 tests pass.
 > 이전 선언이었던 "commercial-grade 전환 완료"는 **철회**. 근거: v237 카나리에서 엔진 PnL +$0.09 vs 실제 Binance /fapi/v1/income -$4.92 확증 → 거짓 보고의 근본원인은 개별 버그가 아니라 `live.py` 3,249줄 + `main.py` 4,221줄 God-class 모놀리스 구조. 4개 독립 리뷰(Codex/Gemini/exa.ai/external critic) 수렴 결과 Path-B v2 (ExecutionJournal + OrderStateMachine + OrderRouter 기반 10-day atomic 리팩토링) 채택, V4 Rust 전면 재작성 기각.
 > **Live 거래 정지 중** (mode=paper, commit `606c97b`). Binance 오픈 포지션 0건 확인됨. 거래소 잔고 $10.55 (입금 $16 - 손실 $4.92).
 > PHOENIX v237까지의 BUG-73~228 패치 75+건은 유지. Path-B v2 통합 플랜: `/Users/100aniv/.claude/plans/hidden-cuddling-pascal.md` (유일한 플랜 소스).
