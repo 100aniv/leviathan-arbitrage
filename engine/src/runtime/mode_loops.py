@@ -31,6 +31,69 @@ from src.core.config_loader import get_bool_flag
 logger = logging.getLogger(__name__)
 
 
+def _build_livemode_runner(
+    engine: "Engine",
+    *,
+    execution_mode: str,
+    symbols: list[str],
+    exchanges: list[str],
+    multi_signal_producer: Any,
+    funding_rate_collector: Any,
+    kill_switch: Any,
+    strategy_filter: Any = None,
+) -> Any:
+    """Phase 8 Step 4 — paper/live 단일 LiveMode 인스턴스 빌더 (사장님 메모리 정합).
+
+    사장님 메모리 (`feedback_pipeline_must_be_unified.md`): paper/live/backtest 동일 배관.
+    paper와 live는 **3개 분기점**만 차이 (adapter, data_feed, risk_gate):
+    - execution_mode: "paper" | "live" (PaperExecutor vs AtomicExecutor 자동 분기)
+    - risk_guardian: paper=None (legacy 100% reject 회귀 방지) vs live=engine._risk_guardian
+    - live_gate: paper=None (approval skip) vs live=engine._live_gate
+
+    그 외 모든 wiring은 동일 — Day 6-15 모듈 (Journal, StateMachine, Router, PreTradeValidator,
+    BookWalkSlippage, Dispatcher, 14 Listeners) 모두 자동 활성.
+
+    Returns: LiveMode instance (paper면 engine._paper_mode + engine._live_mode alias)
+    """
+    from src.modes.live import LiveMode
+    from src.infra.exchange.min_notional_registry import MinNotionalRegistry
+
+    is_paper = execution_mode == "paper"
+    if not hasattr(engine, "_min_notional_registry") or engine._min_notional_registry is None:
+        engine._min_notional_registry = MinNotionalRegistry(engine._exchanges)
+
+    return LiveMode(
+        signal_generator=engine._signal_generator,
+        executor=engine._executor,
+        strategy_manager=engine._strategy_manager,
+        symbols=symbols,
+        exchanges=exchanges,
+        multi_signal_producer=multi_signal_producer,
+        funding_rate_collector=funding_rate_collector,
+        market_recorder=engine._market_recorder,
+        telegram=engine._telegram,
+        # Phase 8 단일 배관 — 3개 분기점 (mode flag 따라 다름)
+        live_gate=None if is_paper else getattr(engine, "_live_gate", None),
+        risk_guardian=None if is_paper else engine._risk_guardian,
+        execution_mode=execution_mode,
+        # 공통 wiring (paper/live 동일)
+        kill_switch=kill_switch,
+        circuit_breaker=engine._circuit_breaker,
+        regime_detector=engine._regime_detector,
+        event_bus=engine._event_bus,
+        db_pool=engine._db_pool,
+        data_quality_manager=engine._data_quality_manager,
+        flash_guard=getattr(engine, "_flash_guard", None),
+        portfolio_risk=getattr(engine, "_portfolio_risk", None),
+        tca_analyzer=getattr(engine, "_tca_analyzer", None),
+        slippage_feedback_collector=getattr(engine, "_slippage_fb_collector", None),
+        position_manager=engine._position_manager,
+        cost_feedback=getattr(engine, "_cost_feedback", None),
+        min_notional_registry=engine._min_notional_registry,
+        strategy_filter=strategy_filter,
+    )
+
+
 async def backtest_mode_task(engine: "Engine") -> None:
     """Run BacktestMode replay + WFA for 6 strategies, save results, then shutdown."""
     import json
