@@ -1,73 +1,79 @@
-"""Phase 8 Step 1 — PAPER_USE_LIVEMODE flag 동작 검증.
+"""Phase 8 Step 3 — paper_mode_loop 단일 배관 검증 (ShadowMode 폐기 후).
 
-Codex SUGGEST (codex-leviathan-phase-8-step-1-2026-04-27): "PAPER_USE_LIVEMODE
-경로 전용 테스트 필요 — 최소 3개: risk_guardian paper bypass, recorder mode='paper',
-approval gate not called in paper."
+Phase 8 history:
+- Step 1 (a4eb86b): PAPER_USE_LIVEMODE flag 도입 (ramp-up)
+- Step 2 (34f734a): flag=true 활성 + paper smoke 검증
+- Step 3 (this commit): ShadowMode 폐기 + PAPER_USE_LIVEMODE flag 제거 (항상 LiveMode)
 
-본 테스트는 paper_mode_loop의 LiveMode 인스턴스화 인자를 정적 검증 (full async run 대신).
+Codex BLOCKING fix는 Step 1 commit 55f3629에서 보존:
+- risk_guardian=None
+- live_gate=None
+- engine._live_mode = engine._paper_mode alias
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
 
-import pytest
-
-
-def test_paper_use_livemode_flag_default_false_in_engine_json() -> None:
-    """engine.json에 PAPER_USE_LIVEMODE=false default 확인 (안전 ramp-up)."""
-    import json
-    import pathlib
-    cfg_path = pathlib.Path(__file__).parent.parent.parent.parent / "config" / "engine.json"
-    cfg = json.loads(cfg_path.read_text())
-    assert cfg["feature_flags"]["PAPER_USE_LIVEMODE"] is False, \
-        "PAPER_USE_LIVEMODE은 default false로 안전 ramp-up. 명시적 활성 필요."
-
-
-def test_paper_mode_loop_imports_livemode_when_flag_true() -> None:
-    """get_bool_flag('PAPER_USE_LIVEMODE')==True → LiveMode 사용 path 진입 가능 검증."""
-    # 정적 검증: 코드에 LiveMode import + _use_livemode 분기 존재
+def test_paper_mode_loop_always_uses_livemode() -> None:
+    """Phase 8 Step 3: paper_mode_loop은 항상 LiveMode 사용 (ShadowMode 폐기)."""
     import inspect
     from src.runtime import mode_loops
     src_text = inspect.getsource(mode_loops.paper_mode_loop)
-    assert "LiveMode" in src_text, "paper_mode_loop이 LiveMode를 import해야 함"
-    assert "_use_livemode" in src_text, "PAPER_USE_LIVEMODE flag 분기 필요"
+    assert "from src.modes.live import LiveMode" in src_text, \
+        "paper_mode_loop은 LiveMode import 해야 함"
+    assert 'engine._paper_mode = LiveMode(' in src_text, \
+        "paper_mode_loop은 LiveMode 인스턴스 생성"
     assert 'execution_mode="paper"' in src_text, \
         "LiveMode를 paper 모드로 사용 (PaperExecutor + BookWalkSlippage 자동 wiring)"
 
 
-def test_paper_use_livemode_path_risk_guardian_none() -> None:
-    """Codex BLOCKING #1: paper LiveMode 경로에서 risk_guardian=None 명시 (legacy 룰 보존)."""
+def test_paper_mode_loop_no_shadowmode_branch() -> None:
+    """Phase 8 Step 3: ShadowMode 인스턴스 생성 분기 폐기 검증.
+
+    docstring/주석에는 "ShadowMode 폐기" 같은 history 언급 가능 — function call만 체크.
+    """
     import inspect
     from src.runtime import mode_loops
     src_text = inspect.getsource(mode_loops.paper_mode_loop)
-    # _use_livemode 블록에서 risk_guardian=None 명시
-    # ("Codex BLOCKING #1" 주석 옆에)
+    # 핵심: ShadowMode( 함수 호출 패턴 없어야 함 (인스턴스 생성 차단)
+    assert "ShadowMode(" not in src_text, \
+        "ShadowMode 인스턴스 생성 분기 제거됨 (Phase 8 Step 3)"
+    # 핵심: get_bool_flag("PAPER_USE_LIVEMODE") 호출 없어야 함 (flag 자체 사용 안 함)
+    assert 'get_bool_flag("PAPER_USE_LIVEMODE")' not in src_text, \
+        "PAPER_USE_LIVEMODE flag 호출 제거됨 (LiveMode 항상 사용)"
+
+
+def test_paper_use_livemode_flag_removed_from_engine_json() -> None:
+    """Phase 8 Step 3: engine.json에서 PAPER_USE_LIVEMODE flag 제거 (LiveMode 항상 활성)."""
+    import json
+    import pathlib
+    cfg_path = pathlib.Path(__file__).parent.parent.parent.parent / "config" / "engine.json"
+    cfg = json.loads(cfg_path.read_text())
+    assert "PAPER_USE_LIVEMODE" not in cfg["feature_flags"], \
+        "PAPER_USE_LIVEMODE flag는 Phase 8 Step 3에서 제거됨 (LiveMode 항상 사용)"
+
+
+def test_paper_use_livemode_path_risk_guardian_none() -> None:
+    """Codex BLOCKING #1 fix 보존: paper에서 risk_guardian=None."""
+    import inspect
+    from src.runtime import mode_loops
+    src_text = inspect.getsource(mode_loops.paper_mode_loop)
     assert "risk_guardian=None" in src_text, \
         "paper 경로에서 risk_guardian=None 명시 필수 (100% reject 회귀 방지)"
-    assert "Codex BLOCKING #1" in src_text, \
-        "BLOCKING #1 fix 주석 보존"
 
 
 def test_paper_use_livemode_path_recorder_alias() -> None:
-    """Codex BLOCKING #2: engine._live_mode = engine._paper_mode alias.
-
-    MarketRecorderListener가 engine._live_mode._execution_mode 참조 — paper에서도
-    'paper' 정확 기록되도록 alias 설정.
-    """
+    """Codex BLOCKING #2 fix 보존: engine._live_mode = engine._paper_mode alias."""
     import inspect
     from src.runtime import mode_loops
     src_text = inspect.getsource(mode_loops.paper_mode_loop)
     assert "engine._live_mode = engine._paper_mode" in src_text, \
         "MarketRecorderListener가 paper 모드 정확 기록하려면 alias 필수"
-    assert "Codex BLOCKING #2" in src_text, \
-        "BLOCKING #2 fix 주석 보존"
 
 
 def test_paper_use_livemode_path_no_live_gate() -> None:
-    """SUGGEST: paper에서 live_gate=None (approval gate skip)."""
+    """Codex SUGGEST 보존: paper에서 live_gate=None (approval gate skip)."""
     import inspect
     from src.runtime import mode_loops
     src_text = inspect.getsource(mode_loops.paper_mode_loop)
-    # _use_livemode 블록에서 live_gate=None
     assert "live_gate=None" in src_text, \
         "paper 경로에서 live_gate=None (approval gate 무용)"

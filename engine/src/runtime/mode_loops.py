@@ -400,21 +400,18 @@ async def live_mode_loop(engine: "Engine") -> None:
 async def paper_mode_loop(engine: "Engine") -> None:
     """Start Paper Mode: real data + simulated execution + full metrics.
 
-    Phase 8 (2026-04-27 사장님 명령): "라이브 기준으로 배관 맞춤"
-    - 단일 배관 통합 — LiveMode + execution_mode="paper" 사용 (ShadowMode 대신)
-    - 사장님 메모리: feedback_pipeline_must_be_unified.md
-    - paper에서도 live와 동일 LiveMode 클래스 + dispatcher + 14 listeners + Day 6-15 모듈 자동 wired
-    - 변경 전: ShadowMode 별도 클래스 (Day 6/12만 활성, Day 7/8/11/13/14/15 미활성)
-    - 변경 후: LiveMode + execution_mode="paper" (모든 Day 모듈 활성)
+    Phase 8 단일 배관 (2026-04-27 사장님 명령: "라이브 기준 배관 맞춤"):
+    - LiveMode + execution_mode="paper" 사용 (ShadowMode 폐기)
+    - 사장님 메모리 정합: feedback_pipeline_must_be_unified.md
+    - paper/live 동일 LiveMode 클래스 + dispatcher + 14 listeners + Day 6-15 모듈 자동 wired
 
-    feature flag 보호: PAPER_USE_LIVEMODE (default false → 안정성 검증 후 true)
+    Step history: Step 1 (a4eb86b) flag 도입 → Step 2 (34f734a) 활성 검증 →
+    Step 3 (this) flag 제거 + ShadowMode 분기 폐기.
     """
     try:
         from src.collectors.funding_rate_collector import FundingRateCollector
-        # Phase 8 단일 배관: ShadowMode 대신 LiveMode 사용 (default 활성 후 검증)
-        _use_livemode = get_bool_flag("PAPER_USE_LIVEMODE")
-        if not _use_livemode:
-            from src.modes.shadow import ShadowMode  # legacy fallback
+        # Phase 8 Step 3 (2026-04-27): ShadowMode 폐기. paper_mode_loop은 항상 LiveMode 사용.
+        # PAPER_USE_LIVEMODE flag는 코드 단순화로 제거 (단일 배관 항상 활성).
         from src.modes.live import LiveMode  # Phase 8 단일 배관
 
         symbols = engine._settings.trading.symbols if engine._settings else ["BTC/USDT"]
@@ -448,128 +445,52 @@ async def paper_mode_loop(engine: "Engine") -> None:
             if _strategy_filter_raw else None
         )
 
-        if _use_livemode:
-            # Phase 8 단일 배관: LiveMode + execution_mode="paper" 사용
-            # paper에서도 live와 동일 dispatcher + Day 6-15 모듈 자동 wired
-            from src.infra.exchange.min_notional_registry import MinNotionalRegistry
-            engine._min_notional_registry = MinNotionalRegistry(engine._exchanges)
-            
-            # US-348: LiveMode internally wires PreTradeValidator, PaperExecutor, 
-            # and BookWalkSlippage when execution_mode="paper".
-            engine._paper_mode = LiveMode(
-                signal_generator=engine._signal_generator,
-                executor=engine._executor,  # AtomicExecutor + PaperExchangeAdapter
-                strategy_manager=engine._strategy_manager,
-                symbols=symbols,
-                exchanges=exchanges,
-                multi_signal_producer=multi_signal_producer,
-                funding_rate_collector=funding_rate_collector,
-                market_recorder=engine._market_recorder,
-                telegram=engine._telegram,
-                live_gate=None,  # Codex BLOCKING fix: paper에서 live_gate skip (approval gate 무용)
-                risk_guardian=None,  # Codex BLOCKING #1: paper에서 risk_guardian=None (legacy 룰 보존, 100% reject 회귀 방지)
-                kill_switch=_paper_kill_switch,
-                circuit_breaker=engine._circuit_breaker,
-                regime_detector=engine._regime_detector,
-                event_bus=engine._event_bus,
-                db_pool=engine._db_pool,
-                data_quality_manager=engine._data_quality_manager,
-                flash_guard=getattr(engine, "_flash_guard", None),
-                portfolio_risk=getattr(engine, "_portfolio_risk", None),
-                execution_mode="paper",  # PaperExecutor + BookWalkSlippage 자동 wiring
-                tca_analyzer=getattr(engine, "_tca_analyzer", None),
-                slippage_feedback_collector=getattr(engine, "_slippage_fb_collector", None),
-                position_manager=engine._position_manager,
-                cost_feedback=getattr(engine, "_cost_feedback", None),
-                min_notional_registry=engine._min_notional_registry,
-                strategy_filter=_strategy_filter,
-            )
-            # Codex BLOCKING #2 fix: MarketRecorderListener (factory.py:104) 가
-            # `engine._live_mode._execution_mode` 참조 — paper unified 경로에서도
-            # alias 설정해야 mode='paper' 정확 기록 (DB 검증 증거 오염 방지).
-            engine._live_mode = engine._paper_mode
-            logger.info(
-                "paper_mode.livemode_unified pipeline enabled (Phase 8 — risk_guardian=None, "
-                "live_gate=None, _live_mode=_paper_mode alias for recorder)"
-            )
-        else:
-            # Legacy: ShadowMode (Phase 8 활성 검증 후 폐기 예정)
-            # 2026-04-26 Phase 2B: paper에서 Day 6 (ExecutionJournal) + Day 12 (PreTradeValidator) 활성화
-            from src.core.config_loader import get_config as _shadow_get_cfg
-            _shadow_pre_trade_validator = None
-            _shadow_execution_journal = None
-            
-            if get_bool_flag("EXECUTION_JOURNAL_ENABLED"):
-                try:
-                    import pathlib as _pl
-                    from src.execution.journal import ExecutionJournal
-                    _journal_path = _pl.Path(__file__).parent.parent / "logs" / "paper_execution_journal.db"
-                    _journal_path.parent.mkdir(parents=True, exist_ok=True)
-                    _shadow_execution_journal = ExecutionJournal(db_path=_journal_path)
-                    await _shadow_execution_journal.start()
-                    logger.info("paper_mode.shadow_legacy.execution_journal_enabled path=%s", _journal_path)
-                except Exception as exc:
-                    logger.warning("paper_mode.shadow_legacy.execution_journal_init_failed: %r", exc, exc_info=True)
-            
-            if get_bool_flag("EXECUTION_PRETRADE_VALIDATOR_ENABLED"):
-                try:
-                    from src.execution.pre_trade_validator import PreTradeValidator
-                    from src.execution.dedup import DeduplicationGate
-                    from src.risk.kill_switch import halt_local as _shadow_halt_local
-                    _shadow_dedup = DeduplicationGate(window_s=10.0)
-                    class _PaperMinNotionalStub:
-                        async def get(engine, exchange_id, symbol): return 0.0
-                    _shadow_min_notional = _PaperMinNotionalStub()
-                    _total_capital = float(_shadow_get_cfg("portfolio.total_capital_usdt", default=140.0))
-                    _max_session_loss = float(_shadow_get_cfg("risk.max_session_loss_usd", default=10.0))
-                    _shadow_pre_trade_validator = PreTradeValidator(
-                        strategy_filter=frozenset(_strategy_filter) if _strategy_filter else None,
-                        strategy_disable_until={},
-                        kill_switch=_paper_kill_switch,
-                        circuit_breaker=None,
-                        rate_buckets=None,
-                        flash_guard=engine._flash_guard,
-                        risk_guardian=None,
-                        dedup_gate=_shadow_dedup,
-                        symbol_last_trade={},
-                        symbol_cooldown_s=float(_shadow_get_cfg("execution.symbol_cooldown_s", default=30.0)),
-                        cached_margin={},
-                        min_notional_registry=_shadow_min_notional,
-                        get_config=lambda key, default=None: _shadow_get_cfg(key, default=default),
-                        total_capital_usd=_total_capital,
-                        max_session_loss_usd=_max_session_loss,
-                        session_loss_supplier=lambda: -float(getattr(getattr(engine, "_paper_mode", None), "_stats", None) and engine._paper_mode._stats.total_pnl or 0.0),
-                        build_collision_key=lambda req: f"{req.strategy_id}_{req.legs[0].symbol if req.legs else 'none'}",
-                        is_reduceonly_request=lambda req: False,
-                        halt_local=_shadow_halt_local,
-                        telegram=engine._telegram,
-                    )
-                    logger.info("paper_mode.shadow_legacy.pre_trade_validator_enabled")
-                except Exception as exc:
-                    logger.warning("paper_mode.shadow_legacy.pre_trade_validator_init_failed: %r", exc, exc_info=True)
+        # Phase 8 단일 배관: LiveMode + execution_mode="paper" (paper/live 동일 코드 경로)
+        # 사장님 메모리 정합: feedback_pipeline_must_be_unified.md
+        from src.infra.exchange.min_notional_registry import MinNotionalRegistry
+        engine._min_notional_registry = MinNotionalRegistry(engine._exchanges)
 
-            engine._paper_mode = ShadowMode(
-                signal_generator=engine._signal_generator,
-                paper_executor=None,
-                collector_manager=None,
-                market_recorder=engine._market_recorder,
-                telegram=engine._telegram,
-                symbols=symbols,
-                exchanges=exchanges,
-                multi_signal_producer=multi_signal_producer,
-                funding_rate_collector=funding_rate_collector,
-                strategy_manager=engine._strategy_manager,
-                kill_switch=_paper_kill_switch,
-                regime_detector=engine._regime_detector,
-                adaptive_threshold=engine._adaptive_threshold,
-                db_pool=engine._db_pool,
-                data_quality_manager=engine._data_quality_manager,
-                strategy_filter=_strategy_filter,
-                portfolio_risk=engine._portfolio_risk,
-                pre_trade_validator=_shadow_pre_trade_validator,
-                execution_journal=_shadow_execution_journal,
-            )
-            logger.info("paper_mode.shadowmode_legacy enabled (PAPER_USE_LIVEMODE=false)")
+        # US-348: LiveMode internally wires PreTradeValidator, PaperExecutor,
+        # and BookWalkSlippage when execution_mode="paper".
+        engine._paper_mode = LiveMode(
+            signal_generator=engine._signal_generator,
+            executor=engine._executor,  # AtomicExecutor + PaperExchangeAdapter
+            strategy_manager=engine._strategy_manager,
+            symbols=symbols,
+            exchanges=exchanges,
+            multi_signal_producer=multi_signal_producer,
+            funding_rate_collector=funding_rate_collector,
+            market_recorder=engine._market_recorder,
+            telegram=engine._telegram,
+            live_gate=None,  # Codex BLOCKING fix: paper에서 live_gate skip (approval gate 무용)
+            risk_guardian=None,  # Codex BLOCKING #1: paper에서 risk_guardian=None (legacy 룰 보존, 100% reject 회귀 방지)
+            kill_switch=_paper_kill_switch,
+            circuit_breaker=engine._circuit_breaker,
+            regime_detector=engine._regime_detector,
+            event_bus=engine._event_bus,
+            db_pool=engine._db_pool,
+            data_quality_manager=engine._data_quality_manager,
+            flash_guard=getattr(engine, "_flash_guard", None),
+            portfolio_risk=getattr(engine, "_portfolio_risk", None),
+            execution_mode="paper",  # PaperExecutor + BookWalkSlippage 자동 wiring
+            tca_analyzer=getattr(engine, "_tca_analyzer", None),
+            slippage_feedback_collector=getattr(engine, "_slippage_fb_collector", None),
+            position_manager=engine._position_manager,
+            cost_feedback=getattr(engine, "_cost_feedback", None),
+            min_notional_registry=engine._min_notional_registry,
+            strategy_filter=_strategy_filter,
+        )
+        # Codex BLOCKING #2 fix: MarketRecorderListener (factory.py:104) 가
+        # `engine._live_mode._execution_mode` 참조 — paper unified 경로에서도
+        # alias 설정해야 mode='paper' 정확 기록 (DB 검증 증거 오염 방지).
+        engine._live_mode = engine._paper_mode
+        logger.info(
+            "paper_mode.livemode_unified pipeline enabled (Phase 8 — risk_guardian=None, "
+            "live_gate=None, _live_mode=_paper_mode alias for recorder)"
+        )
+        # Phase 8 Step 3 (2026-04-27): ShadowMode legacy 분기 폐기 완료.
+        # paper_mode_loop은 이제 항상 LiveMode + execution_mode='paper' 사용 (단일 배관).
+        # PAPER_USE_LIVEMODE flag는 backward-compat — 삭제는 다음 단계.
 
         # Common: Wire FlashGuard if available
         if engine._flash_guard is not None:
