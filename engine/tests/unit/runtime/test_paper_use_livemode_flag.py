@@ -88,3 +88,19 @@ def test_paper_use_livemode_path_no_live_gate() -> None:
     helper_src = inspect.getsource(mode_loops._build_livemode_runner)
     assert "live_gate=None if is_paper" in helper_src, \
         "helper에서 paper일 때 live_gate=None (approval gate 무용)"
+
+
+def test_livemode_start_skips_approval_gate_in_paper() -> None:
+    """Codex BLOCKING #1 fix: LiveMode.start()에서 paper일 때 approval gate skip.
+
+    이전: approval gate가 execution_mode 가드 없이 항상 작동 → paper에서 startup 실패 위험
+    Fix: `if self._execution_mode == "live":` 가드로 paper-skip.
+    """
+    import inspect
+    from src.modes import live
+    src_text = inspect.getsource(live.LiveMode.start)
+    # approval gate가 execution_mode=="live" 가드 안에 있음
+    assert 'if self._execution_mode == "live":' in src_text, \
+        "approval gate는 live 모드에서만 작동 (paper에서 skip)"
+    assert "live_mode.approval_gate_skipped" in src_text, \
+        "paper에서 approval skip 명시적 로그"
